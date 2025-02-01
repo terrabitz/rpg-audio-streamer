@@ -1,7 +1,7 @@
 <template>
   <div class="about">
     <h1>This is an about page</h1>
-    <v-btn class="centered-btn" :icon="mdiHome" @click="$router.push('/')"></v-btn>
+    <v-btn class="centered-btn" icon="$home" @click="$router.push('/')"></v-btn>
   </div>
 </template>
 
@@ -29,7 +29,3 @@
   }
 }
 </style>
-
-<script setup lang="ts">
-  import { mdiHome } from '@mdi/js'
-</script>
