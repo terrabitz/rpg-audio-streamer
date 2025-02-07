@@ -2,6 +2,7 @@ package main
 
 import (
 	"embed"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -18,6 +19,11 @@ var uploadDir = "./uploads"
 
 //go:embed ui/dist
 var frontend embed.FS
+
+type FileInfo struct {
+	Name string `json:"name"`
+	Size int64  `json:"size"`
+}
 
 func main() {
 	if err := run(); err != nil {
@@ -41,6 +47,7 @@ func run() error {
 	mux := http.NewServeMux()
 	mux.Handle("/", frontendFS)
 	mux.HandleFunc("/upload", uploadFile)
+	mux.HandleFunc("/files", listFiles)
 	mux.HandleFunc("/stream/{fileName}", streamFile)
 
 	srv := &http.Server{
@@ -75,6 +82,12 @@ func uploadFile(w http.ResponseWriter, r *http.Request) {
 	}
 	defer file.Close()
 
+	err = os.MkdirAll(uploadDir, os.ModePerm)
+	if err != nil {
+		http.Error(w, "Failed to create upload directory: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
 	dstFile, err := os.Create(filepath.Join(uploadDir, handler.Filename))
 	if err != nil {
 		http.Error(w, "Failed to save file: "+err.Error(), http.StatusInternalServerError)
@@ -90,6 +103,34 @@ func uploadFile(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("File uploaded successfully"))
+}
+
+func listFiles(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Invalid request method", http.StatusMethodNotAllowed)
+		return
+	}
+
+	files, err := os.ReadDir(uploadDir)
+	if err != nil {
+		http.Error(w, "Failed to read directory: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	var fileList []FileInfo
+	for _, file := range files {
+		info, err := file.Info()
+		if err != nil {
+			continue
+		}
+		fileList = append(fileList, FileInfo{
+			Name: info.Name(),
+			Size: info.Size(),
+		})
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(fileList)
 }
 
 func streamFile(w http.ResponseWriter, r *http.Request) {
