@@ -32,6 +32,21 @@ func main() {
 	}
 }
 
+func enableCORS(handler http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "http://localhost:5173")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+
+		if r.Method == "OPTIONS" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+
+		handler.ServeHTTP(w, r)
+	})
+}
+
 func run() error {
 	stripped, err := fs.Sub(frontend, "ui/dist")
 	if err != nil {
@@ -52,7 +67,7 @@ func run() error {
 
 	srv := &http.Server{
 		Addr:    fmt.Sprintf(":%d", port),
-		Handler: mux,
+		Handler: enableCORS(mux),
 	}
 
 	fmt.Printf("Listening on port %d\n", port)
