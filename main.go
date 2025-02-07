@@ -46,9 +46,9 @@ func run() error {
 
 	mux := http.NewServeMux()
 	mux.Handle("/", frontendFS)
-	mux.HandleFunc("/upload", uploadFile)
-	mux.HandleFunc("/files", listFiles)
-	mux.HandleFunc("/stream/{fileName}", streamFile)
+	mux.HandleFunc("/api/v1/upload", uploadFile)
+	mux.HandleFunc("/api/v1/files", listFiles)
+	mux.HandleFunc("/api/v1/stream/{fileName}", streamFile)
 
 	srv := &http.Server{
 		Addr:    fmt.Sprintf(":%d", port),
