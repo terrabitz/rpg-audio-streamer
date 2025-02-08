@@ -16,6 +16,10 @@
             <v-btn icon @click="togglePlay(file.name)" class="mr-2">
               <v-icon>{{ isFilePlaying(file.name) ? '$pause' : '$play' }}</v-icon>
             </v-btn>
+            <v-btn icon @click="toggleRepeat(file.name)" :color="isRepeating(file.name) ? 'primary' : undefined"
+              class="mr-2">
+              <v-icon>$repeat</v-icon>
+            </v-btn>
             <div class="d-flex align-center mr-2" style="width: 150px">
               <v-icon size="small" class="mr-2">$volume</v-icon>
               <v-slider v-model="fileVolumes[file.name]" @update:modelValue="setVolume(file.name, $event)"
@@ -39,6 +43,7 @@ const fileStore = useFileStore()
 const audioPlayers = ref(new Map<string, HTMLAudioElement>())
 const playingFiles = ref(new Set<string>())
 const volumeLevels = ref(new Map<string, number>())
+const repeatingFiles = ref(new Set<string>())
 
 onMounted(() => {
   fileStore.fetchFiles()
@@ -56,9 +61,12 @@ function createAudioPlayer(fileName: string): HTMLAudioElement {
   const player = new Audio()
   player.src = `${import.meta.env.VITE_API_BASE_URL}/stream/${fileName}`
   player.volume = (volumeLevels.value.get(fileName) ?? 100) / 100
+  player.loop = repeatingFiles.value.has(fileName)
   player.onended = () => {
-    playingFiles.value.delete(fileName)
-    audioPlayers.value.delete(fileName)
+    if (!player.loop) {
+      playingFiles.value.delete(fileName)
+      audioPlayers.value.delete(fileName)
+    }
   }
   return player
 }
@@ -81,6 +89,21 @@ function togglePlay(fileName: string) {
   } else {
     player.play()
     playingFiles.value.add(fileName)
+  }
+}
+
+function isRepeating(fileName: string): boolean {
+  return repeatingFiles.value.has(fileName)
+}
+
+function toggleRepeat(fileName: string) {
+  const player = audioPlayers.value.get(fileName)
+  if (repeatingFiles.value.has(fileName)) {
+    repeatingFiles.value.delete(fileName)
+    if (player) player.loop = false
+  } else {
+    repeatingFiles.value.add(fileName)
+    if (player) player.loop = true
   }
 }
 

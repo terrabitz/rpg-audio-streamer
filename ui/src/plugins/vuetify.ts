@@ -1,4 +1,4 @@
-import { mdiDelete, mdiHome, mdiMusic, mdiPause, mdiPlay, mdiVolumeHigh } from '@mdi/js'
+import { mdiDelete, mdiHome, mdiMusic, mdiPause, mdiPlay, mdiRepeat, mdiVolumeHigh } from '@mdi/js'
 import { createVuetify } from 'vuetify'
 import { aliases, mdi } from 'vuetify/iconsets/mdi-svg'
 import 'vuetify/styles'
@@ -14,6 +14,7 @@ export default createVuetify({
       pause: mdiPause,
       delete: mdiDelete,
       volume: mdiVolumeHigh,
+      repeat: mdiRepeat,
     },
     sets: {
       mdi,
