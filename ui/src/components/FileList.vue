@@ -13,18 +13,8 @@
           <td>{{ file.name }}</td>
           <td>{{ formatFileSize(file.size) }}</td>
           <td class="d-flex align-center">
-            <v-btn icon @click="togglePlay(file.name)" class="mr-2">
-              <v-icon>{{ isFilePlaying(file.name) ? '$pause' : '$play' }}</v-icon>
-            </v-btn>
-            <v-btn icon @click="toggleRepeat(file.name)" :color="isRepeating(file.name) ? 'primary' : undefined"
-              class="mr-2">
-              <v-icon>$repeat</v-icon>
-            </v-btn>
-            <div class="d-flex align-center mr-2" style="width: 150px">
-              <v-icon size="small" class="mr-2">$volume</v-icon>
-              <v-slider v-model="fileVolumes[file.name]" @update:modelValue="setVolume(file.name, $event)"
-                density="compact" hide-details max="100" min="0" step="1"></v-slider>
-            </div>
+            <AudioControls :state="audioPlayer.getState(file.name)" @play="audioPlayer.togglePlay(file.name)"
+              @repeat="audioPlayer.toggleRepeat(file.name)" @volume="audioPlayer.setVolume(file.name, $event)" />
             <v-btn icon color="error" @click="deleteFile(file.name)">
               <v-icon>$delete</v-icon>
             </v-btn>
@@ -36,14 +26,13 @@
 </template>
 
 <script setup lang="ts">
+import { useAudioPlayer } from '@/composables/useAudioPlayer'
 import { useFileStore } from '@/stores/files'
-import { computed, onMounted, ref } from 'vue'
+import { onMounted } from 'vue'
+import AudioControls from './AudioControls.vue'
 
 const fileStore = useFileStore()
-const audioPlayers = ref(new Map<string, HTMLAudioElement>())
-const playingFiles = ref(new Set<string>())
-const volumeLevels = ref(new Map<string, number>())
-const repeatingFiles = ref(new Set<string>())
+const audioPlayer = useAudioPlayer()
 
 onMounted(() => {
   fileStore.fetchFiles()
@@ -57,79 +46,8 @@ function formatFileSize(bytes: number): string {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
 }
 
-function createAudioPlayer(fileName: string): HTMLAudioElement {
-  const player = new Audio()
-  player.src = `${import.meta.env.VITE_API_BASE_URL}/stream/${fileName}`
-  player.volume = (volumeLevels.value.get(fileName) ?? 100) / 100
-  player.loop = repeatingFiles.value.has(fileName)
-  player.onended = () => {
-    if (!player.loop) {
-      playingFiles.value.delete(fileName)
-      audioPlayers.value.delete(fileName)
-    }
-  }
-  return player
-}
-
-function isFilePlaying(fileName: string): boolean {
-  return playingFiles.value.has(fileName)
-}
-
-function togglePlay(fileName: string) {
-  let player = audioPlayers.value.get(fileName)
-
-  if (!player) {
-    player = createAudioPlayer(fileName)
-    audioPlayers.value.set(fileName, player)
-  }
-
-  if (playingFiles.value.has(fileName)) {
-    player.pause()
-    playingFiles.value.delete(fileName)
-  } else {
-    player.play()
-    playingFiles.value.add(fileName)
-  }
-}
-
-function isRepeating(fileName: string): boolean {
-  return repeatingFiles.value.has(fileName)
-}
-
-function toggleRepeat(fileName: string) {
-  const player = audioPlayers.value.get(fileName)
-  if (repeatingFiles.value.has(fileName)) {
-    repeatingFiles.value.delete(fileName)
-    if (player) player.loop = false
-  } else {
-    repeatingFiles.value.add(fileName)
-    if (player) player.loop = true
-  }
-}
-
-const fileVolumes = computed(() => {
-  const volumes: Record<string, number> = {}
-  fileStore.files.forEach(file => {
-    volumes[file.name] = volumeLevels.value.get(file.name) ?? 100
-  })
-  return volumes
-})
-
-function setVolume(fileName: string, volume: number) {
-  volumeLevels.value.set(fileName, volume)
-  const player = audioPlayers.value.get(fileName)
-  if (player) {
-    player.volume = volume / 100
-  }
-}
-
 async function deleteFile(fileName: string) {
-  const player = audioPlayers.value.get(fileName)
-  if (player) {
-    player.pause()
-    audioPlayers.value.delete(fileName)
-    playingFiles.value.delete(fileName)
-  }
+  audioPlayer.cleanup(fileName)
   try {
     await fileStore.deleteFile(fileName)
   } catch (error) {
