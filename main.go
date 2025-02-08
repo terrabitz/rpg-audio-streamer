@@ -27,10 +27,10 @@ var uploadDir = "./uploads"
 var frontend embed.FS
 
 type Config struct {
-	Port        int
-	CorsOrigins string
-	LogFormat   string
-	LogLevel    string
+	Port      int
+	LogFormat string
+	LogLevel  string
+	CORS      middlewares.CorsConfig
 }
 
 func main() {
@@ -57,7 +57,7 @@ func main() {
 						Name:        "cors-origins",
 						EnvVars:     []string{"CORS_ORIGINS"},
 						Usage:       "Allowed CORS origins",
-						Destination: &cfg.CorsOrigins,
+						Destination: &cfg.CORS.AllowedOrigins,
 					},
 					&cli.StringFlag{
 						Name:        "log-format",
@@ -114,7 +114,7 @@ func startServer(cfg Config) error {
 
 	logger.Info("starting server",
 		"port", cfg.Port,
-		"cors_origins", cfg.CorsOrigins,
+		"cors_origins", cfg.CORS.AllowedOrigins,
 	)
 
 	configJSON, err := json.MarshalIndent(cfg, "", "  ")
@@ -138,9 +138,7 @@ func startServer(cfg Config) error {
 	srv := &http.Server{
 		Addr: fmt.Sprintf(":%d", cfg.Port),
 		Handler: middlewares.LoggerMiddleware(logger)(
-			middlewares.CORSMiddleware(middlewares.CorsConfig{
-				AllowedOrigins: cfg.CorsOrigins,
-			})(mux),
+			middlewares.CORSMiddleware(cfg.CORS)(mux),
 		),
 	}
 
