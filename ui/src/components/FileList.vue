@@ -12,10 +12,15 @@
         <tr v-for="file in fileStore.files" :key="file.name">
           <td>{{ file.name }}</td>
           <td>{{ formatFileSize(file.size) }}</td>
-          <td>
+          <td class="d-flex align-center">
             <v-btn icon @click="togglePlay(file.name)" class="mr-2">
               <v-icon>{{ isFilePlaying(file.name) ? '$pause' : '$play' }}</v-icon>
             </v-btn>
+            <div class="d-flex align-center mr-2" style="width: 150px">
+              <v-icon size="small" class="mr-2">$volume</v-icon>
+              <v-slider v-model="fileVolumes[file.name]" @update:modelValue="setVolume(file.name, $event)"
+                density="compact" hide-details max="100" min="0" step="1"></v-slider>
+            </div>
             <v-btn icon color="error" @click="deleteFile(file.name)">
               <v-icon>$delete</v-icon>
             </v-btn>
@@ -28,11 +33,12 @@
 
 <script setup lang="ts">
 import { useFileStore } from '@/stores/files'
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 
 const fileStore = useFileStore()
 const audioPlayers = ref(new Map<string, HTMLAudioElement>())
 const playingFiles = ref(new Set<string>())
+const volumeLevels = ref(new Map<string, number>())
 
 onMounted(() => {
   fileStore.fetchFiles()
@@ -49,6 +55,7 @@ function formatFileSize(bytes: number): string {
 function createAudioPlayer(fileName: string): HTMLAudioElement {
   const player = new Audio()
   player.src = `${import.meta.env.VITE_API_BASE_URL}/stream/${fileName}`
+  player.volume = (volumeLevels.value.get(fileName) ?? 100) / 100
   player.onended = () => {
     playingFiles.value.delete(fileName)
     audioPlayers.value.delete(fileName)
@@ -74,6 +81,22 @@ function togglePlay(fileName: string) {
   } else {
     player.play()
     playingFiles.value.add(fileName)
+  }
+}
+
+const fileVolumes = computed(() => {
+  const volumes: Record<string, number> = {}
+  fileStore.files.forEach(file => {
+    volumes[file.name] = volumeLevels.value.get(file.name) ?? 100
+  })
+  return volumes
+})
+
+function setVolume(fileName: string, volume: number) {
+  volumeLevels.value.set(fileName, volume)
+  const player = audioPlayers.value.get(fileName)
+  if (player) {
+    player.volume = volume / 100
   }
 }
 
