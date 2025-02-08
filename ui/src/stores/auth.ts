@@ -5,6 +5,7 @@ import { ref } from 'vue'
 
 export const useAuthStore = defineStore('auth', () => {
   const authenticated = ref(false)
+  const authorized = ref(false)
   const loading = ref(true)
   const user = ref<User | null>(null)
 
@@ -14,10 +15,12 @@ export const useAuthStore = defineStore('auth', () => {
       const data = response.data as AuthResponse
 
       authenticated.value = data.authenticated
+      authorized.value = data.authorized
       user.value = data.user
     } catch (error) {
       console.error('Failed to check auth status:', error)
       authenticated.value = false
+      authorized.value = false
       user.value = null
     } finally {
       loading.value = false
@@ -36,6 +39,7 @@ export const useAuthStore = defineStore('auth', () => {
 
   return {
     authenticated,
+    authorized,
     loading,
     user,
     checkAuthStatus,

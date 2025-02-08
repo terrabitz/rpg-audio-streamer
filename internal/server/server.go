@@ -68,16 +68,18 @@ func (s *Server) Start() error {
 
 	frontendFS := http.FileServer(http.FS(s.frontend))
 
+	authMiddleware := middlewares.AuthMiddleware(s.cfg.GitHub.JWTSecret)
+
 	mux := http.NewServeMux()
 	httpMux := http.NewServeMux()
 	httpMux.Handle("/", frontendFS)
-	httpMux.HandleFunc("/api/v1/files", s.handleFiles)
-	httpMux.HandleFunc("/api/v1/files/{fileName}", s.handleFileDelete)
-	httpMux.HandleFunc("/api/v1/stream/{fileName}", s.streamFile)
-	httpMux.HandleFunc("/api/v1/auth/github", s.handleGitHubAuth)
-	httpMux.HandleFunc("/api/v1/auth/github/callback", s.handleGitHubCallback)
+	httpMux.Handle("/api/v1/files", authMiddleware(http.HandlerFunc(s.handleFiles)))
+	httpMux.Handle("/api/v1/files/{fileName}", authMiddleware(http.HandlerFunc(s.handleFileDelete)))
+	httpMux.Handle("/api/v1/stream/{fileName}", authMiddleware(http.HandlerFunc(s.streamFile)))
 	httpMux.HandleFunc("/api/v1/auth/status", s.handleAuthStatus)
 	httpMux.HandleFunc("/api/v1/auth/logout", s.handleLogout)
+	httpMux.HandleFunc("/api/v1/auth/github", s.handleGitHubAuth)
+	httpMux.HandleFunc("/api/v1/auth/github/callback", s.handleGitHubCallback)
 	mux.Handle("/", middlewares.LoggerMiddleware(s.logger)(
 		middlewares.CORSMiddleware(s.cfg.CORS)(httpMux),
 	))
@@ -266,6 +268,7 @@ func (s *Server) handleGitHubCallback(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleAuthStatus(w http.ResponseWriter, r *http.Request) {
 	isAuthenticated := false
+	isAuthorized := false
 	var userData jwt.MapClaims
 
 	if cookie, err := r.Cookie("auth_token"); err == nil && cookie != nil {
@@ -273,6 +276,9 @@ func (s *Server) handleAuthStatus(w http.ResponseWriter, r *http.Request) {
 		if err == nil {
 			isAuthenticated = true
 			userData = claims
+			if username, ok := claims["login"].(string); ok && username == "terrabitz" {
+				isAuthorized = true
+			}
 		} else {
 			s.logger.Debug("invalid token", "error", err)
 		}
@@ -281,6 +287,7 @@ func (s *Server) handleAuthStatus(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"authenticated": isAuthenticated,
+		"authorized":    isAuthorized,
 		"user":          userData,
 	})
 }
