@@ -14,10 +14,10 @@
           <td>{{ formatFileSize(file.size) }}</td>
           <td>
             <v-btn icon @click="playFile(file.name)" class="mr-2">
-              <v-icon>mdi-play</v-icon>
+              <v-icon>$play</v-icon>
             </v-btn>
             <v-btn icon color="error" @click="deleteFile(file.name)">
-              <v-icon>mdi-delete</v-icon>
+              <v-icon>$delete</v-icon>
             </v-btn>
           </td>
         </tr>
