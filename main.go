@@ -12,10 +12,13 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/joho/godotenv"
 	"github.com/urfave/cli/v2"
+
+	"github.com/terrabitz/rpg-audio-streamer/internal/middlewares"
 )
 
 var uploadDir = "./uploads"
@@ -26,6 +29,8 @@ var frontend embed.FS
 type Config struct {
 	Port        int
 	CorsOrigins string
+	LogFormat   string
+	LogLevel    string
 }
 
 func main() {
@@ -54,6 +59,20 @@ func main() {
 						Usage:       "Allowed CORS origins",
 						Destination: &cfg.CorsOrigins,
 					},
+					&cli.StringFlag{
+						Name:        "log-format",
+						EnvVars:     []string{"LOG_FORMAT"},
+						Value:       "json",
+						Usage:       "Log format (json or pretty)",
+						Destination: &cfg.LogFormat,
+					},
+					&cli.StringFlag{
+						Name:        "log-level",
+						EnvVars:     []string{"LOG_LEVEL"},
+						Value:       "info",
+						Usage:       "Log level (debug, info, warn, error)",
+						Destination: &cfg.LogLevel,
+					},
 				},
 				Action: func(cCtx *cli.Context) error {
 					return startServer(cfg)
@@ -67,7 +86,37 @@ func main() {
 	}
 }
 
+func setupLogger(cfg Config) (*slog.Logger, error) {
+	level := new(slog.Level)
+	if err := level.UnmarshalText([]byte(strings.ToLower(cfg.LogLevel))); err != nil {
+		return nil, fmt.Errorf("couldn't parse log level '%s': %w", cfg.LogLevel, err)
+	}
+
+	opts := &slog.HandlerOptions{
+		Level: level,
+	}
+
+	var handler slog.Handler
+	if cfg.LogFormat == "json" {
+		handler = slog.NewJSONHandler(os.Stdout, opts)
+	} else {
+		handler = slog.NewTextHandler(os.Stdout, opts)
+	}
+
+	return slog.New(handler), nil
+}
+
 func startServer(cfg Config) error {
+	logger, err := setupLogger(cfg)
+	if err != nil {
+		return fmt.Errorf("couldn't initialize logger: %w", err)
+	}
+
+	logger.Info("starting server",
+		"port", cfg.Port,
+		"cors_origins", cfg.CorsOrigins,
+	)
+
 	configJSON, err := json.MarshalIndent(cfg, "", "  ")
 	if err != nil {
 		return fmt.Errorf("failed to marshal config: %w", err)
@@ -87,8 +136,12 @@ func startServer(cfg Config) error {
 	mux.HandleFunc("/api/v1/stream/{fileName}", streamFile)
 
 	srv := &http.Server{
-		Addr:    fmt.Sprintf(":%d", cfg.Port),
-		Handler: logRequest(enableCORS(mux, cfg)),
+		Addr: fmt.Sprintf(":%d", cfg.Port),
+		Handler: middlewares.LoggerMiddleware(logger)(
+			middlewares.CORSMiddleware(middlewares.CorsConfig{
+				AllowedOrigins: cfg.CorsOrigins,
+			})(mux),
+		),
 	}
 
 	fmt.Printf("Listening on port %d\n", cfg.Port)
@@ -97,55 +150,6 @@ func startServer(cfg Config) error {
 	}
 
 	return nil
-}
-
-func enableCORS(handler http.Handler, cfg Config) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if cfg.CorsOrigins != "" {
-			w.Header().Set("Access-Control-Allow-Origin", cfg.CorsOrigins)
-			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
-			w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-			w.Header().Set("Access-Control-Max-Age", "3600")
-		}
-
-		if r.Method == "OPTIONS" {
-			w.WriteHeader(http.StatusOK)
-			return
-		}
-
-		handler.ServeHTTP(w, r)
-	})
-}
-
-func logRequest(handler http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		start := time.Now()
-
-		// Wrap the response writer to capture the status code
-		rw := &responseWriter{ResponseWriter: w, status: http.StatusOK}
-
-		handler.ServeHTTP(rw, r)
-
-		// Log after request is handled
-		slog.Info("http request",
-			"method", r.Method,
-			"path", r.URL.Path,
-			"status", rw.status,
-			"duration", time.Since(start),
-			"remote_addr", r.RemoteAddr,
-		)
-	})
-}
-
-// responseWriter wraps http.ResponseWriter to capture status code
-type responseWriter struct {
-	http.ResponseWriter
-	status int
-}
-
-func (rw *responseWriter) WriteHeader(status int) {
-	rw.status = status
-	rw.ResponseWriter.WriteHeader(status)
 }
 
 func handleFiles(w http.ResponseWriter, r *http.Request) {
