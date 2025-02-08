@@ -12,15 +12,16 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/terrabitz/rpg-audio-streamer/internal/auth"
 	"github.com/terrabitz/rpg-audio-streamer/internal/middlewares"
 	"github.com/terrabitz/rpg-audio-streamer/internal/types"
 	ws "github.com/terrabitz/rpg-audio-streamer/internal/websocket"
 )
 
 type Server struct {
+	cfg      Config
 	logger   *slog.Logger
 	frontend fs.FS
-	cfg      Config
 	hub      *ws.Hub
 	upgrader websocket.Upgrader
 }
@@ -33,6 +34,8 @@ type Config struct {
 	CORS middlewares.CorsConfig
 	// Optional upload directory path. Defaults to "./uploads"
 	UploadDir string
+	// GitHub OAuth configuration
+	GitHub auth.GitHubConfig
 }
 
 func New(cfg Config, logger *slog.Logger, frontend fs.FS) (*Server, error) {
@@ -70,6 +73,8 @@ func (s *Server) Start() error {
 	httpMux.HandleFunc("/api/v1/files", s.handleFiles)
 	httpMux.HandleFunc("/api/v1/files/{fileName}", s.handleFileDelete)
 	httpMux.HandleFunc("/api/v1/stream/{fileName}", s.streamFile)
+	httpMux.HandleFunc("/api/v1/auth/github", s.handleGitHubAuth)
+	httpMux.HandleFunc("/api/v1/auth/github/callback", s.handleGitHubCallback)
 	mux.Handle("/", middlewares.LoggerMiddleware(s.logger)(
 		middlewares.CORSMiddleware(s.cfg.CORS)(httpMux),
 	))
@@ -219,4 +224,39 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 
 	go client.WritePump()
 	go client.ReadPump()
+}
+
+func (s *Server) handleGitHubAuth(w http.ResponseWriter, r *http.Request) {
+	redirectURL := fmt.Sprintf("https://github.com/login/oauth/authorize?client_id=%s&scope=user:email",
+		s.cfg.GitHub.ClientID)
+	http.Redirect(w, r, redirectURL, http.StatusTemporaryRedirect)
+}
+
+func (s *Server) handleGitHubCallback(w http.ResponseWriter, r *http.Request) {
+	code := r.URL.Query().Get("code")
+	if code == "" {
+		http.Error(w, "Code not found", http.StatusBadRequest)
+		return
+	}
+
+	token, err := auth.ExchangeCodeForToken(code, s.cfg.GitHub)
+	if err != nil {
+		s.logger.Error("failed to exchange code for token", "error", err)
+		http.Error(w, "Authentication failed", http.StatusInternalServerError)
+		return
+	}
+
+	// Set token as HTTP-only cookie
+	http.SetCookie(w, &http.Cookie{
+		Name:     "auth_token",
+		Value:    token,
+		Path:     "/",
+		HttpOnly: true,
+		Secure:   true,
+		SameSite: http.SameSiteLaxMode,
+		MaxAge:   86400, // 24 hours
+	})
+
+	// Redirect to frontend
+	http.Redirect(w, r, "http://localhost:5173/", http.StatusTemporaryRedirect)
 }
