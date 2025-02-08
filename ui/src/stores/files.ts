@@ -18,6 +18,15 @@ export const useFileStore = defineStore('files', {
       } catch (error) {
         console.error('Error fetching files:', error)
       }
+    },
+    async deleteFile(fileName: string) {
+      try {
+        await apiClient.delete(`/files/${encodeURIComponent(fileName)}`)
+        await this.fetchFiles()
+      } catch (error) {
+        console.error('Error deleting file:', error)
+        throw error
+      }
     }
   }
 })

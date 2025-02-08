@@ -9,6 +9,7 @@ import (
 	"io"
 	"io/fs"
 	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -35,8 +36,9 @@ func main() {
 func enableCORS(handler http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "http://localhost:5173")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		w.Header().Set("Access-Control-Max-Age", "3600")
 
 		if r.Method == "OPTIONS" {
 			w.WriteHeader(http.StatusOK)
@@ -45,6 +47,37 @@ func enableCORS(handler http.Handler) http.Handler {
 
 		handler.ServeHTTP(w, r)
 	})
+}
+
+func logRequest(handler http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+
+		// Wrap the response writer to capture the status code
+		rw := &responseWriter{ResponseWriter: w, status: http.StatusOK}
+
+		handler.ServeHTTP(rw, r)
+
+		// Log after request is handled
+		slog.Info("http request",
+			"method", r.Method,
+			"path", r.URL.Path,
+			"status", rw.status,
+			"duration", time.Since(start),
+			"remote_addr", r.RemoteAddr,
+		)
+	})
+}
+
+// responseWriter wraps http.ResponseWriter to capture status code
+type responseWriter struct {
+	http.ResponseWriter
+	status int
+}
+
+func (rw *responseWriter) WriteHeader(status int) {
+	rw.status = status
+	rw.ResponseWriter.WriteHeader(status)
 }
 
 func run() error {
@@ -62,11 +95,12 @@ func run() error {
 	mux := http.NewServeMux()
 	mux.Handle("/", frontendFS)
 	mux.HandleFunc("/api/v1/files", handleFiles)
+	mux.HandleFunc("/api/v1/files/{fileName}", handleFileDelete)
 	mux.HandleFunc("/api/v1/stream/{fileName}", streamFile)
 
 	srv := &http.Server{
 		Addr:    fmt.Sprintf(":%d", port),
-		Handler: enableCORS(mux),
+		Handler: logRequest(enableCORS(mux)),
 	}
 
 	fmt.Printf("Listening on port %d\n", port)
@@ -156,6 +190,28 @@ func listFiles(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(fileList)
+}
+
+func handleFileDelete(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodDelete {
+		http.Error(w, "Invalid request method", http.StatusMethodNotAllowed)
+		return
+	}
+
+	fileName := r.PathValue("fileName")
+
+	filePath := filepath.Join(uploadDir, fileName)
+	if err := os.Remove(filePath); err != nil {
+		if os.IsNotExist(err) {
+			http.Error(w, "File not found", http.StatusNotFound)
+			return
+		}
+		http.Error(w, "Failed to delete file: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("File deleted successfully"))
 }
 
 func streamFile(w http.ResponseWriter, r *http.Request) {

@@ -13,8 +13,11 @@
           <td>{{ file.name }}</td>
           <td>{{ formatFileSize(file.size) }}</td>
           <td>
-            <v-btn icon @click="playFile(file.name)">
+            <v-btn icon @click="playFile(file.name)" class="mr-2">
               <v-icon>mdi-play</v-icon>
+            </v-btn>
+            <v-btn icon color="error" @click="deleteFile(file.name)">
+              <v-icon>mdi-delete</v-icon>
             </v-btn>
           </td>
         </tr>
@@ -48,6 +51,14 @@ function playFile(fileName: string) {
   if (audioPlayer.value) {
     audioPlayer.value.src = `${import.meta.env.VITE_API_BASE_URL}/stream/${fileName}`
     audioPlayer.value.play()
+  }
+}
+
+async function deleteFile(fileName: string) {
+  try {
+    await fileStore.deleteFile(fileName)
+  } catch (error) {
+    console.error('Failed to delete file:', error)
   }
 }
 </script>
