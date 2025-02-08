@@ -86,7 +86,7 @@ func (s *Server) Start() error {
 		middlewares.CORSMiddleware(s.cfg.CORS)(httpMux),
 	))
 
-	mux.HandleFunc("/ws", s.handleWebSocket)
+	mux.HandleFunc("/api/v1/ws", s.handleWebSocket)
 
 	srv := &http.Server{
 		Addr:    fmt.Sprintf(":%d", s.cfg.Port),
