@@ -65,17 +65,20 @@ func (s *Server) Start() error {
 	frontendFS := http.FileServer(http.FS(s.frontend))
 
 	mux := http.NewServeMux()
-	mux.Handle("/", frontendFS)
-	mux.HandleFunc("/api/v1/files", s.handleFiles)
-	mux.HandleFunc("/api/v1/files/{fileName}", s.handleFileDelete)
-	mux.HandleFunc("/api/v1/stream/{fileName}", s.streamFile)
+	httpMux := http.NewServeMux()
+	httpMux.Handle("/", frontendFS)
+	httpMux.HandleFunc("/api/v1/files", s.handleFiles)
+	httpMux.HandleFunc("/api/v1/files/{fileName}", s.handleFileDelete)
+	httpMux.HandleFunc("/api/v1/stream/{fileName}", s.streamFile)
+	mux.Handle("/", middlewares.LoggerMiddleware(s.logger)(
+		middlewares.CORSMiddleware(s.cfg.CORS)(httpMux),
+	))
+
 	mux.HandleFunc("/ws", s.handleWebSocket)
 
 	srv := &http.Server{
-		Addr: fmt.Sprintf(":%d", s.cfg.Port),
-		Handler: middlewares.LoggerMiddleware(s.logger)(
-			middlewares.CORSMiddleware(s.cfg.CORS)(mux),
-		),
+		Addr:    fmt.Sprintf(":%d", s.cfg.Port),
+		Handler: mux,
 	}
 
 	s.logger.Info("starting server", "port", s.cfg.Port)
