@@ -13,9 +13,7 @@ onMounted(() => {
 
 <template>
   <main class="container mx-auto px-4 py-8">
-    <div class="flex justify-between items-center mb-8">
-      <h1 class="text-2xl font-bold">My Table</h1>
-    </div>
+    <h1 class="text-2xl font-bold">My Table</h1>
 
     <template v-if="auth.loading">
       <div class="text-center py-12">
@@ -29,7 +27,6 @@ onMounted(() => {
     </template>
     <template v-else>
       <div class="text-center py-12">
-        <h2 class="text-xl mb-4">Welcome to RPG Audio Streamer</h2>
         <p class="text-gray-600 mb-6">Please login to start managing your audio files</p>
       </div>
     </template>
