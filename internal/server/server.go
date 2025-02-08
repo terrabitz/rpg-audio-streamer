@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/gorilla/websocket"
 	"github.com/terrabitz/rpg-audio-streamer/internal/auth"
 	"github.com/terrabitz/rpg-audio-streamer/internal/middlewares"
@@ -75,6 +76,7 @@ func (s *Server) Start() error {
 	httpMux.HandleFunc("/api/v1/stream/{fileName}", s.streamFile)
 	httpMux.HandleFunc("/api/v1/auth/github", s.handleGitHubAuth)
 	httpMux.HandleFunc("/api/v1/auth/github/callback", s.handleGitHubCallback)
+	httpMux.HandleFunc("/api/v1/auth/status", s.handleAuthStatus)
 	mux.Handle("/", middlewares.LoggerMiddleware(s.logger)(
 		middlewares.CORSMiddleware(s.cfg.CORS)(httpMux),
 	))
@@ -253,10 +255,31 @@ func (s *Server) handleGitHubCallback(w http.ResponseWriter, r *http.Request) {
 		Path:     "/",
 		HttpOnly: true,
 		Secure:   true,
-		SameSite: http.SameSiteLaxMode,
+		SameSite: http.SameSiteNoneMode,
 		MaxAge:   86400, // 24 hours
 	})
 
 	// Redirect to frontend
 	http.Redirect(w, r, "http://localhost:5173/", http.StatusTemporaryRedirect)
+}
+
+func (s *Server) handleAuthStatus(w http.ResponseWriter, r *http.Request) {
+	isAuthenticated := false
+	var userData jwt.MapClaims
+
+	if cookie, err := r.Cookie("auth_token"); err == nil && cookie != nil {
+		claims, err := auth.ValidateToken(cookie.Value, s.cfg.GitHub.JWTSecret)
+		if err == nil {
+			isAuthenticated = true
+			userData = claims
+		} else {
+			s.logger.Debug("invalid token", "error", err)
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"authenticated": isAuthenticated,
+		"user":          userData,
+	})
 }
