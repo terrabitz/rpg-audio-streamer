@@ -26,11 +26,6 @@ type Config struct {
 	Port int
 }
 
-type FileInfo struct {
-	Name string `json:"name"`
-	Size int64  `json:"size"`
-}
-
 func main() {
 	var cfg Config
 	app := &cli.App{
@@ -147,6 +142,11 @@ func handleFiles(w http.ResponseWriter, r *http.Request) {
 	default:
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 	}
+}
+
+type FileInfo struct {
+	Name string `json:"name"`
+	Size int64  `json:"size"`
 }
 
 func uploadFile(w http.ResponseWriter, r *http.Request) {
