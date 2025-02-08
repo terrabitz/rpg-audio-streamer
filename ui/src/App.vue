@@ -6,7 +6,9 @@ import GitHubLoginButton from './components/GitHubLoginButton.vue'; /* Partially
 <template>
   <v-app theme="dark">
     <v-app-bar>
-      <v-app-bar-title>Skald Bot</v-app-bar-title>
+      <v-app-bar-title>
+        <RouterLink to="/">Skald Bot</RouterLink>
+      </v-app-bar-title>
       <v-spacer></v-spacer>
       <GitHubLoginButton />
     </v-app-bar>
