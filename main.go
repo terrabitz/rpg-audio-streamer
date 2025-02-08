@@ -2,236 +2,123 @@ package main
 
 import (
 	"embed"
-	"encoding/json"
-	"errors"
-	"flag"
 	"fmt"
-	"io"
-	"io/fs"
 	"log"
 	"log/slog"
-	"net/http"
 	"os"
-	"path/filepath"
-	"time"
+	"strings"
+
+	"github.com/joho/godotenv"
+	"github.com/urfave/cli/v2"
+
+	"github.com/terrabitz/rpg-audio-streamer/internal/server"
 )
 
 var uploadDir = "./uploads"
 
-//go:embed ui/dist
+//go:embed all:ui/dist
 var frontend embed.FS
 
-type FileInfo struct {
-	Name string `json:"name"`
-	Size int64  `json:"size"`
+type Config struct {
+	Server server.Config
+	Log    LogConfig
+}
+
+type LogConfig struct {
+	Format string
+	Level  string
 }
 
 func main() {
-	if err := run(); err != nil {
-		log.Printf("error: %s", err)
-		os.Exit(1)
+	_ = godotenv.Load()
+
+	var cfg Config
+	app := &cli.App{
+		Name:  "rpg-audio-streamer",
+		Usage: "A simple audio file streaming server for tabletop RPGs",
+		Commands: []*cli.Command{
+			{
+				Name:    "serve",
+				Aliases: []string{"s"},
+				Usage:   "Start the audio streaming server",
+				Flags: []cli.Flag{
+					&cli.IntFlag{
+						Name:        "port",
+						EnvVars:     []string{"PORT"},
+						Value:       8080,
+						Usage:       "Port to listen on",
+						Destination: &cfg.Server.Port,
+					},
+					&cli.StringFlag{
+						Name:        "cors-origins",
+						EnvVars:     []string{"CORS_ORIGINS"},
+						Usage:       "Allowed CORS origins",
+						Destination: &cfg.Server.CORS.AllowedOrigins,
+					},
+					&cli.StringFlag{
+						Name:        "log-format",
+						EnvVars:     []string{"LOG_FORMAT"},
+						Value:       "json",
+						Usage:       "Log format (json or pretty)",
+						Destination: &cfg.Log.Format,
+					},
+					&cli.StringFlag{
+						Name:        "log-level",
+						EnvVars:     []string{"LOG_LEVEL"},
+						Value:       "info",
+						Usage:       "Log level (debug, info, warn, error)",
+						Destination: &cfg.Log.Level,
+					},
+					&cli.StringFlag{
+						Name:        "upload-dir",
+						EnvVars:     []string{"UPLOAD_DIR"},
+						Value:       "./uploads",
+						Usage:       "Directory to store uploaded files",
+						Destination: &cfg.Server.UploadDir,
+					},
+				},
+				Action: func(cCtx *cli.Context) error {
+					return startServer(cfg)
+				},
+			},
+		},
+	}
+
+	if err := app.Run(os.Args); err != nil {
+		log.Fatal(err)
 	}
 }
 
-func enableCORS(handler http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "http://localhost:5173")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-		w.Header().Set("Access-Control-Max-Age", "3600")
+func setupLogger(cfg Config) (*slog.Logger, error) {
+	level := new(slog.Level)
+	if err := level.UnmarshalText([]byte(strings.ToLower(cfg.Log.Level))); err != nil {
+		return nil, fmt.Errorf("couldn't parse log level '%s': %w", cfg.Log.Level, err)
+	}
 
-		if r.Method == "OPTIONS" {
-			w.WriteHeader(http.StatusOK)
-			return
-		}
+	opts := &slog.HandlerOptions{
+		Level: level,
+	}
 
-		handler.ServeHTTP(w, r)
-	})
+	var handler slog.Handler
+	if strings.ToLower(cfg.Log.Format) == "json" {
+		handler = slog.NewJSONHandler(os.Stdout, opts)
+	} else {
+		handler = slog.NewTextHandler(os.Stdout, opts)
+	}
+
+	return slog.New(handler), nil
 }
 
-func logRequest(handler http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		start := time.Now()
-
-		// Wrap the response writer to capture the status code
-		rw := &responseWriter{ResponseWriter: w, status: http.StatusOK}
-
-		handler.ServeHTTP(rw, r)
-
-		// Log after request is handled
-		slog.Info("http request",
-			"method", r.Method,
-			"path", r.URL.Path,
-			"status", rw.status,
-			"duration", time.Since(start),
-			"remote_addr", r.RemoteAddr,
-		)
-	})
-}
-
-// responseWriter wraps http.ResponseWriter to capture status code
-type responseWriter struct {
-	http.ResponseWriter
-	status int
-}
-
-func (rw *responseWriter) WriteHeader(status int) {
-	rw.status = status
-	rw.ResponseWriter.WriteHeader(status)
-}
-
-func run() error {
-	stripped, err := fs.Sub(frontend, "ui/dist")
+func startServer(cfg Config) error {
+	logger, err := setupLogger(cfg)
 	if err != nil {
-		log.Fatalln(err)
+		return fmt.Errorf("couldn't initialize logger: %w", err)
 	}
 
-	var port int
-	flag.IntVar(&port, "port", 8080, "The port to listen on")
-	flag.Parse()
-
-	frontendFS := http.FileServer(http.FS(stripped))
-
-	mux := http.NewServeMux()
-	mux.Handle("/", frontendFS)
-	mux.HandleFunc("/api/v1/files", handleFiles)
-	mux.HandleFunc("/api/v1/files/{fileName}", handleFileDelete)
-	mux.HandleFunc("/api/v1/stream/{fileName}", streamFile)
-
-	srv := &http.Server{
-		Addr:    fmt.Sprintf(":%d", port),
-		Handler: logRequest(enableCORS(mux)),
-	}
-
-	fmt.Printf("Listening on port %d\n", port)
-	if err := srv.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
-		return fmt.Errorf("error while running server: %w", err)
-	}
-
-	return nil
-}
-
-func handleFiles(w http.ResponseWriter, r *http.Request) {
-	switch r.Method {
-	case http.MethodGet:
-		listFiles(w, r)
-	case http.MethodPost:
-		uploadFile(w, r)
-	default:
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-	}
-}
-
-func uploadFile(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Invalid request method", http.StatusMethodNotAllowed)
-		return
-	}
-
-	err := r.ParseMultipartForm(10 << 20) // Limit upload size to 10MB
+	srv, err := server.New(cfg.Server, logger, frontend)
 	if err != nil {
-		http.Error(w, "Failed to parse form: "+err.Error(), http.StatusBadRequest)
-		return
+		return fmt.Errorf("couldn't create server: %w", err)
 	}
 
-	file, handler, err := r.FormFile("files")
-	if err != nil {
-		http.Error(w, "Failed to retrieve file: "+err.Error(), http.StatusBadRequest)
-		return
-	}
-	defer file.Close()
-
-	err = os.MkdirAll(uploadDir, os.ModePerm)
-	if err != nil {
-		http.Error(w, "Failed to create upload directory: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	dstFile, err := os.Create(filepath.Join(uploadDir, handler.Filename))
-	if err != nil {
-		http.Error(w, "Failed to save file: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-	defer dstFile.Close()
-
-	_, err = io.Copy(dstFile, file)
-	if err != nil {
-		http.Error(w, "Failed to write file: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("File uploaded successfully"))
-}
-
-func listFiles(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Invalid request method", http.StatusMethodNotAllowed)
-		return
-	}
-
-	files, err := os.ReadDir(uploadDir)
-	if err != nil {
-		http.Error(w, "Failed to read directory: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	var fileList []FileInfo
-	for _, file := range files {
-		info, err := file.Info()
-		if err != nil {
-			continue
-		}
-		fileList = append(fileList, FileInfo{
-			Name: info.Name(),
-			Size: info.Size(),
-		})
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(fileList)
-}
-
-func handleFileDelete(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodDelete {
-		http.Error(w, "Invalid request method", http.StatusMethodNotAllowed)
-		return
-	}
-
-	fileName := r.PathValue("fileName")
-
-	filePath := filepath.Join(uploadDir, fileName)
-	if err := os.Remove(filePath); err != nil {
-		if os.IsNotExist(err) {
-			http.Error(w, "File not found", http.StatusNotFound)
-			return
-		}
-		http.Error(w, "Failed to delete file: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("File deleted successfully"))
-}
-
-func streamFile(w http.ResponseWriter, r *http.Request) {
-	fileName := r.PathValue("fileName")
-
-	filePath := filepath.Join(uploadDir, fileName)
-
-	_, err := os.Stat(filePath)
-	if os.IsNotExist(err) {
-		http.Error(w, "File not found", http.StatusNotFound)
-		return
-	}
-
-	file, err := os.Open(filePath)
-	if err != nil {
-		http.Error(w, "Failed to open file: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-	defer file.Close()
-
-	w.Header().Set("Content-Type", "audio/mp3")
-	http.ServeContent(w, r, fileName, time.Time{}, file)
+	return srv.Start()
 }
