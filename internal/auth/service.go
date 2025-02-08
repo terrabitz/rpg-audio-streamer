@@ -44,19 +44,10 @@ func (s *Service) HandleGitHubCallback(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "http://localhost:5173/", http.StatusTemporaryRedirect)
 }
 
-type UserClaims struct {
-	AvatarURL string `json:"avatar_url"`
-	Email     string `json:"email"`
-	Exp       int64  `json:"exp"`
-	Login     string `json:"login"`
-	Name      string `json:"name"`
-	Sub       int    `json:"sub"`
-}
-
 func (s *Service) HandleAuthStatus(w http.ResponseWriter, r *http.Request) {
 	isAuthenticated := false
 	isAuthorized := false
-	var userData *UserClaims
+	var userData *GitHubUser
 
 	if claims, err := s.ValidateRequest(r); err == nil {
 		isAuthenticated = true
@@ -77,7 +68,7 @@ func (s *Service) HandleLogout(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-func (s *Service) ValidateRequest(r *http.Request) (*UserClaims, error) {
+func (s *Service) ValidateRequest(r *http.Request) (*GitHubUser, error) {
 	cookie, err := r.Cookie("auth_token")
 	if err != nil {
 		return nil, fmt.Errorf("no auth cookie: %w", err)
@@ -88,17 +79,17 @@ func (s *Service) ValidateRequest(r *http.Request) (*UserClaims, error) {
 		return nil, fmt.Errorf("invalid token: %w", err)
 	}
 
-	var userClaims UserClaims
+	var GitHubUser GitHubUser
 	claimsBytes, err := json.Marshal(claims)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal claims: %w", err)
 	}
 
-	if err := json.Unmarshal(claimsBytes, &userClaims); err != nil {
+	if err := json.Unmarshal(claimsBytes, &GitHubUser); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal claims: %w", err)
 	}
 
-	return &userClaims, nil
+	return &GitHubUser, nil
 }
 
 func (s *Service) IsAuthorized(r *http.Request) bool {
