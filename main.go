@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/urfave/cli/v2"
@@ -23,7 +24,8 @@ var uploadDir = "./uploads"
 var frontend embed.FS
 
 type Config struct {
-	Port int
+	Port        int
+	CorsOrigins cli.StringSlice
 }
 
 func main() {
@@ -38,13 +40,17 @@ func main() {
 				Usage:   "Start the audio streaming server",
 				Flags: []cli.Flag{
 					&cli.IntFlag{
-						Name: "port",
-						EnvVars: []string{
-							"PORT",
-						},
+						Name:        "port",
+						EnvVars:     []string{"PORT"},
 						Value:       8080,
 						Usage:       "Port to listen on",
 						Destination: &cfg.Port,
+					},
+					&cli.StringSliceFlag{
+						Name:        "cors-origins",
+						EnvVars:     []string{"CORS_ORIGINS"},
+						Usage:       "Allowed CORS origins",
+						Destination: &cfg.CorsOrigins,
 					},
 				},
 				Action: func(cCtx *cli.Context) error {
@@ -75,7 +81,7 @@ func startServer(cfg Config) error {
 
 	srv := &http.Server{
 		Addr:    fmt.Sprintf(":%d", cfg.Port),
-		Handler: logRequest(enableCORS(mux)),
+		Handler: logRequest(enableCORS(mux, cfg)),
 	}
 
 	fmt.Printf("Listening on port %d\n", cfg.Port)
@@ -86,12 +92,14 @@ func startServer(cfg Config) error {
 	return nil
 }
 
-func enableCORS(handler http.Handler) http.Handler {
+func enableCORS(handler http.Handler, cfg Config) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "http://localhost:5173")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-		w.Header().Set("Access-Control-Max-Age", "3600")
+		if len(cfg.CorsOrigins.Value()) > 0 {
+			w.Header().Set("Access-Control-Allow-Origin", strings.Join(cfg.CorsOrigins.Value(), ", "))
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+			w.Header().Set("Access-Control-Max-Age", "3600")
+		}
 
 		if r.Method == "OPTIONS" {
 			w.WriteHeader(http.StatusOK)
