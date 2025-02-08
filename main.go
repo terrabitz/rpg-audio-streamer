@@ -22,12 +22,17 @@ var uploadDir = "./uploads"
 //go:embed ui/dist
 var frontend embed.FS
 
+type Config struct {
+	Port int
+}
+
 type FileInfo struct {
 	Name string `json:"name"`
 	Size int64  `json:"size"`
 }
 
 func main() {
+	var cfg Config
 	app := &cli.App{
 		Name:  "rpg-audio-streamer",
 		Usage: "A simple audio file streaming server for tabletop RPGs",
@@ -38,13 +43,18 @@ func main() {
 				Usage:   "Start the audio streaming server",
 				Flags: []cli.Flag{
 					&cli.IntFlag{
-						Name:    "port",
-						Aliases: []string{"p"},
-						Value:   8080,
-						Usage:   "Port to listen on",
+						Name: "port",
+						EnvVars: []string{
+							"PORT",
+						},
+						Value:       8080,
+						Usage:       "Port to listen on",
+						Destination: &cfg.Port,
 					},
 				},
-				Action: runServer,
+				Action: func(cCtx *cli.Context) error {
+					return startServer(cfg)
+				},
 			},
 		},
 	}
@@ -54,12 +64,7 @@ func main() {
 	}
 }
 
-func runServer(ctx *cli.Context) error {
-	port := ctx.Int("port")
-	return startServer(port)
-}
-
-func startServer(port int) error {
+func startServer(cfg Config) error {
 	stripped, err := fs.Sub(frontend, "ui/dist")
 	if err != nil {
 		return fmt.Errorf("failed to load frontend: %w", err)
@@ -74,11 +79,11 @@ func startServer(port int) error {
 	mux.HandleFunc("/api/v1/stream/{fileName}", streamFile)
 
 	srv := &http.Server{
-		Addr:    fmt.Sprintf(":%d", port),
+		Addr:    fmt.Sprintf(":%d", cfg.Port),
 		Handler: logRequest(enableCORS(mux)),
 	}
 
-	fmt.Printf("Listening on port %d\n", port)
+	fmt.Printf("Listening on port %d\n", cfg.Port)
 	if err := srv.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
 		return fmt.Errorf("error while running server: %w", err)
 	}
