@@ -10,7 +10,7 @@ import GitHubLoginButton from './components/GitHubLoginButton.vue'; /* Partially
       <v-spacer></v-spacer>
       <GitHubLoginButton />
     </v-app-bar>
-    <v-main>
+    <v-main class="d-flex align-center justify-center" style="min-width: 800px;">
       <RouterView />
     </v-main>
   </v-app>
