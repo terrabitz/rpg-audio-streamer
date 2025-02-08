@@ -14,7 +14,7 @@
           <td>{{ formatFileSize(file.size) }}</td>
           <td>
             <v-btn icon @click="togglePlay(file.name)" class="mr-2">
-              <v-icon>{{ isPlaying && currentFile === file.name ? '$pause' : '$play' }}</v-icon>
+              <v-icon>{{ isFilePlaying(file.name) ? '$pause' : '$play' }}</v-icon>
             </v-btn>
             <v-btn icon color="error" @click="deleteFile(file.name)">
               <v-icon>$delete</v-icon>
@@ -23,8 +23,6 @@
         </tr>
       </tbody>
     </v-table>
-
-    <audio ref="audioPlayer" style="display: none" controls></audio>
   </v-container>
 </template>
 
@@ -33,18 +31,11 @@ import { useFileStore } from '@/stores/files'
 import { onMounted, ref } from 'vue'
 
 const fileStore = useFileStore()
-const audioPlayer = ref<HTMLAudioElement>()
-const isPlaying = ref(false)
-const currentFile = ref('')
+const audioPlayers = ref(new Map<string, HTMLAudioElement>())
+const playingFiles = ref(new Set<string>())
 
 onMounted(() => {
   fileStore.fetchFiles()
-  if (audioPlayer.value) {
-    audioPlayer.value.onended = () => {
-      isPlaying.value = false
-      currentFile.value = ''
-    }
-  }
 })
 
 function formatFileSize(bytes: number): string {
@@ -55,24 +46,44 @@ function formatFileSize(bytes: number): string {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
 }
 
-function togglePlay(fileName: string) {
-  if (!audioPlayer.value) return
+function createAudioPlayer(fileName: string): HTMLAudioElement {
+  const player = new Audio()
+  player.src = `${import.meta.env.VITE_API_BASE_URL}/stream/${fileName}`
+  player.onended = () => {
+    playingFiles.value.delete(fileName)
+    audioPlayers.value.delete(fileName)
+  }
+  return player
+}
 
-  if (currentFile.value !== fileName) {
-    audioPlayer.value.src = `${import.meta.env.VITE_API_BASE_URL}/stream/${fileName}`
-    audioPlayer.value.play()
-    isPlaying.value = true
-    currentFile.value = fileName
-  } else if (isPlaying.value) {
-    audioPlayer.value.pause()
-    isPlaying.value = false
+function isFilePlaying(fileName: string): boolean {
+  return playingFiles.value.has(fileName)
+}
+
+function togglePlay(fileName: string) {
+  let player = audioPlayers.value.get(fileName)
+
+  if (!player) {
+    player = createAudioPlayer(fileName)
+    audioPlayers.value.set(fileName, player)
+  }
+
+  if (playingFiles.value.has(fileName)) {
+    player.pause()
+    playingFiles.value.delete(fileName)
   } else {
-    audioPlayer.value.play()
-    isPlaying.value = true
+    player.play()
+    playingFiles.value.add(fileName)
   }
 }
 
 async function deleteFile(fileName: string) {
+  const player = audioPlayers.value.get(fileName)
+  if (player) {
+    player.pause()
+    audioPlayers.value.delete(fileName)
+    playingFiles.value.delete(fileName)
+  }
   try {
     await fileStore.deleteFile(fileName)
   } catch (error) {
