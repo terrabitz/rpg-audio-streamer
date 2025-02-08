@@ -11,14 +11,18 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/gorilla/websocket"
 	"github.com/terrabitz/rpg-audio-streamer/internal/middlewares"
 	"github.com/terrabitz/rpg-audio-streamer/internal/types"
+	ws "github.com/terrabitz/rpg-audio-streamer/internal/websocket"
 )
 
 type Server struct {
 	logger   *slog.Logger
 	frontend fs.FS
 	cfg      Config
+	hub      *ws.Hub
+	upgrader websocket.Upgrader
 }
 
 // Config holds the configuration for the server
@@ -32,11 +36,24 @@ type Config struct {
 }
 
 func New(cfg Config, logger *slog.Logger, frontend fs.FS) (*Server, error) {
-	return &Server{
+	hub := ws.NewHub(logger)
+
+	srv := &Server{
 		logger:   logger,
 		frontend: frontend,
 		cfg:      cfg,
-	}, nil
+		hub:      hub,
+		upgrader: websocket.Upgrader{
+			ReadBufferSize:  1024,
+			WriteBufferSize: 1024,
+			CheckOrigin: func(r *http.Request) bool {
+				return true // You might want to make this more secure
+			},
+		},
+	}
+
+	go hub.Run()
+	return srv, nil
 }
 
 func (s *Server) Start() error {
@@ -48,16 +65,20 @@ func (s *Server) Start() error {
 	frontendFS := http.FileServer(http.FS(s.frontend))
 
 	mux := http.NewServeMux()
-	mux.Handle("/", frontendFS)
-	mux.HandleFunc("/api/v1/files", s.handleFiles)
-	mux.HandleFunc("/api/v1/files/{fileName}", s.handleFileDelete)
-	mux.HandleFunc("/api/v1/stream/{fileName}", s.streamFile)
+	httpMux := http.NewServeMux()
+	httpMux.Handle("/", frontendFS)
+	httpMux.HandleFunc("/api/v1/files", s.handleFiles)
+	httpMux.HandleFunc("/api/v1/files/{fileName}", s.handleFileDelete)
+	httpMux.HandleFunc("/api/v1/stream/{fileName}", s.streamFile)
+	mux.Handle("/", middlewares.LoggerMiddleware(s.logger)(
+		middlewares.CORSMiddleware(s.cfg.CORS)(httpMux),
+	))
+
+	mux.HandleFunc("/ws", s.handleWebSocket)
 
 	srv := &http.Server{
-		Addr: fmt.Sprintf(":%d", s.cfg.Port),
-		Handler: middlewares.LoggerMiddleware(s.logger)(
-			middlewares.CORSMiddleware(s.cfg.CORS)(mux),
-		),
+		Addr:    fmt.Sprintf(":%d", s.cfg.Port),
+		Handler: mux,
 	}
 
 	s.logger.Info("starting server", "port", s.cfg.Port)
@@ -182,4 +203,20 @@ func (s *Server) streamFile(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "audio/mp3")
 	http.ServeContent(w, r, fileName, time.Time{}, file)
+}
+
+func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
+	conn, err := s.upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		s.logger.Error("websocket upgrade failed", "error", err)
+		return
+	}
+
+	client := ws.NewClient(s.hub, conn)
+	s.hub.Register(client)
+
+	s.logger.Debug("registering new client")
+
+	go client.WritePump()
+	go client.ReadPump()
 }

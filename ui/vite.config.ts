@@ -17,4 +17,8 @@ export default defineConfig({
       '@': fileURLToPath(new URL('./src', import.meta.url))
     },
   },
+  server: {
+    host: true, // Listen on all local IPs
+    port: 5173, // Default Vite port
+  }
 })
