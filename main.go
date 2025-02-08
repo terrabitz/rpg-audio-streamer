@@ -12,7 +12,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/joho/godotenv"
@@ -26,7 +25,7 @@ var frontend embed.FS
 
 type Config struct {
 	Port        int
-	CorsOrigins cli.StringSlice
+	CorsOrigins string
 }
 
 func main() {
@@ -49,7 +48,7 @@ func main() {
 						Usage:       "Port to listen on",
 						Destination: &cfg.Port,
 					},
-					&cli.StringSliceFlag{
+					&cli.StringFlag{
 						Name:        "cors-origins",
 						EnvVars:     []string{"CORS_ORIGINS"},
 						Usage:       "Allowed CORS origins",
@@ -69,6 +68,11 @@ func main() {
 }
 
 func startServer(cfg Config) error {
+	configJSON, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal config: %w", err)
+	}
+	fmt.Printf("Config: %s\n", configJSON)
 	stripped, err := fs.Sub(frontend, "ui/dist")
 	if err != nil {
 		return fmt.Errorf("failed to load frontend: %w", err)
@@ -97,8 +101,8 @@ func startServer(cfg Config) error {
 
 func enableCORS(handler http.Handler, cfg Config) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if len(cfg.CorsOrigins.Value()) > 0 {
-			w.Header().Set("Access-Control-Allow-Origin", strings.Join(cfg.CorsOrigins.Value(), ", "))
+		if cfg.CorsOrigins != "" {
+			w.Header().Set("Access-Control-Allow-Origin", cfg.CorsOrigins)
 			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
 			w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 			w.Header().Set("Access-Control-Max-Age", "3600")
