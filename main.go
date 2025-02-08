@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/joho/godotenv"
 	"github.com/urfave/cli/v2"
 )
 
@@ -29,6 +30,8 @@ type Config struct {
 }
 
 func main() {
+	_ = godotenv.Load()
+
 	var cfg Config
 	app := &cli.App{
 		Name:  "rpg-audio-streamer",
