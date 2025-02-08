@@ -1,4 +1,5 @@
 import { ref } from 'vue'
+import { useWebSocket } from './useWebSocket'
 
 interface AudioState {
   isPlaying: boolean
@@ -9,6 +10,26 @@ interface AudioState {
 export function useAudioPlayer() {
   const audioPlayers = ref(new Map<string, HTMLAudioElement>())
   const audioStates = ref(new Map<string, AudioState>())
+
+  const { broadcast } = useWebSocket((message) => {
+    const { type, payload } = message
+    const { fileName } = payload
+
+    switch (type) {
+      case 'play':
+        handlePlaySync(fileName)
+        break
+      case 'pause':
+        handlePauseSync(fileName)
+        break
+      case 'volume':
+        handleVolumeSync(fileName, payload.volume)
+        break
+      case 'repeat':
+        handleRepeatSync(fileName, payload.repeat)
+        break
+    }
+  })
 
   function getInitialState(): AudioState {
     return {
@@ -40,6 +61,49 @@ export function useAudioPlayer() {
     return player
   }
 
+  function handlePlaySync(fileName: string) {
+    const state = getState(fileName)
+    let player = audioPlayers.value.get(fileName)
+
+    if (!player) {
+      player = createAudioPlayer(fileName)
+      audioPlayers.value.set(fileName, player)
+    }
+
+    player.play()
+    state.isPlaying = true
+  }
+
+  function handlePauseSync(fileName: string) {
+    const state = getState(fileName)
+    const player = audioPlayers.value.get(fileName)
+
+    if (player) {
+      player.pause()
+      state.isPlaying = false
+    }
+  }
+
+  function handleVolumeSync(fileName: string, volume: number) {
+    const state = getState(fileName)
+    const player = audioPlayers.value.get(fileName)
+
+    state.volume = volume
+    if (player) {
+      player.volume = volume / 100
+    }
+  }
+
+  function handleRepeatSync(fileName: string, repeat: boolean) {
+    const state = getState(fileName)
+    const player = audioPlayers.value.get(fileName)
+
+    state.isRepeating = repeat
+    if (player) {
+      player.loop = repeat
+    }
+  }
+
   function togglePlay(fileName: string) {
     const state = getState(fileName)
     let player = audioPlayers.value.get(fileName)
@@ -52,9 +116,11 @@ export function useAudioPlayer() {
     if (state.isPlaying) {
       player.pause()
       state.isPlaying = false
+      broadcast('pause', fileName)
     } else {
       player.play()
       state.isPlaying = true
+      broadcast('play', fileName)
     }
   }
 
@@ -66,6 +132,7 @@ export function useAudioPlayer() {
     if (player) {
       player.loop = state.isRepeating
     }
+    broadcast('repeat', fileName, { repeat: state.isRepeating })
   }
 
   function setVolume(fileName: string, volume: number) {
@@ -76,6 +143,7 @@ export function useAudioPlayer() {
     if (player) {
       player.volume = volume / 100
     }
+    broadcast('volume', fileName, { volume })
   }
 
   function cleanup(fileName: string) {
