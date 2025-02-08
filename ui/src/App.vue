@@ -1,11 +1,14 @@
 <script setup lang="ts">
-import { RouterView } from 'vue-router'
+import { RouterView } from 'vue-router';
+import GitHubLoginButton from './components/GitHubLoginButton.vue'; /* PartiallyEnd: #3632/scriptSetup.vue */
 </script>
 
 <template>
   <v-app theme="dark">
     <v-app-bar>
       <v-app-bar-title>Skald Bot</v-app-bar-title>
+      <v-spacer></v-spacer>
+      <GitHubLoginButton />
     </v-app-bar>
     <v-main>
       <RouterView />
