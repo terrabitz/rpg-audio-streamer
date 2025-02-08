@@ -16,7 +16,7 @@ import (
 
 var uploadDir = "./uploads"
 
-//go:embed ui/dist
+//go:embed all:ui/dist
 var frontend embed.FS
 
 type Config struct {
