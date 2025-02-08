@@ -20,9 +20,13 @@ var uploadDir = "./uploads"
 var frontend embed.FS
 
 type Config struct {
-	Server    server.Config
-	LogFormat string
-	LogLevel  string
+	Server server.Config
+	Log    LogConfig
+}
+
+type LogConfig struct {
+	Format string
+	Level  string
 }
 
 func main() {
@@ -56,14 +60,14 @@ func main() {
 						EnvVars:     []string{"LOG_FORMAT"},
 						Value:       "json",
 						Usage:       "Log format (json or pretty)",
-						Destination: &cfg.LogFormat,
+						Destination: &cfg.Log.Format,
 					},
 					&cli.StringFlag{
 						Name:        "log-level",
 						EnvVars:     []string{"LOG_LEVEL"},
 						Value:       "info",
 						Usage:       "Log level (debug, info, warn, error)",
-						Destination: &cfg.LogLevel,
+						Destination: &cfg.Log.Level,
 					},
 					&cli.StringFlag{
 						Name:        "upload-dir",
@@ -87,8 +91,8 @@ func main() {
 
 func setupLogger(cfg Config) (*slog.Logger, error) {
 	level := new(slog.Level)
-	if err := level.UnmarshalText([]byte(strings.ToLower(cfg.LogLevel))); err != nil {
-		return nil, fmt.Errorf("couldn't parse log level '%s': %w", cfg.LogLevel, err)
+	if err := level.UnmarshalText([]byte(strings.ToLower(cfg.Log.Level))); err != nil {
+		return nil, fmt.Errorf("couldn't parse log level '%s': %w", cfg.Log.Level, err)
 	}
 
 	opts := &slog.HandlerOptions{
@@ -96,7 +100,7 @@ func setupLogger(cfg Config) (*slog.Logger, error) {
 	}
 
 	var handler slog.Handler
-	if cfg.LogFormat == "json" {
+	if strings.ToLower(cfg.Log.Format) == "json" {
 		handler = slog.NewJSONHandler(os.Stdout, opts)
 	} else {
 		handler = slog.NewTextHandler(os.Stdout, opts)
