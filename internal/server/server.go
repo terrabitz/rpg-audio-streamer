@@ -16,10 +16,9 @@ import (
 )
 
 type Server struct {
-	logger    *slog.Logger
-	uploadDir string
-	frontend  fs.FS
-	cfg       Config
+	logger   *slog.Logger
+	frontend fs.FS
+	cfg      Config
 }
 
 // Config holds the configuration for the server
@@ -33,22 +32,16 @@ type Config struct {
 }
 
 func New(cfg Config, logger *slog.Logger, frontend fs.FS) (*Server, error) {
-	uploadDir := cfg.UploadDir
-	if uploadDir == "" {
-		uploadDir = "./uploads"
-	}
-
 	return &Server{
-		logger:    logger,
-		uploadDir: uploadDir,
-		frontend:  frontend,
-		cfg:       cfg,
+		logger:   logger,
+		frontend: frontend,
+		cfg:      cfg,
 	}, nil
 }
 
 func (s *Server) Start() error {
 	// Ensure upload directory exists
-	if err := os.MkdirAll(s.uploadDir, os.ModePerm); err != nil {
+	if err := os.MkdirAll(s.cfg.UploadDir, os.ModePerm); err != nil {
 		return fmt.Errorf("failed to create upload directory: %w", err)
 	}
 
@@ -98,7 +91,7 @@ func (s *Server) uploadFile(w http.ResponseWriter, r *http.Request) {
 	}
 	defer file.Close()
 
-	dstPath := filepath.Join(s.uploadDir, handler.Filename)
+	dstPath := filepath.Join(s.cfg.UploadDir, handler.Filename)
 	dstFile, err := os.Create(dstPath)
 	if err != nil {
 		s.logger.Error("failed to create file", "error", err, "path", dstPath)
@@ -119,7 +112,7 @@ func (s *Server) uploadFile(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listFiles(w http.ResponseWriter, r *http.Request) {
-	files, err := os.ReadDir(s.uploadDir)
+	files, err := os.ReadDir(s.cfg.UploadDir)
 	if err != nil {
 		s.logger.Error("failed to read directory", "error", err)
 		http.Error(w, "Failed to list files", http.StatusInternalServerError)
@@ -152,7 +145,7 @@ func (s *Server) handleFileDelete(w http.ResponseWriter, r *http.Request) {
 	}
 
 	fileName := r.PathValue("fileName")
-	filePath := filepath.Join(s.uploadDir, fileName)
+	filePath := filepath.Join(s.cfg.UploadDir, fileName)
 
 	if err := os.Remove(filePath); err != nil {
 		if os.IsNotExist(err) {
@@ -172,7 +165,7 @@ func (s *Server) handleFileDelete(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) streamFile(w http.ResponseWriter, r *http.Request) {
 	fileName := r.PathValue("fileName")
-	filePath := filepath.Join(s.uploadDir, fileName)
+	filePath := filepath.Join(s.cfg.UploadDir, fileName)
 
 	file, err := os.Open(filePath)
 	if err != nil {
