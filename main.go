@@ -4,7 +4,6 @@ import (
 	"embed"
 	"encoding/json"
 	"errors"
-	"flag"
 	"fmt"
 	"io"
 	"io/fs"
@@ -14,6 +13,8 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/urfave/cli/v2"
 )
 
 var uploadDir = "./uploads"
@@ -27,10 +28,62 @@ type FileInfo struct {
 }
 
 func main() {
-	if err := run(); err != nil {
-		log.Printf("error: %s", err)
-		os.Exit(1)
+	app := &cli.App{
+		Name:  "rpg-audio-streamer",
+		Usage: "A simple audio file streaming server for tabletop RPGs",
+		Commands: []*cli.Command{
+			{
+				Name:    "serve",
+				Aliases: []string{"s"},
+				Usage:   "Start the audio streaming server",
+				Flags: []cli.Flag{
+					&cli.IntFlag{
+						Name:    "port",
+						Aliases: []string{"p"},
+						Value:   8080,
+						Usage:   "Port to listen on",
+					},
+				},
+				Action: runServer,
+			},
+		},
 	}
+
+	if err := app.Run(os.Args); err != nil {
+		log.Fatal(err)
+	}
+}
+
+func runServer(ctx *cli.Context) error {
+	port := ctx.Int("port")
+	return startServer(port)
+}
+
+func startServer(port int) error {
+	stripped, err := fs.Sub(frontend, "ui/dist")
+	if err != nil {
+		return fmt.Errorf("failed to load frontend: %w", err)
+	}
+
+	frontendFS := http.FileServer(http.FS(stripped))
+
+	mux := http.NewServeMux()
+	mux.Handle("/", frontendFS)
+	mux.HandleFunc("/api/v1/files", handleFiles)
+	mux.HandleFunc("/api/v1/files/{fileName}", handleFileDelete)
+	mux.HandleFunc("/api/v1/stream/{fileName}", streamFile)
+
+	srv := &http.Server{
+		Addr:    fmt.Sprintf(":%d", port),
+		Handler: logRequest(enableCORS(mux)),
+	}
+
+	fmt.Printf("Listening on port %d\n", port)
+	if err := srv.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
+		return fmt.Errorf("error while running server: %w", err)
+	}
+
+	return nil
 }
 
 func enableCORS(handler http.Handler) http.Handler {
@@ -78,37 +131,6 @@ type responseWriter struct {
 func (rw *responseWriter) WriteHeader(status int) {
 	rw.status = status
 	rw.ResponseWriter.WriteHeader(status)
-}
-
-func run() error {
-	stripped, err := fs.Sub(frontend, "ui/dist")
-	if err != nil {
-		log.Fatalln(err)
-	}
-
-	var port int
-	flag.IntVar(&port, "port", 8080, "The port to listen on")
-	flag.Parse()
-
-	frontendFS := http.FileServer(http.FS(stripped))
-
-	mux := http.NewServeMux()
-	mux.Handle("/", frontendFS)
-	mux.HandleFunc("/api/v1/files", handleFiles)
-	mux.HandleFunc("/api/v1/files/{fileName}", handleFileDelete)
-	mux.HandleFunc("/api/v1/stream/{fileName}", streamFile)
-
-	srv := &http.Server{
-		Addr:    fmt.Sprintf(":%d", port),
-		Handler: logRequest(enableCORS(mux)),
-	}
-
-	fmt.Printf("Listening on port %d\n", port)
-	if err := srv.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
-		return fmt.Errorf("error while running server: %w", err)
-	}
-
-	return nil
 }
 
 func handleFiles(w http.ResponseWriter, r *http.Request) {
