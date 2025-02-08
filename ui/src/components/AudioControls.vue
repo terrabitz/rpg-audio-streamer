@@ -1,13 +1,13 @@
 <template>
   <div class="d-flex align-center">
-    <v-btn icon @click="$emit('play')" class="mr-2" :class="{ 'button-active': state.isPlaying }">
+    <v-btn icon size="small" @click="$emit('play')" class="mr-2" :class="{ 'button-active': state.isPlaying }">
       <v-icon>{{ state.isPlaying ? '$pause' : '$play' }}</v-icon>
     </v-btn>
-    <v-btn icon @click="$emit('repeat')" :class="{ 'button-active': state.isRepeating }" class="mr-2">
+    <v-btn icon size="small" @click="$emit('repeat')" :class="{ 'button-active': state.isRepeating }" class="mr-2">
       <v-icon>$repeat</v-icon>
     </v-btn>
-    <div class="d-flex align-center mr-2" style="width: 150px">
-      <v-icon size="small" class="mr-2">$volume</v-icon>
+    <div class="d-flex align-center mr-2" style="width: 120px">
+      <v-icon size="x-small" class="mr-2">$volume</v-icon>
       <v-slider :model-value="state.volume" @update:model-value="$emit('volume', $event)" density="compact" hide-details
         max="100" min="0" step="1"></v-slider>
     </div>

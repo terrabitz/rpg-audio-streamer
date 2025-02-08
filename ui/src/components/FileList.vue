@@ -15,7 +15,7 @@
           <td class="d-flex align-center">
             <AudioControls :state="audioPlayer.getState(file.name)" @play="audioPlayer.togglePlay(file.name)"
               @repeat="audioPlayer.toggleRepeat(file.name)" @volume="audioPlayer.setVolume(file.name, $event)" />
-            <v-btn icon color="error" @click="deleteFile(file.name)">
+            <v-btn icon size="small" color="error" @click="deleteFile(file.name)">
               <v-icon>$delete</v-icon>
             </v-btn>
           </td>
