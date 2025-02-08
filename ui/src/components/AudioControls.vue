@@ -1,9 +1,9 @@
 <template>
   <div class="d-flex align-center">
-    <v-btn icon @click="$emit('play')" class="mr-2">
+    <v-btn icon @click="$emit('play')" class="mr-2" :class="{ 'button-active': state.isPlaying }">
       <v-icon>{{ state.isPlaying ? '$pause' : '$play' }}</v-icon>
     </v-btn>
-    <v-btn icon @click="$emit('repeat')" :color="state.isRepeating ? 'primary' : undefined" class="mr-2">
+    <v-btn icon @click="$emit('repeat')" :class="{ 'button-active': state.isRepeating }" class="mr-2">
       <v-icon>$repeat</v-icon>
     </v-btn>
     <div class="d-flex align-center mr-2" style="width: 150px">
@@ -31,3 +31,11 @@ defineEmits<{
   (e: 'volume', volume: number): void
 }>()
 </script>
+
+<style scoped>
+.button-active {
+  background-color: rgb(189, 189, 189) !important;
+  transform: translateY(1px);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.2) !important;
+}
+</style>
