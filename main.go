@@ -14,8 +14,6 @@ import (
 	"github.com/terrabitz/rpg-audio-streamer/internal/server"
 )
 
-var uploadDir = "./uploads"
-
 //go:embed all:ui/dist
 var frontend embed.FS
 
@@ -75,6 +73,27 @@ func main() {
 						Value:       "./uploads",
 						Usage:       "Directory to store uploaded files",
 						Destination: &cfg.Server.UploadDir,
+					},
+					&cli.StringFlag{
+						Name:        "github-client-id",
+						EnvVars:     []string{"GITHUB_CLIENT_ID"},
+						Usage:       "GitHub OAuth Client ID",
+						Required:    true,
+						Destination: &cfg.Server.GitHub.ClientID,
+					},
+					&cli.StringFlag{
+						Name:        "github-client-secret",
+						EnvVars:     []string{"GITHUB_CLIENT_SECRET"},
+						Usage:       "GitHub OAuth Client Secret",
+						Required:    true,
+						Destination: &cfg.Server.GitHub.ClientSecret,
+					},
+					&cli.StringFlag{
+						Name:        "jwt-secret",
+						EnvVars:     []string{"JWT_SECRET"},
+						Usage:       "Secret key for signing JWTs",
+						Required:    true,
+						Destination: &cfg.Server.GitHub.JWTSecret,
 					},
 				},
 				Action: func(cCtx *cli.Context) error {

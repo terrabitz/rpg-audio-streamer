@@ -12,17 +12,19 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/terrabitz/rpg-audio-streamer/internal/auth"
 	"github.com/terrabitz/rpg-audio-streamer/internal/middlewares"
 	"github.com/terrabitz/rpg-audio-streamer/internal/types"
 	ws "github.com/terrabitz/rpg-audio-streamer/internal/websocket"
 )
 
 type Server struct {
+	cfg      Config
 	logger   *slog.Logger
 	frontend fs.FS
-	cfg      Config
 	hub      *ws.Hub
 	upgrader websocket.Upgrader
+	auth     *auth.Service
 }
 
 // Config holds the configuration for the server
@@ -33,21 +35,25 @@ type Config struct {
 	CORS middlewares.CorsConfig
 	// Optional upload directory path. Defaults to "./uploads"
 	UploadDir string
+	// GitHub OAuth configuration
+	GitHub auth.GitHubConfig
 }
 
 func New(cfg Config, logger *slog.Logger, frontend fs.FS) (*Server, error) {
 	hub := ws.NewHub(logger)
+	authService := auth.NewService(cfg.GitHub, logger)
 
 	srv := &Server{
 		logger:   logger,
 		frontend: frontend,
 		cfg:      cfg,
 		hub:      hub,
+		auth:     authService,
 		upgrader: websocket.Upgrader{
 			ReadBufferSize:  1024,
 			WriteBufferSize: 1024,
 			CheckOrigin: func(r *http.Request) bool {
-				return true // You might want to make this more secure
+				return true
 			},
 		},
 	}
@@ -64,17 +70,23 @@ func (s *Server) Start() error {
 
 	frontendFS := http.FileServer(http.FS(s.frontend))
 
+	authMiddleware := middlewares.AuthMiddleware(s.auth)
+
 	mux := http.NewServeMux()
 	httpMux := http.NewServeMux()
 	httpMux.Handle("/", frontendFS)
-	httpMux.HandleFunc("/api/v1/files", s.handleFiles)
-	httpMux.HandleFunc("/api/v1/files/{fileName}", s.handleFileDelete)
-	httpMux.HandleFunc("/api/v1/stream/{fileName}", s.streamFile)
+	httpMux.Handle("/api/v1/files", authMiddleware(http.HandlerFunc(s.handleFiles)))
+	httpMux.Handle("/api/v1/files/{fileName}", authMiddleware(http.HandlerFunc(s.handleFileDelete)))
+	httpMux.Handle("/api/v1/stream/{fileName}", authMiddleware(http.HandlerFunc(s.streamFile)))
+	httpMux.HandleFunc("/api/v1/auth/github", s.auth.HandleGitHubLogin)
+	httpMux.HandleFunc("/api/v1/auth/github/callback", s.auth.HandleGitHubCallback)
+	httpMux.HandleFunc("/api/v1/auth/status", s.auth.HandleAuthStatus)
+	httpMux.HandleFunc("/api/v1/auth/logout", s.auth.HandleLogout)
 	mux.Handle("/", middlewares.LoggerMiddleware(s.logger)(
 		middlewares.CORSMiddleware(s.cfg.CORS)(httpMux),
 	))
 
-	mux.HandleFunc("/ws", s.handleWebSocket)
+	mux.HandleFunc("/api/v1/ws", s.handleWebSocket)
 
 	srv := &http.Server{
 		Addr:    fmt.Sprintf(":%d", s.cfg.Port),

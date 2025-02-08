@@ -11,7 +11,7 @@ interface WSMessage {
 function getWebSocketUrl(): string {
   const apiUrl = new URL(import.meta.env.VITE_API_BASE_URL)
   const wsProtocol = apiUrl.protocol === 'https:' ? 'wss:' : 'ws:'
-  return `${wsProtocol}//${apiUrl.host}/ws`
+  return `${wsProtocol}//${apiUrl.host}${apiUrl.pathname}/ws`
 }
 
 export function useWebSocket(onMessage: (message: WSMessage) => void) {
