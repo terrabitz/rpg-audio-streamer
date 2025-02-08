@@ -3,6 +3,7 @@ import { onMounted } from 'vue'
 import AudioUploader from '../components/AudioUploader.vue'
 import FileList from '../components/FileList.vue'
 import GitHubLoginButton from '../components/GitHubLoginButton.vue'
+import UserMenu from '../components/UserMenu.vue'
 import { useAuthStore } from '../stores/auth'
 
 const auth = useAuthStore()
@@ -16,8 +17,9 @@ onMounted(() => {
   <main class="container mx-auto px-4 py-8">
     <div class="flex justify-between items-center mb-8">
       <h1 class="text-2xl font-bold">RPG Audio Streamer</h1>
-      <div v-if="!auth.loading && !auth.authenticated">
-        <GitHubLoginButton />
+      <div v-if="!auth.loading">
+        <UserMenu v-if="auth.authenticated" />
+        <GitHubLoginButton v-else />
       </div>
     </div>
 

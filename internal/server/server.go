@@ -77,6 +77,7 @@ func (s *Server) Start() error {
 	httpMux.HandleFunc("/api/v1/auth/github", s.handleGitHubAuth)
 	httpMux.HandleFunc("/api/v1/auth/github/callback", s.handleGitHubCallback)
 	httpMux.HandleFunc("/api/v1/auth/status", s.handleAuthStatus)
+	httpMux.HandleFunc("/api/v1/auth/logout", s.handleLogout)
 	mux.Handle("/", middlewares.LoggerMiddleware(s.logger)(
 		middlewares.CORSMiddleware(s.cfg.CORS)(httpMux),
 	))
@@ -282,4 +283,18 @@ func (s *Server) handleAuthStatus(w http.ResponseWriter, r *http.Request) {
 		"authenticated": isAuthenticated,
 		"user":          userData,
 	})
+}
+
+func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     "auth_token",
+		Value:    "",
+		Path:     "/",
+		HttpOnly: true,
+		Secure:   true,
+		SameSite: http.SameSiteNoneMode,
+		MaxAge:   -1,
+	})
+
+	w.WriteHeader(http.StatusOK)
 }
