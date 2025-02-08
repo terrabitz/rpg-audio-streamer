@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import TheWelcome from '../components/TheWelcome.vue'
+import AudioUploader from '../components/AudioUploader.vue';
+import FileList from '../components/FileList.vue'; /* PartiallyEnd: #3632/scriptSetup.vue */
 </script>
 
 <template>
   <main>
-    <TheWelcome />
+    <AudioUploader />
+    <FileList />
   </main>
 </template>
