@@ -61,8 +61,7 @@ func run() error {
 
 	mux := http.NewServeMux()
 	mux.Handle("/", frontendFS)
-	mux.HandleFunc("/api/v1/upload", uploadFile)
-	mux.HandleFunc("/api/v1/files", listFiles)
+	mux.HandleFunc("/api/v1/files", handleFiles)
 	mux.HandleFunc("/api/v1/stream/{fileName}", streamFile)
 
 	srv := &http.Server{
@@ -76,6 +75,17 @@ func run() error {
 	}
 
 	return nil
+}
+
+func handleFiles(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		listFiles(w, r)
+	case http.MethodPost:
+		uploadFile(w, r)
+	default:
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	}
 }
 
 func uploadFile(w http.ResponseWriter, r *http.Request) {

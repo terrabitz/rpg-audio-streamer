@@ -33,7 +33,7 @@ const uploadFile = async (file: File) => {
   uploadStatus.value = null
 
   try {
-    await apiClient.post('/upload', formData, {
+    await apiClient.post('/files', formData, {
       headers: {
         'Content-Type': 'multipart/form-data'
       }
