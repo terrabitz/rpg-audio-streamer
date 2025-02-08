@@ -11,7 +11,6 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/golang-jwt/jwt/v5"
 	"github.com/gorilla/websocket"
 	"github.com/terrabitz/rpg-audio-streamer/internal/auth"
 	"github.com/terrabitz/rpg-audio-streamer/internal/middlewares"
@@ -25,6 +24,7 @@ type Server struct {
 	frontend fs.FS
 	hub      *ws.Hub
 	upgrader websocket.Upgrader
+	auth     *auth.Service
 }
 
 // Config holds the configuration for the server
@@ -41,17 +41,19 @@ type Config struct {
 
 func New(cfg Config, logger *slog.Logger, frontend fs.FS) (*Server, error) {
 	hub := ws.NewHub(logger)
+	authService := auth.NewService(cfg.GitHub, logger)
 
 	srv := &Server{
 		logger:   logger,
 		frontend: frontend,
 		cfg:      cfg,
 		hub:      hub,
+		auth:     authService,
 		upgrader: websocket.Upgrader{
 			ReadBufferSize:  1024,
 			WriteBufferSize: 1024,
 			CheckOrigin: func(r *http.Request) bool {
-				return true // You might want to make this more secure
+				return true
 			},
 		},
 	}
@@ -68,7 +70,7 @@ func (s *Server) Start() error {
 
 	frontendFS := http.FileServer(http.FS(s.frontend))
 
-	authMiddleware := middlewares.AuthMiddleware(s.cfg.GitHub.JWTSecret)
+	authMiddleware := middlewares.AuthMiddleware(s.auth)
 
 	mux := http.NewServeMux()
 	httpMux := http.NewServeMux()
@@ -76,10 +78,10 @@ func (s *Server) Start() error {
 	httpMux.Handle("/api/v1/files", authMiddleware(http.HandlerFunc(s.handleFiles)))
 	httpMux.Handle("/api/v1/files/{fileName}", authMiddleware(http.HandlerFunc(s.handleFileDelete)))
 	httpMux.Handle("/api/v1/stream/{fileName}", authMiddleware(http.HandlerFunc(s.streamFile)))
-	httpMux.HandleFunc("/api/v1/auth/status", s.handleAuthStatus)
-	httpMux.HandleFunc("/api/v1/auth/logout", s.handleLogout)
-	httpMux.HandleFunc("/api/v1/auth/github", s.handleGitHubAuth)
-	httpMux.HandleFunc("/api/v1/auth/github/callback", s.handleGitHubCallback)
+	httpMux.HandleFunc("/api/v1/auth/github", s.auth.HandleGitHubLogin)
+	httpMux.HandleFunc("/api/v1/auth/github/callback", s.auth.HandleGitHubCallback)
+	httpMux.HandleFunc("/api/v1/auth/status", s.auth.HandleAuthStatus)
+	httpMux.HandleFunc("/api/v1/auth/logout", s.auth.HandleLogout)
 	mux.Handle("/", middlewares.LoggerMiddleware(s.logger)(
 		middlewares.CORSMiddleware(s.cfg.CORS)(httpMux),
 	))
@@ -229,79 +231,4 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 
 	go client.WritePump()
 	go client.ReadPump()
-}
-
-func (s *Server) handleGitHubAuth(w http.ResponseWriter, r *http.Request) {
-	redirectURL := fmt.Sprintf("https://github.com/login/oauth/authorize?client_id=%s&scope=user:email",
-		s.cfg.GitHub.ClientID)
-	http.Redirect(w, r, redirectURL, http.StatusTemporaryRedirect)
-}
-
-func (s *Server) handleGitHubCallback(w http.ResponseWriter, r *http.Request) {
-	code := r.URL.Query().Get("code")
-	if code == "" {
-		http.Error(w, "Code not found", http.StatusBadRequest)
-		return
-	}
-
-	token, err := auth.ExchangeCodeForToken(code, s.cfg.GitHub)
-	if err != nil {
-		s.logger.Error("failed to exchange code for token", "error", err)
-		http.Error(w, "Authentication failed", http.StatusInternalServerError)
-		return
-	}
-
-	// Set token as HTTP-only cookie
-	http.SetCookie(w, &http.Cookie{
-		Name:     "auth_token",
-		Value:    token,
-		Path:     "/",
-		HttpOnly: true,
-		Secure:   true,
-		SameSite: http.SameSiteNoneMode,
-		MaxAge:   86400, // 24 hours
-	})
-
-	// Redirect to frontend
-	http.Redirect(w, r, "http://localhost:5173/", http.StatusTemporaryRedirect)
-}
-
-func (s *Server) handleAuthStatus(w http.ResponseWriter, r *http.Request) {
-	isAuthenticated := false
-	isAuthorized := false
-	var userData jwt.MapClaims
-
-	if cookie, err := r.Cookie("auth_token"); err == nil && cookie != nil {
-		claims, err := auth.ValidateToken(cookie.Value, s.cfg.GitHub.JWTSecret)
-		if err == nil {
-			isAuthenticated = true
-			userData = claims
-			if username, ok := claims["login"].(string); ok && username == "terrabitz" {
-				isAuthorized = true
-			}
-		} else {
-			s.logger.Debug("invalid token", "error", err)
-		}
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"authenticated": isAuthenticated,
-		"authorized":    isAuthorized,
-		"user":          userData,
-	})
-}
-
-func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
-	http.SetCookie(w, &http.Cookie{
-		Name:     "auth_token",
-		Value:    "",
-		Path:     "/",
-		HttpOnly: true,
-		Secure:   true,
-		SameSite: http.SameSiteNoneMode,
-		MaxAge:   -1,
-	})
-
-	w.WriteHeader(http.StatusOK)
 }
