@@ -107,16 +107,19 @@ func (s *Server) Start() error {
 	mux.HandleFunc("/api/v1/files", s.authMiddleware(s.handleFiles))
 	mux.HandleFunc("/api/v1/files/{fileName}", s.authMiddleware(s.handleFileDelete))
 	mux.HandleFunc("/api/v1/stream/{fileName}", s.authMiddleware(s.streamFile))
-	mux.HandleFunc("/api/v1/ws", s.authMiddleware(s.handleWebSocket))
 
 	// Apply global middleware
 	handler := middlewares.LoggerMiddleware(s.logger)(
 		middlewares.CORSMiddleware(s.cfg.CORS)(mux),
 	)
 
+	mux = http.NewServeMux()
+	mux.HandleFunc("/api/v1/ws", s.authMiddleware(s.handleWebSocket))
+	mux.Handle("/", handler)
+
 	srv := &http.Server{
 		Addr:    fmt.Sprintf(":%d", s.cfg.Port),
-		Handler: handler,
+		Handler: mux,
 	}
 
 	s.logger.Info("starting server", "port", s.cfg.Port)
