@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -18,37 +19,41 @@ import (
 	ws "github.com/terrabitz/rpg-audio-streamer/internal/websocket"
 )
 
+const (
+	authCookieName = "auth_token"
+	cookiePath     = "/"
+)
+
+type Authenticator interface {
+	ValidateCredentials(creds auth.Credentials) (*auth.Token, error)
+	ValidateToken(tokenStr string) (*auth.Token, error)
+}
+
 type Server struct {
 	cfg      Config
 	logger   *slog.Logger
 	frontend fs.FS
 	hub      *ws.Hub
 	upgrader websocket.Upgrader
-	auth     *auth.Service
+	auth     Authenticator
 }
 
-// Config holds the configuration for the server
 type Config struct {
-	// Port the server will listen on
-	Port int
-	// CORS configuration for the server
-	CORS middlewares.CorsConfig
-	// Optional upload directory path. Defaults to "./uploads"
+	Port      int
 	UploadDir string
-	// GitHub OAuth configuration
-	GitHub auth.GitHubConfig
+
+	CORS middlewares.CorsConfig
 }
 
-func New(cfg Config, logger *slog.Logger, frontend fs.FS) (*Server, error) {
+func New(cfg Config, logger *slog.Logger, frontend fs.FS, auth Authenticator) (*Server, error) {
 	hub := ws.NewHub(logger)
-	authService := auth.NewService(cfg.GitHub, logger)
 
 	srv := &Server{
 		logger:   logger,
 		frontend: frontend,
 		cfg:      cfg,
 		hub:      hub,
-		auth:     authService,
+		auth:     auth,
 		upgrader: websocket.Upgrader{
 			ReadBufferSize:  1024,
 			WriteBufferSize: 1024,
@@ -62,6 +67,26 @@ func New(cfg Config, logger *slog.Logger, frontend fs.FS) (*Server, error) {
 	return srv, nil
 }
 
+func (s *Server) authMiddleware(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		cookie, err := readCookie(r, authCookieName)
+		if err != nil {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+
+		token, err := s.auth.ValidateToken(cookie)
+		if err != nil {
+			http.Error(w, "Invalid token", http.StatusUnauthorized)
+			return
+		}
+
+		ctx := r.Context()
+		ctx = context.WithValue(ctx, "token", token)
+		next(w, r.WithContext(ctx))
+	}
+}
+
 func (s *Server) Start() error {
 	// Ensure upload directory exists
 	if err := os.MkdirAll(s.cfg.UploadDir, os.ModePerm); err != nil {
@@ -70,23 +95,27 @@ func (s *Server) Start() error {
 
 	frontendFS := http.FileServer(http.FS(s.frontend))
 
-	authMiddleware := middlewares.AuthMiddleware(s.auth)
-
 	mux := http.NewServeMux()
-	httpMux := http.NewServeMux()
-	httpMux.Handle("/", frontendFS)
-	httpMux.Handle("/api/v1/files", authMiddleware(http.HandlerFunc(s.handleFiles)))
-	httpMux.Handle("/api/v1/files/{fileName}", authMiddleware(http.HandlerFunc(s.handleFileDelete)))
-	httpMux.Handle("/api/v1/stream/{fileName}", authMiddleware(http.HandlerFunc(s.streamFile)))
-	httpMux.HandleFunc("/api/v1/auth/github", s.auth.HandleGitHubLogin)
-	httpMux.HandleFunc("/api/v1/auth/github/callback", s.auth.HandleGitHubCallback)
-	httpMux.HandleFunc("/api/v1/auth/status", s.auth.HandleAuthStatus)
-	httpMux.HandleFunc("/api/v1/auth/logout", s.auth.HandleLogout)
-	mux.Handle("/", middlewares.LoggerMiddleware(s.logger)(
-		middlewares.CORSMiddleware(s.cfg.CORS)(httpMux),
-	))
 
-	mux.HandleFunc("/api/v1/ws", s.handleWebSocket)
+	// Public endpoints
+	mux.HandleFunc("/", frontendFS.ServeHTTP)
+	mux.HandleFunc("/api/v1/login", s.handleLogin)
+	mux.HandleFunc("/api/v1/auth/status", s.handleAuthStatus)
+	mux.HandleFunc("/api/v1/auth/logout", s.handleLogout)
+
+	// Protected endpoints
+	mux.HandleFunc("/api/v1/files", s.authMiddleware(s.handleFiles))
+	mux.HandleFunc("/api/v1/files/{fileName}", s.authMiddleware(s.handleFileDelete))
+	mux.HandleFunc("/api/v1/stream/{fileName}", s.authMiddleware(s.streamFile))
+
+	// Apply global middleware
+	handler := middlewares.LoggerMiddleware(s.logger)(
+		middlewares.CORSMiddleware(s.cfg.CORS)(mux),
+	)
+
+	mux = http.NewServeMux()
+	mux.HandleFunc("/api/v1/ws", s.authMiddleware(s.handleWebSocket))
+	mux.Handle("/", handler)
 
 	srv := &http.Server{
 		Addr:    fmt.Sprintf(":%d", s.cfg.Port),
@@ -231,4 +260,84 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 
 	go client.WritePump()
 	go client.ReadPump()
+}
+
+type loginRequest struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
+}
+
+type loginResponse struct {
+	Success bool   `json:"success"`
+	Error   string `json:"error,omitempty"`
+}
+
+type authStatusResponse struct {
+	Authenticated bool `json:"authenticated"`
+}
+
+func (s *Server) handleAuthStatus(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	cookie, err := readCookie(r, authCookieName)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(authStatusResponse{Authenticated: false})
+		return
+	}
+
+	_, err = s.auth.ValidateToken(cookie)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(authStatusResponse{Authenticated: err == nil})
+}
+
+func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	s.clearCookie(w, authCookieName)
+	w.WriteHeader(http.StatusOK)
+}
+
+func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req loginRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		s.logger.Error("failed to decode login request", "error", err)
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	creds := auth.Credentials{
+		Username: req.Username,
+		Password: req.Password,
+	}
+
+	token, err := s.auth.ValidateCredentials(creds)
+	if err != nil {
+		s.logger.Info("login failed", "username", req.Username)
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(loginResponse{
+			Success: false,
+			Error:   "Invalid credentials",
+		})
+		return
+	}
+
+	// Set auth cookie
+	writeCookie(w, authCookieName, token.String(), token.ExpiresAt())
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(loginResponse{
+		Success: true,
+	})
 }

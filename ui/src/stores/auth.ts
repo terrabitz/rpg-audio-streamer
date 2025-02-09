@@ -1,13 +1,11 @@
 import { apiClient } from '@/plugins/axios'
-import type { AuthResponse, User } from '@/types/auth'
+import type { AuthResponse, LoginRequest, LoginResponse } from '@/types/auth'
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
 export const useAuthStore = defineStore('auth', () => {
   const authenticated = ref(false)
-  const authorized = ref(false)
-  const loading = ref(true)
-  const user = ref<User | null>(null)
+  const loading = ref(false)
 
   async function checkAuthStatus() {
     try {
@@ -15,13 +13,29 @@ export const useAuthStore = defineStore('auth', () => {
       const data = response.data as AuthResponse
 
       authenticated.value = data.authenticated
-      authorized.value = data.authorized
-      user.value = data.user
     } catch (error) {
       console.error('Failed to check auth status:', error)
       authenticated.value = false
-      authorized.value = false
-      user.value = null
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function login(username: string, password: string) {
+    loading.value = true
+    try {
+      const loginData: LoginRequest = { username, password }
+      const response = await apiClient.post('/login', loginData)
+      const data = response.data as LoginResponse
+
+      if (data.success) {
+        await checkAuthStatus()
+      } else {
+        throw new Error(data.error || 'Login failed')
+      }
+    } catch (error) {
+      console.error('Login failed:', error)
+      throw error
     } finally {
       loading.value = false
     }
@@ -29,9 +43,8 @@ export const useAuthStore = defineStore('auth', () => {
 
   async function logout() {
     try {
-      await apiClient.get(`/auth/logout`)
+      await apiClient.post(`/auth/logout`)
       authenticated.value = false
-      user.value = null
     } catch (error) {
       console.error('Failed to logout:', error)
     }
@@ -39,10 +52,9 @@ export const useAuthStore = defineStore('auth', () => {
 
   return {
     authenticated,
-    authorized,
     loading,
-    user,
     checkAuthStatus,
-    logout
+    logout,
+    login
   }
 })

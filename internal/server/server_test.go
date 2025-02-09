@@ -11,7 +11,10 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
+	"github.com/golang-jwt/jwt/v5"
+	"github.com/terrabitz/rpg-audio-streamer/internal/auth"
 	"github.com/terrabitz/rpg-audio-streamer/internal/middlewares"
 	"github.com/terrabitz/rpg-audio-streamer/internal/types"
 )
@@ -19,6 +22,29 @@ import (
 type testServer struct {
 	*Server
 	tempDir string
+}
+
+type mockAuth struct {
+	validUser     string
+	validPassword string
+	token         *auth.Token
+}
+
+// Verify mockAuth implements Authenticator interface
+var _ Authenticator = (*mockAuth)(nil)
+
+func (m *mockAuth) ValidateCredentials(creds auth.Credentials) (*auth.Token, error) {
+	if creds.Username == m.validUser && creds.Password == m.validPassword {
+		return m.token, nil
+	}
+	return nil, auth.ErrInvalidCredentials
+}
+
+func (m *mockAuth) ValidateToken(tokenStr string) (*auth.Token, error) {
+	if tokenStr == m.token.String() {
+		return m.token, nil
+	}
+	return nil, jwt.ErrTokenInvalidClaims
 }
 
 func setupTestServer(t *testing.T) *testServer {
@@ -30,12 +56,18 @@ func setupTestServer(t *testing.T) *testServer {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
 
+	mockAuth := &mockAuth{
+		validUser:     "testuser",
+		validPassword: "testpass",
+		token:         &auth.Token{},
+	}
+
 	// Create test server
 	srv, err := New(Config{
 		Port:      8080,
 		UploadDir: tempDir,
 		CORS:      middlewares.CorsConfig{},
-	}, slog.New(slog.NewTextHandler(io.Discard, nil)), nil)
+	}, slog.New(slog.NewTextHandler(io.Discard, nil)), nil, mockAuth)
 	if err != nil {
 		t.Fatalf("failed to create server: %v", err)
 	}
@@ -53,6 +85,13 @@ func (ts *testServer) cleanup(t *testing.T) {
 	}
 }
 
+func addAuthCookie(req *http.Request, token string) {
+	req.AddCookie(&http.Cookie{
+		Name:  authCookieName,
+		Value: token,
+	})
+}
+
 func TestUploadFile(t *testing.T) {
 	ts := setupTestServer(t)
 	defer ts.cleanup(t)
@@ -68,24 +107,30 @@ func TestUploadFile(t *testing.T) {
 	part.Write(content)
 	writer.Close()
 
-	// Create test request
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/files", body)
-	req.Header.Set("Content-Type", writer.FormDataContentType())
-	rec := httptest.NewRecorder()
+	t.Run("with valid auth", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/files", body)
+		req.Header.Set("Content-Type", writer.FormDataContentType())
+		addAuthCookie(req, ts.auth.(*mockAuth).token.String())
+		rec := httptest.NewRecorder()
 
-	// Test handler
-	ts.uploadFile(rec, req)
+		ts.authMiddleware(ts.uploadFile)(rec, req)
 
-	// Verify response
-	if rec.Code != http.StatusOK {
-		t.Errorf("expected status OK; got %v", rec.Code)
-	}
+		if rec.Code != http.StatusOK {
+			t.Errorf("expected status OK; got %v", rec.Code)
+		}
+	})
 
-	// Verify file was created
-	uploadedFile := filepath.Join(ts.tempDir, "test.mp3")
-	if _, err := os.Stat(uploadedFile); os.IsNotExist(err) {
-		t.Error("uploaded file doesn't exist")
-	}
+	t.Run("without auth", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/files", body)
+		req.Header.Set("Content-Type", writer.FormDataContentType())
+		rec := httptest.NewRecorder()
+
+		ts.authMiddleware(ts.uploadFile)(rec, req)
+
+		if rec.Code != http.StatusUnauthorized {
+			t.Errorf("expected status Unauthorized; got %v", rec.Code)
+		}
+	})
 }
 
 func TestListFiles(t *testing.T) {
@@ -108,43 +153,55 @@ func TestListFiles(t *testing.T) {
 		}
 	}
 
-	// Test handler
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/files", nil)
-	rec := httptest.NewRecorder()
+	t.Run("with valid auth", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/files", nil)
+		addAuthCookie(req, ts.auth.(*mockAuth).token.String())
+		rec := httptest.NewRecorder()
 
-	ts.listFiles(rec, req)
+		ts.authMiddleware(ts.listFiles)(rec, req)
 
-	// Verify response
-	if rec.Code != http.StatusOK {
-		t.Errorf("expected status OK; got %v", rec.Code)
-	}
+		if rec.Code != http.StatusOK {
+			t.Errorf("expected status OK; got %v", rec.Code)
+		}
 
-	var files []types.FileInfo
-	if err := json.NewDecoder(rec.Body).Decode(&files); err != nil {
-		t.Fatalf("failed to decode response: %v", err)
-	}
+		var files []types.FileInfo
+		if err := json.NewDecoder(rec.Body).Decode(&files); err != nil {
+			t.Fatalf("failed to decode response: %v", err)
+		}
 
-	if len(files) != len(testFiles) {
-		t.Errorf("expected %d files; got %d", len(testFiles), len(files))
-	}
+		if len(files) != len(testFiles) {
+			t.Errorf("expected %d files; got %d", len(testFiles), len(files))
+		}
 
-	// Verify file names
-	fileNames := make([]string, len(files))
-	for i, f := range files {
-		fileNames[i] = f.Name
-	}
-	for _, tf := range testFiles {
-		found := false
-		for _, name := range fileNames {
-			if name == tf.name {
-				found = true
-				break
+		// Verify file names
+		fileNames := make([]string, len(files))
+		for i, f := range files {
+			fileNames[i] = f.Name
+		}
+		for _, tf := range testFiles {
+			found := false
+			for _, name := range fileNames {
+				if name == tf.name {
+					found = true
+					break
+				}
+			}
+			if !found {
+				t.Errorf("file %s not found in response", tf.name)
 			}
 		}
-		if !found {
-			t.Errorf("file %s not found in response", tf.name)
+	})
+
+	t.Run("without auth", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/files", nil)
+		rec := httptest.NewRecorder()
+
+		ts.authMiddleware(ts.listFiles)(rec, req)
+
+		if rec.Code != http.StatusUnauthorized {
+			t.Errorf("expected status Unauthorized; got %v", rec.Code)
 		}
-	}
+	})
 }
 
 func TestDeleteFile(t *testing.T) {
@@ -157,29 +214,43 @@ func TestDeleteFile(t *testing.T) {
 		t.Fatalf("failed to create test file: %v", err)
 	}
 
-	// Test handler
-	req := httptest.NewRequest(http.MethodDelete, "/api/v1/files/test.mp3", nil)
-	rec := httptest.NewRecorder()
-	req.SetPathValue("fileName", "test.mp3")
+	t.Run("with valid auth", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodDelete, "/api/v1/files/test.mp3", nil)
+		addAuthCookie(req, ts.auth.(*mockAuth).token.String())
+		rec := httptest.NewRecorder()
+		req.SetPathValue("fileName", "test.mp3")
 
-	ts.handleFileDelete(rec, req)
+		ts.authMiddleware(ts.handleFileDelete)(rec, req)
 
-	// Verify response
-	if rec.Code != http.StatusOK {
-		t.Errorf("expected status OK; got %v", rec.Code)
-	}
+		if rec.Code != http.StatusOK {
+			t.Errorf("expected status OK; got %v", rec.Code)
+		}
 
-	// Verify file was deleted
-	if _, err := os.Stat(testFile); !os.IsNotExist(err) {
-		t.Error("file still exists after deletion")
-	}
+		// Verify file was deleted
+		if _, err := os.Stat(testFile); !os.IsNotExist(err) {
+			t.Error("file still exists after deletion")
+		}
+	})
+
+	t.Run("without auth", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodDelete, "/api/v1/files/test.mp3", nil)
+		rec := httptest.NewRecorder()
+		req.SetPathValue("fileName", "test.mp3")
+
+		ts.authMiddleware(ts.handleFileDelete)(rec, req)
+
+		if rec.Code != http.StatusUnauthorized {
+			t.Errorf("expected status Unauthorized; got %v", rec.Code)
+		}
+	})
 
 	// Test deleting non-existent file
-	req = httptest.NewRequest(http.MethodDelete, "/api/v1/files/nonexistent.mp3", nil)
-	rec = httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/files/nonexistent.mp3", nil)
+	addAuthCookie(req, ts.auth.(*mockAuth).token.String())
+	rec := httptest.NewRecorder()
 	req.SetPathValue("fileName", "nonexistent.mp3")
 
-	ts.handleFileDelete(rec, req)
+	ts.authMiddleware(ts.handleFileDelete)(rec, req)
 	if rec.Code != http.StatusNotFound {
 		t.Errorf("expected status NotFound; got %v", rec.Code)
 	}
@@ -196,33 +267,249 @@ func TestStreamFile(t *testing.T) {
 		t.Fatalf("failed to create test file: %v", err)
 	}
 
-	// Test handler
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/stream/test.mp3", nil)
-	rec := httptest.NewRecorder()
-	req.SetPathValue("fileName", "test.mp3")
+	t.Run("with valid auth", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/stream/test.mp3", nil)
+		addAuthCookie(req, ts.auth.(*mockAuth).token.String())
+		rec := httptest.NewRecorder()
+		req.SetPathValue("fileName", "test.mp3")
 
-	ts.streamFile(rec, req)
+		ts.authMiddleware(ts.streamFile)(rec, req)
 
-	// Verify response
-	if rec.Code != http.StatusOK {
-		t.Errorf("expected status OK; got %v", rec.Code)
-	}
+		if rec.Code != http.StatusOK {
+			t.Errorf("expected status OK; got %v", rec.Code)
+		}
 
-	if ct := rec.Header().Get("Content-Type"); ct != "audio/mp3" {
-		t.Errorf("expected Content-Type audio/mp3; got %s", ct)
-	}
+		if ct := rec.Header().Get("Content-Type"); ct != "audio/mp3" {
+			t.Errorf("expected Content-Type audio/mp3; got %s", ct)
+		}
 
-	if body := rec.Body.String(); body != content {
-		t.Errorf("expected body %q; got %q", content, body)
-	}
+		if body := rec.Body.String(); body != content {
+			t.Errorf("expected body %q; got %q", content, body)
+		}
+	})
+
+	t.Run("without auth", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/stream/test.mp3", nil)
+		rec := httptest.NewRecorder()
+		req.SetPathValue("fileName", "test.mp3")
+
+		ts.authMiddleware(ts.streamFile)(rec, req)
+
+		if rec.Code != http.StatusUnauthorized {
+			t.Errorf("expected status Unauthorized; got %v", rec.Code)
+		}
+	})
 
 	// Test streaming non-existent file
-	req = httptest.NewRequest(http.MethodGet, "/api/v1/stream/nonexistent.mp3", nil)
-	rec = httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/stream/nonexistent.mp3", nil)
+	addAuthCookie(req, ts.auth.(*mockAuth).token.String())
+	rec := httptest.NewRecorder()
 	req.SetPathValue("fileName", "nonexistent.mp3")
 
-	ts.streamFile(rec, req)
+	ts.authMiddleware(ts.streamFile)(rec, req)
 	if rec.Code != http.StatusNotFound {
 		t.Errorf("expected status NotFound; got %v", rec.Code)
 	}
+}
+
+func TestHandleLogin(t *testing.T) {
+	ts := setupTestServer(t)
+	defer ts.cleanup(t)
+
+	tests := []struct {
+		name            string
+		credentials     loginRequest
+		expectedCode    int
+		expectedError   string
+		checkAuthCookie bool
+	}{
+		{
+			name: "successful login",
+			credentials: loginRequest{
+				Username: "testuser",
+				Password: "testpass",
+			},
+			expectedCode:    http.StatusOK,
+			checkAuthCookie: true,
+		},
+		{
+			name: "invalid credentials",
+			credentials: loginRequest{
+				Username: "wronguser",
+				Password: "wrongpass",
+			},
+			expectedCode:  http.StatusUnauthorized,
+			expectedError: "Invalid credentials",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			body, err := json.Marshal(tt.credentials)
+			if err != nil {
+				t.Fatalf("failed to marshal request body: %v", err)
+			}
+
+			req := httptest.NewRequest(http.MethodPost, "/api/v1/login", bytes.NewReader(body))
+			req.Header.Set("Content-Type", "application/json")
+			rec := httptest.NewRecorder()
+
+			ts.handleLogin(rec, req)
+
+			if rec.Code != tt.expectedCode {
+				t.Errorf("expected status %v; got %v", tt.expectedCode, rec.Code)
+			}
+
+			var resp loginResponse
+			if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+				t.Fatalf("failed to decode response: %v", err)
+			}
+
+			if tt.expectedError != "" && resp.Error != tt.expectedError {
+				t.Errorf("expected error %q; got %q", tt.expectedError, resp.Error)
+			}
+
+			if tt.checkAuthCookie {
+				cookies := rec.Result().Cookies()
+				var authCookie *http.Cookie
+				for _, cookie := range cookies {
+					if cookie.Name == authCookieName {
+						authCookie = cookie
+						break
+					}
+				}
+				if authCookie == nil {
+					t.Error("auth cookie not set")
+				}
+				if !authCookie.HttpOnly {
+					t.Error("auth cookie should be HTTP-only")
+				}
+				if !authCookie.Secure {
+					t.Error("auth cookie should be secure")
+				}
+			}
+		})
+	}
+
+	t.Run("invalid method", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/login", nil)
+		rec := httptest.NewRecorder()
+
+		ts.handleLogin(rec, req)
+
+		if rec.Code != http.StatusMethodNotAllowed {
+			t.Errorf("expected status MethodNotAllowed; got %v", rec.Code)
+		}
+	})
+
+	t.Run("invalid json", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/login", bytes.NewReader([]byte("invalid json")))
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+
+		ts.handleLogin(rec, req)
+
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("expected status BadRequest; got %v", rec.Code)
+		}
+	})
+}
+
+func TestHandleAuthStatus(t *testing.T) {
+	ts := setupTestServer(t)
+	defer ts.cleanup(t)
+
+	t.Run("with valid auth", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/auth/status", nil)
+		addAuthCookie(req, ts.auth.(*mockAuth).token.String())
+		rec := httptest.NewRecorder()
+
+		ts.handleAuthStatus(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Errorf("expected status OK; got %v", rec.Code)
+		}
+
+		var resp authStatusResponse
+		if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+			t.Fatalf("failed to decode response: %v", err)
+		}
+
+		if !resp.Authenticated {
+			t.Error("expected authenticated true; got false")
+		}
+	})
+
+	t.Run("without auth", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/auth/status", nil)
+		rec := httptest.NewRecorder()
+
+		ts.handleAuthStatus(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Errorf("expected status OK; got %v", rec.Code)
+		}
+
+		var resp authStatusResponse
+		if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+			t.Fatalf("failed to decode response: %v", err)
+		}
+
+		if resp.Authenticated {
+			t.Error("expected authenticated false; got true")
+		}
+	})
+
+	t.Run("invalid method", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/status", nil)
+		rec := httptest.NewRecorder()
+
+		ts.handleAuthStatus(rec, req)
+
+		if rec.Code != http.StatusMethodNotAllowed {
+			t.Errorf("expected status MethodNotAllowed; got %v", rec.Code)
+		}
+	})
+}
+
+func TestHandleLogout(t *testing.T) {
+	ts := setupTestServer(t)
+	defer ts.cleanup(t)
+
+	t.Run("successful logout", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/logout", nil)
+		rec := httptest.NewRecorder()
+
+		ts.handleLogout(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Errorf("expected status OK; got %v", rec.Code)
+		}
+
+		cookies := rec.Result().Cookies()
+		var authCookie *http.Cookie
+		for _, cookie := range cookies {
+			if cookie.Name == authCookieName {
+				authCookie = cookie
+				break
+			}
+		}
+		if authCookie == nil {
+			t.Error("auth cookie not cleared")
+		}
+		if !authCookie.Expires.IsZero() && authCookie.Expires.After(time.Now()) {
+			t.Error("auth cookie not expired")
+		}
+	})
+
+	t.Run("invalid method", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/auth/logout", nil)
+		rec := httptest.NewRecorder()
+
+		ts.handleLogout(rec, req)
+
+		if rec.Code != http.StatusMethodNotAllowed {
+			t.Errorf("expected status MethodNotAllowed; got %v", rec.Code)
+		}
+	})
 }

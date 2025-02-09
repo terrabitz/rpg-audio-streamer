@@ -2,15 +2,18 @@ package main
 
 import (
 	"embed"
+	"encoding/json"
 	"fmt"
 	"log"
 	"log/slog"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/joho/godotenv"
 	"github.com/urfave/cli/v2"
 
+	"github.com/terrabitz/rpg-audio-streamer/internal/auth"
 	"github.com/terrabitz/rpg-audio-streamer/internal/server"
 )
 
@@ -20,6 +23,7 @@ var frontend embed.FS
 type Config struct {
 	Server server.Config
 	Log    LogConfig
+	Auth   auth.Config
 }
 
 type LogConfig struct {
@@ -75,25 +79,46 @@ func main() {
 						Destination: &cfg.Server.UploadDir,
 					},
 					&cli.StringFlag{
-						Name:        "github-client-id",
-						EnvVars:     []string{"GITHUB_CLIENT_ID"},
-						Usage:       "GitHub OAuth Client ID",
-						Required:    true,
-						Destination: &cfg.Server.GitHub.ClientID,
+						Name:        "root-username",
+						EnvVars:     []string{"ROOT_USERNAME"},
+						Value:       "admin",
+						Usage:       "Root username for authentication",
+						Destination: &cfg.Auth.RootUsername,
 					},
 					&cli.StringFlag{
-						Name:        "github-client-secret",
-						EnvVars:     []string{"GITHUB_CLIENT_SECRET"},
-						Usage:       "GitHub OAuth Client Secret",
+						Name:        "root-password-hash",
+						EnvVars:     []string{"ROOT_PASSWORD_HASH"},
 						Required:    true,
-						Destination: &cfg.Server.GitHub.ClientSecret,
+						Usage:       "Argon2id hash of root password",
+						Destination: &cfg.Auth.HashedPassword,
 					},
 					&cli.StringFlag{
-						Name:        "jwt-secret",
-						EnvVars:     []string{"JWT_SECRET"},
-						Usage:       "Secret key for signing JWTs",
+						Name:        "token-secret",
+						EnvVars:     []string{"TOKEN_SECRET"},
 						Required:    true,
-						Destination: &cfg.Server.GitHub.JWTSecret,
+						Usage:       "Secret for signing JWT tokens",
+						Destination: &cfg.Auth.TokenSecret,
+					},
+					&cli.DurationFlag{
+						Name:        "token-duration",
+						EnvVars:     []string{"TOKEN_DURATION"},
+						Value:       24 * time.Hour,
+						Usage:       "Duration for JWT tokens",
+						Destination: &cfg.Auth.TokenDuration,
+					},
+					&cli.StringFlag{
+						Name:        "token-issuer",
+						EnvVars:     []string{"TOKEN_ISSUER"},
+						Value:       "rpg-audio-streamer",
+						Usage:       "Issuer for JWT tokens",
+						Destination: &cfg.Auth.TokenIssuer,
+					},
+					&cli.StringFlag{
+						Name:        "token-audience",
+						EnvVars:     []string{"TOKEN_AUDIENCE"},
+						Value:       "rpg-audio-streamer-client",
+						Usage:       "Audience for JWT tokens",
+						Destination: &cfg.Auth.TokenAudience,
 					},
 				},
 				Action: func(cCtx *cli.Context) error {
@@ -129,12 +154,19 @@ func setupLogger(cfg Config) (*slog.Logger, error) {
 }
 
 func startServer(cfg Config) error {
+	cfgJSON, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		return fmt.Errorf("couldn't marshal config to JSON: %w", err)
+	}
+	fmt.Printf("Config: %s\n", string(cfgJSON))
 	logger, err := setupLogger(cfg)
 	if err != nil {
 		return fmt.Errorf("couldn't initialize logger: %w", err)
 	}
 
-	srv, err := server.New(cfg.Server, logger, frontend)
+	authService := auth.New(cfg.Auth, logger)
+
+	srv, err := server.New(cfg.Server, logger, frontend, authService)
 	if err != nil {
 		return fmt.Errorf("couldn't create server: %w", err)
 	}

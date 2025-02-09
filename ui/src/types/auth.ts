@@ -1,11 +1,13 @@
-export interface User {
-  login: string;
-  name: string;
-  avatar_url: string;
+export interface LoginRequest {
+  username: string;
+  password: string;
+}
+
+export interface LoginResponse {
+  success: boolean;
+  error?: string;
 }
 
 export interface AuthResponse {
   authenticated: boolean;
-  authorized: boolean;
-  user: User | null;
 }
