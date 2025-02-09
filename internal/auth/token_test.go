@@ -67,13 +67,13 @@ func TestTokenValidation(t *testing.T) {
 
 	tests := []struct {
 		name    string
-		setup   func() AuthToken
+		setup   func() Token
 		wantErr error
 		wantSub string
 	}{
 		{
 			name: "Valid token",
-			setup: func() AuthToken {
+			setup: func() Token {
 				token, _ := auth.GenerateAuthToken("test-user")
 				return token
 			},
@@ -82,7 +82,7 @@ func TestTokenValidation(t *testing.T) {
 		},
 		{
 			name: "Expired token",
-			setup: func() AuthToken {
+			setup: func() Token {
 				claims := Claims{
 					RegisteredClaims: jwt.RegisteredClaims{
 						ExpiresAt: jwt.NewNumericDate(time.Now().Add(-time.Hour)),
@@ -95,13 +95,13 @@ func TestTokenValidation(t *testing.T) {
 				}
 				token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 				tokenString, _ := token.SignedString([]byte(testSecret))
-				return AuthToken{token: tokenString}
+				return Token{token: tokenString}
 			},
 			wantErr: jwt.ErrTokenExpired,
 		},
 		{
 			name: "Future token (not valid yet)",
-			setup: func() AuthToken {
+			setup: func() Token {
 				claims := Claims{
 					RegisteredClaims: jwt.RegisteredClaims{
 						ExpiresAt: jwt.NewNumericDate(time.Now().Add(2 * time.Hour)),
@@ -114,13 +114,13 @@ func TestTokenValidation(t *testing.T) {
 				}
 				token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 				tokenString, _ := token.SignedString([]byte(testSecret))
-				return AuthToken{token: tokenString}
+				return Token{token: tokenString}
 			},
 			wantErr: jwt.ErrTokenNotValidYet,
 		},
 		{
 			name: "Wrong issuer",
-			setup: func() AuthToken {
+			setup: func() Token {
 				claims := Claims{
 					RegisteredClaims: jwt.RegisteredClaims{
 						ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
@@ -133,13 +133,13 @@ func TestTokenValidation(t *testing.T) {
 				}
 				token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 				tokenString, _ := token.SignedString([]byte(testSecret))
-				return AuthToken{token: tokenString}
+				return Token{token: tokenString}
 			},
 			wantErr: jwt.ErrTokenInvalidIssuer,
 		},
 		{
 			name: "Wrong audience",
-			setup: func() AuthToken {
+			setup: func() Token {
 				claims := Claims{
 					RegisteredClaims: jwt.RegisteredClaims{
 						ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
@@ -152,13 +152,13 @@ func TestTokenValidation(t *testing.T) {
 				}
 				token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 				tokenString, _ := token.SignedString([]byte(testSecret))
-				return AuthToken{token: tokenString}
+				return Token{token: tokenString}
 			},
 			wantErr: jwt.ErrTokenInvalidAudience,
 		},
 		{
 			name: "Wrong signing method",
-			setup: func() AuthToken {
+			setup: func() Token {
 				claims := Claims{
 					RegisteredClaims: jwt.RegisteredClaims{
 						ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
@@ -169,30 +169,30 @@ func TestTokenValidation(t *testing.T) {
 				}
 				token := jwt.NewWithClaims(jwt.SigningMethodNone, claims)
 				tokenString, _ := token.SignedString(jwt.UnsafeAllowNoneSignatureType)
-				return AuthToken{token: tokenString}
+				return Token{token: tokenString}
 			},
 			wantErr: jwt.ErrTokenSignatureInvalid,
 		},
 		{
 			name: "Tampered signature",
-			setup: func() AuthToken {
+			setup: func() Token {
 				token, _ := auth.GenerateAuthToken("test-user")
 				tokenStr := token.String()
-				return AuthToken{token: tokenStr[:len(tokenStr)-2] + "00"}
+				return Token{token: tokenStr[:len(tokenStr)-2] + "00"}
 			},
 			wantErr: jwt.ErrTokenSignatureInvalid,
 		},
 		{
 			name: "Invalid token format",
-			setup: func() AuthToken {
-				return AuthToken{token: "invalid.token.format"}
+			setup: func() Token {
+				return Token{token: "invalid.token.format"}
 			},
 			wantErr: jwt.ErrTokenMalformed,
 		},
 		{
 			name: "Empty token",
-			setup: func() AuthToken {
-				return AuthToken{token: ""}
+			setup: func() Token {
+				return Token{token: ""}
 			},
 			wantErr: jwt.ErrTokenMalformed,
 		},

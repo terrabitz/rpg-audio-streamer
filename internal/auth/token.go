@@ -11,15 +11,15 @@ type Claims struct {
 	jwt.RegisteredClaims
 }
 
-type AuthToken struct {
+type Token struct {
 	token string
 }
 
-func (a AuthToken) String() string {
+func (a Token) String() string {
 	return a.token
 }
 
-func (a *Auth) GenerateAuthToken(subject string) (AuthToken, error) {
+func (a *Auth) GenerateAuthToken(subject string) (Token, error) {
 	now := time.Now()
 	claims := Claims{
 		RegisteredClaims: jwt.RegisteredClaims{
@@ -35,13 +35,13 @@ func (a *Auth) GenerateAuthToken(subject string) (AuthToken, error) {
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	signedToken, err := token.SignedString([]byte(a.cfg.TokenSecret))
 	if err != nil {
-		return AuthToken{}, fmt.Errorf("failed to sign token: %w", err)
+		return Token{}, fmt.Errorf("failed to sign token: %w", err)
 	}
 
-	return AuthToken{signedToken}, nil
+	return Token{signedToken}, nil
 }
 
-func (a *Auth) ValidateAuthToken(token AuthToken) (*Claims, error) {
+func (a *Auth) ValidateAuthToken(token Token) (*Claims, error) {
 	options := []jwt.ParserOption{
 		jwt.WithAudience(a.cfg.TokenAudience),
 		jwt.WithIssuer(a.cfg.TokenIssuer),
