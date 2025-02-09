@@ -5,6 +5,7 @@ import (
 	"crypto/subtle"
 	"encoding/base64"
 	"fmt"
+	"strings"
 
 	"golang.org/x/crypto/argon2"
 )
@@ -76,24 +77,27 @@ func decodeHash(encodedHash string) (*params, []byte, []byte, error) {
 	var salt, hash []byte
 	var version int
 
-	_, err := fmt.Sscanf(encodedHash, "$argon2id$v=%d$m=%d,t=%d,p=%d$%s$%s",
-		&version,
-		&p.memory,
-		&p.iterations,
-		&p.parallelism,
-		&salt,
-		&hash,
-	)
+	parts := strings.Split(encodedHash, "$")
+	if len(parts) != 6 {
+		return nil, nil, nil, fmt.Errorf("invalid hash format")
+	}
+
+	_, err := fmt.Sscanf(parts[2], "v=%d", &version)
 	if err != nil {
 		return nil, nil, nil, err
 	}
 
-	salt, err = base64.RawStdEncoding.DecodeString(string(salt))
+	_, err = fmt.Sscanf(parts[3], "m=%d,t=%d,p=%d", &p.memory, &p.iterations, &p.parallelism)
 	if err != nil {
 		return nil, nil, nil, err
 	}
 
-	hash, err = base64.RawStdEncoding.DecodeString(string(hash))
+	salt, err = base64.RawStdEncoding.DecodeString(parts[4])
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	hash, err = base64.RawStdEncoding.DecodeString(parts[5])
 	if err != nil {
 		return nil, nil, nil, err
 	}
