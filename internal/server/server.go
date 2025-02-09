@@ -69,19 +69,18 @@ func New(cfg Config, logger *slog.Logger, frontend fs.FS, auth Authenticator) (*
 
 func (s *Server) authMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		cookie, err := r.Cookie(authCookieName)
+		cookie, err := readCookie(r, authCookieName)
 		if err != nil {
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
 		}
 
-		token, err := s.auth.ValidateToken(cookie.Value)
+		token, err := s.auth.ValidateToken(cookie)
 		if err != nil {
 			http.Error(w, "Invalid token", http.StatusUnauthorized)
 			return
 		}
 
-		// Store token in context for later use if needed
 		ctx := r.Context()
 		ctx = context.WithValue(ctx, "token", token)
 		next(w, r.WithContext(ctx))
