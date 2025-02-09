@@ -7,10 +7,12 @@ import (
 	"log/slog"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/joho/godotenv"
 	"github.com/urfave/cli/v2"
 
+	"github.com/terrabitz/rpg-audio-streamer/internal/auth"
 	"github.com/terrabitz/rpg-audio-streamer/internal/server"
 )
 
@@ -20,6 +22,7 @@ var frontend embed.FS
 type Config struct {
 	Server server.Config
 	Log    LogConfig
+	Auth   auth.Config
 }
 
 type LogConfig struct {
@@ -74,6 +77,48 @@ func main() {
 						Usage:       "Directory to store uploaded files",
 						Destination: &cfg.Server.UploadDir,
 					},
+					&cli.StringFlag{
+						Name:        "root-username",
+						EnvVars:     []string{"ROOT_USERNAME"},
+						Value:       "admin",
+						Usage:       "Root username for authentication",
+						Destination: &cfg.Auth.RootUsername,
+					},
+					&cli.StringFlag{
+						Name:        "root-password-hash",
+						EnvVars:     []string{"ROOT_PASSWORD_HASH"},
+						Required:    true,
+						Usage:       "Argon2id hash of root password",
+						Destination: &cfg.Auth.HashedPassword,
+					},
+					&cli.StringFlag{
+						Name:        "token-secret",
+						EnvVars:     []string{"TOKEN_SECRET"},
+						Required:    true,
+						Usage:       "Secret for signing JWT tokens",
+						Destination: &cfg.Auth.TokenSecret,
+					},
+					&cli.DurationFlag{
+						Name:        "token-duration",
+						EnvVars:     []string{"TOKEN_DURATION"},
+						Value:       24 * time.Hour,
+						Usage:       "Duration for JWT tokens",
+						Destination: &cfg.Auth.TokenDuration,
+					},
+					&cli.StringFlag{
+						Name:        "token-issuer",
+						EnvVars:     []string{"TOKEN_ISSUER"},
+						Value:       "rpg-audio-streamer",
+						Usage:       "Issuer for JWT tokens",
+						Destination: &cfg.Auth.TokenIssuer,
+					},
+					&cli.StringFlag{
+						Name:        "token-audience",
+						EnvVars:     []string{"TOKEN_AUDIENCE"},
+						Value:       "rpg-audio-streamer-client",
+						Usage:       "Audience for JWT tokens",
+						Destination: &cfg.Auth.TokenAudience,
+					},
 				},
 				Action: func(cCtx *cli.Context) error {
 					return startServer(cfg)
@@ -113,7 +158,10 @@ func startServer(cfg Config) error {
 		return fmt.Errorf("couldn't initialize logger: %w", err)
 	}
 
-	srv, err := server.New(cfg.Server, logger, frontend)
+	// Initialize auth service
+	authService := auth.New(cfg.Auth, logger)
+
+	srv, err := server.New(cfg.Server, logger, frontend, authService)
 	if err != nil {
 		return fmt.Errorf("couldn't create server: %w", err)
 	}

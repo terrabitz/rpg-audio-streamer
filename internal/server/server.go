@@ -37,7 +37,7 @@ type Config struct {
 	UploadDir string
 }
 
-func New(cfg Config, logger *slog.Logger, frontend fs.FS) (*Server, error) {
+func New(cfg Config, logger *slog.Logger, frontend fs.FS, auth *auth.Auth) (*Server, error) {
 	hub := ws.NewHub(logger)
 
 	srv := &Server{
@@ -45,6 +45,7 @@ func New(cfg Config, logger *slog.Logger, frontend fs.FS) (*Server, error) {
 		frontend: frontend,
 		cfg:      cfg,
 		hub:      hub,
+		auth:     auth,
 		upgrader: websocket.Upgrader{
 			ReadBufferSize:  1024,
 			WriteBufferSize: 1024,
