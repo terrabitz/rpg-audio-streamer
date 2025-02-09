@@ -1,8 +1,14 @@
 <script setup lang="ts">
-import { RouterLink, RouterView } from 'vue-router';
+import { RouterLink, RouterView, useRouter } from 'vue-router';
 import { useAuthStore } from './stores/auth';
 
 const auth = useAuthStore()
+const router = useRouter()
+
+async function handleLogout() {
+  await auth.logout()
+  router.push('/')
+}
 </script>
 
 <template>
@@ -12,9 +18,16 @@ const auth = useAuthStore()
         <RouterLink to="/" class="text-decoration-none">Skald Bot</RouterLink>
       </v-app-bar-title>
       <v-spacer></v-spacer>
-      <v-btn v-if="!auth.authenticated" to="/login" color="primary">
-        Login
-      </v-btn>
+      <template v-if="auth.authenticated">
+        <v-btn @click="handleLogout" color="error">
+          Logout
+        </v-btn>
+      </template>
+      <template v-else>
+        <v-btn to="/login" color="primary">
+          Login
+        </v-btn>
+      </template>
     </v-app-bar>
     <v-main class="d-flex align-center justify-center" style="min-width: 800px;">
       <RouterView />
