@@ -11,7 +11,7 @@ import (
 
 func TestTokenGeneration(t *testing.T) {
 	auth := New(Config{
-		TokenSecret:   "test-secret", // Changed from []byte to string
+		TokenSecret:   "test-secret",
 		TokenDuration: time.Hour,
 		TokenIssuer:   "test-issuer",
 		TokenAudience: "test-audience",
@@ -36,20 +36,29 @@ func TestTokenGeneration(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			authToken, err := auth.GenerateAuthToken(tt.subject)
+			token, err := auth.NewToken(tt.subject)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("GenerateAuthToken() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("NewToken() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
 
 			if !tt.wantErr {
-				claims, err := auth.ValidateAuthToken(authToken)
+				validatedToken, err := auth.ValidateToken(token.String())
 				if err != nil {
-					t.Errorf("ValidateAuthToken() error = %v", err)
+					t.Errorf("ValidateToken() error = %v", err)
 					return
 				}
-				if claims.Subject != tt.subject {
-					t.Errorf("ValidateAuthToken() subject = %v, want %v", claims.Subject, tt.subject)
+
+				claims, err := jwt.ParseWithClaims(validatedToken.String(), &Claims{}, func(token *jwt.Token) (interface{}, error) {
+					return []byte(auth.cfg.TokenSecret), nil
+				})
+				if err != nil {
+					t.Errorf("ParseWithClaims() error = %v", err)
+					return
+				}
+
+				if claims.Claims.(*Claims).Subject != tt.subject {
+					t.Errorf("ValidateToken() subject = %v, want %v", claims.Claims.(*Claims).Subject, tt.subject)
 				}
 			}
 		})
@@ -57,7 +66,7 @@ func TestTokenGeneration(t *testing.T) {
 }
 
 func TestTokenValidation(t *testing.T) {
-	testSecret := "test-secret" // Changed from []byte to string
+	testSecret := "test-secret"
 	auth := New(Config{
 		TokenSecret:   testSecret,
 		TokenDuration: time.Hour,
@@ -67,22 +76,20 @@ func TestTokenValidation(t *testing.T) {
 
 	tests := []struct {
 		name    string
-		setup   func() Token
+		setup   func() string
 		wantErr error
-		wantSub string
 	}{
 		{
 			name: "Valid token",
-			setup: func() Token {
-				token, _ := auth.GenerateAuthToken("test-user")
-				return token
+			setup: func() string {
+				token, _ := auth.NewToken("test-user")
+				return token.String()
 			},
 			wantErr: nil,
-			wantSub: "test-user",
 		},
 		{
 			name: "Expired token",
-			setup: func() Token {
+			setup: func() string {
 				claims := Claims{
 					RegisteredClaims: jwt.RegisteredClaims{
 						ExpiresAt: jwt.NewNumericDate(time.Now().Add(-time.Hour)),
@@ -95,13 +102,13 @@ func TestTokenValidation(t *testing.T) {
 				}
 				token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 				tokenString, _ := token.SignedString([]byte(testSecret))
-				return Token{token: tokenString}
+				return tokenString
 			},
 			wantErr: jwt.ErrTokenExpired,
 		},
 		{
 			name: "Future token (not valid yet)",
-			setup: func() Token {
+			setup: func() string {
 				claims := Claims{
 					RegisteredClaims: jwt.RegisteredClaims{
 						ExpiresAt: jwt.NewNumericDate(time.Now().Add(2 * time.Hour)),
@@ -114,13 +121,13 @@ func TestTokenValidation(t *testing.T) {
 				}
 				token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 				tokenString, _ := token.SignedString([]byte(testSecret))
-				return Token{token: tokenString}
+				return tokenString
 			},
 			wantErr: jwt.ErrTokenNotValidYet,
 		},
 		{
 			name: "Wrong issuer",
-			setup: func() Token {
+			setup: func() string {
 				claims := Claims{
 					RegisteredClaims: jwt.RegisteredClaims{
 						ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
@@ -133,13 +140,13 @@ func TestTokenValidation(t *testing.T) {
 				}
 				token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 				tokenString, _ := token.SignedString([]byte(testSecret))
-				return Token{token: tokenString}
+				return tokenString
 			},
 			wantErr: jwt.ErrTokenInvalidIssuer,
 		},
 		{
 			name: "Wrong audience",
-			setup: func() Token {
+			setup: func() string {
 				claims := Claims{
 					RegisteredClaims: jwt.RegisteredClaims{
 						ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
@@ -152,13 +159,13 @@ func TestTokenValidation(t *testing.T) {
 				}
 				token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 				tokenString, _ := token.SignedString([]byte(testSecret))
-				return Token{token: tokenString}
+				return tokenString
 			},
 			wantErr: jwt.ErrTokenInvalidAudience,
 		},
 		{
 			name: "Wrong signing method",
-			setup: func() Token {
+			setup: func() string {
 				claims := Claims{
 					RegisteredClaims: jwt.RegisteredClaims{
 						ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
@@ -169,30 +176,30 @@ func TestTokenValidation(t *testing.T) {
 				}
 				token := jwt.NewWithClaims(jwt.SigningMethodNone, claims)
 				tokenString, _ := token.SignedString(jwt.UnsafeAllowNoneSignatureType)
-				return Token{token: tokenString}
+				return tokenString
 			},
 			wantErr: jwt.ErrTokenSignatureInvalid,
 		},
 		{
 			name: "Tampered signature",
-			setup: func() Token {
-				token, _ := auth.GenerateAuthToken("test-user")
+			setup: func() string {
+				token, _ := auth.NewToken("test-user")
 				tokenStr := token.String()
-				return Token{token: tokenStr[:len(tokenStr)-2] + "00"}
+				return tokenStr[:len(tokenStr)-2] + "00"
 			},
 			wantErr: jwt.ErrTokenSignatureInvalid,
 		},
 		{
 			name: "Invalid token format",
-			setup: func() Token {
-				return Token{token: "invalid.token.format"}
+			setup: func() string {
+				return "invalid.token.format"
 			},
 			wantErr: jwt.ErrTokenMalformed,
 		},
 		{
 			name: "Empty token",
-			setup: func() Token {
-				return Token{token: ""}
+			setup: func() string {
+				return ""
 			},
 			wantErr: jwt.ErrTokenMalformed,
 		},
@@ -200,27 +207,22 @@ func TestTokenValidation(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			authToken := tt.setup()
-			claims, err := auth.ValidateAuthToken(authToken)
+			tokenString := tt.setup()
+			_, err := auth.ValidateToken(tokenString)
 
 			if tt.wantErr != nil {
 				if err == nil {
-					t.Errorf("ValidateAuthToken() error = nil, wantErr %v", tt.wantErr)
+					t.Errorf("ValidateToken() error = nil, wantErr %v", tt.wantErr)
 					return
 				}
 				if !errors.Is(err, tt.wantErr) {
-					t.Errorf("ValidateAuthToken() error = %v, wantErr %v", err, tt.wantErr)
+					t.Errorf("ValidateToken() error = %v, wantErr %v", err, tt.wantErr)
 				}
 				return
 			}
 
 			if err != nil {
-				t.Errorf("ValidateAuthToken() unexpected error = %v", err)
-				return
-			}
-
-			if claims.Subject != tt.wantSub {
-				t.Errorf("ValidateAuthToken() subject = %v, want %v", claims.Subject, tt.wantSub)
+				t.Errorf("ValidateToken() unexpected error = %v", err)
 			}
 		})
 	}

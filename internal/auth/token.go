@@ -24,7 +24,7 @@ func (a Token) ExpiresAt() time.Time {
 	return a.expiresAt
 }
 
-func (a *Auth) GenerateAuthToken(subject string) (Token, error) {
+func (a *Auth) NewToken(subject string) (*Token, error) {
 	now := time.Now()
 	claims := Claims{
 		RegisteredClaims: jwt.RegisteredClaims{
@@ -40,16 +40,16 @@ func (a *Auth) GenerateAuthToken(subject string) (Token, error) {
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	signedToken, err := token.SignedString([]byte(a.cfg.TokenSecret))
 	if err != nil {
-		return Token{}, fmt.Errorf("failed to sign token: %w", err)
+		return nil, fmt.Errorf("failed to sign token: %w", err)
 	}
 
-	return Token{
+	return &Token{
 		token:     signedToken,
 		expiresAt: now.Add(a.cfg.TokenDuration),
 	}, nil
 }
 
-func (a *Auth) ValidateAuthToken(token Token) (*Claims, error) {
+func (a *Auth) ValidateToken(token string) (*Token, error) {
 	options := []jwt.ParserOption{
 		jwt.WithAudience(a.cfg.TokenAudience),
 		jwt.WithIssuer(a.cfg.TokenIssuer),
@@ -57,7 +57,7 @@ func (a *Auth) ValidateAuthToken(token Token) (*Claims, error) {
 		jwt.WithValidMethods([]string{"HS256"}),
 	}
 
-	parsedToken, err := jwt.ParseWithClaims(token.String(), &Claims{}, func(token *jwt.Token) (interface{}, error) {
+	parsedToken, err := jwt.ParseWithClaims(token, &Claims{}, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
 		}
@@ -73,5 +73,8 @@ func (a *Auth) ValidateAuthToken(token Token) (*Claims, error) {
 		return nil, jwt.ErrTokenInvalidClaims
 	}
 
-	return claims, nil
+	return &Token{
+		token:     token,
+		expiresAt: claims.ExpiresAt.Time,
+	}, nil
 }

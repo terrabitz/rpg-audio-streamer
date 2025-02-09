@@ -158,7 +158,6 @@ func startServer(cfg Config) error {
 		return fmt.Errorf("couldn't initialize logger: %w", err)
 	}
 
-	// Initialize auth service
 	authService := auth.New(cfg.Auth, logger)
 
 	srv, err := server.New(cfg.Server, logger, frontend, authService)
