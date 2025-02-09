@@ -1,5 +1,5 @@
 import { apiClient } from '@/plugins/axios'
-import type { AuthResponse } from '@/types/auth'
+import type { AuthResponse, LoginRequest, LoginResponse } from '@/types/auth'
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
@@ -21,6 +21,26 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
+  async function login(username: string, password: string) {
+    loading.value = true
+    try {
+      const loginData: LoginRequest = { username, password }
+      const response = await apiClient.post('/login', loginData)
+      const data = response.data as LoginResponse
+
+      if (data.success) {
+        await checkAuthStatus()
+      } else {
+        throw new Error(data.error || 'Login failed')
+      }
+    } catch (error) {
+      console.error('Login failed:', error)
+      throw error
+    } finally {
+      loading.value = false
+    }
+  }
+
   async function logout() {
     try {
       await apiClient.get(`/auth/logout`)
@@ -34,6 +54,7 @@ export const useAuthStore = defineStore('auth', () => {
     authenticated,
     loading,
     checkAuthStatus,
-    logout
+    logout,
+    login
   }
 })
