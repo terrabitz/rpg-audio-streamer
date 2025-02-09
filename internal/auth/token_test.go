@@ -11,7 +11,7 @@ import (
 
 func TestTokenGeneration(t *testing.T) {
 	auth := New(Config{
-		TokenSecret:   []byte("test-secret"),
+		TokenSecret:   "test-secret", // Changed from []byte to string
 		TokenDuration: time.Hour,
 		TokenIssuer:   "test-issuer",
 		TokenAudience: "test-audience",
@@ -57,7 +57,7 @@ func TestTokenGeneration(t *testing.T) {
 }
 
 func TestTokenValidation(t *testing.T) {
-	testSecret := []byte("test-secret")
+	testSecret := "test-secret" // Changed from []byte to string
 	auth := New(Config{
 		TokenSecret:   testSecret,
 		TokenDuration: time.Hour,
@@ -94,7 +94,7 @@ func TestTokenValidation(t *testing.T) {
 					},
 				}
 				token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-				tokenString, _ := token.SignedString(testSecret)
+				tokenString, _ := token.SignedString([]byte(testSecret))
 				return AuthToken{token: tokenString}
 			},
 			wantErr: jwt.ErrTokenExpired,
@@ -113,7 +113,7 @@ func TestTokenValidation(t *testing.T) {
 					},
 				}
 				token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-				tokenString, _ := token.SignedString(testSecret)
+				tokenString, _ := token.SignedString([]byte(testSecret))
 				return AuthToken{token: tokenString}
 			},
 			wantErr: jwt.ErrTokenNotValidYet,
@@ -132,7 +132,7 @@ func TestTokenValidation(t *testing.T) {
 					},
 				}
 				token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-				tokenString, _ := token.SignedString(testSecret)
+				tokenString, _ := token.SignedString([]byte(testSecret))
 				return AuthToken{token: tokenString}
 			},
 			wantErr: jwt.ErrTokenInvalidIssuer,
@@ -151,7 +151,7 @@ func TestTokenValidation(t *testing.T) {
 					},
 				}
 				token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-				tokenString, _ := token.SignedString(testSecret)
+				tokenString, _ := token.SignedString([]byte(testSecret))
 				return AuthToken{token: tokenString}
 			},
 			wantErr: jwt.ErrTokenInvalidAudience,

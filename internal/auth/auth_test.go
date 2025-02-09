@@ -15,7 +15,7 @@ func TestValidateCredentials(t *testing.T) {
 	auth := New(Config{
 		RootUsername:   "admin",
 		HashedPassword: hashedPassword,
-		TokenSecret:    []byte("test-secret"),
+		TokenSecret:    "test-secret",
 		TokenDuration:  time.Hour,
 		TokenIssuer:    "test-issuer",
 		TokenAudience:  "test-audience",

@@ -33,7 +33,7 @@ func (a *Auth) GenerateAuthToken(subject string) (AuthToken, error) {
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	signedToken, err := token.SignedString(a.cfg.TokenSecret)
+	signedToken, err := token.SignedString([]byte(a.cfg.TokenSecret))
 	if err != nil {
 		return AuthToken{}, fmt.Errorf("failed to sign token: %w", err)
 	}
@@ -53,7 +53,7 @@ func (a *Auth) ValidateAuthToken(token AuthToken) (*Claims, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
 		}
-		return a.cfg.TokenSecret, nil
+		return []byte(a.cfg.TokenSecret), nil
 	}, options...)
 
 	if err != nil {

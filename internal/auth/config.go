@@ -5,7 +5,7 @@ import "time"
 type Config struct {
 	RootUsername   string
 	HashedPassword string
-	TokenSecret    []byte
+	TokenSecret    string
 	TokenDuration  time.Duration
 	TokenIssuer    string
 	TokenAudience  string
