@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -66,6 +67,27 @@ func New(cfg Config, logger *slog.Logger, frontend fs.FS, auth Authenticator) (*
 	return srv, nil
 }
 
+func (s *Server) authMiddleware(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		cookie, err := r.Cookie(authCookieName)
+		if err != nil {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+
+		token, err := s.auth.ValidateToken(cookie.Value)
+		if err != nil {
+			http.Error(w, "Invalid token", http.StatusUnauthorized)
+			return
+		}
+
+		// Store token in context for later use if needed
+		ctx := r.Context()
+		ctx = context.WithValue(ctx, "token", token)
+		next(w, r.WithContext(ctx))
+	}
+}
+
 func (s *Server) Start() error {
 	// Ensure upload directory exists
 	if err := os.MkdirAll(s.cfg.UploadDir, os.ModePerm); err != nil {
@@ -75,21 +97,25 @@ func (s *Server) Start() error {
 	frontendFS := http.FileServer(http.FS(s.frontend))
 
 	mux := http.NewServeMux()
-	httpMux := http.NewServeMux()
-	httpMux.Handle("/", frontendFS)
-	httpMux.HandleFunc("/api/v1/login", s.handleLogin)
-	httpMux.HandleFunc("/api/v1/files", s.handleFiles)
-	httpMux.HandleFunc("/api/v1/files/{fileName}", s.handleFileDelete)
-	httpMux.HandleFunc("/api/v1/stream/{fileName}", s.streamFile)
-	mux.Handle("/", middlewares.LoggerMiddleware(s.logger)(
-		middlewares.CORSMiddleware(s.cfg.CORS)(httpMux),
-	))
 
-	mux.HandleFunc("/api/v1/ws", s.handleWebSocket)
+	// Public endpoints
+	mux.HandleFunc("/", frontendFS.ServeHTTP)
+	mux.HandleFunc("/api/v1/login", s.handleLogin)
+
+	// Protected endpoints
+	mux.HandleFunc("/api/v1/files", s.authMiddleware(s.handleFiles))
+	mux.HandleFunc("/api/v1/files/{fileName}", s.authMiddleware(s.handleFileDelete))
+	mux.HandleFunc("/api/v1/stream/{fileName}", s.authMiddleware(s.streamFile))
+	mux.HandleFunc("/api/v1/ws", s.authMiddleware(s.handleWebSocket))
+
+	// Apply global middleware
+	handler := middlewares.LoggerMiddleware(s.logger)(
+		middlewares.CORSMiddleware(s.cfg.CORS)(mux),
+	)
 
 	srv := &http.Server{
 		Addr:    fmt.Sprintf(":%d", s.cfg.Port),
-		Handler: mux,
+		Handler: handler,
 	}
 
 	s.logger.Info("starting server", "port", s.cfg.Port)
@@ -232,34 +258,6 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	go client.ReadPump()
 }
 
-// writeCookie sets a secure HTTP-only cookie
-func (s *Server) writeCookie(w http.ResponseWriter, name, value string, expires time.Time) {
-	cookie := &http.Cookie{
-		Name:     name,
-		Value:    value,
-		Expires:  expires,
-		Path:     cookiePath,
-		HttpOnly: true,
-		Secure:   true,
-		SameSite: http.SameSiteLaxMode,
-	}
-	http.SetCookie(w, cookie)
-}
-
-// readCookie safely reads a cookie by name
-func (s *Server) readCookie(r *http.Request, name string) (string, error) {
-	cookie, err := r.Cookie(name)
-	if err != nil {
-		return "", err
-	}
-	return cookie.Value, nil
-}
-
-// clearCookie removes a cookie by setting its expiration to the past
-func (s *Server) clearCookie(w http.ResponseWriter, name string) {
-	s.writeCookie(w, name, "", time.Unix(0, 0))
-}
-
 type loginRequest struct {
 	Username string `json:"username"`
 	Password string `json:"password"`
@@ -300,7 +298,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Set auth cookie
-	s.writeCookie(w, authCookieName, token.String(), token.ExpiresAt())
+	writeCookie(w, authCookieName, token.String(), token.ExpiresAt())
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(loginResponse{
