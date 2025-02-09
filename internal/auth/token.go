@@ -12,11 +12,16 @@ type Claims struct {
 }
 
 type Token struct {
-	token string
+	token     string
+	expiresAt time.Time
 }
 
 func (a Token) String() string {
 	return a.token
+}
+
+func (a Token) ExpiresAt() time.Time {
+	return a.expiresAt
 }
 
 func (a *Auth) GenerateAuthToken(subject string) (Token, error) {
@@ -38,7 +43,10 @@ func (a *Auth) GenerateAuthToken(subject string) (Token, error) {
 		return Token{}, fmt.Errorf("failed to sign token: %w", err)
 	}
 
-	return Token{signedToken}, nil
+	return Token{
+		token:     signedToken,
+		expiresAt: now.Add(a.cfg.TokenDuration),
+	}, nil
 }
 
 func (a *Auth) ValidateAuthToken(token Token) (*Claims, error) {

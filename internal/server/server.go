@@ -18,6 +18,11 @@ import (
 	ws "github.com/terrabitz/rpg-audio-streamer/internal/websocket"
 )
 
+const (
+	authCookieName = "auth_token"
+	cookiePath     = "/"
+)
+
 type Server struct {
 	cfg      Config
 	logger   *slog.Logger
@@ -67,6 +72,7 @@ func (s *Server) Start() error {
 	mux := http.NewServeMux()
 	httpMux := http.NewServeMux()
 	httpMux.Handle("/", frontendFS)
+	httpMux.HandleFunc("/api/v1/login", s.handleLogin)
 	httpMux.HandleFunc("/api/v1/files", s.handleFiles)
 	httpMux.HandleFunc("/api/v1/files/{fileName}", s.handleFileDelete)
 	httpMux.HandleFunc("/api/v1/stream/{fileName}", s.streamFile)
@@ -219,4 +225,80 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 
 	go client.WritePump()
 	go client.ReadPump()
+}
+
+// writeCookie sets a secure HTTP-only cookie
+func (s *Server) writeCookie(w http.ResponseWriter, name, value string, expires time.Time) {
+	cookie := &http.Cookie{
+		Name:     name,
+		Value:    value,
+		Expires:  expires,
+		Path:     cookiePath,
+		HttpOnly: true,
+		Secure:   true,
+		SameSite: http.SameSiteLaxMode,
+	}
+	http.SetCookie(w, cookie)
+}
+
+// readCookie safely reads a cookie by name
+func (s *Server) readCookie(r *http.Request, name string) (string, error) {
+	cookie, err := r.Cookie(name)
+	if err != nil {
+		return "", err
+	}
+	return cookie.Value, nil
+}
+
+// clearCookie removes a cookie by setting its expiration to the past
+func (s *Server) clearCookie(w http.ResponseWriter, name string) {
+	s.writeCookie(w, name, "", time.Unix(0, 0))
+}
+
+type loginRequest struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
+}
+
+type loginResponse struct {
+	Success bool   `json:"success"`
+	Error   string `json:"error,omitempty"`
+}
+
+func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req loginRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		s.logger.Error("failed to decode login request", "error", err)
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	creds := auth.Credentials{
+		Username: req.Username,
+		Password: req.Password,
+	}
+
+	token, err := s.auth.ValidateCredentials(creds)
+	if err != nil {
+		s.logger.Info("login failed", "username", req.Username)
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(loginResponse{
+			Success: false,
+			Error:   "Invalid credentials",
+		})
+		return
+	}
+
+	// Set auth cookie
+	s.writeCookie(w, authCookieName, token.String(), token.ExpiresAt())
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(loginResponse{
+		Success: true,
+	})
 }
