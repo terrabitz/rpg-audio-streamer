@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"fmt"
 	"log/slog"
 )
 
@@ -9,9 +10,43 @@ type Auth struct {
 	logger *slog.Logger
 }
 
+type Credentials struct {
+	Username string
+	Password string
+}
+
 func New(config Config, logger *slog.Logger) *Auth {
 	return &Auth{
 		config: config,
 		logger: logger,
 	}
+}
+
+func (a *Auth) ValidateCredentials(creds Credentials) (string, error) {
+	// Validate username
+	if creds.Username != a.config.RootUsername {
+		a.logger.Debug("invalid username attempt", "username", creds.Username)
+		return "", ErrInvalidCredentials
+	}
+
+	// Validate password
+	valid, err := VerifyPassword(creds.Password, a.config.HashedPassword)
+	if err != nil {
+		a.logger.Error("failed to verify password", "error", err)
+		return "", fmt.Errorf("failed to verify password: %w", err)
+	}
+
+	if !valid {
+		a.logger.Debug("invalid password attempt", "username", creds.Username)
+		return "", ErrInvalidCredentials
+	}
+
+	// Generate JWT on successful validation
+	token, err := a.GenerateAuthToken(creds.Username)
+	if err != nil {
+		a.logger.Error("failed to generate token", "error", err)
+		return "", fmt.Errorf("failed to generate token: %w", err)
+	}
+
+	return token, nil
 }
