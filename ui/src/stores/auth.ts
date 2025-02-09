@@ -5,7 +5,7 @@ import { ref } from 'vue'
 
 export const useAuthStore = defineStore('auth', () => {
   const authenticated = ref(false)
-  const loading = ref(true)
+  const loading = ref(false)
 
   async function checkAuthStatus() {
     try {

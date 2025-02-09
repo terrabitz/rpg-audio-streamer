@@ -1,4 +1,3 @@
-import { useAuthStore } from '@/stores/auth'
 import { createRouter, createWebHistory } from 'vue-router'
 import HomeView from '../views/HomeView.vue'
 
@@ -21,18 +20,6 @@ const router = createRouter({
       component: () => import('../views/LoginView.vue'),
     },
   ],
-})
-
-router.beforeEach(async (to) => {
-  const auth = useAuthStore()
-
-  if (to.name !== 'login' && !auth.authenticated) {
-    return { name: 'login' }
-  }
-
-  if (to.name === 'login' && auth.authenticated) {
-    return { name: 'table' }
-  }
 })
 
 export default router
