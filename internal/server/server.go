@@ -100,6 +100,8 @@ func (s *Server) Start() error {
 	// Public endpoints
 	mux.HandleFunc("/", frontendFS.ServeHTTP)
 	mux.HandleFunc("/api/v1/login", s.handleLogin)
+	mux.HandleFunc("/api/v1/auth/status", s.handleAuthStatus)
+	mux.HandleFunc("/api/v1/auth/logout", s.handleLogout)
 
 	// Protected endpoints
 	mux.HandleFunc("/api/v1/files", s.authMiddleware(s.handleFiles))
@@ -265,6 +267,38 @@ type loginRequest struct {
 type loginResponse struct {
 	Success bool   `json:"success"`
 	Error   string `json:"error,omitempty"`
+}
+
+type authStatusResponse struct {
+	Authenticated bool `json:"authenticated"`
+}
+
+func (s *Server) handleAuthStatus(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	cookie, err := readCookie(r, authCookieName)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(authStatusResponse{Authenticated: false})
+		return
+	}
+
+	_, err = s.auth.ValidateToken(cookie)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(authStatusResponse{Authenticated: err == nil})
+}
+
+func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	s.clearCookie(w, authCookieName)
+	w.WriteHeader(http.StatusOK)
 }
 
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
