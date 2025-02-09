@@ -23,13 +23,18 @@ const (
 	cookiePath     = "/"
 )
 
+type Authenticator interface {
+	ValidateCredentials(creds auth.Credentials) (*auth.Token, error)
+	ValidateToken(tokenStr string) (*auth.Token, error)
+}
+
 type Server struct {
 	cfg      Config
 	logger   *slog.Logger
 	frontend fs.FS
 	hub      *ws.Hub
 	upgrader websocket.Upgrader
-	auth     *auth.Auth
+	auth     Authenticator
 }
 
 type Config struct {
@@ -39,7 +44,7 @@ type Config struct {
 	CORS middlewares.CorsConfig
 }
 
-func New(cfg Config, logger *slog.Logger, frontend fs.FS, auth *auth.Auth) (*Server, error) {
+func New(cfg Config, logger *slog.Logger, frontend fs.FS, auth Authenticator) (*Server, error) {
 	hub := ws.NewHub(logger)
 
 	srv := &Server{

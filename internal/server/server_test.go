@@ -12,6 +12,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/golang-jwt/jwt/v5"
+	"github.com/terrabitz/rpg-audio-streamer/internal/auth"
 	"github.com/terrabitz/rpg-audio-streamer/internal/middlewares"
 	"github.com/terrabitz/rpg-audio-streamer/internal/types"
 )
@@ -19,6 +21,29 @@ import (
 type testServer struct {
 	*Server
 	tempDir string
+}
+
+type mockAuth struct {
+	validUser     string
+	validPassword string
+	token         *auth.Token
+}
+
+// Verify mockAuth implements Authenticator interface
+var _ Authenticator = (*mockAuth)(nil)
+
+func (m *mockAuth) ValidateCredentials(creds auth.Credentials) (*auth.Token, error) {
+	if creds.Username == m.validUser && creds.Password == m.validPassword {
+		return m.token, nil
+	}
+	return nil, auth.ErrInvalidCredentials
+}
+
+func (m *mockAuth) ValidateToken(tokenStr string) (*auth.Token, error) {
+	if tokenStr == m.token.String() {
+		return m.token, nil
+	}
+	return nil, jwt.ErrTokenInvalidClaims
 }
 
 func setupTestServer(t *testing.T) *testServer {
@@ -30,12 +55,18 @@ func setupTestServer(t *testing.T) *testServer {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
 
+	mockAuth := &mockAuth{
+		validUser:     "testuser",
+		validPassword: "testpass",
+		token:         &auth.Token{},
+	}
+
 	// Create test server
 	srv, err := New(Config{
 		Port:      8080,
 		UploadDir: tempDir,
 		CORS:      middlewares.CorsConfig{},
-	}, slog.New(slog.NewTextHandler(io.Discard, nil)), nil, nil)
+	}, slog.New(slog.NewTextHandler(io.Discard, nil)), nil, mockAuth)
 	if err != nil {
 		t.Fatalf("failed to create server: %v", err)
 	}
@@ -225,4 +256,107 @@ func TestStreamFile(t *testing.T) {
 	if rec.Code != http.StatusNotFound {
 		t.Errorf("expected status NotFound; got %v", rec.Code)
 	}
+}
+
+func TestHandleLogin(t *testing.T) {
+	ts := setupTestServer(t)
+	defer ts.cleanup(t)
+
+	tests := []struct {
+		name            string
+		credentials     loginRequest
+		expectedCode    int
+		expectedError   string
+		checkAuthCookie bool
+	}{
+		{
+			name: "successful login",
+			credentials: loginRequest{
+				Username: "testuser",
+				Password: "testpass",
+			},
+			expectedCode:    http.StatusOK,
+			checkAuthCookie: true,
+		},
+		{
+			name: "invalid credentials",
+			credentials: loginRequest{
+				Username: "wronguser",
+				Password: "wrongpass",
+			},
+			expectedCode:  http.StatusUnauthorized,
+			expectedError: "Invalid credentials",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			body, err := json.Marshal(tt.credentials)
+			if err != nil {
+				t.Fatalf("failed to marshal request body: %v", err)
+			}
+
+			req := httptest.NewRequest(http.MethodPost, "/api/v1/login", bytes.NewReader(body))
+			req.Header.Set("Content-Type", "application/json")
+			rec := httptest.NewRecorder()
+
+			ts.handleLogin(rec, req)
+
+			if rec.Code != tt.expectedCode {
+				t.Errorf("expected status %v; got %v", tt.expectedCode, rec.Code)
+			}
+
+			var resp loginResponse
+			if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+				t.Fatalf("failed to decode response: %v", err)
+			}
+
+			if tt.expectedError != "" && resp.Error != tt.expectedError {
+				t.Errorf("expected error %q; got %q", tt.expectedError, resp.Error)
+			}
+
+			if tt.checkAuthCookie {
+				cookies := rec.Result().Cookies()
+				var authCookie *http.Cookie
+				for _, cookie := range cookies {
+					if cookie.Name == authCookieName {
+						authCookie = cookie
+						break
+					}
+				}
+				if authCookie == nil {
+					t.Error("auth cookie not set")
+				}
+				if !authCookie.HttpOnly {
+					t.Error("auth cookie should be HTTP-only")
+				}
+				if !authCookie.Secure {
+					t.Error("auth cookie should be secure")
+				}
+			}
+		})
+	}
+
+	t.Run("invalid method", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/login", nil)
+		rec := httptest.NewRecorder()
+
+		ts.handleLogin(rec, req)
+
+		if rec.Code != http.StatusMethodNotAllowed {
+			t.Errorf("expected status MethodNotAllowed; got %v", rec.Code)
+		}
+	})
+
+	t.Run("invalid json", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/login", bytes.NewReader([]byte("invalid json")))
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+
+		ts.handleLogin(rec, req)
+
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("expected status BadRequest; got %v", rec.Code)
+		}
+	})
 }
