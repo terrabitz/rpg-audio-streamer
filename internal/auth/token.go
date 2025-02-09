@@ -11,7 +11,15 @@ type Claims struct {
 	jwt.RegisteredClaims
 }
 
-func (a *Auth) GenerateAuthToken(subject string) (string, error) {
+type AuthToken struct {
+	token string
+}
+
+func (a AuthToken) String() string {
+	return a.token
+}
+
+func (a *Auth) GenerateAuthToken(subject string) (AuthToken, error) {
 	now := time.Now()
 	claims := Claims{
 		RegisteredClaims: jwt.RegisteredClaims{
@@ -27,13 +35,13 @@ func (a *Auth) GenerateAuthToken(subject string) (string, error) {
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	signedToken, err := token.SignedString(a.cfg.TokenSecret)
 	if err != nil {
-		return "", fmt.Errorf("failed to sign token: %w", err)
+		return AuthToken{}, fmt.Errorf("failed to sign token: %w", err)
 	}
 
-	return signedToken, nil
+	return AuthToken{signedToken}, nil
 }
 
-func (a *Auth) ValidateAuthToken(tokenString string) (*Claims, error) {
+func (a *Auth) ValidateAuthToken(token AuthToken) (*Claims, error) {
 	options := []jwt.ParserOption{
 		jwt.WithAudience(a.cfg.TokenAudience),
 		jwt.WithIssuer(a.cfg.TokenIssuer),
@@ -41,7 +49,7 @@ func (a *Auth) ValidateAuthToken(tokenString string) (*Claims, error) {
 		jwt.WithValidMethods([]string{"HS256"}),
 	}
 
-	token, err := jwt.ParseWithClaims(tokenString, &Claims{}, func(token *jwt.Token) (interface{}, error) {
+	parsedToken, err := jwt.ParseWithClaims(token.String(), &Claims{}, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
 		}
@@ -52,8 +60,8 @@ func (a *Auth) ValidateAuthToken(tokenString string) (*Claims, error) {
 		return nil, err
 	}
 
-	claims, ok := token.Claims.(*Claims)
-	if !ok || !token.Valid {
+	claims, ok := parsedToken.Claims.(*Claims)
+	if !ok || !parsedToken.Valid {
 		return nil, jwt.ErrTokenInvalidClaims
 	}
 

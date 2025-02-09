@@ -22,30 +22,30 @@ func New(config Config, logger *slog.Logger) *Auth {
 	}
 }
 
-func (a *Auth) ValidateCredentials(creds Credentials) (string, error) {
+func (a *Auth) ValidateCredentials(creds Credentials) (AuthToken, error) {
 	// Validate username
 	if creds.Username != a.cfg.RootUsername {
 		a.logger.Debug("invalid username attempt", "username", creds.Username)
-		return "", ErrInvalidCredentials
+		return AuthToken{}, ErrInvalidCredentials
 	}
 
 	// Validate password
 	valid, err := VerifyPassword(creds.Password, a.cfg.HashedPassword)
 	if err != nil {
 		a.logger.Error("failed to verify password", "error", err)
-		return "", fmt.Errorf("failed to verify password: %w", err)
+		return AuthToken{}, fmt.Errorf("failed to verify password: %w", err)
 	}
 
 	if !valid {
 		a.logger.Debug("invalid password attempt", "username", creds.Username)
-		return "", ErrInvalidCredentials
+		return AuthToken{}, ErrInvalidCredentials
 	}
 
 	// Generate JWT on successful validation
 	token, err := a.GenerateAuthToken(creds.Username)
 	if err != nil {
 		a.logger.Error("failed to generate token", "error", err)
-		return "", fmt.Errorf("failed to generate token: %w", err)
+		return AuthToken{}, fmt.Errorf("failed to generate token: %w", err)
 	}
 
 	return token, nil

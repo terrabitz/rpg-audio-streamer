@@ -65,7 +65,7 @@ func TestValidateCredentials(t *testing.T) {
 				if err != tt.wantErr {
 					t.Errorf("ValidateCredentials() error = %v, wantErr %v", err, tt.wantErr)
 				}
-				if token != "" {
+				if token.String() != "" {
 					t.Errorf("ValidateCredentials() token = %v, want empty on error", token)
 				}
 				return
