@@ -27,14 +27,11 @@ type Server struct {
 	auth     *auth.Auth
 }
 
-// Config holds the configuration for the server
 type Config struct {
-	// Port the server will listen on
-	Port int
-	// CORS configuration for the server
-	CORS middlewares.CorsConfig
-	// Optional upload directory path. Defaults to "./uploads"
+	Port      int
 	UploadDir string
+
+	CORS middlewares.CorsConfig
 }
 
 func New(cfg Config, logger *slog.Logger, frontend fs.FS, auth *auth.Auth) (*Server, error) {
