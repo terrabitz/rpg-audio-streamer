@@ -163,3 +163,81 @@ func TestDecodeHash(t *testing.T) {
 		})
 	}
 }
+
+func BenchmarkHashPassword(b *testing.B) {
+	password := "mySecurePassword123!"
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		hash, err := HashPassword(password)
+		if err != nil {
+			b.Fatalf("HashPassword failed: %v", err)
+		}
+		// Prevent compiler optimization
+		if hash == "" {
+			b.Fatal("empty hash")
+		}
+	}
+}
+
+func BenchmarkVerifyPassword(b *testing.B) {
+	password := "mySecurePassword123!"
+	hash, err := HashPassword(password)
+	if err != nil {
+		b.Fatalf("HashPassword failed: %v", err)
+	}
+
+	benchmarks := []struct {
+		name     string
+		password string
+		hash     string
+	}{
+		{
+			name:     "Correct password",
+			password: password,
+			hash:     hash,
+		},
+		{
+			name:     "Wrong password",
+			password: "wrongPassword123!",
+			hash:     hash,
+		},
+	}
+
+	for _, bm := range benchmarks {
+		b.Run(bm.name, func(b *testing.B) {
+			b.ResetTimer()
+
+			for i := 0; i < b.N; i++ {
+				valid, err := VerifyPassword(bm.password, bm.hash)
+				if err != nil {
+					b.Fatalf("VerifyPassword failed: %v", err)
+				}
+				// Prevent compiler optimization
+				if valid && bm.name == "Wrong password" {
+					b.Fatal("wrong password validated successfully")
+				}
+			}
+		})
+	}
+}
+
+func BenchmarkParallelVerifyPassword(b *testing.B) {
+	password := "mySecurePassword123!"
+	hash, err := HashPassword(password)
+	if err != nil {
+		b.Fatalf("HashPassword failed: %v", err)
+	}
+
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			valid, err := VerifyPassword(password, hash)
+			if err != nil {
+				b.Fatalf("VerifyPassword failed: %v", err)
+			}
+			if !valid {
+				b.Fatal("valid password not verified")
+			}
+		}
+	})
+}
