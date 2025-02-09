@@ -11,7 +11,7 @@ type Claims struct {
 	jwt.RegisteredClaims
 }
 
-func (a *Auth) GenerateToken(subject string) (string, error) {
+func (a *Auth) GenerateAuthToken(subject string) (string, error) {
 	now := time.Now()
 	claims := Claims{
 		RegisteredClaims: jwt.RegisteredClaims{
@@ -33,7 +33,7 @@ func (a *Auth) GenerateToken(subject string) (string, error) {
 	return signedToken, nil
 }
 
-func (a *Auth) ValidateToken(tokenString string) (*Claims, error) {
+func (a *Auth) ValidateAuthToken(tokenString string) (*Claims, error) {
 	options := []jwt.ParserOption{
 		jwt.WithAudience(a.config.TokenAudience),
 		jwt.WithIssuer(a.config.TokenIssuer),

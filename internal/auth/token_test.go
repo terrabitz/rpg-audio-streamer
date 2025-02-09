@@ -36,14 +36,14 @@ func TestTokenGeneration(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			token, err := auth.GenerateToken(tt.subject)
+			token, err := auth.GenerateAuthToken(tt.subject)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("GenerateToken() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
 
 			if !tt.wantErr {
-				claims, err := auth.ValidateToken(token)
+				claims, err := auth.ValidateAuthToken(token)
 				if err != nil {
 					t.Errorf("ValidateToken() error = %v", err)
 					return
@@ -74,7 +74,7 @@ func TestTokenValidation(t *testing.T) {
 		{
 			name: "Valid token",
 			setup: func() string {
-				token, _ := auth.GenerateToken("test-user")
+				token, _ := auth.GenerateAuthToken("test-user")
 				return token
 			},
 			wantErr: nil,
@@ -176,7 +176,7 @@ func TestTokenValidation(t *testing.T) {
 		{
 			name: "Tampered signature",
 			setup: func() string {
-				token, _ := auth.GenerateToken("test-user")
+				token, _ := auth.GenerateAuthToken("test-user")
 				return token[:len(token)-2] + "00" // Modify last two chars
 			},
 			wantErr: jwt.ErrTokenSignatureInvalid,
@@ -200,7 +200,7 @@ func TestTokenValidation(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			token := tt.setup()
-			claims, err := auth.ValidateToken(token)
+			claims, err := auth.ValidateAuthToken(token)
 
 			if tt.wantErr != nil {
 				if err == nil {
