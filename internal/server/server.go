@@ -24,7 +24,7 @@ type Server struct {
 	frontend fs.FS
 	hub      *ws.Hub
 	upgrader websocket.Upgrader
-	auth     *auth.Service
+	auth     *auth.Auth
 }
 
 // Config holds the configuration for the server
@@ -35,20 +35,16 @@ type Config struct {
 	CORS middlewares.CorsConfig
 	// Optional upload directory path. Defaults to "./uploads"
 	UploadDir string
-	// GitHub OAuth configuration
-	GitHub auth.GitHubConfig
 }
 
 func New(cfg Config, logger *slog.Logger, frontend fs.FS) (*Server, error) {
 	hub := ws.NewHub(logger)
-	authService := auth.NewService(cfg.GitHub, logger)
 
 	srv := &Server{
 		logger:   logger,
 		frontend: frontend,
 		cfg:      cfg,
 		hub:      hub,
-		auth:     authService,
 		upgrader: websocket.Upgrader{
 			ReadBufferSize:  1024,
 			WriteBufferSize: 1024,
@@ -70,18 +66,12 @@ func (s *Server) Start() error {
 
 	frontendFS := http.FileServer(http.FS(s.frontend))
 
-	authMiddleware := middlewares.AuthMiddleware(s.auth)
-
 	mux := http.NewServeMux()
 	httpMux := http.NewServeMux()
 	httpMux.Handle("/", frontendFS)
-	httpMux.Handle("/api/v1/files", authMiddleware(http.HandlerFunc(s.handleFiles)))
-	httpMux.Handle("/api/v1/files/{fileName}", authMiddleware(http.HandlerFunc(s.handleFileDelete)))
-	httpMux.Handle("/api/v1/stream/{fileName}", authMiddleware(http.HandlerFunc(s.streamFile)))
-	httpMux.HandleFunc("/api/v1/auth/github", s.auth.HandleGitHubLogin)
-	httpMux.HandleFunc("/api/v1/auth/github/callback", s.auth.HandleGitHubCallback)
-	httpMux.HandleFunc("/api/v1/auth/status", s.auth.HandleAuthStatus)
-	httpMux.HandleFunc("/api/v1/auth/logout", s.auth.HandleLogout)
+	httpMux.HandleFunc("/api/v1/files", s.handleFiles)
+	httpMux.HandleFunc("/api/v1/files/{fileName}", s.handleFileDelete)
+	httpMux.HandleFunc("/api/v1/stream/{fileName}", s.streamFile)
 	mux.Handle("/", middlewares.LoggerMiddleware(s.logger)(
 		middlewares.CORSMiddleware(s.cfg.CORS)(httpMux),
 	))
