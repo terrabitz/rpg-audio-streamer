@@ -6,7 +6,7 @@ import (
 )
 
 type Auth struct {
-	config Config
+	cfg    Config
 	logger *slog.Logger
 }
 
@@ -17,20 +17,20 @@ type Credentials struct {
 
 func New(config Config, logger *slog.Logger) *Auth {
 	return &Auth{
-		config: config,
+		cfg:    config,
 		logger: logger,
 	}
 }
 
 func (a *Auth) ValidateCredentials(creds Credentials) (string, error) {
 	// Validate username
-	if creds.Username != a.config.RootUsername {
+	if creds.Username != a.cfg.RootUsername {
 		a.logger.Debug("invalid username attempt", "username", creds.Username)
 		return "", ErrInvalidCredentials
 	}
 
 	// Validate password
-	valid, err := VerifyPassword(creds.Password, a.config.HashedPassword)
+	valid, err := VerifyPassword(creds.Password, a.cfg.HashedPassword)
 	if err != nil {
 		a.logger.Error("failed to verify password", "error", err)
 		return "", fmt.Errorf("failed to verify password: %w", err)
