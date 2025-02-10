@@ -1,3 +1,4 @@
+import { getWebSocketUrl } from '@/stores/websocket'
 import { onMounted, onUnmounted, ref } from 'vue'
 
 interface WSMessage {
@@ -6,12 +7,6 @@ interface WSMessage {
     fileName: string
     [key: string]: any
   }
-}
-
-function getWebSocketUrl(): string {
-  const apiUrl = new URL(import.meta.env.VITE_API_BASE_URL)
-  const wsProtocol = apiUrl.protocol === 'https:' ? 'wss:' : 'ws:'
-  return `${wsProtocol}//${apiUrl.host}${apiUrl.pathname}/ws`
 }
 
 export function useWebSocket(onMessage: (message: WSMessage) => void) {
