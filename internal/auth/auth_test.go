@@ -144,8 +144,8 @@ func TestValidateJoinToken(t *testing.T) {
 				return
 			}
 
-			if validatedToken.Role() != RolePlayer {
-				t.Errorf("ValidateJoinToken() role = %v, want %v", validatedToken.Role(), RolePlayer)
+			if validatedToken.Role != RolePlayer {
+				t.Errorf("ValidateJoinToken() role = %v, want %v", validatedToken.Role, RolePlayer)
 			}
 		})
 	}
