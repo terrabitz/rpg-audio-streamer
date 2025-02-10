@@ -288,7 +288,8 @@ type loginResponse struct {
 }
 
 type authStatusResponse struct {
-	Authenticated bool `json:"authenticated"`
+	Authenticated bool      `json:"authenticated"`
+	Role          auth.Role `json:"role,omitempty"`
 }
 
 type joinTokenResponse struct {
@@ -312,9 +313,17 @@ func (s *Server) handleAuthStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err = s.auth.ValidateToken(cookie)
+	token, err := s.auth.ValidateToken(cookie)
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(authStatusResponse{Authenticated: err == nil})
+	if err != nil {
+		json.NewEncoder(w).Encode(authStatusResponse{Authenticated: false})
+		return
+	}
+
+	json.NewEncoder(w).Encode(authStatusResponse{
+		Authenticated: true,
+		Role:          token.Role,
+	})
 }
 
 func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {

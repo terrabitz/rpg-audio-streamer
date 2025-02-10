@@ -451,6 +451,10 @@ func TestHandleAuthStatus(t *testing.T) {
 		if !resp.Authenticated {
 			t.Error("expected authenticated true; got false")
 		}
+
+		if resp.Role != auth.RoleGM {
+			t.Errorf("expected role %v; got %v", auth.RoleGM, resp.Role)
+		}
 	})
 
 	t.Run("without auth", func(t *testing.T) {
