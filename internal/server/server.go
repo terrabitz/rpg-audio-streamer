@@ -43,8 +43,8 @@ type Server struct {
 type Config struct {
 	Port      int
 	UploadDir string
-
-	CORS middlewares.CorsConfig
+	DevMode   bool
+	CORS      middlewares.CorsConfig
 }
 
 func New(cfg Config, logger *slog.Logger, frontend fs.FS, auth Authenticator) (*Server, error) {
@@ -125,7 +125,10 @@ func (s *Server) Start() error {
 
 	// Apply global middleware
 	handler := middlewares.LoggerMiddleware(s.logger)(
-		middlewares.CORSMiddleware(s.cfg.CORS)(mux),
+		middlewares.CORSMiddleware(middlewares.CorsConfig{
+			AllowedOrigins: s.cfg.CORS.AllowedOrigins,
+			DevMode:        s.cfg.DevMode,
+		})(mux),
 	)
 
 	mux = http.NewServeMux()
@@ -366,7 +369,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Set auth cookie
-	writeCookie(w, authCookieName, token.String(), token.ExpiresAt)
+	s.writeCookie(w, authCookieName, token.String(), token.ExpiresAt)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(loginResponse{
@@ -412,7 +415,7 @@ func (s *Server) handleJoin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeCookie(w, authCookieName, token.String(), token.ExpiresAt)
+	s.writeCookie(w, authCookieName, token.String(), token.ExpiresAt)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(loginResponse{
