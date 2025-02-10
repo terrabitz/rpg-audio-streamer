@@ -28,6 +28,7 @@ type mockAuth struct {
 	validUser     string
 	validPassword string
 	token         *auth.Token
+	joinToken     string
 }
 
 // Verify mockAuth implements Authenticator interface
@@ -47,6 +48,17 @@ func (m *mockAuth) ValidateToken(tokenStr string) (*auth.Token, error) {
 	return nil, jwt.ErrTokenInvalidClaims
 }
 
+func (m *mockAuth) GetJoinToken() string {
+	return m.joinToken
+}
+
+func (m *mockAuth) ValidateJoinToken(joinToken string) (*auth.Token, error) {
+	if joinToken == m.joinToken {
+		return m.token, nil
+	}
+	return nil, auth.ErrInvalidJoinToken
+}
+
 func setupTestServer(t *testing.T) *testServer {
 	t.Helper()
 
@@ -59,7 +71,8 @@ func setupTestServer(t *testing.T) *testServer {
 	mockAuth := &mockAuth{
 		validUser:     "testuser",
 		validPassword: "testpass",
-		token:         &auth.Token{},
+		token:         &auth.Token{Role: auth.RoleGM},
+		joinToken:     "valid-join-token",
 	}
 
 	// Create test server
@@ -107,16 +120,33 @@ func TestUploadFile(t *testing.T) {
 	part.Write(content)
 	writer.Close()
 
-	t.Run("with valid auth", func(t *testing.T) {
+	t.Run("with GM auth", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPost, "/api/v1/files", body)
 		req.Header.Set("Content-Type", writer.FormDataContentType())
 		addAuthCookie(req, ts.auth.(*mockAuth).token.String())
 		rec := httptest.NewRecorder()
 
-		ts.authMiddleware(ts.uploadFile)(rec, req)
+		ts.gmOnlyMiddleware(ts.uploadFile)(rec, req)
 
 		if rec.Code != http.StatusOK {
 			t.Errorf("expected status OK; got %v", rec.Code)
+		}
+	})
+
+	t.Run("with player auth", func(t *testing.T) {
+		// Create a player token
+		playerToken := &auth.Token{Role: auth.RolePlayer}
+		ts.auth.(*mockAuth).token = playerToken
+
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/files", body)
+		req.Header.Set("Content-Type", writer.FormDataContentType())
+		addAuthCookie(req, playerToken.String())
+		rec := httptest.NewRecorder()
+
+		ts.gmOnlyMiddleware(ts.uploadFile)(rec, req)
+
+		if rec.Code != http.StatusForbidden {
+			t.Errorf("expected status Forbidden; got %v", rec.Code)
 		}
 	})
 
@@ -125,7 +155,7 @@ func TestUploadFile(t *testing.T) {
 		req.Header.Set("Content-Type", writer.FormDataContentType())
 		rec := httptest.NewRecorder()
 
-		ts.authMiddleware(ts.uploadFile)(rec, req)
+		ts.gmOnlyMiddleware(ts.uploadFile)(rec, req)
 
 		if rec.Code != http.StatusUnauthorized {
 			t.Errorf("expected status Unauthorized; got %v", rec.Code)
@@ -153,12 +183,12 @@ func TestListFiles(t *testing.T) {
 		}
 	}
 
-	t.Run("with valid auth", func(t *testing.T) {
+	t.Run("with GM auth", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/api/v1/files", nil)
 		addAuthCookie(req, ts.auth.(*mockAuth).token.String())
 		rec := httptest.NewRecorder()
 
-		ts.authMiddleware(ts.listFiles)(rec, req)
+		ts.gmOnlyMiddleware(ts.listFiles)(rec, req)
 
 		if rec.Code != http.StatusOK {
 			t.Errorf("expected status OK; got %v", rec.Code)
@@ -192,11 +222,26 @@ func TestListFiles(t *testing.T) {
 		}
 	})
 
+	t.Run("with player auth", func(t *testing.T) {
+		playerToken := &auth.Token{Role: auth.RolePlayer}
+		ts.auth.(*mockAuth).token = playerToken
+
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/files", nil)
+		addAuthCookie(req, playerToken.String())
+		rec := httptest.NewRecorder()
+
+		ts.gmOnlyMiddleware(ts.listFiles)(rec, req)
+
+		if rec.Code != http.StatusForbidden {
+			t.Errorf("expected status Forbidden; got %v", rec.Code)
+		}
+	})
+
 	t.Run("without auth", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/api/v1/files", nil)
 		rec := httptest.NewRecorder()
 
-		ts.authMiddleware(ts.listFiles)(rec, req)
+		ts.gmOnlyMiddleware(ts.listFiles)(rec, req)
 
 		if rec.Code != http.StatusUnauthorized {
 			t.Errorf("expected status Unauthorized; got %v", rec.Code)
@@ -214,13 +259,13 @@ func TestDeleteFile(t *testing.T) {
 		t.Fatalf("failed to create test file: %v", err)
 	}
 
-	t.Run("with valid auth", func(t *testing.T) {
+	t.Run("with GM auth", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodDelete, "/api/v1/files/test.mp3", nil)
 		addAuthCookie(req, ts.auth.(*mockAuth).token.String())
 		rec := httptest.NewRecorder()
 		req.SetPathValue("fileName", "test.mp3")
 
-		ts.authMiddleware(ts.handleFileDelete)(rec, req)
+		ts.gmOnlyMiddleware(ts.handleFileDelete)(rec, req)
 
 		if rec.Code != http.StatusOK {
 			t.Errorf("expected status OK; got %v", rec.Code)
@@ -232,12 +277,28 @@ func TestDeleteFile(t *testing.T) {
 		}
 	})
 
+	t.Run("with player auth", func(t *testing.T) {
+		playerToken := &auth.Token{Role: auth.RolePlayer}
+		ts.auth.(*mockAuth).token = playerToken
+
+		req := httptest.NewRequest(http.MethodDelete, "/api/v1/files/test.mp3", nil)
+		addAuthCookie(req, playerToken.String())
+		rec := httptest.NewRecorder()
+		req.SetPathValue("fileName", "test.mp3")
+
+		ts.gmOnlyMiddleware(ts.handleFileDelete)(rec, req)
+
+		if rec.Code != http.StatusForbidden {
+			t.Errorf("expected status Forbidden; got %v", rec.Code)
+		}
+	})
+
 	t.Run("without auth", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodDelete, "/api/v1/files/test.mp3", nil)
 		rec := httptest.NewRecorder()
 		req.SetPathValue("fileName", "test.mp3")
 
-		ts.authMiddleware(ts.handleFileDelete)(rec, req)
+		ts.gmOnlyMiddleware(ts.handleFileDelete)(rec, req)
 
 		if rec.Code != http.StatusUnauthorized {
 			t.Errorf("expected status Unauthorized; got %v", rec.Code)
@@ -250,7 +311,7 @@ func TestDeleteFile(t *testing.T) {
 	rec := httptest.NewRecorder()
 	req.SetPathValue("fileName", "nonexistent.mp3")
 
-	ts.authMiddleware(ts.handleFileDelete)(rec, req)
+	ts.handleFileDelete(rec, req)
 	if rec.Code != http.StatusNotFound {
 		t.Errorf("expected status NotFound; got %v", rec.Code)
 	}
@@ -438,6 +499,10 @@ func TestHandleAuthStatus(t *testing.T) {
 		if !resp.Authenticated {
 			t.Error("expected authenticated true; got false")
 		}
+
+		if resp.Role != auth.RoleGM {
+			t.Errorf("expected role %v; got %v", auth.RoleGM, resp.Role)
+		}
 	})
 
 	t.Run("without auth", func(t *testing.T) {
@@ -510,6 +575,160 @@ func TestHandleLogout(t *testing.T) {
 
 		if rec.Code != http.StatusMethodNotAllowed {
 			t.Errorf("expected status MethodNotAllowed; got %v", rec.Code)
+		}
+	})
+}
+
+func TestHandleJoinToken(t *testing.T) {
+	t.Run("with GM auth", func(t *testing.T) {
+		ts := setupTestServer(t)
+		defer ts.cleanup(t)
+
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/join-token", nil)
+		addAuthCookie(req, ts.auth.(*mockAuth).token.String())
+		rec := httptest.NewRecorder()
+
+		ts.gmOnlyMiddleware(ts.handleJoinToken)(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Errorf("expected status OK; got %v", rec.Code)
+		}
+
+		var resp joinTokenResponse
+		if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+			t.Fatalf("failed to decode response: %v", err)
+		}
+
+		if resp.Token != ts.auth.(*mockAuth).joinToken {
+			t.Errorf("expected token %q; got %q", ts.auth.(*mockAuth).joinToken, resp.Token)
+		}
+	})
+
+	t.Run("without GM auth", func(t *testing.T) {
+		ts := setupTestServer(t)
+		defer ts.cleanup(t)
+
+		// Create a non-GM token
+		playerToken := &auth.Token{Role: auth.RolePlayer}
+		ts.auth.(*mockAuth).token = playerToken
+
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/join-token", nil)
+		addAuthCookie(req, playerToken.String())
+		rec := httptest.NewRecorder()
+
+		ts.gmOnlyMiddleware(ts.handleJoinToken)(rec, req)
+
+		if rec.Code != http.StatusForbidden {
+			t.Errorf("expected status Forbidden; got %v", rec.Code)
+		}
+	})
+
+	t.Run("invalid method", func(t *testing.T) {
+		ts := setupTestServer(t)
+		defer ts.cleanup(t)
+
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/join-token", nil)
+		addAuthCookie(req, ts.auth.(*mockAuth).token.String())
+		rec := httptest.NewRecorder()
+
+		ts.gmOnlyMiddleware(ts.handleJoinToken)(rec, req)
+
+		if rec.Code != http.StatusMethodNotAllowed {
+			t.Errorf("expected status MethodNotAllowed; got %v", rec.Code)
+		}
+	})
+}
+
+func TestHandleJoin(t *testing.T) {
+	ts := setupTestServer(t)
+	defer ts.cleanup(t)
+
+	tests := []struct {
+		name           string
+		joinToken      string
+		expectedCode   int
+		expectedError  string
+		checkAuthToken bool
+	}{
+		{
+			name:           "successful join",
+			joinToken:      "valid-join-token",
+			expectedCode:   http.StatusOK,
+			checkAuthToken: true,
+		},
+		{
+			name:          "invalid join token",
+			joinToken:     "invalid-token",
+			expectedCode:  http.StatusUnauthorized,
+			expectedError: "Invalid join token",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := joinRequest{
+				Token: tt.joinToken,
+			}
+			body, err := json.Marshal(req)
+			if err != nil {
+				t.Fatalf("failed to marshal request body: %v", err)
+			}
+
+			httpReq := httptest.NewRequest(http.MethodPost, "/api/v1/join", bytes.NewReader(body))
+			httpReq.Header.Set("Content-Type", "application/json")
+			rec := httptest.NewRecorder()
+
+			ts.handleJoin(rec, httpReq)
+
+			if rec.Code != tt.expectedCode {
+				t.Errorf("expected status %v; got %v", tt.expectedCode, rec.Code)
+			}
+
+			var resp loginResponse
+			if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+				t.Fatalf("failed to decode response: %v", err)
+			}
+
+			if tt.expectedError != "" && resp.Error != tt.expectedError {
+				t.Errorf("expected error %q; got %q", tt.expectedError, resp.Error)
+			}
+
+			if tt.checkAuthToken {
+				cookies := rec.Result().Cookies()
+				var authCookie *http.Cookie
+				for _, cookie := range cookies {
+					if cookie.Name == authCookieName {
+						authCookie = cookie
+						break
+					}
+				}
+				if authCookie == nil {
+					t.Error("auth cookie not set")
+				}
+			}
+		})
+	}
+
+	t.Run("invalid method", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/join", nil)
+		rec := httptest.NewRecorder()
+
+		ts.handleJoin(rec, req)
+
+		if rec.Code != http.StatusMethodNotAllowed {
+			t.Errorf("expected status MethodNotAllowed; got %v", rec.Code)
+		}
+	})
+
+	t.Run("invalid json", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/join", bytes.NewReader([]byte("invalid json")))
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+
+		ts.handleJoin(rec, req)
+
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("expected status BadRequest; got %v", rec.Code)
 		}
 	})
 }

@@ -3,6 +3,7 @@ package auth
 import (
 	"fmt"
 	"log/slog"
+	"strings"
 )
 
 type Auth struct {
@@ -41,11 +42,30 @@ func (a *Auth) ValidateCredentials(creds Credentials) (*Token, error) {
 		return nil, ErrInvalidCredentials
 	}
 
-	// Generate JWT on successful validation
-	token, err := a.NewToken(creds.Username)
+	// Generate JWT on successful validation with GM role
+	token, err := a.NewToken(creds.Username, RoleGM)
 	if err != nil {
 		a.logger.Error("failed to generate token", "error", err)
 		return nil, fmt.Errorf("failed to generate token: %w", err)
+	}
+
+	return token, nil
+}
+
+func (a *Auth) GetJoinToken() string {
+	return a.cfg.JoinToken
+}
+
+func (a *Auth) ValidateJoinToken(joinToken string) (*Token, error) {
+	if !strings.EqualFold(joinToken, a.cfg.JoinToken) {
+		a.logger.Debug("invalid join token")
+		return nil, ErrInvalidJoinToken
+	}
+
+	token, err := a.NewToken("player", RolePlayer)
+	if err != nil {
+		a.logger.Error("failed to generate player token", "error", err)
+		return nil, fmt.Errorf("failed to generate player token: %w", err)
 	}
 
 	return token, nil

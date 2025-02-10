@@ -7,26 +7,32 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
+type Role string
+
+const (
+	RoleGM     Role = "gm"
+	RolePlayer Role = "player"
+)
+
 type Claims struct {
+	Role Role `json:"role"`
 	jwt.RegisteredClaims
 }
 
 type Token struct {
 	token     string
-	expiresAt time.Time
+	ExpiresAt time.Time
+	Role      Role
 }
 
 func (a Token) String() string {
 	return a.token
 }
 
-func (a Token) ExpiresAt() time.Time {
-	return a.expiresAt
-}
-
-func (a *Auth) NewToken(subject string) (*Token, error) {
+func (a *Auth) NewToken(subject string, role Role) (*Token, error) {
 	now := time.Now()
 	claims := Claims{
+		Role: role,
 		RegisteredClaims: jwt.RegisteredClaims{
 			Issuer:    a.cfg.TokenIssuer,
 			Subject:   subject,
@@ -45,7 +51,8 @@ func (a *Auth) NewToken(subject string) (*Token, error) {
 
 	return &Token{
 		token:     signedToken,
-		expiresAt: now.Add(a.cfg.TokenDuration),
+		ExpiresAt: now.Add(a.cfg.TokenDuration),
+		Role:      role,
 	}, nil
 }
 
@@ -75,6 +82,7 @@ func (a *Auth) ValidateToken(token string) (*Token, error) {
 
 	return &Token{
 		token:     token,
-		expiresAt: claims.ExpiresAt.Time,
+		ExpiresAt: claims.ExpiresAt.Time,
+		Role:      claims.Role,
 	}, nil
 }

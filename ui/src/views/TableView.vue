@@ -1,19 +1,47 @@
 <script setup lang="ts">
-import { onMounted } from 'vue'
+import { onMounted, ref } from 'vue'
 import AudioUploader from '../components/AudioUploader.vue'
 import FileList from '../components/FileList.vue'
+import { useBaseUrl } from '../composables/useBaseUrl'
 import { useAuthStore } from '../stores/auth'
+import { useJoinStore } from '../stores/join'
 
 const auth = useAuthStore()
+const joinStore = useJoinStore()
+const { getBaseUrl } = useBaseUrl()
+
+const joinUrl = ref<string>('')
+const isCopied = ref(false)
 
 onMounted(() => {
   auth.checkAuthStatus()
 })
+
+async function handleGetJoinToken() {
+  await joinStore.fetchToken()
+  if (joinStore.token) {
+    const url = `${getBaseUrl()}/join/${joinStore.token}`
+    await navigator.clipboard.writeText(url)
+    joinUrl.value = url
+    isCopied.value = true
+    setTimeout(() => {
+      isCopied.value = false
+    }, 2000)
+  }
+}
 </script>
 
 <template>
   <main class="container mx-auto px-4 py-8">
-    <h1 class="text-2xl font-bold">My Table</h1>
+    <div class="flex justify-between items-center mb-8">
+      <h1 class="text-2xl font-bold">My Table</h1>
+      <div class="flex items-center gap-4">
+        <v-btn v-if="auth.authenticated && auth.role === 'gm'" @click="handleGetJoinToken" :disabled="joinStore.loading"
+          :active="isCopied" width="200" active-color="green" :prepend-icon="isCopied ? '' : '$copy'">
+          {{ isCopied ? 'Copied to clipboard' : 'Get Join URL' }}
+        </v-btn>
+      </div>
+    </div>
 
     <template v-if="auth.loading">
       <div class="text-center py-12">

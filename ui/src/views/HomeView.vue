@@ -7,6 +7,9 @@ const auth = useAuthStore()
 <template>
   <v-container>
     <h1>Welcome to Skald Bot!</h1>
-    <v-btn v-if="auth.authenticated" to="table">My Table</v-btn>
+    <div v-if="auth.authenticated">
+      <v-btn v-if="auth.role == 'gm'" to="table">My Table</v-btn>
+      <v-btn v-if="auth.role == 'player'" to="player">Connect to Table</v-btn>
+    </div>
   </v-container>
 </template>

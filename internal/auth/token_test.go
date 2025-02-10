@@ -36,7 +36,7 @@ func TestTokenGeneration(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			token, err := auth.NewToken(tt.subject)
+			token, err := auth.NewToken(tt.subject, RoleGM)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("NewToken() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -82,7 +82,7 @@ func TestTokenValidation(t *testing.T) {
 		{
 			name: "Valid token",
 			setup: func() string {
-				token, _ := auth.NewToken("test-user")
+				token, _ := auth.NewToken("test-user", RoleGM)
 				return token.String()
 			},
 			wantErr: nil,
@@ -183,7 +183,7 @@ func TestTokenValidation(t *testing.T) {
 		{
 			name: "Tampered signature",
 			setup: func() string {
-				token, _ := auth.NewToken("test-user")
+				token, _ := auth.NewToken("test-user", RoleGM)
 				tokenStr := token.String()
 				return tokenStr[:len(tokenStr)-2] + "00"
 			},

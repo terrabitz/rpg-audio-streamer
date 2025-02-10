@@ -27,6 +27,8 @@ const (
 type Authenticator interface {
 	ValidateCredentials(creds auth.Credentials) (*auth.Token, error)
 	ValidateToken(tokenStr string) (*auth.Token, error)
+	GetJoinToken() string
+	ValidateJoinToken(joinToken string) (*auth.Token, error)
 }
 
 type Server struct {
@@ -41,8 +43,8 @@ type Server struct {
 type Config struct {
 	Port      int
 	UploadDir string
-
-	CORS middlewares.CorsConfig
+	DevMode   bool
+	CORS      middlewares.CorsConfig
 }
 
 func New(cfg Config, logger *slog.Logger, frontend fs.FS, auth Authenticator) (*Server, error) {
@@ -87,6 +89,17 @@ func (s *Server) authMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
+func (s *Server) gmOnlyMiddleware(next http.HandlerFunc) http.HandlerFunc {
+	return s.authMiddleware(func(w http.ResponseWriter, r *http.Request) {
+		token := r.Context().Value("token").(*auth.Token)
+		if token.Role != auth.RoleGM {
+			http.Error(w, "Forbidden", http.StatusForbidden)
+			return
+		}
+		next(w, r)
+	})
+}
+
 func (s *Server) Start() error {
 	// Ensure upload directory exists
 	if err := os.MkdirAll(s.cfg.UploadDir, os.ModePerm); err != nil {
@@ -100,17 +113,22 @@ func (s *Server) Start() error {
 	// Public endpoints
 	mux.HandleFunc("/", frontendFS.ServeHTTP)
 	mux.HandleFunc("/api/v1/login", s.handleLogin)
+	mux.HandleFunc("/api/v1/join", s.handleJoin)
 	mux.HandleFunc("/api/v1/auth/status", s.handleAuthStatus)
 	mux.HandleFunc("/api/v1/auth/logout", s.handleLogout)
 
 	// Protected endpoints
-	mux.HandleFunc("/api/v1/files", s.authMiddleware(s.handleFiles))
-	mux.HandleFunc("/api/v1/files/{fileName}", s.authMiddleware(s.handleFileDelete))
+	mux.HandleFunc("/api/v1/files", s.gmOnlyMiddleware(s.handleFiles))
+	mux.HandleFunc("/api/v1/files/{fileName}", s.gmOnlyMiddleware(s.handleFileDelete))
 	mux.HandleFunc("/api/v1/stream/{fileName}", s.authMiddleware(s.streamFile))
+	mux.HandleFunc("/api/v1/join-token", s.gmOnlyMiddleware(s.handleJoinToken))
 
 	// Apply global middleware
 	handler := middlewares.LoggerMiddleware(s.logger)(
-		middlewares.CORSMiddleware(s.cfg.CORS)(mux),
+		middlewares.CORSMiddleware(middlewares.CorsConfig{
+			AllowedOrigins: s.cfg.CORS.AllowedOrigins,
+			DevMode:        s.cfg.DevMode,
+		})(mux),
 	)
 
 	mux = http.NewServeMux()
@@ -273,7 +291,16 @@ type loginResponse struct {
 }
 
 type authStatusResponse struct {
-	Authenticated bool `json:"authenticated"`
+	Authenticated bool      `json:"authenticated"`
+	Role          auth.Role `json:"role,omitempty"`
+}
+
+type joinTokenResponse struct {
+	Token string `json:"token"`
+}
+
+type joinRequest struct {
+	Token string `json:"token"`
 }
 
 func (s *Server) handleAuthStatus(w http.ResponseWriter, r *http.Request) {
@@ -289,9 +316,17 @@ func (s *Server) handleAuthStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err = s.auth.ValidateToken(cookie)
+	token, err := s.auth.ValidateToken(cookie)
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(authStatusResponse{Authenticated: err == nil})
+	if err != nil {
+		json.NewEncoder(w).Encode(authStatusResponse{Authenticated: false})
+		return
+	}
+
+	json.NewEncoder(w).Encode(authStatusResponse{
+		Authenticated: true,
+		Role:          token.Role,
+	})
 }
 
 func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
@@ -334,7 +369,53 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Set auth cookie
-	writeCookie(w, authCookieName, token.String(), token.ExpiresAt())
+	s.writeCookie(w, authCookieName, token.String(), token.ExpiresAt)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(loginResponse{
+		Success: true,
+	})
+}
+
+func (s *Server) handleJoinToken(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	resp := joinTokenResponse{
+		Token: s.auth.GetJoinToken(),
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resp)
+}
+
+func (s *Server) handleJoin(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req joinRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		s.logger.Error("failed to decode join request", "error", err)
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	token, err := s.auth.ValidateJoinToken(req.Token)
+	if err != nil {
+		s.logger.Info("join failed", "error", err)
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(loginResponse{
+			Success: false,
+			Error:   "Invalid join token",
+		})
+		return
+	}
+
+	s.writeCookie(w, authCookieName, token.String(), token.ExpiresAt)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(loginResponse{

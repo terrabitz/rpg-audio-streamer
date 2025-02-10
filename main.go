@@ -2,7 +2,6 @@ package main
 
 import (
 	"embed"
-	"encoding/json"
 	"fmt"
 	"log"
 	"log/slog"
@@ -120,6 +119,12 @@ func main() {
 						Usage:       "Audience for JWT tokens",
 						Destination: &cfg.Auth.TokenAudience,
 					},
+					&cli.StringFlag{
+						Name:        "join-token",
+						EnvVars:     []string{"JOIN_TOKEN"},
+						Usage:       "The static join token to use",
+						Destination: &cfg.Auth.JoinToken,
+					},
 				},
 				Action: func(cCtx *cli.Context) error {
 					return startServer(cfg)
@@ -154,11 +159,6 @@ func setupLogger(cfg Config) (*slog.Logger, error) {
 }
 
 func startServer(cfg Config) error {
-	cfgJSON, err := json.MarshalIndent(cfg, "", "  ")
-	if err != nil {
-		return fmt.Errorf("couldn't marshal config to JSON: %w", err)
-	}
-	fmt.Printf("Config: %s\n", string(cfgJSON))
 	logger, err := setupLogger(cfg)
 	if err != nil {
 		return fmt.Errorf("couldn't initialize logger: %w", err)
