@@ -51,6 +51,10 @@ func (a *Auth) ValidateCredentials(creds Credentials) (*Token, error) {
 	return token, nil
 }
 
+func (a *Auth) GetJoinToken() string {
+	return a.cfg.JoinToken
+}
+
 func (a *Auth) ValidateJoinToken(joinToken string) (*Token, error) {
 	if joinToken != a.cfg.JoinToken {
 		a.logger.Debug("invalid join token attempt")
