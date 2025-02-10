@@ -1,5 +1,5 @@
 import { apiClient } from '@/plugins/axios'
-import type { JoinTokenResponse } from '@/types/join'
+import type { JoinResponse, JoinTokenResponse } from '@/types/join'
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
@@ -25,6 +25,22 @@ export const useJoinStore = defineStore('join', () => {
     }
   }
 
+  async function submitJoinToken(token: string) {
+    loading.value = true
+    error.value = null
+
+    try {
+      const response = await apiClient.post<JoinResponse>('/join', { token })
+      return response.data.success
+    } catch (err) {
+      console.error('Failed to join table:', err)
+      error.value = 'Failed to join table'
+      return false
+    } finally {
+      loading.value = false
+    }
+  }
+
   function clearToken() {
     token.value = null
     error.value = null
@@ -35,6 +51,7 @@ export const useJoinStore = defineStore('join', () => {
     loading,
     error,
     fetchToken,
-    clearToken
+    clearToken,
+    submitJoinToken
   }
 })
