@@ -1,11 +1,12 @@
 import { apiClient } from '@/plugins/axios'
-import type { AuthResponse, LoginRequest, LoginResponse } from '@/types/auth'
+import type { AuthResponse, LoginRequest, LoginResponse, Role } from '@/types/auth'
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
 export const useAuthStore = defineStore('auth', () => {
   const authenticated = ref(false)
   const loading = ref(false)
+  const role = ref<Role | null>(null)
 
   async function checkAuthStatus() {
     try {
@@ -13,9 +14,11 @@ export const useAuthStore = defineStore('auth', () => {
       const data = response.data as AuthResponse
 
       authenticated.value = data.authenticated
+      role.value = data.authenticated && data.role ? data.role : null
     } catch (error) {
       console.error('Failed to check auth status:', error)
       authenticated.value = false
+      role.value = null
     } finally {
       loading.value = false
     }
@@ -45,6 +48,7 @@ export const useAuthStore = defineStore('auth', () => {
     try {
       await apiClient.post(`/auth/logout`)
       authenticated.value = false
+      role.value = null
     } catch (error) {
       console.error('Failed to logout:', error)
     }
@@ -53,6 +57,7 @@ export const useAuthStore = defineStore('auth', () => {
   return {
     authenticated,
     loading,
+    role,
     checkAuthStatus,
     logout,
     login

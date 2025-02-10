@@ -1,3 +1,5 @@
+export type Role = 'gm' | 'player'
+
 export interface LoginRequest {
   username: string;
   password: string;
@@ -10,4 +12,5 @@ export interface LoginResponse {
 
 export interface AuthResponse {
   authenticated: boolean;
+  role?: Role;
 }
