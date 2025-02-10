@@ -1,7 +1,6 @@
 package server
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -83,16 +82,15 @@ func (s *Server) authMiddleware(next http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 
-		ctx := r.Context()
-		ctx = context.WithValue(ctx, "token", token)
+		ctx := SetAuthToken(r.Context(), token)
 		next(w, r.WithContext(ctx))
 	}
 }
 
 func (s *Server) gmOnlyMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	return s.authMiddleware(func(w http.ResponseWriter, r *http.Request) {
-		token := r.Context().Value("token").(*auth.Token)
-		if token.Role != auth.RoleGM {
+		token, ok := GetAuthToken(r.Context())
+		if !ok || token.Role != auth.RoleGM {
 			http.Error(w, "Forbidden", http.StatusForbidden)
 			return
 		}
