@@ -109,12 +109,12 @@ func TestValidateJoinToken(t *testing.T) {
 		{
 			name:    "Invalid join token",
 			token:   "wrong-token",
-			wantErr: ErrInvalidCredentials,
+			wantErr: ErrInvalidJoinToken,
 		},
 		{
 			name:    "Empty join token",
 			token:   "",
-			wantErr: ErrInvalidCredentials,
+			wantErr: ErrInvalidJoinToken,
 		},
 	}
 
