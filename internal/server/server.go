@@ -263,16 +263,23 @@ func (s *Server) streamFile(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
+	token, ok := GetAuthToken(r.Context())
+	if !ok {
+		s.logger.Error("failed to get auth token from context")
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
 	conn, err := s.upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		s.logger.Error("websocket upgrade failed", "error", err)
 		return
 	}
 
-	client := ws.NewClient(s.hub, conn)
+	client := ws.NewClient(s.hub, conn, token)
 	s.hub.Register(client)
 
-	s.logger.Debug("registering new client")
+	s.logger.Debug("registering new client", "role", token.Role)
 
 	go client.WritePump()
 	go client.ReadPump()

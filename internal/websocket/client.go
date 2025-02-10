@@ -2,19 +2,22 @@ package websocket
 
 import (
 	"github.com/gorilla/websocket"
+	"github.com/terrabitz/rpg-audio-streamer/internal/auth"
 )
 
 type Client struct {
-	hub  *Hub
-	conn *websocket.Conn
-	send chan []byte
+	hub   *Hub
+	conn  *websocket.Conn
+	send  chan []byte
+	token *auth.Token
 }
 
-func NewClient(hub *Hub, conn *websocket.Conn) *Client {
+func NewClient(hub *Hub, conn *websocket.Conn, token *auth.Token) *Client {
 	return &Client{
-		hub:  hub,
-		conn: conn,
-		send: make(chan []byte, 256),
+		hub:   hub,
+		conn:  conn,
+		send:  make(chan []byte, 256),
+		token: token,
 	}
 }
 
