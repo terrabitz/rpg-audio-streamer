@@ -6,11 +6,11 @@ import (
 )
 
 type Hub struct {
+	clientsMu  sync.RWMutex
 	clients    map[*Client]bool
 	broadcast  chan []byte
 	register   chan *Client
 	unregister chan *Client
-	mu         sync.RWMutex
 	logger     *slog.Logger
 }
 
@@ -28,18 +28,18 @@ func (h *Hub) Run() {
 	for {
 		select {
 		case client := <-h.register:
-			h.mu.Lock()
+			h.clientsMu.Lock()
 			h.clients[client] = true
-			h.mu.Unlock()
+			h.clientsMu.Unlock()
 		case client := <-h.unregister:
-			h.mu.Lock()
+			h.clientsMu.Lock()
 			if _, ok := h.clients[client]; ok {
 				delete(h.clients, client)
 				close(client.send)
 			}
-			h.mu.Unlock()
+			h.clientsMu.Unlock()
 		case message := <-h.broadcast:
-			h.mu.RLock()
+			h.clientsMu.RLock()
 			for client := range h.clients {
 				select {
 				case client.send <- message:
@@ -48,7 +48,7 @@ func (h *Hub) Run() {
 					delete(h.clients, client)
 				}
 			}
-			h.mu.RUnlock()
+			h.clientsMu.RUnlock()
 		}
 	}
 }
