@@ -120,16 +120,33 @@ func TestUploadFile(t *testing.T) {
 	part.Write(content)
 	writer.Close()
 
-	t.Run("with valid auth", func(t *testing.T) {
+	t.Run("with GM auth", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPost, "/api/v1/files", body)
 		req.Header.Set("Content-Type", writer.FormDataContentType())
 		addAuthCookie(req, ts.auth.(*mockAuth).token.String())
 		rec := httptest.NewRecorder()
 
-		ts.authMiddleware(ts.uploadFile)(rec, req)
+		ts.gmOnlyMiddleware(ts.uploadFile)(rec, req)
 
 		if rec.Code != http.StatusOK {
 			t.Errorf("expected status OK; got %v", rec.Code)
+		}
+	})
+
+	t.Run("with player auth", func(t *testing.T) {
+		// Create a player token
+		playerToken := &auth.Token{Role: auth.RolePlayer}
+		ts.auth.(*mockAuth).token = playerToken
+
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/files", body)
+		req.Header.Set("Content-Type", writer.FormDataContentType())
+		addAuthCookie(req, playerToken.String())
+		rec := httptest.NewRecorder()
+
+		ts.gmOnlyMiddleware(ts.uploadFile)(rec, req)
+
+		if rec.Code != http.StatusForbidden {
+			t.Errorf("expected status Forbidden; got %v", rec.Code)
 		}
 	})
 
@@ -138,7 +155,7 @@ func TestUploadFile(t *testing.T) {
 		req.Header.Set("Content-Type", writer.FormDataContentType())
 		rec := httptest.NewRecorder()
 
-		ts.authMiddleware(ts.uploadFile)(rec, req)
+		ts.gmOnlyMiddleware(ts.uploadFile)(rec, req)
 
 		if rec.Code != http.StatusUnauthorized {
 			t.Errorf("expected status Unauthorized; got %v", rec.Code)
@@ -166,12 +183,12 @@ func TestListFiles(t *testing.T) {
 		}
 	}
 
-	t.Run("with valid auth", func(t *testing.T) {
+	t.Run("with GM auth", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/api/v1/files", nil)
 		addAuthCookie(req, ts.auth.(*mockAuth).token.String())
 		rec := httptest.NewRecorder()
 
-		ts.authMiddleware(ts.listFiles)(rec, req)
+		ts.gmOnlyMiddleware(ts.listFiles)(rec, req)
 
 		if rec.Code != http.StatusOK {
 			t.Errorf("expected status OK; got %v", rec.Code)
@@ -205,11 +222,26 @@ func TestListFiles(t *testing.T) {
 		}
 	})
 
+	t.Run("with player auth", func(t *testing.T) {
+		playerToken := &auth.Token{Role: auth.RolePlayer}
+		ts.auth.(*mockAuth).token = playerToken
+
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/files", nil)
+		addAuthCookie(req, playerToken.String())
+		rec := httptest.NewRecorder()
+
+		ts.gmOnlyMiddleware(ts.listFiles)(rec, req)
+
+		if rec.Code != http.StatusForbidden {
+			t.Errorf("expected status Forbidden; got %v", rec.Code)
+		}
+	})
+
 	t.Run("without auth", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/api/v1/files", nil)
 		rec := httptest.NewRecorder()
 
-		ts.authMiddleware(ts.listFiles)(rec, req)
+		ts.gmOnlyMiddleware(ts.listFiles)(rec, req)
 
 		if rec.Code != http.StatusUnauthorized {
 			t.Errorf("expected status Unauthorized; got %v", rec.Code)
@@ -227,13 +259,13 @@ func TestDeleteFile(t *testing.T) {
 		t.Fatalf("failed to create test file: %v", err)
 	}
 
-	t.Run("with valid auth", func(t *testing.T) {
+	t.Run("with GM auth", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodDelete, "/api/v1/files/test.mp3", nil)
 		addAuthCookie(req, ts.auth.(*mockAuth).token.String())
 		rec := httptest.NewRecorder()
 		req.SetPathValue("fileName", "test.mp3")
 
-		ts.authMiddleware(ts.handleFileDelete)(rec, req)
+		ts.gmOnlyMiddleware(ts.handleFileDelete)(rec, req)
 
 		if rec.Code != http.StatusOK {
 			t.Errorf("expected status OK; got %v", rec.Code)
@@ -245,12 +277,28 @@ func TestDeleteFile(t *testing.T) {
 		}
 	})
 
+	t.Run("with player auth", func(t *testing.T) {
+		playerToken := &auth.Token{Role: auth.RolePlayer}
+		ts.auth.(*mockAuth).token = playerToken
+
+		req := httptest.NewRequest(http.MethodDelete, "/api/v1/files/test.mp3", nil)
+		addAuthCookie(req, playerToken.String())
+		rec := httptest.NewRecorder()
+		req.SetPathValue("fileName", "test.mp3")
+
+		ts.gmOnlyMiddleware(ts.handleFileDelete)(rec, req)
+
+		if rec.Code != http.StatusForbidden {
+			t.Errorf("expected status Forbidden; got %v", rec.Code)
+		}
+	})
+
 	t.Run("without auth", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodDelete, "/api/v1/files/test.mp3", nil)
 		rec := httptest.NewRecorder()
 		req.SetPathValue("fileName", "test.mp3")
 
-		ts.authMiddleware(ts.handleFileDelete)(rec, req)
+		ts.gmOnlyMiddleware(ts.handleFileDelete)(rec, req)
 
 		if rec.Code != http.StatusUnauthorized {
 			t.Errorf("expected status Unauthorized; got %v", rec.Code)
@@ -263,7 +311,7 @@ func TestDeleteFile(t *testing.T) {
 	rec := httptest.NewRecorder()
 	req.SetPathValue("fileName", "nonexistent.mp3")
 
-	ts.authMiddleware(ts.handleFileDelete)(rec, req)
+	ts.handleFileDelete(rec, req)
 	if rec.Code != http.StatusNotFound {
 		t.Errorf("expected status NotFound; got %v", rec.Code)
 	}

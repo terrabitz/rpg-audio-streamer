@@ -118,8 +118,8 @@ func (s *Server) Start() error {
 	mux.HandleFunc("/api/v1/auth/logout", s.handleLogout)
 
 	// Protected endpoints
-	mux.HandleFunc("/api/v1/files", s.authMiddleware(s.handleFiles))
-	mux.HandleFunc("/api/v1/files/{fileName}", s.authMiddleware(s.handleFileDelete))
+	mux.HandleFunc("/api/v1/files", s.gmOnlyMiddleware(s.handleFiles))
+	mux.HandleFunc("/api/v1/files/{fileName}", s.gmOnlyMiddleware(s.handleFileDelete))
 	mux.HandleFunc("/api/v1/stream/{fileName}", s.authMiddleware(s.streamFile))
 	mux.HandleFunc("/api/v1/join-token", s.gmOnlyMiddleware(s.handleJoinToken))
 
