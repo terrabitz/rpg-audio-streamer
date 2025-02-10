@@ -16,7 +16,7 @@ onMounted(async () => {
 
   const success = await joinStore.submitJoinToken(token)
   if (success) {
-    router.push('/table')
+    router.push('/player')
   }
 })
 </script>
