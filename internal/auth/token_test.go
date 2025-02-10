@@ -82,7 +82,7 @@ func TestTokenValidation(t *testing.T) {
 		{
 			name: "Valid token",
 			setup: func() string {
-				token, _ := auth.NewToken("test-user")
+				token, _ := auth.NewToken("test-user", RoleGM)
 				return token.String()
 			},
 			wantErr: nil,
@@ -183,7 +183,7 @@ func TestTokenValidation(t *testing.T) {
 		{
 			name: "Tampered signature",
 			setup: func() string {
-				token, _ := auth.NewToken("test-user")
+				token, _ := auth.NewToken("test-user", RoleGM)
 				tokenStr := token.String()
 				return tokenStr[:len(tokenStr)-2] + "00"
 			},
