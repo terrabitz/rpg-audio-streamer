@@ -3,6 +3,7 @@ package auth
 import (
 	"fmt"
 	"log/slog"
+	"strings"
 )
 
 type Auth struct {
@@ -56,9 +57,9 @@ func (a *Auth) GetJoinToken() string {
 }
 
 func (a *Auth) ValidateJoinToken(joinToken string) (*Token, error) {
-	if joinToken != a.cfg.JoinToken {
-		a.logger.Debug("invalid join token attempt")
-		return nil, ErrInvalidCredentials
+	if !strings.EqualFold(joinToken, a.cfg.JoinToken) {
+		a.logger.Debug("invalid join token")
+		return nil, ErrInvalidJoinToken
 	}
 
 	token, err := a.NewToken("player", RolePlayer)
