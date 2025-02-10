@@ -120,6 +120,12 @@ func main() {
 						Usage:       "Audience for JWT tokens",
 						Destination: &cfg.Auth.TokenAudience,
 					},
+					&cli.StringFlag{
+						Name:        "join-token",
+						EnvVars:     []string{"JOIN_TOKEN"},
+						Usage:       "The static join token to use",
+						Destination: &cfg.Auth.JoinToken,
+					},
 				},
 				Action: func(cCtx *cli.Context) error {
 					return startServer(cfg)
