@@ -11,6 +11,7 @@ const joinStore = useJoinStore()
 const { getBaseUrl } = useBaseUrl()
 
 const joinUrl = ref<string>('')
+const isCopied = ref(false)
 
 onMounted(() => {
   auth.checkAuthStatus()
@@ -19,7 +20,13 @@ onMounted(() => {
 async function handleGetJoinToken() {
   await joinStore.fetchToken()
   if (joinStore.token) {
-    joinUrl.value = `${getBaseUrl()}/join/${joinStore.token}`
+    const url = `${getBaseUrl()}/join/${joinStore.token}`
+    await navigator.clipboard.writeText(url)
+    joinUrl.value = url
+    isCopied.value = true
+    setTimeout(() => {
+      isCopied.value = false
+    }, 2000)
   }
 }
 </script>
@@ -28,15 +35,12 @@ async function handleGetJoinToken() {
   <main class="container mx-auto px-4 py-8">
     <div class="flex justify-between items-center mb-8">
       <h1 class="text-2xl font-bold">My Table</h1>
-      <v-btn v-if="auth.authenticated && auth.role === 'gm'" @click="handleGetJoinToken"
-        class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded" :disabled="joinStore.loading">
-        Get Join URL
-      </v-btn>
-    </div>
-
-    <div v-if="joinUrl" class="mb-8 p-4 bg-gray-100 rounded">
-      <p class="text-sm text-gray-600">Share this URL with your players:</p>
-      <p class="font-mono mt-2">{{ joinUrl }}</p>
+      <div class="flex items-center gap-4">
+        <v-btn v-if="auth.authenticated && auth.role === 'gm'" @click="handleGetJoinToken" :disabled="joinStore.loading"
+          :active="isCopied" width="200" active-color="green" :prepend-icon="isCopied ? '' : '$copy'">
+          {{ isCopied ? 'Copied to clipboard' : 'Get Join URL' }}
+        </v-btn>
+      </div>
     </div>
 
     <template v-if="auth.loading">
