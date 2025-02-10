@@ -21,20 +21,12 @@ type Claims struct {
 
 type Token struct {
 	token     string
-	expiresAt time.Time
-	role      Role
+	ExpiresAt time.Time
+	Role      Role
 }
 
 func (a Token) String() string {
 	return a.token
-}
-
-func (a Token) ExpiresAt() time.Time {
-	return a.expiresAt
-}
-
-func (a Token) Role() Role {
-	return a.role
 }
 
 func (a *Auth) NewToken(subject string, role Role) (*Token, error) {
@@ -59,8 +51,8 @@ func (a *Auth) NewToken(subject string, role Role) (*Token, error) {
 
 	return &Token{
 		token:     signedToken,
-		expiresAt: now.Add(a.cfg.TokenDuration),
-		role:      role,
+		ExpiresAt: now.Add(a.cfg.TokenDuration),
+		Role:      role,
 	}, nil
 }
 
@@ -90,7 +82,7 @@ func (a *Auth) ValidateToken(token string) (*Token, error) {
 
 	return &Token{
 		token:     token,
-		expiresAt: claims.ExpiresAt.Time,
-		role:      claims.Role,
+		ExpiresAt: claims.ExpiresAt.Time,
+		Role:      claims.Role,
 	}, nil
 }
