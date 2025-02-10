@@ -36,7 +36,7 @@ func TestTokenGeneration(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			token, err := auth.NewToken(tt.subject)
+			token, err := auth.NewToken(tt.subject, RoleGM)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("NewToken() error = %v, wantErr %v", err, tt.wantErr)
 				return

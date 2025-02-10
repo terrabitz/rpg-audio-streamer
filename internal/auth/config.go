@@ -9,4 +9,5 @@ type Config struct {
 	TokenDuration  time.Duration
 	TokenIssuer    string
 	TokenAudience  string
+	JoinToken      string
 }
