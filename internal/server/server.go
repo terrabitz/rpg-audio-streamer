@@ -64,7 +64,6 @@ func New(cfg Config, logger *slog.Logger, frontend fs.FS, auth Authenticator) (*
 		},
 	}
 
-	go hub.Run()
 	return srv, nil
 }
 
@@ -137,6 +136,17 @@ func (s *Server) Start() error {
 		Addr:    fmt.Sprintf(":%d", s.cfg.Port),
 		Handler: mux,
 	}
+
+	s.hub.HandleFunc("ping", func(payload json.RawMessage, c *ws.Client) {
+		if err := c.Send(ws.Message{
+			Method:  "pong",
+			Payload: payload,
+		}); err != nil {
+			s.logger.Error("failed to send pong message", "error", err)
+		}
+	})
+
+	go s.hub.Run()
 
 	s.logger.Info("starting server", "port", s.cfg.Port)
 	return srv.ListenAndServe()

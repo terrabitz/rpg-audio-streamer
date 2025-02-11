@@ -1,24 +1,16 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted } from 'vue'
+import { onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
-import { useWebSocketStore } from '../stores/websocket'
 
 const auth = useAuthStore()
-const ws = useWebSocketStore()
 const router = useRouter()
 
 onMounted(async () => {
   await auth.checkAuthStatus()
   if (!auth.authenticated) {
     router.push('/login')
-    return
   }
-  ws.connect()
-})
-
-onUnmounted(() => {
-  ws.disconnect()
 })
 </script>
 

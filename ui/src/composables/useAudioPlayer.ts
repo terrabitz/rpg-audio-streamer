@@ -1,5 +1,5 @@
-import { ref } from 'vue'
-import { useWebSocket } from './useWebSocket'
+import { onMounted, onUnmounted, ref } from 'vue'
+import { useWebSocketStore } from '../stores/websocket'
 
 interface AudioState {
   isPlaying: boolean
@@ -10,12 +10,21 @@ interface AudioState {
 export function useAudioPlayer() {
   const audioPlayers = ref(new Map<string, HTMLAudioElement>())
   const audioStates = ref(new Map<string, AudioState>())
+  const wsStore = useWebSocketStore()
 
-  const { broadcast } = useWebSocket((message) => {
-    const { type, payload } = message
+  onMounted(() => {
+    wsStore.addMessageHandler(handleMessage)
+  })
+
+  onUnmounted(() => {
+    wsStore.removeMessageHandler(handleMessage)
+  })
+
+  function handleMessage(message: { method: string, payload: any }) {
+    const { method, payload } = message
     const { fileName } = payload
 
-    switch (type) {
+    switch (method) {
       case 'play':
         handlePlaySync(fileName)
         break
@@ -29,7 +38,7 @@ export function useAudioPlayer() {
         handleRepeatSync(fileName, payload.repeat)
         break
     }
-  })
+  }
 
   function getInitialState(): AudioState {
     return {
@@ -116,11 +125,11 @@ export function useAudioPlayer() {
     if (state.isPlaying) {
       player.pause()
       state.isPlaying = false
-      broadcast('pause', fileName)
+      wsStore.broadcast('pause', fileName)
     } else {
       player.play()
       state.isPlaying = true
-      broadcast('play', fileName)
+      wsStore.broadcast('play', fileName)
     }
   }
 
@@ -132,7 +141,7 @@ export function useAudioPlayer() {
     if (player) {
       player.loop = state.isRepeating
     }
-    broadcast('repeat', fileName, { repeat: state.isRepeating })
+    wsStore.broadcast('repeat', fileName, { repeat: state.isRepeating })
   }
 
   function setVolume(fileName: string, volume: number) {
@@ -143,7 +152,7 @@ export function useAudioPlayer() {
     if (player) {
       player.volume = volume / 100
     }
-    broadcast('volume', fileName, { volume })
+    wsStore.broadcast('volume', fileName, { volume })
   }
 
   function cleanup(fileName: string) {

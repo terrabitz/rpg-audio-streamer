@@ -17,9 +17,30 @@ export function getWebSocketUrl(): string {
   return `${protocol}//${baseUrl.host}${baseUrl.pathname}/ws`
 }
 
+export interface WebSocketMessage {
+  method: string
+  payload: {
+    [key: string]: any
+  }
+}
+
+type MessageHandler = (message: WebSocketMessage) => void
+
 export const useWebSocketStore = defineStore('websocket', () => {
   const isConnected = ref(false)
   const socket = ref<WebSocket | null>(null)
+  const messageHandlers = ref<MessageHandler[]>([])
+
+  function addMessageHandler(handler: MessageHandler) {
+    messageHandlers.value.push(handler)
+  }
+
+  function removeMessageHandler(handler: MessageHandler) {
+    const index = messageHandlers.value.indexOf(handler)
+    if (index > -1) {
+      messageHandlers.value.splice(index, 1)
+    }
+  }
 
   function connect() {
     if (socket.value?.readyState === WebSocket.OPEN) {
@@ -32,6 +53,16 @@ export const useWebSocketStore = defineStore('websocket', () => {
     socket.value.onopen = () => {
       isConnected.value = true
       console.log('WebSocket connected')
+    }
+
+    socket.value.onmessage = (event) => {
+      try {
+        const message = JSON.parse(event.data) as WebSocketMessage
+        console.log(message)
+        messageHandlers.value.forEach(handler => handler(message))
+      } catch (error) {
+        console.error('Failed to parse WebSocket message:', event.data)
+      }
     }
 
     socket.value.onclose = () => {
@@ -52,10 +83,25 @@ export const useWebSocketStore = defineStore('websocket', () => {
     isConnected.value = false
   }
 
+  function sendMessage(method: string, payload: any) {
+    if (socket.value && isConnected.value) {
+      const msg = { method, payload }
+      socket.value.send(JSON.stringify(msg))
+    }
+  }
+
+  function broadcast(method: string, fileName: string, payload: any = {}) {
+    sendMessage(method, { fileName, ...payload })
+  }
+
   return {
     isConnected,
     socket,
     connect,
-    disconnect
+    disconnect,
+    sendMessage,
+    broadcast,
+    addMessageHandler,
+    removeMessageHandler
   }
 })
