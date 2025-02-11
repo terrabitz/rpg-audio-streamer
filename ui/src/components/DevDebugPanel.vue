@@ -55,9 +55,22 @@ function sendDevMessage() {
                 {{ msg.direction }}
               </v-chip>
             </div>
-            <v-btn v-if="msg.direction === 'sent'" size="x-small" icon="$refresh" color="blue" variant="text"
-              @click="wsStore.sendMessage(msg.method, msg.payload)">
-            </v-btn>
+            <div v-if="msg.direction === 'sent'" class="d-flex gap-2">
+              <v-tooltip text="Repeat message">
+                <template v-slot:activator="{ props }">
+                  <v-btn size="x-small" icon="$refresh" color="blue" variant="text" v-bind="props"
+                    @click="wsStore.sendMessage(msg.method, msg.payload)"></v-btn>
+                </template>
+              </v-tooltip>
+              <v-tooltip text="Copy to form">
+                <template v-slot:activator="{ props }">
+                  <v-btn size="x-small" icon="$copy" color="blue" variant="text" v-bind="props" @click="() => {
+                    debugStore.devMethod = msg.method;
+                    debugStore.devPayload = JSON.stringify(msg.payload, null, 2);
+                  }"></v-btn>
+                </template>
+              </v-tooltip>
+            </div>
           </div>
           <div class="font-weight-bold mt-1">{{ msg.method }}</div>
           <pre class="message-payload">{{ JSON.stringify(msg.payload, null, 2) }}</pre>
