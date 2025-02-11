@@ -1,10 +1,12 @@
 <script setup lang="ts">
+import { useWebSocketStore } from '@/stores/websocket'
 import { onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 
 const auth = useAuthStore()
 const router = useRouter()
+const ws = useWebSocketStore()
 
 onMounted(async () => {
   await auth.checkAuthStatus()
@@ -15,18 +17,12 @@ onMounted(async () => {
 </script>
 
 <template>
-  <main class="container mx-auto px-4 py-8">
-    <div class="text-center">
-      <h1 class="text-2xl font-bold mb-4">Connected to Table</h1>
-      <div class="flex items-center justify-center gap-2">
-        <div :class="[
-          'w-3 h-3 rounded-full',
-          ws.isConnected ? 'bg-green-500' : 'bg-red-500'
-        ]"></div>
-        <span class="text-sm text-gray-600">
-          {{ ws.isConnected ? 'Connected' : 'Disconnected' }}
-        </span>
-      </div>
+  <v-container>
+    <h1>Connected to Table</h1>
+    <div>
+      <span>
+        {{ ws.isConnected ? 'Connected' : 'Disconnected' }}
+      </span>
     </div>
-  </main>
+  </v-container>
 </template>

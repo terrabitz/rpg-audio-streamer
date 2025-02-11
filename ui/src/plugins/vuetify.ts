@@ -1,4 +1,4 @@
-import { mdiContentCopy, mdiDelete, mdiHome, mdiMusic, mdiPause, mdiPlay, mdiRepeat, mdiVolumeHigh } from '@mdi/js'
+import { mdiBug, mdiCircle, mdiContentCopy, mdiDelete, mdiHome, mdiMusic, mdiPause, mdiPlay, mdiRepeat, mdiVolumeHigh } from '@mdi/js'
 import { createVuetify } from 'vuetify'
 import { aliases, mdi } from 'vuetify/iconsets/mdi-svg'
 import 'vuetify/styles'
@@ -16,6 +16,8 @@ export default createVuetify({
       volume: mdiVolumeHigh,
       repeat: mdiRepeat,
       copy: mdiContentCopy,
+      bug: mdiBug,
+      circle: mdiCircle,
     },
     sets: {
       mdi,

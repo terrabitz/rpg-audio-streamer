@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import AudioUploader from '../components/AudioUploader.vue'
-import DevWebSocketForm from '../components/DevWebSocketForm.vue'
 import FileList from '../components/FileList.vue'
 import { useBaseUrl } from '../composables/useBaseUrl'
 import { useAuthStore } from '../stores/auth'
@@ -13,7 +12,6 @@ const { getBaseUrl } = useBaseUrl()
 
 const joinUrl = ref<string>('')
 const isCopied = ref(false)
-const isDevMode = ref(import.meta.env.VITE_DEV_MODE === 'true')
 
 onMounted(async () => {
   await auth.checkAuthStatus()
@@ -43,10 +41,6 @@ async function handleGetJoinToken() {
           {{ isCopied ? 'Copied to clipboard' : 'Get Join URL' }}
         </v-btn>
       </div>
-    </div>
-
-    <div v-if="isDevMode" class="mb-4">
-      <DevWebSocketForm />
     </div>
 
     <template v-if="auth.loading">

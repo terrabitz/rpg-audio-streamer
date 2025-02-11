@@ -24,12 +24,17 @@ export interface WebSocketMessage {
   }
 }
 
+interface StoredMessage extends WebSocketMessage {
+  timestamp: number;
+}
+
 type MessageHandler = (message: WebSocketMessage) => void
 
 export const useWebSocketStore = defineStore('websocket', () => {
   const isConnected = ref(false)
   const socket = ref<WebSocket | null>(null)
   const messageHandlers = ref<MessageHandler[]>([])
+  const messageHistory = ref<StoredMessage[]>([])
 
   function addMessageHandler(handler: MessageHandler) {
     messageHandlers.value.push(handler)
@@ -58,6 +63,11 @@ export const useWebSocketStore = defineStore('websocket', () => {
     socket.value.onmessage = (event) => {
       try {
         const message = JSON.parse(event.data) as WebSocketMessage
+        const storedMessage = {
+          ...message,
+          timestamp: Date.now()
+        }
+        messageHistory.value.push(storedMessage)
         console.log(message)
         messageHandlers.value.forEach(handler => handler(message))
       } catch (error) {
@@ -94,6 +104,10 @@ export const useWebSocketStore = defineStore('websocket', () => {
     sendMessage(method, { fileName, ...payload })
   }
 
+  function clearMessageHistory() {
+    messageHistory.value = []
+  }
+
   return {
     isConnected,
     socket,
@@ -102,6 +116,8 @@ export const useWebSocketStore = defineStore('websocket', () => {
     sendMessage,
     broadcast,
     addMessageHandler,
-    removeMessageHandler
+    removeMessageHandler,
+    messageHistory,
+    clearMessageHistory
   }
 })
