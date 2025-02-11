@@ -38,7 +38,10 @@ onUnmounted(() => {
   <v-app theme="dark">
     <v-app-bar>
       <v-app-bar-title>
-        <RouterLink to="/" class="text-decoration-none">Skald Bot</RouterLink>
+        <RouterLink to="/" class="text-decoration-none">
+          <v-icon icon="custom:lute" />
+          Skald Bot
+        </RouterLink>
       </v-app-bar-title>
       <v-spacer></v-spacer>
       <v-btn v-if="debugStore.isDevMode" icon="$bug" @click="debugStore.togglePanel"></v-btn>
