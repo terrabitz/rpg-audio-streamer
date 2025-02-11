@@ -9,12 +9,10 @@ const messageContainerRef = ref<HTMLDivElement>()
 
 function scrollToBottom() {
   nextTick(() => {
-    setTimeout(() => {
-      const container = messageContainerRef.value
-      if (container) {
-        container.scrollTop = container.scrollHeight
-      }
-    }, 100) // Small delay to ensure content is rendered
+    const container = messageContainerRef.value
+    if (container) {
+      container.scrollTop = container.scrollHeight
+    }
   })
 }
 
