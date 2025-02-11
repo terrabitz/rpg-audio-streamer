@@ -1,9 +1,25 @@
 <script setup lang="ts">
+import { nextTick, ref, watch } from 'vue'
 import { useDebugStore } from '../stores/debug'
 import { useWebSocketStore } from '../stores/websocket'
 
 const debugStore = useDebugStore()
 const wsStore = useWebSocketStore()
+const messageContainerRef = ref<HTMLDivElement>()
+
+function scrollToBottom() {
+  nextTick(() => {
+    setTimeout(() => {
+      const container = messageContainerRef.value
+      if (container) {
+        container.scrollTop = container.scrollHeight
+      }
+    }, 100) // Small delay to ensure content is rendered
+  })
+}
+
+// Auto-scroll when messages are added
+watch(() => wsStore.messageHistory.length, scrollToBottom)
 
 function sendDevMessage() {
   let parsedPayload
@@ -45,38 +61,40 @@ function sendDevMessage() {
         <v-spacer></v-spacer>
         <v-btn icon="$delete" color="error" variant="text" @click="wsStore.clearMessageHistory"></v-btn>
       </v-card-title>
-      <v-card-text class="message-history">
-        <div v-for="msg in wsStore.messageHistory" :key="msg.timestamp" class="message-item"
-          :class="msg.direction === 'sent' ? 'bg-blue-grey-darken-4' : 'bg-grey-darken-4'">
-          <div class="d-flex align-center justify-space-between">
-            <div class="text-caption" :class="msg.direction === 'sent' ? 'text-blue-lighten-3' : 'text-grey'">
-              {{ new Date(msg.timestamp).toLocaleTimeString() }}
-              <v-chip size="x-small" :color="msg.direction === 'sent' ? 'blue' : 'grey'" class="ml-2">
-                {{ msg.direction }}
-              </v-chip>
+      <v-card-text class="message-container">
+        <div ref="messageContainerRef" class="message-list">
+          <div v-for="msg in wsStore.messageHistory" :key="msg.timestamp" class="message-item"
+            :class="msg.direction === 'sent' ? 'bg-blue-grey-darken-4' : 'bg-grey-darken-4'">
+            <div class="d-flex align-center justify-space-between">
+              <div class="text-caption" :class="msg.direction === 'sent' ? 'text-blue-lighten-3' : 'text-grey'">
+                {{ new Date(msg.timestamp).toLocaleTimeString() }}
+                <v-chip size="x-small" :color="msg.direction === 'sent' ? 'blue' : 'grey'" class="ml-2">
+                  {{ msg.direction }}
+                </v-chip>
+              </div>
+              <div v-if="msg.direction === 'sent'" class="d-flex gap-2">
+                <v-tooltip text="Repeat message">
+                  <template v-slot:activator="{ props }">
+                    <v-btn size="x-small" icon="$refresh" color="blue" variant="text" v-bind="props"
+                      @click="wsStore.sendMessage(msg.method, msg.payload)"></v-btn>
+                  </template>
+                </v-tooltip>
+                <v-tooltip text="Copy to form">
+                  <template v-slot:activator="{ props }">
+                    <v-btn size="x-small" icon="$copy" color="blue" variant="text" v-bind="props" @click="() => {
+                      debugStore.devMethod = msg.method;
+                      debugStore.devPayload = JSON.stringify(msg.payload, null, 2);
+                    }"></v-btn>
+                  </template>
+                </v-tooltip>
+              </div>
             </div>
-            <div v-if="msg.direction === 'sent'" class="d-flex gap-2">
-              <v-tooltip text="Repeat message">
-                <template v-slot:activator="{ props }">
-                  <v-btn size="x-small" icon="$refresh" color="blue" variant="text" v-bind="props"
-                    @click="wsStore.sendMessage(msg.method, msg.payload)"></v-btn>
-                </template>
-              </v-tooltip>
-              <v-tooltip text="Copy to form">
-                <template v-slot:activator="{ props }">
-                  <v-btn size="x-small" icon="$copy" color="blue" variant="text" v-bind="props" @click="() => {
-                    debugStore.devMethod = msg.method;
-                    debugStore.devPayload = JSON.stringify(msg.payload, null, 2);
-                  }"></v-btn>
-                </template>
-              </v-tooltip>
-            </div>
+            <div class="font-weight-bold mt-1">{{ msg.method }}</div>
+            <pre class="message-payload">{{ JSON.stringify(msg.payload, null, 2) }}</pre>
           </div>
-          <div class="font-weight-bold mt-1">{{ msg.method }}</div>
-          <pre class="message-payload">{{ JSON.stringify(msg.payload, null, 2) }}</pre>
-        </div>
-        <div v-if="wsStore.messageHistory.length === 0" class="text-grey text-center pa-4">
-          No messages received
+          <div v-if="wsStore.messageHistory.length === 0" class="text-grey text-center pa-4">
+            No messages received
+          </div>
         </div>
       </v-card-text>
     </v-card>
@@ -84,9 +102,20 @@ function sendDevMessage() {
 </template>
 
 <style scoped>
-.message-history {
-  max-height: 500px;
+.message-container {
+  position: relative;
+  height: 500px;
+}
+
+.message-list {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
   overflow-y: auto;
+  scroll-behavior: smooth;
+  padding: 16px;
 }
 
 .message-item {
