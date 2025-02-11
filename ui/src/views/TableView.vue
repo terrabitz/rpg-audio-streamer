@@ -32,10 +32,10 @@ async function handleGetJoinToken() {
 </script>
 
 <template>
-  <main class="container mx-auto px-4 py-8">
-    <div class="flex justify-between items-center mb-8">
-      <h1 class="text-2xl font-bold">My Table</h1>
-      <div class="flex items-center gap-4">
+  <v-container class="px-4 py-8" style="max-width: 800px">
+    <div class="mb-8">
+      <h1>My Table</h1>
+      <div>
         <v-btn v-if="auth.authenticated && auth.role === 'gm'" @click="handleGetJoinToken" :disabled="joinStore.loading"
           :active="isCopied" width="200" active-color="green" :prepend-icon="isCopied ? '' : '$copy'">
           {{ isCopied ? 'Copied to clipboard' : 'Get Join URL' }}
@@ -54,9 +54,7 @@ async function handleGetJoinToken() {
       <FileList />
     </template>
     <template v-else>
-      <div class="text-center py-12">
-        <p class="text-gray-600 mb-6">Please login to start managing your audio files</p>
-      </div>
+      <p>Please login to start managing your audio files</p>
     </template>
-  </main>
+  </v-container>
 </template>
