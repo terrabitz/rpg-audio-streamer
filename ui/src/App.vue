@@ -52,7 +52,8 @@ onUnmounted(() => {
     <v-main>
       <RouterView />
     </v-main>
-    <v-navigation-drawer location="right" v-if="debugStore.isDevMode" v-model="debugStore.showDebugPanel" width="400">
+    <v-navigation-drawer location="right" v-if="debugStore.isDevMode" v-model="debugStore.showDebugPanel"
+      :permanent="debugStore.showDebugPanel" width="400">
       <DevDebugPanel />
     </v-navigation-drawer>
   </v-app>
