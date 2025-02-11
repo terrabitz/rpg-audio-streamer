@@ -1,15 +1,15 @@
 <script setup lang="ts">
-import { onUnmounted, ref, watch } from 'vue';
+import { onUnmounted, watch } from 'vue';
 import { RouterLink, RouterView, useRouter } from 'vue-router';
 import DevDebugPanel from './components/DevDebugPanel.vue';
 import { useAuthStore } from './stores/auth';
+import { useDebugStore } from './stores/debug';
 import { useWebSocketStore } from './stores/websocket';
 
 const auth = useAuthStore()
 const router = useRouter()
 const wsStore = useWebSocketStore()
-const isDevMode = import.meta.env.VITE_DEV_MODE === 'true'
-const showDebugPanel = ref(false)
+const debugStore = useDebugStore()
 
 async function handleLogout() {
   await auth.logout()
@@ -37,7 +37,7 @@ onUnmounted(() => {
         <RouterLink to="/" class="text-decoration-none">Skald Bot</RouterLink>
       </v-app-bar-title>
       <v-spacer></v-spacer>
-      <v-btn v-if="isDevMode" icon="$bug" @click="showDebugPanel = !showDebugPanel"></v-btn>
+      <v-btn v-if="debugStore.isDevMode" icon="$bug" @click="debugStore.togglePanel"></v-btn>
       <template v-if="auth.authenticated">
         <v-btn @click="handleLogout" color="error">
           Logout
@@ -52,7 +52,7 @@ onUnmounted(() => {
     <v-main>
       <RouterView />
     </v-main>
-    <v-navigation-drawer location="right" v-if="isDevMode" v-model="showDebugPanel" width="400">
+    <v-navigation-drawer location="right" v-if="debugStore.isDevMode" v-model="debugStore.showDebugPanel" width="400">
       <DevDebugPanel />
     </v-navigation-drawer>
   </v-app>

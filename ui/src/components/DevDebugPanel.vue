@@ -1,21 +1,21 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { useDebugStore } from '../stores/debug'
 import { useWebSocketStore } from '../stores/websocket'
 
-const devMethod = ref('')
-const devPayload = ref('')
+const debugStore = useDebugStore()
 const wsStore = useWebSocketStore()
 
 function sendDevMessage() {
   let parsedPayload
   try {
-    parsedPayload = JSON.parse(devPayload.value)
+    parsedPayload = JSON.parse(debugStore.devPayload)
   } catch (e) {
     console.error('Invalid JSON payload', e)
     return
   }
 
-  wsStore.sendMessage(devMethod.value, parsedPayload)
+  wsStore.sendMessage(debugStore.devMethod, parsedPayload)
+  debugStore.clearForm()
 }
 </script>
 
@@ -33,8 +33,8 @@ function sendDevMessage() {
     <v-card class="mb-4">
       <v-card-title>Send Message</v-card-title>
       <v-card-text>
-        <v-text-field v-model="devMethod" label="Method" variant="outlined" density="compact" />
-        <v-textarea v-model="devPayload" label="Payload (JSON)" variant="outlined" density="compact" />
+        <v-text-field v-model="debugStore.devMethod" label="Method" variant="outlined" density="compact" />
+        <v-textarea v-model="debugStore.devPayload" label="Payload (JSON)" variant="outlined" density="compact" />
         <v-btn @click="sendDevMessage" color="primary" block>Send</v-btn>
       </v-card-text>
     </v-card>
