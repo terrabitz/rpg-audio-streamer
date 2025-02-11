@@ -1,8 +1,8 @@
 <template>
 	<!-- Uploaded to: SVG Repo, www.svgrepo.com, Generator: SVG Repo Mixer Tools -->
-	<svg height="800px" width="800px" version="1.1" id="Capa_1" xmlns="http://www.w3.org/2000/svg"
-		xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 40.897 40.897" xml:space="preserve">
-		<path style="fill:#010002;"
+	<svg version="1.1" id="Capa_1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"
+		viewBox="0 0 40.897 40.897">
+		<path
 			d="M40.666,7.219c-0.098,0.097-0.226,0.146-0.354,0.146s-0.256-0.048-0.354-0.146l-2.061-2.06
 		l0.027,0.027c0.342,0.341,0.342,0.895,0,1.237L37.747,6.6c-0.341,0.342-0.895,0.342-1.237,0l-0.122-0.122
 		c-0.099,0.085-0.198,0.173-0.298,0.259l0.269-0.289l0.688-0.739c0.094-0.102,0.089-0.26-0.013-0.354

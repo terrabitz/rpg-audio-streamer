@@ -10,8 +10,9 @@ const customSvgNameToComponent: any = {
 };
 
 const custom: IconSet = {
-  component: (props: IconProps) => h(customSvgNameToComponent[props.icon as string]),
-};
+  component: (props: IconProps) =>
+    h(props.tag, [h(customSvgNameToComponent[props.icon as string], { class: 'v-icon__svg' })]),
+}
 
 export default createVuetify({
   icons: {

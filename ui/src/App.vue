@@ -38,8 +38,8 @@ onUnmounted(() => {
   <v-app theme="dark">
     <v-app-bar>
       <v-app-bar-title>
-        <RouterLink to="/" class="text-decoration-none">
-          <v-icon icon="custom:lute" />
+        <RouterLink to="/" class="text-decoration-none" style="color: inherit">
+          <v-icon icon="custom:lute" class="mr-2" size="small" />
           Skald Bot
         </RouterLink>
       </v-app-bar-title>
