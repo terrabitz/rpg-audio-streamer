@@ -146,6 +146,18 @@ func (s *Server) Start() error {
 		}
 	})
 
+	s.hub.HandleFunc("broadcast", func(payload json.RawMessage, c *ws.Client) {
+		if c.Token.Role != auth.RoleGM {
+			s.logger.Warn("unauthorized broadcast attempt", "role", c.Token.Role)
+			return
+		}
+
+		s.hub.Broadcast(ws.Message{
+			Method:  "broadcast",
+			Payload: payload,
+		})
+	})
+
 	go s.hub.Run()
 
 	s.logger.Info("starting server", "port", s.cfg.Port)
