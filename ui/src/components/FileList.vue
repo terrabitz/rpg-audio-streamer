@@ -12,7 +12,7 @@
           <td>{{ file.name }}</td>
           <td class="d-flex align-center">
             <audio :ref="el => audioElements[file.name] = el as HTMLAudioElement" :src="`/api/v1/stream/${file.name}`"
-              @ended="handleEnded(file.name)" @timeupdate="evt => handleTimeUpdate(file.name, evt) " />
+              @ended="handleEnded(file.name)" @timeupdate="evt => handleTimeUpdate(file.name, evt)" />
             <AudioControls :fileName="file.name" @play="handlePlay(file.name)" @repeat="handleRepeat(file.name)"
               @volume="vol => handleVolume(file.name, vol)" />
             <v-btn icon size="small" color="error" @click="deleteFile(file.name)">
@@ -28,7 +28,8 @@
 <script setup lang="ts">
 import { useAudioPlayer } from '@/composables/useAudioPlayer'
 import { useFileStore } from '@/stores/files'
-import { onBeforeUnmount, onMounted, ref } from 'vue'
+import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useAudioSync } from '../composables/useAudioSync'
 import { useAudioStore } from '../stores/audio'
 import AudioControls from './AudioControls.vue'
 
@@ -50,34 +51,26 @@ async function deleteFile(fileName: string) {
   }
 }
 
-function handlePlay(fileName: string) {
-  const audio = audioElements.value[fileName]
-  if (!audio) return
+// Watch for new audio elements and set up sync
+watch(audioElements, (elements) => {
+  Object.entries(elements).forEach(([fileName, audio]) => {
+    if (audio) {
+      useAudioSync(fileName, audio)
+    }
+  })
+}, { deep: true })
 
-  const isPlaying = audioStore.tracks[fileName].isPlaying
-  if (isPlaying) {
-    audio.pause()
-    audioStore.updateTrackState(fileName, { isPlaying: false })
-  } else {
-    audio.play()
-    audioStore.updateTrackState(fileName, { isPlaying: true })
-  }
+function handlePlay(fileName: string) {
+  const state = audioStore.tracks[fileName]
+  audioStore.updateTrackState(fileName, { isPlaying: !state.isPlaying })
 }
 
 function handleRepeat(fileName: string) {
-  const audio = audioElements.value[fileName]
-  if (!audio) return
-
-  const isRepeating = !audioStore.tracks[fileName].isRepeating
-  audio.loop = isRepeating
-  audioStore.updateTrackState(fileName, { isRepeating })
+  const state = audioStore.tracks[fileName]
+  audioStore.updateTrackState(fileName, { isRepeating: !state.isRepeating })
 }
 
 function handleVolume(fileName: string, volume: number) {
-  const audio = audioElements.value[fileName]
-  if (!audio) return
-
-  audio.volume = volume / 100
   audioStore.updateTrackState(fileName, { volume })
 }
 
