@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onUnmounted, watch } from 'vue';
+import { onMounted, onUnmounted, watch } from 'vue';
 import { RouterLink, RouterView, useRouter } from 'vue-router';
 import DevDebugPanel from './components/DevDebugPanel.vue';
 import { useAuthStore } from './stores/auth';
@@ -23,6 +23,10 @@ watch(() => auth.authenticated, (isAuthenticated) => {
   } else {
     wsStore.disconnect()
   }
+})
+
+onMounted(() => {
+  auth.checkAuthStatus()
 })
 
 onUnmounted(() => {

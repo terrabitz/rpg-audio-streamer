@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { ref } from 'vue'
 import AudioUploader from '../components/AudioUploader.vue'
 import FileList from '../components/FileList.vue'
 import { useBaseUrl } from '../composables/useBaseUrl'
@@ -12,10 +12,6 @@ const { getBaseUrl } = useBaseUrl()
 
 const joinUrl = ref<string>('')
 const isCopied = ref(false)
-
-onMounted(async () => {
-  await auth.checkAuthStatus()
-})
 
 async function handleGetJoinToken() {
   await joinStore.fetchToken()
