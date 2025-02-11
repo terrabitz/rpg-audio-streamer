@@ -25,7 +25,8 @@ export interface WebSocketMessage {
 }
 
 interface StoredMessage extends WebSocketMessage {
-  timestamp: number;
+  timestamp: number
+  direction: 'sent' | 'received'
 }
 
 type MessageHandler = (message: WebSocketMessage) => void
@@ -63,9 +64,10 @@ export const useWebSocketStore = defineStore('websocket', () => {
     socket.value.onmessage = (event) => {
       try {
         const message = JSON.parse(event.data) as WebSocketMessage
-        const storedMessage = {
+        const storedMessage: StoredMessage = {
           ...message,
-          timestamp: Date.now()
+          timestamp: Date.now(),
+          direction: 'received'
         }
         messageHistory.value.push(storedMessage)
         console.log(message)
@@ -97,6 +99,12 @@ export const useWebSocketStore = defineStore('websocket', () => {
     if (socket.value && isConnected.value) {
       const msg = { method, payload }
       socket.value.send(JSON.stringify(msg))
+
+      messageHistory.value.push({
+        ...msg,
+        timestamp: Date.now(),
+        direction: 'sent'
+      })
     }
   }
 

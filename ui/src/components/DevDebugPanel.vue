@@ -46,9 +46,20 @@ function sendDevMessage() {
         <v-btn icon="$delete" color="error" variant="text" @click="wsStore.clearMessageHistory"></v-btn>
       </v-card-title>
       <v-card-text class="message-history">
-        <div v-for="msg in wsStore.messageHistory" :key="msg.timestamp" class="message-item">
-          <div class="text-caption text-grey">{{ new Date(msg.timestamp).toLocaleTimeString() }}</div>
-          <div class="font-weight-bold">{{ msg.method }}</div>
+        <div v-for="msg in wsStore.messageHistory" :key="msg.timestamp" class="message-item"
+          :class="msg.direction === 'sent' ? 'bg-blue-grey-darken-4' : 'bg-grey-darken-4'">
+          <div class="d-flex align-center justify-space-between">
+            <div class="text-caption" :class="msg.direction === 'sent' ? 'text-blue-lighten-3' : 'text-grey'">
+              {{ new Date(msg.timestamp).toLocaleTimeString() }}
+              <v-chip size="x-small" :color="msg.direction === 'sent' ? 'blue' : 'grey'" class="ml-2">
+                {{ msg.direction }}
+              </v-chip>
+            </div>
+            <v-btn v-if="msg.direction === 'sent'" size="x-small" icon="$refresh" color="blue" variant="text"
+              @click="wsStore.sendMessage(msg.method, msg.payload)">
+            </v-btn>
+          </div>
+          <div class="font-weight-bold mt-1">{{ msg.method }}</div>
           <pre class="message-payload">{{ JSON.stringify(msg.payload, null, 2) }}</pre>
         </div>
         <div v-if="wsStore.messageHistory.length === 0" class="text-grey text-center pa-4">
@@ -66,8 +77,9 @@ function sendDevMessage() {
 }
 
 .message-item {
-  padding: 8px;
-  border-bottom: 1px solid rgba(128, 128, 128, 0.2);
+  padding: 12px;
+  margin-bottom: 8px;
+  border-radius: 4px;
 }
 
 .message-payload {
