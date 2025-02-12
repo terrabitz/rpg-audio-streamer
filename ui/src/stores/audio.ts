@@ -42,13 +42,15 @@ export const useAudioStore = defineStore('audio', {
       delete this.tracks[fileName]
     },
     getAllTrackStates() {
-      return Object.values(this.tracks).map(track => ({
-        fileName: track.fileName,
-        isPlaying: track.isPlaying,
-        volume: track.volume,
-        isRepeating: track.isRepeating,
-        currentTime: track.currentTime
-      }))
+      return Object.values(this.tracks)
+        .filter(track => track.isPlaying)  // Only include playing tracks
+        .map(track => ({
+          fileName: track.fileName,
+          isPlaying: track.isPlaying,
+          volume: track.volume,
+          isRepeating: track.isRepeating,
+          currentTime: track.currentTime
+        }))
     },
     syncTracks(tracks: Partial<AudioTrack>[]) {
       tracks.forEach(track => {
