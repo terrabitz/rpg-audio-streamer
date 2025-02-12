@@ -168,7 +168,7 @@ func (s *Server) Start() error {
 		}, ws.ToGMOnly())
 	})
 
-	s.hub.HandleFunc("sync", func(payload json.RawMessage, c *ws.Client) {
+	s.hub.HandleFunc("syncAll", func(payload json.RawMessage, c *ws.Client) {
 		if c.Token.Role != auth.RoleGM {
 			s.logger.Warn("unauthorized broadcast attempt", "role", c.Token.Role)
 			return
@@ -187,14 +187,14 @@ func (s *Server) Start() error {
 		// If a target client is specified, only send to them
 		if syncPayload.To != "" {
 			s.hub.Broadcast(ws.Message{
-				Method:   "sync",
+				Method:   "syncAll",
 				SenderID: c.ID,
 				Payload:  payload,
 			}, ws.ToClientID(syncPayload.To))
 		} else {
 			// Otherwise broadcast to all players
 			s.hub.Broadcast(ws.Message{
-				Method:   "sync",
+				Method:   "syncAll",
 				SenderID: c.ID,
 				Payload:  payload,
 			}, ws.ToPlayersOnly())

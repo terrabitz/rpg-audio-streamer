@@ -6,8 +6,8 @@ export function wsHandlers(audioElements: Ref<Record<string, HTMLAudioElement>>)
   const wsStore = useWebSocketStore()
   const audioStore = useAudioStore()
 
-  function handleSync(message: any) {
-    if (message.method === 'sync' && message.payload.tracks) {
+  function handleSyncAll(message: any) {
+    if (message.method === 'syncAll' && message.payload.tracks) {
       // Get current track names before sync
       const previousTracks = new Set(Object.keys(audioStore.tracks))
 
@@ -66,12 +66,12 @@ export function wsHandlers(audioElements: Ref<Record<string, HTMLAudioElement>>)
   }
 
   onMounted(() => {
-    wsStore.addMessageHandler(handleSync)
+    wsStore.addMessageHandler(handleSyncAll)
     wsStore.addMessageHandler(handleSyncTrack)
   })
 
   onUnmounted(() => {
-    wsStore.removeMessageHandler(handleSync)
+    wsStore.removeMessageHandler(handleSyncAll)
     wsStore.removeMessageHandler(handleSyncTrack)
   })
 }

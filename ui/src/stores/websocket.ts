@@ -19,7 +19,7 @@ export function getWebSocketUrl(): string {
 
 export interface WebSocketMessage {
   method: string
-  senderId: string
+  senderId?: string
   payload: {
     [key: string]: any
   }
