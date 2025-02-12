@@ -4,7 +4,12 @@
       <thead>
         <tr>
           <th>Name</th>
-          <th>Status</th>
+          <th>
+            <div class="d-flex align-center justify-space-between">
+              <span>Status</span>
+              <v-btn icon="$refresh" size="small" variant="text" :loading="isRefreshing" @click="handleRefresh" />
+            </div>
+          </th>
         </tr>
       </thead>
       <tbody>
@@ -22,12 +27,15 @@
 
 <script setup lang="ts">
 import { usePlaybackSync } from '@/composables/usePlaybackSync'
+import { useWebSocketStore } from '@/stores/websocket'
 import { onBeforeUnmount, ref, watch } from 'vue'
 import { useAudioSync } from '../composables/useAudioSync'
 import { useAudioStore } from '../stores/audio'
 
 const audioStore = useAudioStore()
 const audioElements = ref<Record<string, HTMLAudioElement>>({})
+const wsStore = useWebSocketStore()
+const isRefreshing = ref(false)
 
 // Set up sync handling with audio elements
 usePlaybackSync(audioElements)
@@ -58,6 +66,14 @@ const handleVolume = (fileName: string, volume: number) => {
 
 const handleSeek = (fileName: string, time: number) => {
   audioStore.updateTrackState(fileName, { currentTime: time })
+}
+
+function handleRefresh() {
+  isRefreshing.value = true
+  wsStore.broadcast('syncRequest', {})
+  setTimeout(() => {
+    isRefreshing.value = false
+  }, 1000)
 }
 
 onBeforeUnmount(() => {

@@ -12,7 +12,8 @@ interface AudioTrack {
 
 export const useAudioStore = defineStore('audio', {
   state: () => ({
-    tracks: {} as Record<string, AudioTrack>
+    tracks: {} as Record<string, AudioTrack>,
+    enabled: false
   }),
   getters: {
     availableTracks: (state) => Object.values(state.tracks)
@@ -56,6 +57,9 @@ export const useAudioStore = defineStore('audio', {
         }))
     },
     syncTracks(tracks: Partial<AudioTrack>[]) {
+      // Only sync tracks if audio is enabled
+      if (!this.enabled) return
+
       // Get set of track names from sync payload
       const syncedTrackNames = new Set(tracks.map(t => t.fileName))
 
