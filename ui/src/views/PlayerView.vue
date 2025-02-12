@@ -28,9 +28,9 @@ onMounted(async () => {
 function handleAudioToggle() {
   if (!audioStore.enabled) {
     connecting.value = true
+    audioStore.enabled = true
     ws.broadcast('syncRequest', {})
     setTimeout(() => {
-      audioStore.enabled = true
       connecting.value = false
     }, 2000)
   } else {
