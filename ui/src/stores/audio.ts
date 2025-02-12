@@ -56,6 +56,17 @@ export const useAudioStore = defineStore('audio', {
         }))
     },
     syncTracks(tracks: Partial<AudioTrack>[]) {
+      // Get set of track names from sync payload
+      const syncedTrackNames = new Set(tracks.map(t => t.fileName))
+
+      // Remove tracks that aren't in the sync payload
+      Object.keys(this.tracks).forEach(fileName => {
+        if (!syncedTrackNames.has(fileName)) {
+          this.removeTrack(fileName)
+        }
+      })
+
+      // Update or add tracks from sync payload
       tracks.forEach(track => {
         if (track.fileName) {
           this.initTrack(track.fileName)

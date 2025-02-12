@@ -3,16 +3,12 @@ import { useWebSocketStore } from '@/stores/websocket'
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import PlayerFileList from '../components/PlayerFileList.vue'
-import { usePlaybackSync } from '../composables/usePlaybackSync'
 import { useAuthStore } from '../stores/auth'
 
 const auth = useAuthStore()
 const router = useRouter()
 const ws = useWebSocketStore()
 const syncing = ref(false)
-
-// Set up sync handling
-usePlaybackSync()
 
 onMounted(async () => {
   await auth.checkAuthStatus()

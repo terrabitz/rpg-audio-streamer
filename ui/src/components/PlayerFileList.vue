@@ -21,12 +21,16 @@
 </template>
 
 <script setup lang="ts">
+import { usePlaybackSync } from '@/composables/usePlaybackSync'
 import { onBeforeUnmount, ref, watch } from 'vue'
 import { useAudioSync } from '../composables/useAudioSync'
 import { useAudioStore } from '../stores/audio'
 
 const audioStore = useAudioStore()
 const audioElements = ref<Record<string, HTMLAudioElement>>({})
+
+// Set up sync handling with audio elements
+usePlaybackSync(audioElements)
 
 // Set up audio sync for new elements
 watch(audioElements, (elements) => {
