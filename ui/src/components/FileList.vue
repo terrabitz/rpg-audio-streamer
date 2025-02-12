@@ -26,7 +26,6 @@
 </template>
 
 <script setup lang="ts">
-import { useAudioPlayer } from '@/composables/useAudioPlayer'
 import { useFileStore } from '@/stores/files'
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useAudioSync } from '../composables/useAudioSync'
@@ -34,7 +33,6 @@ import { useAudioStore } from '../stores/audio'
 import AudioControls from './AudioControls.vue'
 
 const fileStore = useFileStore()
-const audioPlayer = useAudioPlayer()
 const audioStore = useAudioStore()
 const audioElements = ref<Record<string, HTMLAudioElement>>({})
 
@@ -43,7 +41,13 @@ onMounted(() => {
 })
 
 async function deleteFile(fileName: string) {
-  audioPlayer.cleanup(fileName)
+  const audio = audioElements.value[fileName]
+  if (audio) {
+    audio.pause()
+    audio.src = ''
+  }
+  audioStore.removeTrack(fileName)
+
   try {
     await fileStore.deleteFile(fileName)
   } catch (error) {
@@ -51,7 +55,7 @@ async function deleteFile(fileName: string) {
   }
 }
 
-// Watch for new audio elements and set up sync
+// Set up audio sync for new elements
 watch(audioElements, (elements) => {
   Object.entries(elements).forEach(([fileName, audio]) => {
     if (audio) {
@@ -60,31 +64,31 @@ watch(audioElements, (elements) => {
   })
 }, { deep: true })
 
-function handlePlay(fileName: string) {
+// Event handlers just update state
+const handlePlay = (fileName: string) => {
   const state = audioStore.tracks[fileName]
   audioStore.updateTrackState(fileName, { isPlaying: !state.isPlaying })
 }
 
-function handleRepeat(fileName: string) {
+const handleRepeat = (fileName: string) => {
   const state = audioStore.tracks[fileName]
   audioStore.updateTrackState(fileName, { isRepeating: !state.isRepeating })
 }
 
-function handleVolume(fileName: string, volume: number) {
+const handleVolume = (fileName: string, volume: number) => {
   audioStore.updateTrackState(fileName, { volume })
 }
 
-function handleTimeUpdate(fileName: string, event: Event) {
+const handleSeek = (fileName: string, time: number) => {
+  audioStore.updateTrackState(fileName, { currentTime: time })
+}
+
+const handleTimeUpdate = (fileName: string, event: Event) => {
   const audio = event.target as HTMLAudioElement
   audioStore.updateTrackState(fileName, { currentTime: audio.currentTime })
 }
 
-function handleSeek(fileName: string, time: number) {
-  audioStore.updateTrackState(fileName, { currentTime: time })
-}
-
 onBeforeUnmount(() => {
-  // Cleanup audio elements
   Object.values(audioElements.value).forEach(audio => {
     audio.pause()
     audio.src = ''
