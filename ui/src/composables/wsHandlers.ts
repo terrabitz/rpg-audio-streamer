@@ -2,7 +2,7 @@ import { onMounted, onUnmounted, type Ref } from 'vue'
 import { useAudioStore } from '../stores/audio'
 import { useWebSocketStore } from '../stores/websocket'
 
-export function usePlaybackSync(audioElements: Ref<Record<string, HTMLAudioElement>>) {
+export function wsHandlers(audioElements: Ref<Record<string, HTMLAudioElement>>) {
   const wsStore = useWebSocketStore()
   const audioStore = useAudioStore()
 

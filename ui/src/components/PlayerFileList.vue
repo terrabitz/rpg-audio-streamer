@@ -26,7 +26,7 @@
 </template>
 
 <script setup lang="ts">
-import { usePlaybackSync } from '@/composables/usePlaybackSync'
+import { wsHandlers } from '@/composables/wsHandlers'
 import { useWebSocketStore } from '@/stores/websocket'
 import { onBeforeUnmount, ref, watch } from 'vue'
 import { useAudioSync } from '../composables/useAudioSync'
@@ -38,7 +38,7 @@ const wsStore = useWebSocketStore()
 const isRefreshing = ref(false)
 
 // Set up sync handling with audio elements
-usePlaybackSync(audioElements)
+wsHandlers(audioElements)
 
 // Set up audio sync for new elements
 watch(audioElements, (elements) => {
