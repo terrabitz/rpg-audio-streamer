@@ -51,25 +51,5 @@ export const useAudioStore = defineStore('audio', {
     removeTrack(fileName: string) {
       delete this.tracks[fileName]
     },
-    handleRemoteUpdate(method: string, fileName: string, payload?: any) {
-      switch (method) {
-        case 'play':
-          this.updateTrackState(fileName, { isPlaying: true })
-          break
-        case 'pause':
-          this.updateTrackState(fileName, { isPlaying: false })
-          break
-        case 'volume':
-          if (payload?.volume !== undefined) {
-            this.updateTrackState(fileName, { volume: payload.volume })
-          }
-          break
-        case 'repeat':
-          if (payload?.repeat !== undefined) {
-            this.updateTrackState(fileName, { isRepeating: payload.repeat })
-          }
-          break
-      }
-    }
   }
 })
