@@ -153,9 +153,47 @@ func (s *Server) Start() error {
 		}
 
 		s.hub.Broadcast(ws.Message{
-			Method:  "broadcast",
-			Payload: payload,
-		})
+			Method:   "broadcast",
+			SenderID: c.ID,
+			Payload:  payload,
+		}, ws.ExceptClient(c)) // Don't send back to sender
+	})
+
+	s.hub.HandleFunc("syncRequest", func(payload json.RawMessage, c *ws.Client) {
+		// Only forward to GM clients
+		s.hub.Broadcast(ws.Message{
+			Method:   "syncRequest",
+			SenderID: c.ID,
+			Payload:  payload,
+		}, ws.ToGMOnly())
+	})
+
+	s.hub.HandleFunc("sync", func(payload json.RawMessage, c *ws.Client) {
+		// Extract target client ID from payload
+		var syncPayload struct {
+			Tracks []any  `json:"tracks"`
+			To     string `json:"to"`
+		}
+		if err := json.Unmarshal(payload, &syncPayload); err != nil {
+			s.logger.Error("failed to unmarshal sync payload", "error", err)
+			return
+		}
+
+		// If a target client is specified, only send to them
+		if syncPayload.To != "" {
+			s.hub.Broadcast(ws.Message{
+				Method:   "sync",
+				SenderID: c.ID,
+				Payload:  payload,
+			}, ws.ToClientID(syncPayload.To))
+		} else {
+			// Otherwise broadcast to all players
+			s.hub.Broadcast(ws.Message{
+				Method:   "sync",
+				SenderID: c.ID,
+				Payload:  payload,
+			}, ws.ToPlayersOnly())
+		}
 	})
 
 	go s.hub.Run()
@@ -301,7 +339,10 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	client := ws.NewClient(s.hub, conn, token)
 	s.hub.Register(client)
 
-	s.logger.Debug("registering new client", "role", token.Role)
+	s.logger.Debug("new websocket connection",
+		"clientId", client.ID,
+		"role", token.Role,
+	)
 
 	go client.WritePump()
 	go client.ReadPump()

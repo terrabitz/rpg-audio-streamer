@@ -4,11 +4,13 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	"github.com/terrabitz/rpg-audio-streamer/internal/auth"
 )
 
 type Client struct {
+	ID    string
 	hub   *Hub
 	conn  *websocket.Conn
 	send  chan []byte
@@ -17,6 +19,7 @@ type Client struct {
 
 func NewClient(hub *Hub, conn *websocket.Conn, token *auth.Token) *Client {
 	return &Client{
+		ID:    uuid.New().String(),
 		hub:   hub,
 		conn:  conn,
 		send:  make(chan []byte, 256),

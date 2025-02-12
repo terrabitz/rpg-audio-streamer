@@ -2,6 +2,7 @@
 import { onMounted, onUnmounted, watch } from 'vue';
 import { RouterLink, RouterView, useRouter } from 'vue-router';
 import DevDebugPanel from './components/DevDebugPanel.vue';
+import { useAudioStore } from './stores/audio';
 import { useAuthStore } from './stores/auth';
 import { useDebugStore } from './stores/debug';
 import { useWebSocketStore } from './stores/websocket';
@@ -10,6 +11,7 @@ const auth = useAuthStore()
 const router = useRouter()
 const wsStore = useWebSocketStore()
 const debugStore = useDebugStore()
+const audioStore = useAudioStore()
 
 async function handleLogout() {
   await auth.logout()
@@ -22,6 +24,21 @@ watch(() => auth.authenticated, (isAuthenticated) => {
     wsStore.connect()
   } else {
     wsStore.disconnect()
+  }
+})
+
+// Handle sync requests from players
+wsStore.addMessageHandler((message) => {
+  if (message.method === 'syncRequest' && auth.role === 'gm') {
+    console.log(message)
+    // Send current state to all clients
+    wsStore.broadcast('sync', {
+      tracks: audioStore.getAllTrackStates(),
+      to: message.senderId,
+    })
+  } else if (message.method === 'sync') {
+    // Update local state with sync data
+    audioStore.syncTracks(message.payload.tracks)
   }
 })
 

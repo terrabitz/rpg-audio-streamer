@@ -19,6 +19,7 @@ export function getWebSocketUrl(): string {
 
 export interface WebSocketMessage {
   method: string
+  senderId: string
   payload: {
     [key: string]: any
   }
@@ -108,8 +109,8 @@ export const useWebSocketStore = defineStore('websocket', () => {
     }
   }
 
-  function broadcast(method: string, fileName: string, payload: any = {}) {
-    sendMessage(method, { fileName, ...payload })
+  function broadcast(method: string, payload: any = {}) {
+    sendMessage(method, payload)
   }
 
   function clearMessageHistory() {

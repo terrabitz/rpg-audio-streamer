@@ -31,16 +31,6 @@ export const useAudioStore = defineStore('audio', {
       if (this.tracks[fileName]) {
         const wsStore = useWebSocketStore()
 
-        // Broadcast state changes that other clients need to know about
-        if ('isPlaying' in updates) {
-          wsStore.broadcast(updates.isPlaying ? 'play' : 'pause', fileName)
-        }
-        if ('volume' in updates) {
-          wsStore.broadcast('volume', fileName, { volume: updates.volume })
-        }
-        if ('isRepeating' in updates) {
-          wsStore.broadcast('repeat', fileName, { repeat: updates.isRepeating })
-        }
 
         this.tracks[fileName] = {
           ...this.tracks[fileName],
@@ -51,5 +41,22 @@ export const useAudioStore = defineStore('audio', {
     removeTrack(fileName: string) {
       delete this.tracks[fileName]
     },
+    getAllTrackStates() {
+      return Object.values(this.tracks).map(track => ({
+        fileName: track.fileName,
+        isPlaying: track.isPlaying,
+        volume: track.volume,
+        isRepeating: track.isRepeating,
+        currentTime: track.currentTime
+      }))
+    },
+    syncTracks(tracks: Partial<AudioTrack>[]) {
+      tracks.forEach(track => {
+        if (track.fileName) {
+          this.initTrack(track.fileName)
+          this.updateTrackState(track.fileName, track)
+        }
+      })
+    }
   }
 })
