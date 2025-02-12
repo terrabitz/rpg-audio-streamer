@@ -71,24 +71,34 @@ const handlePlay = (fileName: string) => {
   const state = audioStore.tracks[fileName]
   const newState = { isPlaying: !state.isPlaying }
   audioStore.updateTrackState(fileName, newState)
-  wsStore.sendMessage('syncTrack', { fileName, ...newState })
+  if (newState.isPlaying) {
+    wsStore.sendMessage('syncTrack', { ...audioStore.tracks[fileName] })
+  } else {
+    wsStore.sendMessage('syncTrack', { fileName, ...newState })
+  }
 }
 
 const handleRepeat = (fileName: string) => {
   const state = audioStore.tracks[fileName]
   const newState = { isRepeating: !state.isRepeating }
   audioStore.updateTrackState(fileName, newState)
-  wsStore.sendMessage('syncTrack', { fileName, ...newState })
+  if (state.isPlaying) {
+    wsStore.sendMessage('syncTrack', { fileName, ...newState })
+  }
 }
 
 const handleVolume = (fileName: string, volume: number) => {
   audioStore.updateTrackState(fileName, { volume })
-  wsStore.sendMessage('syncTrack', { fileName, volume })
+  if (audioStore.tracks[fileName].isPlaying) {
+    wsStore.sendMessage('syncTrack', { fileName, volume })
+  }
 }
 
 const handleSeek = (fileName: string, time: number) => {
   audioStore.updateTrackState(fileName, { currentTime: time })
-  wsStore.sendMessage('syncTrack', { fileName, currentTime: time })
+  if (audioStore.tracks[fileName].isPlaying) {
+    wsStore.sendMessage('syncTrack', { fileName, currentTime: time })
+  }
 }
 
 const handleTimeUpdate = (fileName: string, event: Event) => {
