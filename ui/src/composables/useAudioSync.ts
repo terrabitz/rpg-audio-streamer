@@ -10,11 +10,14 @@ export function useAudioSync(fileName: string, audioElement: HTMLAudioElement) {
   })
 
   audioElement.addEventListener('ended', () => {
-    audioElement.currentTime = 0
-    audioStore.updateTrackState(fileName, {
-      isPlaying: false,
-      currentTime: 0
-    })
+    // Update state and pause first
+    audioStore.updateTrackState(fileName, { isPlaying: false })
+    audioElement.pause()
+    // Then reset position
+    setTimeout(() => {
+      audioElement.currentTime = 0
+      audioStore.updateTrackState(fileName, { currentTime: 0 })
+    }, 0)
   })
 
   // Watch state and sync to audio element
