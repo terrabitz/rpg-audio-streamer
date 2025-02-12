@@ -9,6 +9,16 @@ export function useAudioSync(fileName: string, audioElement: HTMLAudioElement) {
     audioStore.updateTrackState(fileName, { duration: audioElement.duration })
   })
 
+  // Listen for track end
+  audioElement.addEventListener('ended', () => {
+    // Reset currentTime and update state
+    audioElement.currentTime = 0
+    audioStore.updateTrackState(fileName, {
+      isPlaying: false,
+      currentTime: 0
+    })
+  })
+
   // Listen for audio source ready state
   audioElement.addEventListener('canplay', () => {
     const state = audioStore.tracks[fileName]
