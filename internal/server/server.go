@@ -169,6 +169,11 @@ func (s *Server) Start() error {
 	})
 
 	s.hub.HandleFunc("sync", func(payload json.RawMessage, c *ws.Client) {
+		if c.Token.Role != auth.RoleGM {
+			s.logger.Warn("unauthorized broadcast attempt", "role", c.Token.Role)
+			return
+		}
+
 		// Extract target client ID from payload
 		var syncPayload struct {
 			Tracks []any  `json:"tracks"`
