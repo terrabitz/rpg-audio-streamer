@@ -201,6 +201,18 @@ func (s *Server) Start() error {
 		}
 	})
 
+	s.hub.HandleFunc("syncTrack", func(payload json.RawMessage, c *ws.Client) {
+		if c.Token.Role != auth.RoleGM {
+			s.logger.Warn("unauthorized syncTrack command", "role", c.Token.Role)
+			return
+		}
+		s.hub.Broadcast(ws.Message{
+			Method:   "syncTrack",
+			SenderID: c.ID,
+			Payload:  payload,
+		}, ws.ToPlayersOnly())
+	})
+
 	go s.hub.Run()
 
 	s.logger.Info("starting server", "port", s.cfg.Port)

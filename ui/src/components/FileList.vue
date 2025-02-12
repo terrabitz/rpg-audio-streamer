@@ -27,6 +27,7 @@
 
 <script setup lang="ts">
 import { useFileStore } from '@/stores/files'
+import { useWebSocketStore } from '@/stores/websocket'
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useAudioSync } from '../composables/useAudioSync'
 import { useAudioStore } from '../stores/audio'
@@ -34,6 +35,7 @@ import AudioControls from './AudioControls.vue'
 
 const fileStore = useFileStore()
 const audioStore = useAudioStore()
+const wsStore = useWebSocketStore()
 const audioElements = ref<Record<string, HTMLAudioElement>>({})
 
 onMounted(() => {
@@ -64,23 +66,29 @@ watch(audioElements, (elements) => {
   })
 }, { deep: true })
 
-// Event handlers just update state
+// Event handlers just update state and send WS payloads
 const handlePlay = (fileName: string) => {
   const state = audioStore.tracks[fileName]
-  audioStore.updateTrackState(fileName, { isPlaying: !state.isPlaying })
+  const newState = { isPlaying: !state.isPlaying }
+  audioStore.updateTrackState(fileName, newState)
+  wsStore.sendMessage('syncTrack', { fileName, ...newState })
 }
 
 const handleRepeat = (fileName: string) => {
   const state = audioStore.tracks[fileName]
-  audioStore.updateTrackState(fileName, { isRepeating: !state.isRepeating })
+  const newState = { isRepeating: !state.isRepeating }
+  audioStore.updateTrackState(fileName, newState)
+  wsStore.sendMessage('syncTrack', { fileName, ...newState })
 }
 
 const handleVolume = (fileName: string, volume: number) => {
   audioStore.updateTrackState(fileName, { volume })
+  wsStore.sendMessage('syncTrack', { fileName, volume })
 }
 
 const handleSeek = (fileName: string, time: number) => {
   audioStore.updateTrackState(fileName, { currentTime: time })
+  wsStore.sendMessage('syncTrack', { fileName, currentTime: time })
 }
 
 const handleTimeUpdate = (fileName: string, event: Event) => {
