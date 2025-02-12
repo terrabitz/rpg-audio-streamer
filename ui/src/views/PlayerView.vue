@@ -2,12 +2,17 @@
 import { useWebSocketStore } from '@/stores/websocket'
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import PlayerFileList from '../components/PlayerFileList.vue'
+import { usePlaybackSync } from '../composables/usePlaybackSync'
 import { useAuthStore } from '../stores/auth'
 
 const auth = useAuthStore()
 const router = useRouter()
 const ws = useWebSocketStore()
 const syncing = ref(false)
+
+// Set up sync handling
+usePlaybackSync()
 
 onMounted(async () => {
   await auth.checkAuthStatus()
@@ -27,14 +32,16 @@ function requestSync() {
 
 <template>
   <v-container>
-    <h1>Connected to Table</h1>
     <div class="d-flex align-center mb-4">
-      <span class="mr-4">
+      <h1 class="mr-4">Connected to Table</h1>
+      <v-chip :color="ws.isConnected ? 'success' : 'error'" class="mr-4">
         {{ ws.isConnected ? 'Connected' : 'Disconnected' }}
-      </span>
+      </v-chip>
       <v-btn @click="requestSync" :loading="syncing" color="primary">
         Sync with GM
       </v-btn>
     </div>
+
+    <PlayerFileList />
   </v-container>
 </template>

@@ -14,6 +14,9 @@ export const useAudioStore = defineStore('audio', {
   state: () => ({
     tracks: {} as Record<string, AudioTrack>
   }),
+  getters: {
+    availableTracks: (state) => Object.values(state.tracks)
+  },
   actions: {
     initTrack(fileName: string) {
       if (!this.tracks[fileName]) {

@@ -30,15 +30,11 @@ watch(() => auth.authenticated, (isAuthenticated) => {
 // Handle sync requests from players
 wsStore.addMessageHandler((message) => {
   if (message.method === 'syncRequest' && auth.role === 'gm') {
-    console.log(message)
-    // Send current state to all clients
+    // Send current state to requesting client
     wsStore.broadcast('sync', {
       tracks: audioStore.getAllTrackStates(),
       to: message.senderId,
     })
-  } else if (message.method === 'sync') {
-    // Update local state with sync data
-    audioStore.syncTracks(message.payload.tracks)
   }
 })
 
