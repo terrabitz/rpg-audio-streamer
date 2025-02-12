@@ -6,6 +6,7 @@ interface AudioTrack {
   volume: number
   isRepeating: boolean
   currentTime: number
+  duration: number
 }
 
 export const useAudioStore = defineStore('audio', {
@@ -20,7 +21,8 @@ export const useAudioStore = defineStore('audio', {
           isPlaying: false,
           volume: 100,
           isRepeating: false,
-          currentTime: 0
+          currentTime: 0,
+          duration: 0
         }
       }
     },

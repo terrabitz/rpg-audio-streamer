@@ -14,7 +14,7 @@
             <audio :ref="el => audioElements[file.name] = el as HTMLAudioElement" :src="`/api/v1/stream/${file.name}`"
               @ended="handleEnded(file.name)" @timeupdate="evt => handleTimeUpdate(file.name, evt)" />
             <AudioControls :fileName="file.name" @play="handlePlay(file.name)" @repeat="handleRepeat(file.name)"
-              @volume="vol => handleVolume(file.name, vol)" />
+              @volume="vol => handleVolume(file.name, vol)" @seek="time => handleSeek(file.name, time)" />
             <v-btn icon size="small" color="error" @click="deleteFile(file.name)">
               <v-icon>$delete</v-icon>
             </v-btn>
@@ -75,13 +75,16 @@ function handleVolume(fileName: string, volume: number) {
 }
 
 function handleTimeUpdate(fileName: string, event: Event) {
-  console.log("handleTimeUpdate", fileName, event)
   const audio = event.target as HTMLAudioElement
   audioStore.updateTrackState(fileName, { currentTime: audio.currentTime })
 }
 
 function handleEnded(fileName: string) {
   audioStore.updateTrackState(fileName, { isPlaying: false })
+}
+
+function handleSeek(fileName: string, time: number) {
+  audioStore.updateTrackState(fileName, { currentTime: time })
 }
 
 onBeforeUnmount(() => {
