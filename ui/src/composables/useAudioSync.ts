@@ -1,12 +1,17 @@
-import { watchEffect } from 'vue'
+import { ref, watchEffect } from 'vue'
 import { useAudioStore } from '../stores/audio'
 
 export function useAudioSync(fileName: string, audioElement: HTMLAudioElement) {
   const audioStore = useAudioStore()
+  const canPlay = ref(false)
 
   // Set up one-time event listeners
   audioElement.addEventListener('loadedmetadata', () => {
     audioStore.updateTrackState(fileName, { duration: audioElement.duration })
+  })
+
+  audioElement.addEventListener('canplaythrough', () => {
+    canPlay.value = true
   })
 
   audioElement.addEventListener('ended', () => {
@@ -30,11 +35,14 @@ export function useAudioSync(fileName: string, audioElement: HTMLAudioElement) {
     audioElement.loop = state.isRepeating
 
     // Only sync playback state when ready
-    if (audioElement.readyState >= HTMLMediaElement.HAVE_ENOUGH_DATA) {
+    if (canPlay.value && audioElement.readyState >= HTMLMediaElement.HAVE_ENOUGH_DATA) {
       if (state.isPlaying && audioElement.paused) {
-        audioElement.play().catch(() => {
-          audioStore.updateTrackState(fileName, { isPlaying: false })
-        })
+        const playPromise = audioElement.play()
+        if (playPromise !== undefined) {
+          playPromise.catch(() => {
+            audioStore.updateTrackState(fileName, { isPlaying: false })
+          })
+        }
       } else if (!state.isPlaying && !audioElement.paused) {
         audioElement.pause()
       }
