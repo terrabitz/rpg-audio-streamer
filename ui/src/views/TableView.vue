@@ -13,11 +13,29 @@ const { getBaseUrl } = useBaseUrl()
 const joinUrl = ref<string>('')
 const isCopied = ref(false)
 
+async function copyToClipboard(text: string) {
+  if (navigator.clipboard) {
+    await navigator.clipboard.writeText(text)
+  } else {
+    const textArea = document.createElement('textarea')
+    textArea.value = text
+    document.body.appendChild(textArea)
+    textArea.focus()
+    textArea.select()
+    try {
+      document.execCommand('copy')
+    } catch (err) {
+      console.error('Fallback: Oops, unable to copy', err)
+    }
+    document.body.removeChild(textArea)
+  }
+}
+
 async function handleGetJoinToken() {
   await joinStore.fetchToken()
   if (joinStore.token) {
     const url = `${getBaseUrl()}/join/${joinStore.token}`
-    await navigator.clipboard.writeText(url)
+    await copyToClipboard(url)
     joinUrl.value = url
     isCopied.value = true
     setTimeout(() => {
