@@ -71,7 +71,6 @@ export const useWebSocketStore = defineStore('websocket', () => {
           direction: 'received'
         }
         messageHistory.value.push(storedMessage)
-        console.log(message)
         messageHandlers.value.forEach(handler => handler(message))
       } catch (error) {
         console.error('Failed to parse WebSocket message:', event.data)
