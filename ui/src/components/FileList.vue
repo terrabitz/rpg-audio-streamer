@@ -28,6 +28,7 @@
 <script setup lang="ts">
 import { useFileStore } from '@/stores/files'
 import { useWebSocketStore } from '@/stores/websocket'
+import debounce from 'lodash.debounce'
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useAudioSync } from '../composables/useAudioSync'
 import { useAudioStore } from '../stores/audio'
@@ -66,15 +67,19 @@ watch(audioElements, (elements) => {
   })
 }, { deep: true })
 
+const debouncedSendMessage = debounce((method: string, payload: any) => {
+  wsStore.sendMessage(method, payload)
+}, 100)
+
 // Event handlers just update state and send WS payloads
 const handlePlay = (fileName: string) => {
   const state = audioStore.tracks[fileName]
   const newState = { isPlaying: !state.isPlaying }
   audioStore.updateTrackState(fileName, newState)
   if (newState.isPlaying) {
-    wsStore.sendMessage('syncTrack', { ...audioStore.tracks[fileName] })
+    debouncedSendMessage('syncTrack', { ...audioStore.tracks[fileName] })
   } else {
-    wsStore.sendMessage('syncTrack', { fileName, ...newState })
+    debouncedSendMessage('syncTrack', { fileName, ...newState })
   }
 }
 
@@ -83,21 +88,21 @@ const handleRepeat = (fileName: string) => {
   const newState = { isRepeating: !state.isRepeating }
   audioStore.updateTrackState(fileName, newState)
   if (state.isPlaying) {
-    wsStore.sendMessage('syncTrack', { fileName, ...newState })
+    debouncedSendMessage('syncTrack', { fileName, ...newState })
   }
 }
 
 const handleVolume = (fileName: string, volume: number) => {
   audioStore.updateTrackState(fileName, { volume })
   if (audioStore.tracks[fileName].isPlaying) {
-    wsStore.sendMessage('syncTrack', { fileName, volume })
+    debouncedSendMessage('syncTrack', { fileName, volume })
   }
 }
 
 const handleSeek = (fileName: string, time: number) => {
   audioStore.updateTrackState(fileName, { currentTime: time })
   if (audioStore.tracks[fileName].isPlaying) {
-    wsStore.sendMessage('syncTrack', { fileName, currentTime: time })
+    debouncedSendMessage('syncTrack', { fileName, currentTime: time })
   }
 }
 
