@@ -49,25 +49,6 @@ watch(audioElements, (elements) => {
   })
 }, { deep: true })
 
-// Event handlers
-const handlePlay = (fileName: string) => {
-  const state = audioStore.tracks[fileName]
-  audioStore.updateTrackState(fileName, { isPlaying: !state.isPlaying })
-}
-
-const handleRepeat = (fileName: string) => {
-  const state = audioStore.tracks[fileName]
-  audioStore.updateTrackState(fileName, { isRepeating: !state.isRepeating })
-}
-
-const handleVolume = (fileName: string, volume: number) => {
-  audioStore.updateTrackState(fileName, { volume })
-}
-
-const handleSeek = (fileName: string, time: number) => {
-  audioStore.updateTrackState(fileName, { currentTime: time })
-}
-
 function handleRefresh() {
   isRefreshing.value = true
   wsStore.broadcast('syncRequest', {})

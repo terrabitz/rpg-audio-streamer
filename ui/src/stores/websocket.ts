@@ -17,20 +17,18 @@ export function getWebSocketUrl(): string {
   return `${protocol}//${baseUrl.host}${baseUrl.pathname}/ws`
 }
 
-export interface WebSocketMessage {
+export interface WebSocketMessage<T = any> {
   method: string
   senderId?: string
-  payload: {
-    [key: string]: any
-  }
+  payload: T
 }
 
-interface StoredMessage extends WebSocketMessage {
+interface StoredMessage<T = any> extends WebSocketMessage<T> {
   timestamp: number
   direction: 'sent' | 'received'
 }
 
-type MessageHandler = (message: WebSocketMessage) => void
+type MessageHandler<T = any> = (message: WebSocketMessage<T>) => void
 
 export const useWebSocketStore = defineStore('websocket', () => {
   const isConnected = ref(false)
@@ -95,9 +93,9 @@ export const useWebSocketStore = defineStore('websocket', () => {
     isConnected.value = false
   }
 
-  function sendMessage(method: string, payload: any) {
+  function sendMessage<T>(method: string, payload: T) {
     if (socket.value && isConnected.value) {
-      const msg = { method, payload }
+      const msg: WebSocketMessage<T> = { method, payload }
       socket.value.send(JSON.stringify(msg))
 
       messageHistory.value.push({
@@ -108,7 +106,7 @@ export const useWebSocketStore = defineStore('websocket', () => {
     }
   }
 
-  function broadcast(method: string, payload: any = {}) {
+  function broadcast<T>(method: string, payload: T = {} as T) {
     sendMessage(method, payload)
   }
 
