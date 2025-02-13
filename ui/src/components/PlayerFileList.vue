@@ -17,7 +17,7 @@
           <td>{{ track.fileName }}</td>
           <td class="d-flex align-center">
             <audio :ref="el => audioElements[track.fileName] = el as HTMLAudioElement"
-              :src="`/api/v1/stream/${track.fileName}`" />
+              :src="`/api/v1/stream/${track.fileName}`" @timeupdate="evt => handleTimeUpdate(track.fileName, evt)" />
           </td>
         </tr>
       </tbody>
@@ -55,6 +55,11 @@ function handleRefresh() {
   setTimeout(() => {
     isRefreshing.value = false
   }, 1000)
+}
+
+const handleTimeUpdate = (fileName: string, event: Event) => {
+  const audio = event.target as HTMLAudioElement
+  audioStore.updateTrackState(fileName, { currentTime: audio.currentTime })
 }
 
 onBeforeUnmount(() => {
