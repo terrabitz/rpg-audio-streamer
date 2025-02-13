@@ -1,55 +1,70 @@
+import Hls from 'hls.js'
 import { ref, watchEffect } from 'vue'
 import { useAudioStore } from '../stores/audio'
 
-export function useAudioSync(fileName: string, audioElement: HTMLAudioElement) {
+export function useAudioSync(fileName: string, videoElement: HTMLVideoElement) {
   const audioStore = useAudioStore()
   const canPlay = ref(false)
 
-  // Set up one-time event listeners
-  audioElement.addEventListener('loadedmetadata', () => {
-    audioStore.updateTrackState(fileName, { duration: audioElement.duration })
-  })
+  // Set up HLS.js if supported
+  if (Hls.isSupported()) {
+    const hls = new Hls()
+    hls.loadSource(`/api/v1/stream/${fileName}/index.m3u8`)
+    hls.attachMedia(videoElement)
+    hls.on(Hls.Events.MANIFEST_PARSED, () => {
+      canPlay.value = true
+    })
+    hls.on(Hls.Events.LEVEL_LOADED, (_, data) => {
+      audioStore.updateTrackState(fileName, { duration: data.details.totalduration })
+    })
+  } else if (videoElement.canPlayType('application/vnd.apple.mpegurl')) {
+    videoElement.src = `/api/v1/stream/${fileName}/index.m3u8`
+    videoElement.addEventListener('loadedmetadata', () => {
+      canPlay.value = true
+      audioStore.updateTrackState(fileName, { duration: videoElement.duration })
+    })
+  }
 
-  audioElement.addEventListener('canplaythrough', () => {
-    canPlay.value = true
-  })
-
-  audioElement.addEventListener('ended', () => {
+  videoElement.addEventListener('ended', () => {
     // Update state and pause first
     audioStore.updateTrackState(fileName, { isPlaying: false })
-    audioElement.pause()
+    videoElement.pause()
     // Then reset position
     setTimeout(() => {
-      audioElement.currentTime = 0
+      videoElement.currentTime = 0
       audioStore.updateTrackState(fileName, { currentTime: 0 })
     }, 0)
   })
 
-  // Watch state and sync to audio element
+  videoElement.addEventListener('timeupdate', () => {
+    audioStore.updateTrackState(fileName, { currentTime: videoElement.currentTime })
+  })
+
+  // Watch state and sync to video element
   watchEffect(() => {
     const state = audioStore.tracks[fileName]
     if (!state) return
 
     // Always sync these properties
-    audioElement.volume = state.volume / 100
-    audioElement.loop = state.isRepeating
+    videoElement.volume = state.volume / 100
+    videoElement.loop = state.isRepeating
 
     // Only sync playback state when ready
-    if (canPlay.value && audioElement.readyState >= HTMLMediaElement.HAVE_ENOUGH_DATA) {
-      if (state.isPlaying && audioElement.paused) {
-        const playPromise = audioElement.play()
+    if (canPlay.value && videoElement.readyState >= HTMLMediaElement.HAVE_ENOUGH_DATA) {
+      if (state.isPlaying && videoElement.paused) {
+        const playPromise = videoElement.play()
         if (playPromise !== undefined) {
           playPromise.catch(() => {
             audioStore.updateTrackState(fileName, { isPlaying: false })
           })
         }
-      } else if (!state.isPlaying && !audioElement.paused) {
-        audioElement.pause()
+      } else if (!state.isPlaying && !videoElement.paused) {
+        videoElement.pause()
       }
 
       // Only seek if difference is significant
-      if (Math.abs(audioElement.currentTime - state.currentTime) > 0.5) {
-        audioElement.currentTime = state.currentTime
+      if (Math.abs(videoElement.currentTime - state.currentTime) > 0.5) {
+        videoElement.currentTime = state.currentTime
       }
     }
   })

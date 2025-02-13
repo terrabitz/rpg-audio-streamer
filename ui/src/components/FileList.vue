@@ -11,8 +11,7 @@
         <tr v-for="file in fileStore.files" :key="file.name">
           <td>{{ file.name }}</td>
           <td class="d-flex align-center">
-            <audio :ref="el => audioElements[file.name] = el as HTMLAudioElement" :src="`/api/v1/stream/${file.name}`"
-              @timeupdate="evt => handleTimeUpdate(file.name, evt)" />
+            <video :ref="el => videoElements[file.name] = el as HTMLVideoElement" />
             <AudioControls :fileName="file.name" @play="handlePlay(file.name)" @repeat="handleRepeat(file.name)"
               @volume="vol => handleVolume(file.name, vol)" @seek="time => handleSeek(file.name, time)" />
             <v-btn icon size="small" color="error" @click="deleteFile(file.name)">
@@ -37,17 +36,17 @@ import AudioControls from './AudioControls.vue'
 const fileStore = useFileStore()
 const audioStore = useAudioStore()
 const wsStore = useWebSocketStore()
-const audioElements = ref<Record<string, HTMLAudioElement>>({})
+const videoElements = ref<Record<string, HTMLVideoElement>>({})
 
 onMounted(() => {
   fileStore.fetchFiles()
 })
 
 async function deleteFile(fileName: string) {
-  const audio = audioElements.value[fileName]
-  if (audio) {
-    audio.pause()
-    audio.src = ''
+  const video = videoElements.value[fileName]
+  if (video) {
+    video.pause()
+    video.src = ''
   }
   audioStore.removeTrack(fileName)
 
@@ -59,10 +58,10 @@ async function deleteFile(fileName: string) {
 }
 
 // Set up audio sync for new elements
-watch(audioElements, (elements) => {
-  Object.entries(elements).forEach(([fileName, audio]) => {
-    if (audio) {
-      useAudioSync(fileName, audio)
+watch(videoElements, (elements) => {
+  Object.entries(elements).forEach(([fileName, video]) => {
+    if (video) {
+      useAudioSync(fileName, video)
     }
   })
 }, { deep: true })
@@ -106,15 +105,16 @@ const handleSeek = (fileName: string, time: number) => {
   }
 }
 
-const handleTimeUpdate = (fileName: string, event: Event) => {
-  const audio = event.target as HTMLAudioElement
-  audioStore.updateTrackState(fileName, { currentTime: audio.currentTime })
-}
-
 onBeforeUnmount(() => {
-  Object.values(audioElements.value).forEach(audio => {
-    audio.pause()
-    audio.src = ''
+  Object.values(videoElements.value).forEach(video => {
+    video.pause()
+    video.src = ''
   })
 })
 </script>
+
+<style scoped>
+video {
+  display: none
+}
+</style>

@@ -16,8 +16,7 @@
         <tr v-for="track in audioStore.availableTracks" :key="track.fileName">
           <td>{{ track.fileName }}</td>
           <td class="d-flex align-center">
-            <audio :ref="el => audioElements[track.fileName] = el as HTMLAudioElement"
-              :src="`/api/v1/stream/${track.fileName}`" @timeupdate="evt => handleTimeUpdate(track.fileName, evt)" />
+            <video :ref="el => videoElements[track.fileName] = el as HTMLVideoElement" />
           </td>
         </tr>
       </tbody>
@@ -33,18 +32,18 @@ import { useAudioSync } from '../composables/useAudioSync'
 import { useAudioStore } from '../stores/audio'
 
 const audioStore = useAudioStore()
-const audioElements = ref<Record<string, HTMLAudioElement>>({})
+const videoElements = ref<Record<string, HTMLVideoElement>>({})
 const wsStore = useWebSocketStore()
 const isRefreshing = ref(false)
 
 // Set up sync handling with audio elements
-wsHandlers(audioElements)
+wsHandlers(videoElements)
 
 // Set up audio sync for new elements
-watch(audioElements, (elements) => {
-  Object.entries(elements).forEach(([fileName, audio]) => {
-    if (audio) {
-      useAudioSync(fileName, audio)
+watch(videoElements, (elements) => {
+  Object.entries(elements).forEach(([fileName, video]) => {
+    if (video) {
+      useAudioSync(fileName, video)
     }
   })
 }, { deep: true })
@@ -57,15 +56,16 @@ function handleRefresh() {
   }, 1000)
 }
 
-const handleTimeUpdate = (fileName: string, event: Event) => {
-  const audio = event.target as HTMLAudioElement
-  audioStore.updateTrackState(fileName, { currentTime: audio.currentTime })
-}
-
 onBeforeUnmount(() => {
-  Object.values(audioElements.value).forEach(audio => {
-    audio.pause()
-    audio.src = ''
+  Object.values(videoElements.value).forEach(video => {
+    video.pause()
+    video.src = ''
   })
 })
 </script>
+
+<style scoped>
+video {
+  display: none
+}
+</style>
