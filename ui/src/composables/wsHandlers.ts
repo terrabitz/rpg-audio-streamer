@@ -65,16 +65,12 @@ export function wsHandlers(audioElements: Ref<Record<string, HTMLAudioElement>>)
 
   function handleSyncTrack(message: { method: string, payload: SyncTrackPayload }) {
     if (message.method === 'syncTrack' && message.payload.fileName) {
+      console.log(message)
       const { fileName, ...updates } = message.payload
       audioStore.updateTrackState(fileName, updates)
 
-      if (updates.isPlaying) {
-        if (!audioElements.value[fileName]) {
-          const audio = new Audio(`/api/v1/stream/${fileName}`)
-          audioElements.value[fileName] = audio as HTMLAudioElement
-          audio.play()
-        }
-      } else {
+      if (updates.isPlaying === false) {
+        audioStore.removeTrack(fileName)
         const audio = audioElements.value[fileName]
         if (audio) {
           audio.pause()

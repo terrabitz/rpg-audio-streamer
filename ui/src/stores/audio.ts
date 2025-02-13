@@ -1,5 +1,4 @@
 import { defineStore } from 'pinia'
-import { useWebSocketStore } from './websocket'
 
 interface AudioTrack {
   fileName: string
@@ -8,6 +7,17 @@ interface AudioTrack {
   isRepeating: boolean
   currentTime: number
   duration: number
+}
+
+function newAudioTrack(fileName: string): AudioTrack {
+  return {
+    fileName,
+    isPlaying: false,
+    volume: 100,
+    isRepeating: false,
+    currentTime: 0,
+    duration: 0
+  }
 }
 
 export const useAudioStore = defineStore('audio', {
@@ -21,23 +31,18 @@ export const useAudioStore = defineStore('audio', {
   actions: {
     initTrack(fileName: string) {
       if (!this.tracks[fileName]) {
-        this.tracks[fileName] = {
-          fileName,
-          isPlaying: false,
-          volume: 100,
-          isRepeating: false,
-          currentTime: 0,
-          duration: 0
-        }
+        this.tracks[fileName] = newAudioTrack(fileName)
       }
     },
     updateTrackState(fileName: string, updates: Partial<AudioTrack>) {
       if (this.tracks[fileName]) {
-        const wsStore = useWebSocketStore()
-
-
         this.tracks[fileName] = {
           ...this.tracks[fileName],
+          ...updates
+        }
+      } else {
+        this.tracks[fileName] = {
+          ...newAudioTrack(fileName),
           ...updates
         }
       }
