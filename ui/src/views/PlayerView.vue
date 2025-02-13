@@ -1,40 +1,56 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted } from 'vue'
+import { useWebSocketStore } from '@/stores/websocket'
+import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import PlayerFileList from '../components/PlayerFileList.vue'
+import { useAudioStore } from '../stores/audio'
 import { useAuthStore } from '../stores/auth'
-import { useWebSocketStore } from '../stores/websocket'
 
 const auth = useAuthStore()
-const ws = useWebSocketStore()
 const router = useRouter()
+const ws = useWebSocketStore()
+const audioStore = useAudioStore()
+const connecting = ref(false)
+
+const buttonLabel = computed(() => {
+  if (connecting.value) return 'Connecting...'
+  if (audioStore.enabled) return 'Disconnect Audio'
+  return 'Connect Audio'
+})
 
 onMounted(async () => {
   await auth.checkAuthStatus()
   if (!auth.authenticated) {
     router.push('/login')
-    return
   }
-  ws.connect()
 })
 
-onUnmounted(() => {
-  ws.disconnect()
-})
+function handleAudioToggle() {
+  if (!audioStore.enabled) {
+    connecting.value = true
+    audioStore.enabled = true
+    ws.broadcast('syncRequest', {})
+    setTimeout(() => {
+      connecting.value = false
+    }, 2000)
+  } else {
+    audioStore.enabled = false
+  }
+}
 </script>
 
 <template>
-  <main class="container mx-auto px-4 py-8">
-    <div class="text-center">
-      <h1 class="text-2xl font-bold mb-4">Connected to Table</h1>
-      <div class="flex items-center justify-center gap-2">
-        <div :class="[
-          'w-3 h-3 rounded-full',
-          ws.isConnected ? 'bg-green-500' : 'bg-red-500'
-        ]"></div>
-        <span class="text-sm text-gray-600">
-          {{ ws.isConnected ? 'Connected' : 'Disconnected' }}
-        </span>
-      </div>
+  <v-container>
+    <div class="d-flex align-center mb-4">
+      <h1 class="mr-4">Table View</h1>
+      <v-chip v-if="audioStore.enabled" :color="ws.isConnected ? 'success' : 'error'" class="mr-4">
+        {{ ws.isConnected ? 'Connected' : 'Disconnected' }}
+      </v-chip>
+      <v-btn @click="handleAudioToggle" :loading="connecting" :color="audioStore.enabled ? 'error' : 'success'">
+        {{ buttonLabel }}
+      </v-btn>
     </div>
-  </main>
+
+    <PlayerFileList v-if="audioStore.enabled" />
+  </v-container>
 </template>

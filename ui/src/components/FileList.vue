@@ -4,17 +4,17 @@
       <thead>
         <tr>
           <th>Name</th>
-          <th>Size</th>
           <th>Actions</th>
         </tr>
       </thead>
       <tbody>
         <tr v-for="file in fileStore.files" :key="file.name">
           <td>{{ file.name }}</td>
-          <td>{{ formatFileSize(file.size) }}</td>
           <td class="d-flex align-center">
-            <AudioControls :state="audioPlayer.getState(file.name)" @play="audioPlayer.togglePlay(file.name)"
-              @repeat="audioPlayer.toggleRepeat(file.name)" @volume="audioPlayer.setVolume(file.name, $event)" />
+            <audio :ref="el => audioElements[file.name] = el as HTMLAudioElement" :src="`/api/v1/stream/${file.name}`"
+              @timeupdate="evt => handleTimeUpdate(file.name, evt)" />
+            <AudioControls :fileName="file.name" @play="handlePlay(file.name)" @repeat="handleRepeat(file.name)"
+              @volume="vol => handleVolume(file.name, vol)" @seek="time => handleSeek(file.name, time)" />
             <v-btn icon size="small" color="error" @click="deleteFile(file.name)">
               <v-icon>$delete</v-icon>
             </v-btn>
@@ -26,32 +26,95 @@
 </template>
 
 <script setup lang="ts">
-import { useAudioPlayer } from '@/composables/useAudioPlayer'
 import { useFileStore } from '@/stores/files'
-import { onMounted } from 'vue'
+import { useWebSocketStore } from '@/stores/websocket'
+import debounce from 'lodash.debounce'
+import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useAudioSync } from '../composables/useAudioSync'
+import { useAudioStore } from '../stores/audio'
 import AudioControls from './AudioControls.vue'
 
 const fileStore = useFileStore()
-const audioPlayer = useAudioPlayer()
+const audioStore = useAudioStore()
+const wsStore = useWebSocketStore()
+const audioElements = ref<Record<string, HTMLAudioElement>>({})
 
 onMounted(() => {
   fileStore.fetchFiles()
 })
 
-function formatFileSize(bytes: number): string {
-  if (bytes === 0) return '0 Bytes'
-  const k = 1024
-  const sizes = ['Bytes', 'KB', 'MB', 'GB']
-  const i = Math.floor(Math.log(bytes) / Math.log(k))
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
-}
-
 async function deleteFile(fileName: string) {
-  audioPlayer.cleanup(fileName)
+  const audio = audioElements.value[fileName]
+  if (audio) {
+    audio.pause()
+    audio.src = ''
+  }
+  audioStore.removeTrack(fileName)
+
   try {
     await fileStore.deleteFile(fileName)
   } catch (error) {
     console.error('Failed to delete file:', error)
   }
 }
+
+// Set up audio sync for new elements
+watch(audioElements, (elements) => {
+  Object.entries(elements).forEach(([fileName, audio]) => {
+    if (audio) {
+      useAudioSync(fileName, audio)
+    }
+  })
+}, { deep: true })
+
+const debouncedSendMessage = debounce((method: string, payload: any) => {
+  wsStore.sendMessage(method, payload)
+}, 100)
+
+// Event handlers just update state and send WS payloads
+const handlePlay = (fileName: string) => {
+  const state = audioStore.tracks[fileName]
+  const newState = { isPlaying: !state.isPlaying }
+  audioStore.updateTrackState(fileName, newState)
+  if (newState.isPlaying) {
+    debouncedSendMessage('syncTrack', { ...audioStore.tracks[fileName] })
+  } else {
+    debouncedSendMessage('syncTrack', { fileName, ...newState })
+  }
+}
+
+const handleRepeat = (fileName: string) => {
+  const state = audioStore.tracks[fileName]
+  const newState = { isRepeating: !state.isRepeating }
+  audioStore.updateTrackState(fileName, newState)
+  if (state.isPlaying) {
+    debouncedSendMessage('syncTrack', { fileName, ...newState })
+  }
+}
+
+const handleVolume = (fileName: string, volume: number) => {
+  audioStore.updateTrackState(fileName, { volume })
+  if (audioStore.tracks[fileName].isPlaying) {
+    debouncedSendMessage('syncTrack', { fileName, volume })
+  }
+}
+
+const handleSeek = (fileName: string, time: number) => {
+  audioStore.updateTrackState(fileName, { currentTime: time })
+  if (audioStore.tracks[fileName].isPlaying) {
+    debouncedSendMessage('syncTrack', { fileName, currentTime: time })
+  }
+}
+
+const handleTimeUpdate = (fileName: string, event: Event) => {
+  const audio = event.target as HTMLAudioElement
+  audioStore.updateTrackState(fileName, { currentTime: audio.currentTime })
+}
+
+onBeforeUnmount(() => {
+  Object.values(audioElements.value).forEach(audio => {
+    audio.pause()
+    audio.src = ''
+  })
+})
 </script>

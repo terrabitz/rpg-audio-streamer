@@ -14,7 +14,6 @@ export const useJoinStore = defineStore('join', () => {
 
     try {
       const response = await apiClient.get<JoinTokenResponse>('/join-token')
-      console.log(response)
       token.value = response.data.token
     } catch (err) {
       console.error('Failed to fetch join token:', err)

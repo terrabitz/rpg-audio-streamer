@@ -125,6 +125,12 @@ func main() {
 						Usage:       "The static join token to use",
 						Destination: &cfg.Auth.JoinToken,
 					},
+					&cli.BoolFlag{
+						Name:        "dev-mode",
+						EnvVars:     []string{"DEV_MODE"},
+						Usage:       "Enables development mode",
+						Destination: &cfg.Server.DevMode,
+					},
 				},
 				Action: func(cCtx *cli.Context) error {
 					return startServer(cfg)

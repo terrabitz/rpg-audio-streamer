@@ -1,7 +1,6 @@
 package server
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -65,7 +64,6 @@ func New(cfg Config, logger *slog.Logger, frontend fs.FS, auth Authenticator) (*
 		},
 	}
 
-	go hub.Run()
 	return srv, nil
 }
 
@@ -83,16 +81,15 @@ func (s *Server) authMiddleware(next http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 
-		ctx := r.Context()
-		ctx = context.WithValue(ctx, "token", token)
+		ctx := SetAuthToken(r.Context(), token)
 		next(w, r.WithContext(ctx))
 	}
 }
 
 func (s *Server) gmOnlyMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	return s.authMiddleware(func(w http.ResponseWriter, r *http.Request) {
-		token := r.Context().Value("token").(*auth.Token)
-		if token.Role != auth.RoleGM {
+		token, ok := GetAuthToken(r.Context())
+		if !ok || token.Role != auth.RoleGM {
 			http.Error(w, "Forbidden", http.StatusForbidden)
 			return
 		}
@@ -139,6 +136,84 @@ func (s *Server) Start() error {
 		Addr:    fmt.Sprintf(":%d", s.cfg.Port),
 		Handler: mux,
 	}
+
+	s.hub.HandleFunc("ping", func(payload json.RawMessage, c *ws.Client) {
+		if err := c.Send(ws.Message{
+			Method:  "pong",
+			Payload: payload,
+		}); err != nil {
+			s.logger.Error("failed to send pong message", "error", err)
+		}
+	})
+
+	s.hub.HandleFunc("broadcast", func(payload json.RawMessage, c *ws.Client) {
+		if c.Token.Role != auth.RoleGM {
+			s.logger.Warn("unauthorized broadcast attempt", "role", c.Token.Role)
+			return
+		}
+
+		s.hub.Broadcast(ws.Message{
+			Method:   "broadcast",
+			SenderID: c.ID,
+			Payload:  payload,
+		}, ws.ExceptClient(c)) // Don't send back to sender
+	})
+
+	s.hub.HandleFunc("syncRequest", func(payload json.RawMessage, c *ws.Client) {
+		// Only forward to GM clients
+		s.hub.Broadcast(ws.Message{
+			Method:   "syncRequest",
+			SenderID: c.ID,
+			Payload:  payload,
+		}, ws.ToGMOnly())
+	})
+
+	s.hub.HandleFunc("syncAll", func(payload json.RawMessage, c *ws.Client) {
+		if c.Token.Role != auth.RoleGM {
+			s.logger.Warn("unauthorized broadcast attempt", "role", c.Token.Role)
+			return
+		}
+
+		// Extract target client ID from payload
+		var syncPayload struct {
+			Tracks []any  `json:"tracks"`
+			To     string `json:"to"`
+		}
+		if err := json.Unmarshal(payload, &syncPayload); err != nil {
+			s.logger.Error("failed to unmarshal sync payload", "error", err)
+			return
+		}
+
+		// If a target client is specified, only send to them
+		if syncPayload.To != "" {
+			s.hub.Broadcast(ws.Message{
+				Method:   "syncAll",
+				SenderID: c.ID,
+				Payload:  payload,
+			}, ws.ToClientID(syncPayload.To))
+		} else {
+			// Otherwise broadcast to all players
+			s.hub.Broadcast(ws.Message{
+				Method:   "syncAll",
+				SenderID: c.ID,
+				Payload:  payload,
+			}, ws.ToPlayersOnly())
+		}
+	})
+
+	s.hub.HandleFunc("syncTrack", func(payload json.RawMessage, c *ws.Client) {
+		if c.Token.Role != auth.RoleGM {
+			s.logger.Warn("unauthorized syncTrack command", "role", c.Token.Role)
+			return
+		}
+		s.hub.Broadcast(ws.Message{
+			Method:   "syncTrack",
+			SenderID: c.ID,
+			Payload:  payload,
+		}, ws.ToPlayersOnly())
+	})
+
+	go s.hub.Run()
 
 	s.logger.Info("starting server", "port", s.cfg.Port)
 	return srv.ListenAndServe()
@@ -265,16 +340,26 @@ func (s *Server) streamFile(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
+	token, ok := GetAuthToken(r.Context())
+	if !ok {
+		s.logger.Error("failed to get auth token from context")
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
 	conn, err := s.upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		s.logger.Error("websocket upgrade failed", "error", err)
 		return
 	}
 
-	client := ws.NewClient(s.hub, conn)
+	client := ws.NewClient(s.hub, conn, token)
 	s.hub.Register(client)
 
-	s.logger.Debug("registering new client")
+	s.logger.Debug("new websocket connection",
+		"clientId", client.ID,
+		"role", token.Role,
+	)
 
 	go client.WritePump()
 	go client.ReadPump()

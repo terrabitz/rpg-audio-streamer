@@ -1,21 +1,41 @@
 package websocket
 
 import (
+	"encoding/json"
+	"fmt"
+
+	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
+	"github.com/terrabitz/rpg-audio-streamer/internal/auth"
 )
 
 type Client struct {
-	hub  *Hub
-	conn *websocket.Conn
-	send chan []byte
+	ID    string
+	hub   *Hub
+	conn  *websocket.Conn
+	send  chan []byte
+	Token *auth.Token
 }
 
-func NewClient(hub *Hub, conn *websocket.Conn) *Client {
+func NewClient(hub *Hub, conn *websocket.Conn, token *auth.Token) *Client {
 	return &Client{
-		hub:  hub,
-		conn: conn,
-		send: make(chan []byte, 256),
+		ID:    uuid.New().String(),
+		hub:   hub,
+		conn:  conn,
+		send:  make(chan []byte, 256),
+		Token: token,
 	}
+}
+
+func (c *Client) Send(msg Message) error {
+	j, err := json.Marshal(msg)
+	if err != nil {
+		return fmt.Errorf("couldn't marshal input: %w", err)
+	}
+
+	c.send <- j
+
+	return nil
 }
 
 func (c *Client) ReadPump() {
@@ -29,7 +49,8 @@ func (c *Client) ReadPump() {
 		if err != nil {
 			break
 		}
-		c.hub.broadcast <- message
+
+		c.hub.route(message, c)
 	}
 }
 
@@ -44,6 +65,7 @@ func (c *Client) WritePump() {
 		}
 
 		if err := c.conn.WriteMessage(websocket.TextMessage, message); err != nil {
+			fmt.Println("failed to write to socket")
 			return
 		}
 	}
