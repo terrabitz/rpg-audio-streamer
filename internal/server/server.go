@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -8,7 +9,9 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -115,6 +118,7 @@ func (s *Server) Start() error {
 	mux.HandleFunc("/api/v1/auth/logout", s.handleLogout)
 
 	// Protected endpoints
+	mux.HandleFunc("/api/v1/stream/", s.authMiddleware(s.streamDirectory))
 	mux.HandleFunc("/api/v1/files", s.gmOnlyMiddleware(s.handleFiles))
 	mux.HandleFunc("/api/v1/files/{fileName}", s.gmOnlyMiddleware(s.handleFileDelete))
 	mux.HandleFunc("/api/v1/stream/{fileName}", s.authMiddleware(s.streamFile))
@@ -246,7 +250,8 @@ func (s *Server) uploadFile(w http.ResponseWriter, r *http.Request) {
 	}
 	defer file.Close()
 
-	dstPath := filepath.Join(s.cfg.UploadDir, handler.Filename)
+	tempDir := os.TempDir()
+	dstPath := filepath.Join(tempDir, handler.Filename)
 	dstFile, err := os.Create(dstPath)
 	if err != nil {
 		s.logger.Error("failed to create file", "error", err, "path", dstPath)
@@ -261,9 +266,49 @@ func (s *Server) uploadFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.logger.Info("file uploaded", "filename", handler.Filename)
+	hlsDir := filepath.Join(s.cfg.UploadDir, handler.Filename)
+	if err := os.MkdirAll(hlsDir, os.ModePerm); err != nil {
+		s.logger.Error("failed to create HLS directory", "error", err, "path", hlsDir)
+		http.Error(w, "Failed to save file", http.StatusInternalServerError)
+		return
+	}
+
+	cmd := exec.Command("ffmpeg",
+		"-i", dstPath,
+		"-v", "verbose",
+		"-c:a", "aac",
+		"-b:a", "128k",
+		"-ac", "2",
+		"-ar", "44100",
+		"-hls_time", "6",
+		"-hls_playlist_type", "event",
+		"-hls_segment_filename", hlsDir+"/segment_%03d.ts",
+		"-vn",
+		"-f", "hls",
+		filepath.Join(hlsDir, "index.m3u8"))
+	s.logger.Info("executing ffmpeg command", "command", cmd.String())
+	var out bytes.Buffer
+	var stderr bytes.Buffer
+	cmd.Stdout = &out
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		s.logger.Error("failed to convert file to HLS", "error", err, "path", dstPath)
+		fmt.Println(out.String())
+		fmt.Println(stderr.String())
+		http.Error(w, "Failed to convert file", http.StatusInternalServerError)
+		return
+	}
+
+	fmt.Println(out.String())
+	fmt.Println(stderr.String())
+
+	if err := os.Remove(dstPath); err != nil {
+		s.logger.Warn("failed to remove original file", "error", err, "path", dstPath)
+	}
+
+	s.logger.Info("file uploaded and converted to HLS", "filename", handler.Filename)
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("File uploaded successfully"))
+	w.Write([]byte("File uploaded and converted to HLS successfully"))
 }
 
 func (s *Server) listFiles(w http.ResponseWriter, r *http.Request) {
@@ -276,15 +321,12 @@ func (s *Server) listFiles(w http.ResponseWriter, r *http.Request) {
 
 	var fileList []types.FileInfo
 	for _, file := range files {
-		info, err := file.Info()
-		if err != nil {
-			s.logger.Warn("failed to get file info", "error", err, "filename", file.Name())
-			continue
+		hlsPath := filepath.Join(s.cfg.UploadDir, file.Name(), "index.m3u8")
+		if _, err := os.Stat(hlsPath); err == nil {
+			fileList = append(fileList, types.FileInfo{
+				Name: file.Name(),
+			})
 		}
-		fileList = append(fileList, types.FileInfo{
-			Name: info.Name(),
-			Size: info.Size(),
-		})
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -300,22 +342,21 @@ func (s *Server) handleFileDelete(w http.ResponseWriter, r *http.Request) {
 	}
 
 	fileName := r.PathValue("fileName")
-	filePath := filepath.Join(s.cfg.UploadDir, fileName)
+	hlsDir := filepath.Join(s.cfg.UploadDir, fileName)
 
-	if err := os.Remove(filePath); err != nil {
+	if err := os.RemoveAll(hlsDir); err != nil {
 		if os.IsNotExist(err) {
-			s.logger.Warn("file not found", "filename", fileName)
-			http.Error(w, "File not found", http.StatusNotFound)
+			s.logger.Warn("HLS directory not found", "directory", hlsDir)
+		} else {
+			s.logger.Error("failed to delete HLS directory", "error", err, "directory", hlsDir)
+			http.Error(w, "Failed to delete HLS directory", http.StatusInternalServerError)
 			return
 		}
-		s.logger.Error("failed to delete file", "error", err, "filename", fileName)
-		http.Error(w, "Failed to delete file", http.StatusInternalServerError)
-		return
 	}
 
-	s.logger.Info("file deleted", "filename", fileName)
+	s.logger.Info("HLS directory deleted", "filename", fileName)
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("File deleted successfully"))
+	w.Write([]byte("HLS directory deleted successfully"))
 }
 
 func (s *Server) streamFile(w http.ResponseWriter, r *http.Request) {
@@ -337,6 +378,12 @@ func (s *Server) streamFile(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "audio/mp3")
 	http.ServeContent(w, r, fileName, time.Time{}, file)
+}
+
+func (s *Server) streamDirectory(w http.ResponseWriter, r *http.Request) {
+	relativePath := strings.TrimPrefix(r.URL.Path, "/api/v1/stream/")
+	filePath := filepath.Join(s.cfg.UploadDir, relativePath)
+	http.ServeFile(w, r, filePath)
 }
 
 func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
