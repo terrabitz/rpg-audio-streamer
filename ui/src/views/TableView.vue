@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { useAudioStore } from '@/stores/audio'
+import { onMounted, ref } from 'vue'
 import AudioPlayer from '../components/AudioPlayer.vue'
 import AudioUploader from '../components/AudioUploader.vue'
 import FileList from '../components/FileList.vue'
@@ -9,6 +10,7 @@ import { useJoinStore } from '../stores/join'
 
 const auth = useAuthStore()
 const joinStore = useJoinStore()
+const audioStore = useAudioStore()
 const { getBaseUrl } = useBaseUrl()
 
 const joinUrl = ref<string>('')
@@ -44,6 +46,10 @@ async function handleGetJoinToken() {
     }, 2000)
   }
 }
+
+onMounted(() => {
+  audioStore.enabled = true
+})
 </script>
 
 <template>
