@@ -77,13 +77,17 @@ const handleDrop = async (event: DragEvent) => {
 <style scoped>
 .dragging {
   border: 2px dashed #1d1d1d;
-  background-color: rgba(144, 238, 144, 0.9);
+  background-color: rgba(144, 238, 144, 0.95);
   padding: 20px;
   border-radius: 8px;
 }
 
 .drop-area {
   position: relative;
+  padding: 20px;
+  /* Expand the draggable area */
+  margin: -20px;
+  /* Offset the padding to keep the visual size the same */
 }
 
 .drop-text {
