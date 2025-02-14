@@ -1,5 +1,5 @@
 <template>
-  <div>
+  <div @dragover="handleDragOver" @dragleave="handleDragLeave" @drop="handleDrop" :class="{ 'dragging': isDragging }">
     <v-file-input label="Select a file" prepend-icon="$music" accept="audio/mp3" @change="onFileChange"
       :loading="isUploading" :disabled="isUploading"></v-file-input>
     <v-alert v-if="uploadStatus" :type="uploadStatus.type" :text="uploadStatus.message" class="mt-3"></v-alert>
@@ -15,6 +15,7 @@ const audioUrl = ref<string | null>(null)
 const isUploading = ref(false)
 const uploadStatus = ref<{ type: 'success' | 'error', message: string } | null>(null)
 const fileStore = useFileStore()
+const isDragging = ref(false)
 
 const onFileChange = async (event: Event) => {
   const target = event.target as HTMLInputElement;
@@ -47,4 +48,29 @@ const uploadFile = async (file: File) => {
     isUploading.value = false
   }
 }
+
+const handleDragOver = (event: DragEvent) => {
+  event.preventDefault()
+  isDragging.value = true
+}
+
+const handleDragLeave = () => {
+  isDragging.value = false
+}
+
+const handleDrop = async (event: DragEvent) => {
+  event.preventDefault()
+  isDragging.value = false
+  const files = event.dataTransfer?.files
+  if (files && files.length > 0) {
+    await uploadFile(files[0])
+  }
+}
 </script>
+
+<style scoped>
+.dragging {
+  border: 2px dashed #ccc;
+  background-color: #f9f9f9;
+}
+</style>
