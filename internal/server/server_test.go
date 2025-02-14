@@ -110,7 +110,7 @@ func TestUploadFile(t *testing.T) {
 	defer ts.cleanup(t)
 
 	// Create test file content
-	content := []byte("test audio content")
+	content := []byte("RIFF$\x00\x00\x00WAVEfmt \x10\x00\x00\x00\x01\x00\x01\x00\x80>\x00\x00\x00}\x00\x00\x02\x00\x10\x00data\x00\x00\x00\x00")
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
 	part, err := writer.CreateFormFile("files", "test.mp3")
@@ -172,14 +172,18 @@ func TestListFiles(t *testing.T) {
 		name    string
 		content string
 	}{
-		{"test1.mp3", "test content 1"},
-		{"test2.mp3", "test content 2"},
+		{"test1.mp3", "RIFF$\x00\x00\x00WAVEfmt \x10\x00\x00\x00\x01\x00\x01\x00\x80>\x00\x00\x00}\x00\x00\x02\x00\x10\x00data\x00\x00\x00\x00"},
+		{"test2.mp3", "RIFF$\x00\x00\x00WAVEfmt \x10\x00\x00\x00\x01\x00\x01\x00\x80>\x00\x00\x00}\x00\x00\x02\x00\x10\x00data\x00\x00\x00\x00"},
 	}
 
 	for _, tf := range testFiles {
-		path := filepath.Join(ts.tempDir, tf.name)
-		if err := os.WriteFile(path, []byte(tf.content), 0644); err != nil {
-			t.Fatalf("failed to create test file: %v", err)
+		hlsDir := filepath.Join(ts.tempDir, tf.name)
+		if err := os.MkdirAll(hlsDir, os.ModePerm); err != nil {
+			t.Fatalf("failed to create HLS directory: %v", err)
+		}
+		hlsFile := filepath.Join(hlsDir, "index.m3u8")
+		if err := os.WriteFile(hlsFile, []byte(tf.content), 0644); err != nil {
+			t.Fatalf("failed to create test HLS file: %v", err)
 		}
 	}
 

@@ -344,14 +344,16 @@ func (s *Server) handleFileDelete(w http.ResponseWriter, r *http.Request) {
 	fileName := r.PathValue("fileName")
 	hlsDir := filepath.Join(s.cfg.UploadDir, fileName)
 
+	if _, err := os.Stat(hlsDir); os.IsNotExist(err) {
+		s.logger.Warn("HLS directory not found", "directory", hlsDir)
+		http.Error(w, "File not found", http.StatusNotFound)
+		return
+	}
+
 	if err := os.RemoveAll(hlsDir); err != nil {
-		if os.IsNotExist(err) {
-			s.logger.Warn("HLS directory not found", "directory", hlsDir)
-		} else {
-			s.logger.Error("failed to delete HLS directory", "error", err, "directory", hlsDir)
-			http.Error(w, "Failed to delete HLS directory", http.StatusInternalServerError)
-			return
-		}
+		s.logger.Error("failed to delete HLS directory", "error", err, "directory", hlsDir)
+		http.Error(w, "Failed to delete HLS directory", http.StatusInternalServerError)
+		return
 	}
 
 	s.logger.Info("HLS directory deleted", "filename", fileName)
