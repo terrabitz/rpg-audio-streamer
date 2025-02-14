@@ -9,6 +9,7 @@
 <script setup lang="ts">
 import { apiClient } from '@/plugins/axios'
 import { useFileStore } from '@/stores/files'
+import debounce from 'lodash/debounce'
 import { ref } from 'vue'
 
 const audioUrl = ref<string | null>(null)
@@ -54,9 +55,9 @@ const handleDragOver = (event: DragEvent) => {
   isDragging.value = true
 }
 
-const handleDragLeave = () => {
+const handleDragLeave = debounce(() => {
   isDragging.value = false
-}
+}, 1000)
 
 const handleDrop = async (event: DragEvent) => {
   event.preventDefault()
