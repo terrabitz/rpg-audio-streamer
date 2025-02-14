@@ -43,6 +43,9 @@ const uploadFile = async (file: File) => {
       }
     })
     uploadStatus.value = { type: 'success', message: 'File uploaded successfully!' }
+    setTimeout(() => {
+      uploadStatus.value = null
+    }, 5000)
     await fileStore.fetchFiles()
   } catch (error) {
     uploadStatus.value = { type: 'error', message: 'Failed to upload file' }
