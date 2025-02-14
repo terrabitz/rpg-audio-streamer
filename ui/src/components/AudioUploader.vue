@@ -1,11 +1,9 @@
 <template>
   <div @dragover="handleDragOver" @dragleave="handleDragLeave" @drop="handleDrop" :class="{ 'dragging': isDragging }"
     class="drop-area">
-    <div class="blur-container">
-      <v-file-input label="Select a file" prepend-icon="$music" accept="audio/mp3" @change="onFileChange"
-        :loading="isUploading" :disabled="isUploading"></v-file-input>
-      <div v-if="isDragging" class="drop-text">Drop files here</div>
-    </div>
+    <v-file-input label="Select a file" prepend-icon="$music" accept="audio/mp3" @change="onFileChange"
+      :loading="isUploading" :disabled="isUploading"></v-file-input>
+    <div v-if="isDragging" class="drop-text">Drop files here</div>
     <v-alert v-if="uploadStatus" :type="uploadStatus.type" :text="uploadStatus.message" class="mt-3"></v-alert>
   </div>
 </template>
@@ -79,20 +77,13 @@ const handleDrop = async (event: DragEvent) => {
 <style scoped>
 .dragging {
   border: 2px dashed #1d1d1d;
-  background-color: rgba(144, 238, 144, 0.8);
-  /* Light green with opacity */
+  background-color: rgba(144, 238, 144, 0.9);
+  padding: 20px;
+  border-radius: 8px;
 }
 
 .drop-area {
   position: relative;
-}
-
-.blur-container {
-  backdrop-filter: blur(5px);
-  -webkit-backdrop-filter: blur(5px);
-  /* For Safari */
-  padding: 20px;
-  border-radius: 8px;
 }
 
 .drop-text {
