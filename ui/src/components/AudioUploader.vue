@@ -1,7 +1,9 @@
 <template>
-  <div>
+  <div @dragover="handleDragOver" @dragleave="handleDragLeave" @drop="handleDrop" :class="{ 'dragging': isDragging }"
+    class="drop-area">
     <v-file-input label="Select a file" prepend-icon="$music" accept="audio/mp3" @change="onFileChange"
       :loading="isUploading" :disabled="isUploading"></v-file-input>
+    <div v-if="isDragging" class="drop-text">Drop files here</div>
     <v-alert v-if="uploadStatus" :type="uploadStatus.type" :text="uploadStatus.message" class="mt-3"></v-alert>
   </div>
 </template>
@@ -9,12 +11,14 @@
 <script setup lang="ts">
 import { apiClient } from '@/plugins/axios'
 import { useFileStore } from '@/stores/files'
+import debounce from 'lodash/debounce'
 import { ref } from 'vue'
 
 const audioUrl = ref<string | null>(null)
 const isUploading = ref(false)
 const uploadStatus = ref<{ type: 'success' | 'error', message: string } | null>(null)
 const fileStore = useFileStore()
+const isDragging = ref(false)
 
 const onFileChange = async (event: Event) => {
   const target = event.target as HTMLInputElement;
@@ -39,6 +43,9 @@ const uploadFile = async (file: File) => {
       }
     })
     uploadStatus.value = { type: 'success', message: 'File uploaded successfully!' }
+    setTimeout(() => {
+      uploadStatus.value = null
+    }, 5000)
     await fileStore.fetchFiles()
   } catch (error) {
     uploadStatus.value = { type: 'error', message: 'Failed to upload file' }
@@ -47,4 +54,48 @@ const uploadFile = async (file: File) => {
     isUploading.value = false
   }
 }
+
+const handleDragOver = (event: DragEvent) => {
+  event.preventDefault()
+  isDragging.value = true
+}
+
+const handleDragLeave = debounce(() => {
+  isDragging.value = false
+}, 1000)
+
+const handleDrop = async (event: DragEvent) => {
+  event.preventDefault()
+  isDragging.value = false
+  const files = event.dataTransfer?.files
+  if (files && files.length > 0) {
+    await uploadFile(files[0])
+  }
+}
 </script>
+
+<style scoped>
+.dragging {
+  border: 2px dashed #1d1d1d;
+  background-color: rgba(144, 238, 144, 0.95);
+  padding: 20px;
+  border-radius: 8px;
+}
+
+.drop-area {
+  position: relative;
+  padding: 20px;
+  /* Expand the draggable area */
+  margin: -20px;
+  /* Offset the padding to keep the visual size the same */
+}
+
+.drop-text {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 1.2em;
+  color: #1d1d1d
+}
+</style>

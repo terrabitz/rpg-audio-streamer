@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 
-interface AudioTrack {
+export interface AudioTrack {
   fileName: string
   isPlaying: boolean
   volume: number
