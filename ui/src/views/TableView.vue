@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
+import AudioPlayer from '../components/AudioPlayer.vue'
 import AudioUploader from '../components/AudioUploader.vue'
 import FileList from '../components/FileList.vue'
 import { useBaseUrl } from '../composables/useBaseUrl'
@@ -47,6 +48,7 @@ async function handleGetJoinToken() {
 
 <template>
   <v-container class="px-4 py-8" style="max-width: 800px">
+    <AudioPlayer />
     <div class="mb-8">
       <h1>My Table</h1>
       <div>

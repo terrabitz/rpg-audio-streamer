@@ -11,7 +11,6 @@
         <tr v-for="file in fileStore.files" :key="file.name">
           <td>{{ file.name }}</td>
           <td class="d-flex align-center">
-            <video :ref="el => videoElements[file.name] = el as HTMLVideoElement" />
             <AudioControls :fileName="file.name" @play="handlePlay(file.name)" @repeat="handleRepeat(file.name)"
               @volume="vol => handleVolume(file.name, vol)" @seek="time => handleSeek(file.name, time)" />
             <v-btn icon size="small" color="error" @click="deleteFile(file.name)">
@@ -28,26 +27,19 @@
 import { useFileStore } from '@/stores/files'
 import { useWebSocketStore } from '@/stores/websocket'
 import debounce from 'lodash.debounce'
-import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { useAudioSync } from '../composables/useAudioSync'
+import { onMounted } from 'vue'
 import { useAudioStore } from '../stores/audio'
 import AudioControls from './AudioControls.vue'
 
 const fileStore = useFileStore()
 const audioStore = useAudioStore()
 const wsStore = useWebSocketStore()
-const videoElements = ref<Record<string, HTMLVideoElement>>({})
 
 onMounted(() => {
   fileStore.fetchFiles()
 })
 
 async function deleteFile(fileName: string) {
-  const video = videoElements.value[fileName]
-  if (video) {
-    video.pause()
-    video.src = ''
-  }
   audioStore.removeTrack(fileName)
 
   try {
@@ -56,15 +48,6 @@ async function deleteFile(fileName: string) {
     console.error('Failed to delete file:', error)
   }
 }
-
-// Set up audio sync for new elements
-watch(videoElements, (elements) => {
-  Object.entries(elements).forEach(([fileName, video]) => {
-    if (video) {
-      useAudioSync(fileName, video)
-    }
-  })
-}, { deep: true })
 
 const debouncedSendMessage = debounce((method: string, payload: any) => {
   wsStore.sendMessage(method, payload)
@@ -104,13 +87,6 @@ const handleSeek = (fileName: string, time: number) => {
     debouncedSendMessage('syncTrack', { fileName, currentTime: time })
   }
 }
-
-onBeforeUnmount(() => {
-  Object.values(videoElements.value).forEach(video => {
-    video.pause()
-    video.src = ''
-  })
-})
 </script>
 
 <style scoped>

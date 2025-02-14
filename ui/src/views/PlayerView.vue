@@ -41,6 +41,7 @@ function handleAudioToggle() {
 
 <template>
   <v-container>
+    <AudioPlayer v-if="audioStore.enabled" />
     <div class="d-flex align-center mb-4">
       <h1 class="mr-4">Table View</h1>
       <v-chip v-if="audioStore.enabled" :color="ws.isConnected ? 'success' : 'error'" class="mr-4">
