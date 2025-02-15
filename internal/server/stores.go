@@ -14,7 +14,7 @@ type Store interface {
 
 type Track struct {
 	ID        uuid.UUID `json:"id,omitempty"`
-	CreatedAt time.Time `json:"created_at,omitempty"`
+	CreatedAt time.Time `json:"createdAt,omitempty"`
 	Name      string    `json:"name,omitempty"`
 	Path      string    `json:"path,omitempty"`
 	TypeID    uuid.UUID `json:"type_id,omitempty"`
@@ -31,8 +31,8 @@ type TrackType struct {
 	ID                    uuid.UUID `json:"id,omitempty"`
 	Name                  string    `json:"name,omitempty"`
 	Color                 string    `json:"color,omitempty"`
-	IsRepeating           bool      `json:"is_repeating"`
-	AllowSimultaneousPlay bool      `json:"allow_simultaneous_play"`
+	IsRepeating           bool      `json:"isRepeating"`
+	AllowSimultaneousPlay bool      `json:"allowSimultaneousPlay"`
 }
 
 type TrackTypeStore interface {
