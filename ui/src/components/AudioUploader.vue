@@ -103,6 +103,9 @@ const handleDrop = (event: DragEvent) => {
 const submitForm = async () => {
   await uploadTrack()
   showModal.value = false
+  trackName.value = ''
+  trackFile.value = null
+  trackType.value = ''
 }
 </script>
 
