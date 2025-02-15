@@ -17,7 +17,7 @@
           <td class="d-flex align-center">
             <AudioControls :fileName="file.name" @play="handlePlay(file.name)" @repeat="handleRepeat(file.name)"
               @volume="vol => handleVolume(file.name, vol)" @seek="time => handleSeek(file.name, time)" />
-            <v-btn icon size="small" color="error" @click="deleteFile(file.name)">
+            <v-btn icon size="small" color="error" @click="deleteFile(file)">
               <v-icon>$delete</v-icon>
             </v-btn>
           </td>
@@ -28,7 +28,7 @@
 </template>
 
 <script setup lang="ts">
-import { useFileStore } from '@/stores/files'
+import { useFileStore, type Track } from '@/stores/files'
 import { useWebSocketStore } from '@/stores/websocket'
 import debounce from 'lodash.debounce'
 import { onMounted } from 'vue'
@@ -43,11 +43,11 @@ onMounted(() => {
   fileStore.fetchFiles()
 })
 
-async function deleteFile(fileName: string) {
-  audioStore.removeTrack(fileName)
+async function deleteFile(file: Track) {
+  audioStore.removeTrack(file.name)
 
   try {
-    await fileStore.deleteFile(fileName)
+    await fileStore.deleteFile(file.id)
   } catch (error) {
     console.error('Failed to delete file:', error)
   }

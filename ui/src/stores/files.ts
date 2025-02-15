@@ -1,7 +1,7 @@
 import { apiClient } from '@/plugins/axios'
 import { defineStore } from 'pinia'
 
-interface Track {
+export interface Track {
   id: string
   createdAt: string
   name: string
@@ -22,9 +22,9 @@ export const useFileStore = defineStore('files', {
         console.error('Error fetching files:', error)
       }
     },
-    async deleteFile(fileName: string) {
+    async deleteFile(trackId: string) {
       try {
-        await apiClient.delete(`/files/${encodeURIComponent(fileName)}`)
+        await apiClient.delete(`/api/v1/files/${trackId}`)
         await this.fetchFiles()
       } catch (error) {
         console.error('Error deleting file:', error)
