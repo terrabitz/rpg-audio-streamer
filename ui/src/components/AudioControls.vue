@@ -2,7 +2,7 @@
   <div v-if="trackType" class="d-flex align-center">
     <v-btn icon size="small" class="mr-2" :disabled="fadeState?.inProgress"
       :class="{ 'button-active': !fadeState?.inProgress && audioState.isPlaying }" @click="$emit('play')">
-      <v-progress-circular width="8" v-if="fadeState?.inProgress" indeterminate />
+      <v-progress-circular width="6" size="25" v-if="fadeState?.inProgress" indeterminate />
       <v-icon v-else>{{ audioState.isPlaying ? '$pause' : '$play' }}</v-icon>
     </v-btn>
     <v-icon size="small" color="grey-darken-1" class="mr-2">
