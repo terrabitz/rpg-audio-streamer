@@ -1,11 +1,11 @@
 <template>
-  <div class="d-flex align-center">
+  <div v-if="trackType" class="d-flex align-center">
     <v-btn icon size="small" @click="$emit('play')" class="mr-2" :class="{ 'button-active': audioState.isPlaying }">
       <v-icon>{{ audioState.isPlaying ? '$pause' : '$play' }}</v-icon>
     </v-btn>
-    <v-btn icon size="small" @click="$emit('repeat')" :class="{ 'button-active': audioState.isRepeating }" class="mr-2">
-      <v-icon>$repeat</v-icon>
-    </v-btn>
+    <v-icon size="small" color="grey-darken-1" class="mr-2">
+      {{ trackType.isRepeating ? '$repeat' : '$repeatOff' }}
+    </v-icon>
     <div class="d-flex align-center mr-2" style="min-width: 120px">
       <v-icon size="x-small" class="mr-2">$volume</v-icon>
       <v-slider :model-value="audioState.volume" @update:model-value="$emit('volume', $event)" density="compact"
@@ -21,23 +21,36 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, watchEffect } from 'vue';
 import { useAudioStore } from '../stores/audio';
+import { useFileStore } from '../stores/files';
+import { useTrackTypeStore } from '../stores/trackTypes';
 
 const props = defineProps<{
   fileName: string
+  fileID: string
 }>();
 
 const audioStore = useAudioStore();
+const trackTypeStore = useTrackTypeStore();
+const fileStore = useFileStore();
 
-// Ensure track is initialized
-audioStore.initTrack(props.fileName);
+const track = computed(() => fileStore.tracks.find(t => t.id === props.fileID));
+const trackType = computed(() => track.value ? trackTypeStore.getTypeById(track.value.type_id) : null);
+const audioState = computed(() => audioStore.tracks[props.fileID]);
 
-const audioState = computed(() => audioStore.tracks[props.fileName]);
+// Wait for track type data before initializing audio track
+watchEffect(() => {
+  if (trackType.value) {
+    audioStore.updateTrackState(props.fileID, {
+      name: props.fileName,
+      isRepeating: trackType.value.isRepeating,
+    });
+  }
+});
 
 defineEmits<{
   (e: 'play'): void
-  (e: 'repeat'): void
   (e: 'volume', volume: number): void
   (e: 'seek', time: number): void
 }>();

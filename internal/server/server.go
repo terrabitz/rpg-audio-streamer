@@ -1,23 +1,19 @@
 package server
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
-	"io"
 	"io/fs"
 	"log/slog"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
-	"time"
 
+	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	"github.com/terrabitz/rpg-audio-streamer/internal/auth"
 	"github.com/terrabitz/rpg-audio-streamer/internal/middlewares"
-	"github.com/terrabitz/rpg-audio-streamer/internal/types"
 	ws "github.com/terrabitz/rpg-audio-streamer/internal/websocket"
 )
 
@@ -40,6 +36,7 @@ type Server struct {
 	hub      *ws.Hub
 	upgrader websocket.Upgrader
 	auth     Authenticator
+	store    Store
 }
 
 type Config struct {
@@ -49,7 +46,7 @@ type Config struct {
 	CORS      middlewares.CorsConfig
 }
 
-func New(cfg Config, logger *slog.Logger, frontend fs.FS, auth Authenticator) (*Server, error) {
+func New(cfg Config, logger *slog.Logger, frontend fs.FS, auth Authenticator, store Store) (*Server, error) {
 	hub := ws.NewHub(logger)
 
 	srv := &Server{
@@ -58,6 +55,7 @@ func New(cfg Config, logger *slog.Logger, frontend fs.FS, auth Authenticator) (*
 		cfg:      cfg,
 		hub:      hub,
 		auth:     auth,
+		store:    store,
 		upgrader: websocket.Upgrader{
 			ReadBufferSize:  1024,
 			WriteBufferSize: 1024,
@@ -120,8 +118,8 @@ func (s *Server) Start() error {
 	// Protected endpoints
 	mux.HandleFunc("/api/v1/stream/", s.authMiddleware(s.streamDirectory))
 	mux.HandleFunc("/api/v1/files", s.gmOnlyMiddleware(s.handleFiles))
-	mux.HandleFunc("/api/v1/files/{fileName}", s.gmOnlyMiddleware(s.handleFileDelete))
-	mux.HandleFunc("/api/v1/stream/{fileName}", s.authMiddleware(s.streamFile))
+	mux.HandleFunc("/api/v1/files/{trackID}", s.gmOnlyMiddleware(s.handleFileDelete))
+	mux.HandleFunc("/api/v1/trackTypes", s.authMiddleware(s.handleTrackTypes))
 	mux.HandleFunc("/api/v1/join-token", s.gmOnlyMiddleware(s.handleJoinToken))
 
 	// Apply global middleware
@@ -234,152 +232,39 @@ func (s *Server) handleFiles(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (s *Server) uploadFile(w http.ResponseWriter, r *http.Request) {
-	err := r.ParseMultipartForm(10 << 20) // 10MB max
-	if err != nil {
-		s.logger.Error("failed to parse form", "error", err)
-		http.Error(w, "Failed to parse form", http.StatusBadRequest)
-		return
-	}
-
-	file, handler, err := r.FormFile("files")
-	if err != nil {
-		s.logger.Error("failed to get file", "error", err)
-		http.Error(w, "Failed to retrieve file", http.StatusBadRequest)
-		return
-	}
-	defer file.Close()
-
-	tempDir := os.TempDir()
-	dstPath := filepath.Join(tempDir, handler.Filename)
-	dstFile, err := os.Create(dstPath)
-	if err != nil {
-		s.logger.Error("failed to create file", "error", err, "path", dstPath)
-		http.Error(w, "Failed to save file", http.StatusInternalServerError)
-		return
-	}
-	defer dstFile.Close()
-
-	if _, err := io.Copy(dstFile, file); err != nil {
-		s.logger.Error("failed to write file", "error", err, "path", dstPath)
-		http.Error(w, "Failed to save file", http.StatusInternalServerError)
-		return
-	}
-
-	hlsDir := filepath.Join(s.cfg.UploadDir, handler.Filename)
-	if err := os.MkdirAll(hlsDir, os.ModePerm); err != nil {
-		s.logger.Error("failed to create HLS directory", "error", err, "path", hlsDir)
-		http.Error(w, "Failed to save file", http.StatusInternalServerError)
-		return
-	}
-
-	cmd := exec.Command("ffmpeg",
-		"-i", dstPath,
-		"-v", "verbose",
-		"-c:a", "aac",
-		"-b:a", "128k",
-		"-ac", "2",
-		"-ar", "44100",
-		"-hls_time", "6",
-		"-hls_playlist_type", "event",
-		"-hls_segment_filename", hlsDir+"/segment_%03d.ts",
-		"-vn",
-		"-f", "hls",
-		filepath.Join(hlsDir, "index.m3u8"))
-	s.logger.Info("executing ffmpeg command", "command", cmd.String())
-	var out bytes.Buffer
-	var stderr bytes.Buffer
-	cmd.Stdout = &out
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		s.logger.Error("failed to convert file to HLS", "error", err, "path", dstPath)
-		fmt.Println(out.String())
-		fmt.Println(stderr.String())
-		http.Error(w, "Failed to convert file", http.StatusInternalServerError)
-		return
-	}
-
-	fmt.Println(out.String())
-	fmt.Println(stderr.String())
-
-	if err := os.Remove(dstPath); err != nil {
-		s.logger.Warn("failed to remove original file", "error", err, "path", dstPath)
-	}
-
-	s.logger.Info("file uploaded and converted to HLS", "filename", handler.Filename)
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("File uploaded and converted to HLS successfully"))
-}
-
-func (s *Server) listFiles(w http.ResponseWriter, r *http.Request) {
-	files, err := os.ReadDir(s.cfg.UploadDir)
-	if err != nil {
-		s.logger.Error("failed to read directory", "error", err)
-		http.Error(w, "Failed to list files", http.StatusInternalServerError)
-		return
-	}
-
-	var fileList []types.FileInfo
-	for _, file := range files {
-		hlsPath := filepath.Join(s.cfg.UploadDir, file.Name(), "index.m3u8")
-		if _, err := os.Stat(hlsPath); err == nil {
-			fileList = append(fileList, types.FileInfo{
-				Name: file.Name(),
-			})
-		}
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(fileList); err != nil {
-		s.logger.Error("failed to encode response", "error", err)
-	}
-}
-
 func (s *Server) handleFileDelete(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodDelete {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
-	fileName := r.PathValue("fileName")
-	hlsDir := filepath.Join(s.cfg.UploadDir, fileName)
-
-	if _, err := os.Stat(hlsDir); os.IsNotExist(err) {
-		s.logger.Warn("HLS directory not found", "directory", hlsDir)
-		http.Error(w, "File not found", http.StatusNotFound)
-		return
-	}
-
-	if err := os.RemoveAll(hlsDir); err != nil {
-		s.logger.Error("failed to delete HLS directory", "error", err, "directory", hlsDir)
-		http.Error(w, "Failed to delete HLS directory", http.StatusInternalServerError)
-		return
-	}
-
-	s.logger.Info("HLS directory deleted", "filename", fileName)
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("HLS directory deleted successfully"))
-}
-
-func (s *Server) streamFile(w http.ResponseWriter, r *http.Request) {
-	fileName := r.PathValue("fileName")
-	filePath := filepath.Join(s.cfg.UploadDir, fileName)
-
-	file, err := os.Open(filePath)
+	trackIDString := r.PathValue("trackID")
+	trackID, err := uuid.Parse(trackIDString)
 	if err != nil {
-		if os.IsNotExist(err) {
-			s.logger.Warn("file not found", "filename", fileName)
-			http.Error(w, "File not found", http.StatusNotFound)
-			return
-		}
-		s.logger.Error("failed to open file", "error", err, "filename", fileName)
-		http.Error(w, "Failed to open file", http.StatusInternalServerError)
+		http.Error(w, "Invalid track ID", http.StatusBadRequest)
 		return
 	}
-	defer file.Close()
 
-	w.Header().Set("Content-Type", "audio/mp3")
-	http.ServeContent(w, r, fileName, time.Time{}, file)
+	// Retrieve the track to get its folder path
+	track, err := s.store.GetTrackByID(r.Context(), trackID)
+	if err != nil {
+		http.Error(w, "Track not found", http.StatusNotFound)
+		return
+	}
+
+	// Remove the database record
+	if err := s.store.DeleteTrack(r.Context(), trackID); err != nil {
+		http.Error(w, "Failed to remove track record", http.StatusInternalServerError)
+		return
+	}
+
+	if err := os.RemoveAll(track.Path); err != nil {
+		http.Error(w, "Failed to delete folder", http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("Track deleted successfully"))
 }
 
 func (s *Server) streamDirectory(w http.ResponseWriter, r *http.Request) {

@@ -1,6 +1,6 @@
 <template>
   <div>
-    <AudioTrackPlayer v-for="track in audioStore.tracks" :key="track.fileName" :fileName="track.fileName" />
+    <AudioTrackPlayer v-for="track in audioStore.tracks" :key="track.fileID" :fileID="track.fileID" />
   </div>
 </template>
 

@@ -13,8 +13,8 @@
         </tr>
       </thead>
       <tbody>
-        <tr v-for="track in audioStore.availableTracks" :key="track.fileName">
-          <td>{{ track.fileName }}</td>
+        <tr v-for="track in audioStore.availableTracks" :key="track.fileID">
+          <td>{{ track.name }}</td>
           <td class="d-flex align-center"></td>
         </tr>
       </tbody>

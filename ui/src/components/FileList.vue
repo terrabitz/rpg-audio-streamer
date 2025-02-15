@@ -4,16 +4,22 @@
       <thead>
         <tr>
           <th>Name</th>
+          <th>Type</th>
           <th>Actions</th>
         </tr>
       </thead>
       <tbody>
-        <tr v-for="file in fileStore.files" :key="file.name">
+        <tr v-for="file in fileStore.tracks" :key="file.id">
           <td>{{ file.name }}</td>
+          <td>
+            <v-chip :color="getTrackType(file.type_id)?.color" text-color="white">
+              {{ getTrackType(file.type_id)?.name }}
+            </v-chip>
+          </td>
           <td class="d-flex align-center">
-            <AudioControls :fileName="file.name" @play="handlePlay(file.name)" @repeat="handleRepeat(file.name)"
-              @volume="vol => handleVolume(file.name, vol)" @seek="time => handleSeek(file.name, time)" />
-            <v-btn icon size="small" color="error" @click="deleteFile(file.name)">
+            <AudioControls :fileID="file.id" :fileName="file.name" @play="handlePlay(file.id)"
+              @volume="vol => handleVolume(file.id, vol)" @seek="time => handleSeek(file.id, time)" />
+            <v-btn icon size="small" color="error" @click="deleteFile(file)">
               <v-icon>$delete</v-icon>
             </v-btn>
           </td>
@@ -24,7 +30,8 @@
 </template>
 
 <script setup lang="ts">
-import { useFileStore } from '@/stores/files'
+import { useFileStore, type Track } from '@/stores/files'
+import { useTrackTypeStore } from '@/stores/trackTypes'
 import { useWebSocketStore } from '@/stores/websocket'
 import debounce from 'lodash.debounce'
 import { onMounted } from 'vue'
@@ -34,16 +41,18 @@ import AudioControls from './AudioControls.vue'
 const fileStore = useFileStore()
 const audioStore = useAudioStore()
 const wsStore = useWebSocketStore()
+const trackTypeStore = useTrackTypeStore()
 
-onMounted(() => {
-  fileStore.fetchFiles()
+onMounted(async () => {
+  await trackTypeStore.fetchTrackTypes()
+  await fileStore.fetchFiles()
 })
 
-async function deleteFile(fileName: string) {
-  audioStore.removeTrack(fileName)
+async function deleteFile(file: Track) {
+  audioStore.removeTrack(file.name)
 
   try {
-    await fileStore.deleteFile(fileName)
+    await fileStore.deleteFile(file.id)
   } catch (error) {
     console.error('Failed to delete file:', error)
   }
@@ -54,43 +63,41 @@ const debouncedSendMessage = debounce((method: string, payload: any) => {
 }, 100)
 
 // Event handlers just update state and send WS payloads
-const handlePlay = (fileName: string) => {
-  const state = audioStore.tracks[fileName]
+const handlePlay = (fileID: string) => {
+  const state = audioStore.tracks[fileID]
   const newState = { isPlaying: !state.isPlaying }
-  audioStore.updateTrackState(fileName, newState)
+  audioStore.updateTrackState(fileID, newState)
   if (newState.isPlaying) {
-    debouncedSendMessage('syncTrack', { ...audioStore.tracks[fileName] })
+    debouncedSendMessage('syncTrack', { ...audioStore.tracks[fileID] })
   } else {
-    debouncedSendMessage('syncTrack', { fileName, ...newState })
+    debouncedSendMessage('syncTrack', { fileID: fileID, ...newState })
   }
 }
 
-const handleRepeat = (fileName: string) => {
-  const state = audioStore.tracks[fileName]
+const handleRepeat = (fileID: string) => {
+  const state = audioStore.tracks[fileID]
   const newState = { isRepeating: !state.isRepeating }
-  audioStore.updateTrackState(fileName, newState)
+  audioStore.updateTrackState(fileID, newState)
   if (state.isPlaying) {
-    debouncedSendMessage('syncTrack', { fileName, ...newState })
+    debouncedSendMessage('syncTrack', { fileID: fileID, ...newState })
   }
 }
 
-const handleVolume = (fileName: string, volume: number) => {
-  audioStore.updateTrackState(fileName, { volume })
-  if (audioStore.tracks[fileName].isPlaying) {
-    debouncedSendMessage('syncTrack', { fileName, volume })
+const handleVolume = (fileID: string, volume: number) => {
+  audioStore.updateTrackState(fileID, { volume })
+  if (audioStore.tracks[fileID].isPlaying) {
+    debouncedSendMessage('syncTrack', { fileID, volume })
   }
 }
 
-const handleSeek = (fileName: string, time: number) => {
-  audioStore.updateTrackState(fileName, { currentTime: time })
-  if (audioStore.tracks[fileName].isPlaying) {
-    debouncedSendMessage('syncTrack', { fileName, currentTime: time })
+const handleSeek = (fileID: string, time: number) => {
+  audioStore.updateTrackState(fileID, { currentTime: time })
+  if (audioStore.tracks[fileID].isPlaying) {
+    debouncedSendMessage('syncTrack', { fileID, currentTime: time })
   }
+}
+
+const getTrackType = (typeId: string) => {
+  return trackTypeStore.getTypeById(typeId)
 }
 </script>
-
-<style scoped>
-video {
-  display: none
-}
-</style>
