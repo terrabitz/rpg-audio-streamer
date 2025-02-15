@@ -23,7 +23,8 @@ function newAudioTrack(fileName: string): AudioTrack {
 export const useAudioStore = defineStore('audio', {
   state: () => ({
     tracks: {} as Record<string, AudioTrack>,
-    enabled: false
+    enabled: false,
+    masterVolume: 100
   }),
   getters: {
     availableTracks: (state) => Object.values(state.tracks)
