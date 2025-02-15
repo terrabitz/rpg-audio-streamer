@@ -64,8 +64,35 @@ const debouncedSendMessage = debounce((method: string, payload: any) => {
 
 // Event handlers just update state and send WS payloads
 const handlePlay = (fileID: string) => {
+  const track = fileStore.getTrackById(fileID)
+  if (!track) return
+
+  const trackType = trackTypeStore.getTypeById(track.type_id)
+  if (!trackType) return
+
   const state = audioStore.tracks[fileID]
   const newState = { isPlaying: !state.isPlaying }
+
+  // If we're starting playback and the track type doesn't allow simultaneous play
+  if (newState.isPlaying && !trackType.allowSimultaneousPlay) {
+    // Find all other playing tracks of the same type
+    Object.entries(audioStore.tracks).forEach(([otherID, otherTrack]) => {
+      if (otherID !== fileID && otherTrack.isPlaying) {
+        // Check if other track is of the same type
+        const otherTrackData = fileStore.getTrackById(otherID)
+        if (otherTrackData && otherTrackData.type_id === track.type_id) {
+          // Stop the other track
+          audioStore.updateTrackState(otherID, { isPlaying: false })
+          wsStore.sendMessage('syncTrack', {
+            fileID: otherID,
+            isPlaying: false
+          })
+        }
+      }
+    })
+  }
+
+  // Update the current track's state
   audioStore.updateTrackState(fileID, newState)
   if (newState.isPlaying) {
     debouncedSendMessage('syncTrack', { ...audioStore.tracks[fileID] })
