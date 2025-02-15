@@ -22,4 +22,6 @@ type Track struct {
 type TrackStore interface {
 	SaveTrack(ctx context.Context, track *Track) error
 	GetTracks(ctx context.Context) ([]Track, error)
+	GetTrackByID(ctx context.Context, trackID uuid.UUID) (Track, error)
+	DeleteTrack(ctx context.Context, trackID uuid.UUID) error
 }

@@ -18,6 +18,23 @@ func (q *Queries) DeleteTrackByID(ctx context.Context, id []byte) error {
 	return err
 }
 
+const getTrackByID = `-- name: GetTrackByID :one
+select id, created_at, name, path, type from tracks where id = ?1
+`
+
+func (q *Queries) GetTrackByID(ctx context.Context, id []byte) (Track, error) {
+	row := q.db.QueryRowContext(ctx, getTrackByID, id)
+	var i Track
+	err := row.Scan(
+		&i.ID,
+		&i.CreatedAt,
+		&i.Name,
+		&i.Path,
+		&i.Type,
+	)
+	return i, err
+}
+
 const getTracks = `-- name: GetTracks :many
 select id, created_at, name, path, type from tracks
 `

@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	"github.com/terrabitz/rpg-audio-streamer/internal/auth"
 	"github.com/terrabitz/rpg-audio-streamer/internal/middlewares"
@@ -118,7 +119,7 @@ func (s *Server) Start() error {
 	// Protected endpoints
 	mux.HandleFunc("/api/v1/stream/", s.authMiddleware(s.streamDirectory))
 	mux.HandleFunc("/api/v1/files", s.gmOnlyMiddleware(s.handleFiles))
-	mux.HandleFunc("/api/v1/files/{fileName}", s.gmOnlyMiddleware(s.handleFileDelete))
+	mux.HandleFunc("/api/v1/files/{trackID}", s.gmOnlyMiddleware(s.handleFileDelete))
 	mux.HandleFunc("/api/v1/stream/{fileName}", s.authMiddleware(s.streamFile))
 	mux.HandleFunc("/api/v1/join-token", s.gmOnlyMiddleware(s.handleJoinToken))
 
@@ -238,24 +239,33 @@ func (s *Server) handleFileDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	fileName := r.PathValue("fileName")
-	hlsDir := filepath.Join(s.cfg.UploadDir, fileName)
-
-	if _, err := os.Stat(hlsDir); os.IsNotExist(err) {
-		s.logger.Warn("HLS directory not found", "directory", hlsDir)
-		http.Error(w, "File not found", http.StatusNotFound)
+	trackIDString := r.PathValue("trackID")
+	trackID, err := uuid.Parse(trackIDString)
+	if err != nil {
+		http.Error(w, "Invalid track ID", http.StatusBadRequest)
 		return
 	}
 
-	if err := os.RemoveAll(hlsDir); err != nil {
-		s.logger.Error("failed to delete HLS directory", "error", err, "directory", hlsDir)
-		http.Error(w, "Failed to delete HLS directory", http.StatusInternalServerError)
+	// Retrieve the track to get its folder path
+	track, err := s.store.GetTrackByID(r.Context(), trackID)
+	if err != nil {
+		http.Error(w, "Track not found", http.StatusNotFound)
 		return
 	}
 
-	s.logger.Info("HLS directory deleted", "filename", fileName)
+	// Remove the database record
+	if err := s.store.DeleteTrack(r.Context(), trackID); err != nil {
+		http.Error(w, "Failed to remove track record", http.StatusInternalServerError)
+		return
+	}
+
+	if err := os.RemoveAll(track.Path); err != nil {
+		http.Error(w, "Failed to delete folder", http.StatusInternalServerError)
+		return
+	}
+
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("HLS directory deleted successfully"))
+	w.Write([]byte("Track deleted successfully"))
 }
 
 func (s *Server) streamFile(w http.ResponseWriter, r *http.Request) {

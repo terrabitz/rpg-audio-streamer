@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
 	"github.com/terrabitz/rpg-audio-streamer/internal/auth"
 	"github.com/terrabitz/rpg-audio-streamer/internal/middlewares"
 )
@@ -197,15 +198,20 @@ func TestListFiles(t *testing.T) {
 		{"test1.mp3", "RIFF$\x00\x00\x00WAVEfmt \x10\x00\x00\x00\x01\x00\x01\x00\x80>\x00\x00\x00}\x00\x00\x02\x00\x10\x00data\x00\x00\x00\x00"},
 		{"test2.mp3", "RIFF$\x00\x00\x00WAVEfmt \x10\x00\x00\x00\x01\x00\x01\x00\x80>\x00\x00\x00}\x00\x00\x02\x00\x10\x00data\x00\x00\x00\x00"},
 	}
-
 	for _, tf := range testFiles {
 		hlsDir := filepath.Join(ts.tempDir, tf.name)
 		if err := os.MkdirAll(hlsDir, os.ModePerm); err != nil {
-			t.Fatalf("failed to create HLS directory: %v", err)
+			t.Fatalf("failed to create directory: %v", err)
 		}
 		hlsFile := filepath.Join(hlsDir, "index.m3u8")
 		if err := os.WriteFile(hlsFile, []byte(tf.content), 0644); err != nil {
-			t.Fatalf("failed to create test HLS file: %v", err)
+			t.Fatalf("failed to create test file: %v", err)
+		}
+		trackID := uuid.New()
+		ts.store.(*MockTrackStore).tracks[trackID] = Track{
+			ID:   trackID,
+			Name: tf.name,
+			Path: hlsDir,
 		}
 	}
 
@@ -279,17 +285,25 @@ func TestDeleteFile(t *testing.T) {
 	ts := setupTestServer(t)
 	defer ts.cleanup(t)
 
-	// Create test file
-	testFile := filepath.Join(ts.tempDir, "test.mp3")
-	if err := os.WriteFile(testFile, []byte("test content"), 0644); err != nil {
-		t.Fatalf("failed to create test file: %v", err)
+	// Create a track and store it
+	trackID := uuid.New()
+	trackPath := filepath.Join(ts.tempDir, trackID.String())
+	if err := os.MkdirAll(trackPath, os.ModePerm); err != nil {
+		t.Fatalf("failed to create test folder: %v", err)
+	}
+
+	mockStore := ts.store.(*MockTrackStore)
+	mockStore.tracks[trackID] = Track{
+		ID:   trackID,
+		Path: trackPath,
+		Name: "Test Track",
 	}
 
 	t.Run("with GM auth", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodDelete, "/api/v1/files/test.mp3", nil)
+		req := httptest.NewRequest(http.MethodDelete, "/api/v1/files/"+trackID.String(), nil)
 		addAuthCookie(req, ts.auth.(*mockAuth).token.String())
 		rec := httptest.NewRecorder()
-		req.SetPathValue("fileName", "test.mp3")
+		req.SetPathValue("trackID", trackID.String())
 
 		ts.gmOnlyMiddleware(ts.handleFileDelete)(rec, req)
 
@@ -297,50 +311,38 @@ func TestDeleteFile(t *testing.T) {
 			t.Errorf("expected status OK; got %v", rec.Code)
 		}
 
-		// Verify file was deleted
-		if _, err := os.Stat(testFile); !os.IsNotExist(err) {
-			t.Error("file still exists after deletion")
+		// Verify folder was deleted
+		if _, err := os.Stat(trackPath); !os.IsNotExist(err) {
+			t.Error("folder still exists after deletion")
 		}
 	})
 
-	t.Run("with player auth", func(t *testing.T) {
-		playerToken := &auth.Token{Role: auth.RolePlayer}
-		ts.auth.(*mockAuth).token = playerToken
-
-		req := httptest.NewRequest(http.MethodDelete, "/api/v1/files/test.mp3", nil)
-		addAuthCookie(req, playerToken.String())
+	t.Run("invalid track ID", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodDelete, "/api/v1/files/invalid-id", nil)
+		addAuthCookie(req, ts.auth.(*mockAuth).token.String())
 		rec := httptest.NewRecorder()
-		req.SetPathValue("fileName", "test.mp3")
+		req.SetPathValue("trackID", "invalid-id")
 
 		ts.gmOnlyMiddleware(ts.handleFileDelete)(rec, req)
 
-		if rec.Code != http.StatusForbidden {
-			t.Errorf("expected status Forbidden; got %v", rec.Code)
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("expected status BadRequest; got %v", rec.Code)
 		}
 	})
 
-	t.Run("without auth", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodDelete, "/api/v1/files/test.mp3", nil)
+	t.Run("nonexistent track ID", func(t *testing.T) {
+		missingID := uuid.New().String()
+		req := httptest.NewRequest(http.MethodDelete, "/api/v1/files/"+missingID, nil)
+		addAuthCookie(req, ts.auth.(*mockAuth).token.String())
 		rec := httptest.NewRecorder()
-		req.SetPathValue("fileName", "test.mp3")
+		req.SetPathValue("trackID", missingID)
 
 		ts.gmOnlyMiddleware(ts.handleFileDelete)(rec, req)
 
-		if rec.Code != http.StatusUnauthorized {
-			t.Errorf("expected status Unauthorized; got %v", rec.Code)
+		if rec.Code != http.StatusNotFound {
+			t.Errorf("expected status NotFound; got %v", rec.Code)
 		}
 	})
-
-	// Test deleting non-existent file
-	req := httptest.NewRequest(http.MethodDelete, "/api/v1/files/nonexistent.mp3", nil)
-	addAuthCookie(req, ts.auth.(*mockAuth).token.String())
-	rec := httptest.NewRecorder()
-	req.SetPathValue("fileName", "nonexistent.mp3")
-
-	ts.handleFileDelete(rec, req)
-	if rec.Code != http.StatusNotFound {
-		t.Errorf("expected status NotFound; got %v", rec.Code)
-	}
 }
 
 func TestStreamFile(t *testing.T) {

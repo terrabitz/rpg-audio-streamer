@@ -43,6 +43,19 @@ func (db *SQLiteDatastore) GetTracks(ctx context.Context) ([]server.Track, error
 	return result, nil
 }
 
+func (db *SQLiteDatastore) GetTrackByID(ctx context.Context, trackID uuid.UUID) (server.Track, error) {
+	dbTrack, err := sqlitedb.New(db.DB).GetTrackByID(ctx, trackID[:])
+	if err != nil {
+		return server.Track{}, fmt.Errorf("couldn't get track by ID: %w", err)
+	}
+
+	return convertDBTrack(dbTrack)
+}
+
+func (db *SQLiteDatastore) DeleteTrack(ctx context.Context, trackID uuid.UUID) error {
+	return sqlitedb.New(db.DB).DeleteTrackByID(ctx, trackID[:])
+}
+
 func convertDBTrack(dbTrack sqlitedb.Track) (server.Track, error) {
 	id, err := uuid.FromBytes(dbTrack.ID)
 	if err != nil {
