@@ -10,15 +10,16 @@ export interface AudioTrack {
   duration: number
 }
 
-function newAudioTrack(fileID: string, name: string): AudioTrack {
+function newAudioTrack(fileID: string, options?: Partial<AudioTrack>): AudioTrack {
   return {
-    fileID: fileID,
-    name: name,
+    fileID,
+    name: "",
     isPlaying: false,
     volume: 100,
     isRepeating: false,
     currentTime: 0,
-    duration: 0
+    duration: 0,
+    ...options  // Merge any provided options
   }
 }
 
@@ -32,22 +33,11 @@ export const useAudioStore = defineStore('audio', {
     availableTracks: (state) => Object.values(state.tracks)
   },
   actions: {
-    initTrack(fileID: string, name: string) {
-      if (!this.tracks[fileID]) {
-        this.tracks[fileID] = newAudioTrack(fileID, name)
-      }
-    },
     updateTrackState(fileID: string, updates: Partial<AudioTrack>) {
-      if (this.tracks[fileID]) {
-        this.tracks[fileID] = {
-          ...this.tracks[fileID],
-          ...updates
-        }
-      } else {
-        this.tracks[fileID] = {
-          ...newAudioTrack(fileID, ""),
-          ...updates
-        }
+      const track = this.tracks[fileID] ? this.tracks[fileID] : newAudioTrack(fileID)
+      this.tracks[fileID] = {
+        ...track,
+        ...updates
       }
     },
     removeTrack(fildID: string) {
@@ -81,7 +71,6 @@ export const useAudioStore = defineStore('audio', {
       // Update or add tracks from sync payload
       tracks.forEach(track => {
         if (track.fileID) {
-          this.initTrack(track.fileID, "")
           this.updateTrackState(track.fileID, track)
         }
       })
