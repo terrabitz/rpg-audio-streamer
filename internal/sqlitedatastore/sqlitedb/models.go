@@ -4,13 +4,9 @@
 
 package sqlitedb
 
-import (
-	"database/sql"
-)
-
 type Track struct {
 	ID        []byte
-	CreatedAt sql.NullString
+	CreatedAt string
 	Name      string
 	Path      string
 	Type      string
