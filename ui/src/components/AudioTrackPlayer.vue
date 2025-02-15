@@ -54,7 +54,7 @@ function startAudioSync(fileName: string, videoElement: HTMLVideoElement) {
 
 function syncStateToVideoElement(state: AudioTrack, videoElement: HTMLVideoElement) {
   // Always sync these properties
-  videoElement.volume = state.volume / 100
+  videoElement.volume = (state.volume / 100) * (audioStore.masterVolume / 100)
   videoElement.loop = state.isRepeating
 
   if (state.isPlaying && videoElement.paused) {
