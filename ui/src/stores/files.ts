@@ -24,7 +24,7 @@ export const useFileStore = defineStore('files', {
     },
     async deleteFile(trackId: string) {
       try {
-        await apiClient.delete(`/api/v1/files/${trackId}`)
+        await apiClient.delete(`/files/${trackId}`)
         await this.fetchFiles()
       } catch (error) {
         console.error('Error deleting file:', error)
