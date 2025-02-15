@@ -31,7 +31,21 @@ func (s *Server) uploadFile(w http.ResponseWriter, r *http.Request) {
 
 	// Retrieve additional metadata
 	name := r.FormValue("name")
-	trackType := r.FormValue("type")
+	typeIDStr := r.FormValue("typeId")
+
+	typeID, err := uuid.Parse(typeIDStr)
+	if err != nil {
+		s.logger.Error("invalid type ID", "error", err)
+		http.Error(w, "Invalid track type ID", http.StatusBadRequest)
+		return
+	}
+
+	// Validate track type exists
+	if _, err := s.store.GetTrackTypeByID(r.Context(), typeID); err != nil {
+		s.logger.Error("track type not found", "error", err)
+		http.Error(w, "Invalid track type", http.StatusBadRequest)
+		return
+	}
 
 	id, err := uuid.NewV7()
 	if err != nil {
@@ -101,7 +115,7 @@ func (s *Server) uploadFile(w http.ResponseWriter, r *http.Request) {
 		CreatedAt: time.Now(),
 		Name:      name,
 		Path:      hlsDir,
-		Type:      trackType,
+		TypeID:    typeID,
 	}
 
 	if err := s.store.SaveTrack(r.Context(), &track); err != nil {

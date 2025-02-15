@@ -19,7 +19,7 @@ func (q *Queries) DeleteTrackByID(ctx context.Context, id []byte) error {
 }
 
 const getTrackByID = `-- name: GetTrackByID :one
-select id, created_at, name, path, type from tracks where id = ?1
+select id, created_at, name, path, type_id from tracks where id = ?1
 `
 
 func (q *Queries) GetTrackByID(ctx context.Context, id []byte) (Track, error) {
@@ -30,13 +30,13 @@ func (q *Queries) GetTrackByID(ctx context.Context, id []byte) (Track, error) {
 		&i.CreatedAt,
 		&i.Name,
 		&i.Path,
-		&i.Type,
+		&i.TypeID,
 	)
 	return i, err
 }
 
 const getTracks = `-- name: GetTracks :many
-select id, created_at, name, path, type from tracks
+select id, created_at, name, path, type_id from tracks
 `
 
 func (q *Queries) GetTracks(ctx context.Context) ([]Track, error) {
@@ -53,7 +53,7 @@ func (q *Queries) GetTracks(ctx context.Context) ([]Track, error) {
 			&i.CreatedAt,
 			&i.Name,
 			&i.Path,
-			&i.Type,
+			&i.TypeID,
 		); err != nil {
 			return nil, err
 		}
@@ -69,7 +69,7 @@ func (q *Queries) GetTracks(ctx context.Context) ([]Track, error) {
 }
 
 const saveTrack = `-- name: SaveTrack :exec
-insert into tracks (id, created_at, name, path, type) values (?1, ?2, ?3, ?4, ?5)
+insert into tracks (id, created_at, name, path, type_id) values (?1, ?2, ?3, ?4, ?5)
 `
 
 type SaveTrackParams struct {
@@ -77,7 +77,7 @@ type SaveTrackParams struct {
 	CreatedAt string
 	Name      string
 	Path      string
-	Type      string
+	TypeID    []byte
 }
 
 func (q *Queries) SaveTrack(ctx context.Context, arg SaveTrackParams) error {
@@ -86,7 +86,7 @@ func (q *Queries) SaveTrack(ctx context.Context, arg SaveTrackParams) error {
 		arg.CreatedAt,
 		arg.Name,
 		arg.Path,
-		arg.Type,
+		arg.TypeID,
 	)
 	return err
 }

@@ -8,4 +8,4 @@ select * from tracks where id = :id;
 delete from tracks where id = :id;
 
 -- name: SaveTrack :exec
-insert into tracks (id, created_at, name, path, type) values (:id, :created_at, :name, :path, :type);
+insert into tracks (id, created_at, name, path, type_id) values (:id, :created_at, :name, :path, :type_id);

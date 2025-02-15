@@ -119,6 +119,7 @@ func (s *Server) Start() error {
 	mux.HandleFunc("/api/v1/stream/", s.authMiddleware(s.streamDirectory))
 	mux.HandleFunc("/api/v1/files", s.gmOnlyMiddleware(s.handleFiles))
 	mux.HandleFunc("/api/v1/files/{trackID}", s.gmOnlyMiddleware(s.handleFileDelete))
+	mux.HandleFunc("/api/v1/trackTypes", s.authMiddleware(s.handleTrackTypes))
 	mux.HandleFunc("/api/v1/join-token", s.gmOnlyMiddleware(s.handleJoinToken))
 
 	// Apply global middleware

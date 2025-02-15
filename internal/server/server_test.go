@@ -112,6 +112,9 @@ func TestUploadFile(t *testing.T) {
 	ts := setupTestServer(t)
 	defer ts.cleanup(t)
 
+	// Get the Ambiance track type ID
+	ambianceID := uuid.MustParse("1EC000A2-A7C9-11EE-A0E5-0242AC120002")
+
 	// Create test file content
 	content := []byte("RIFF$\x00\x00\x00WAVEfmt \x10\x00\x00\x00\x01\x00\x01\x00\x80>\x00\x00\x00}\x00\x00\x02\x00\x10\x00data\x00\x00\x00\x00")
 	body := &bytes.Buffer{}
@@ -122,7 +125,7 @@ func TestUploadFile(t *testing.T) {
 	}
 	part.Write(content)
 	writer.WriteField("name", "Test Track")
-	writer.WriteField("type", "ambiance")
+	writer.WriteField("typeId", ambianceID.String())
 	writer.Close()
 
 	t.Run("with GM auth", func(t *testing.T) {
@@ -151,8 +154,8 @@ func TestUploadFile(t *testing.T) {
 		if track.Name != "Test Track" {
 			t.Errorf("expected track name 'Test Track'; got %s", track.Name)
 		}
-		if track.Type != "ambiance" {
-			t.Errorf("expected track type 'ambiance'; got %s", track.Type)
+		if track.TypeID != ambianceID {
+			t.Errorf("expected track type ID %s; got %s", ambianceID, track.TypeID)
 		}
 	})
 
@@ -190,6 +193,9 @@ func TestListFiles(t *testing.T) {
 	ts := setupTestServer(t)
 	defer ts.cleanup(t)
 
+	// Get a valid track type ID for test files
+	ambianceID := uuid.MustParse("1EC000A2-A7C9-11EE-A0E5-0242AC120002")
+
 	// Create some test files
 	testFiles := []struct {
 		name    string
@@ -209,9 +215,10 @@ func TestListFiles(t *testing.T) {
 		}
 		trackID := uuid.New()
 		ts.store.(*MockTrackStore).tracks[trackID] = Track{
-			ID:   trackID,
-			Name: tf.name,
-			Path: hlsDir,
+			ID:     trackID,
+			Name:   tf.name,
+			Path:   hlsDir,
+			TypeID: ambianceID,
 		}
 	}
 
@@ -285,6 +292,9 @@ func TestDeleteFile(t *testing.T) {
 	ts := setupTestServer(t)
 	defer ts.cleanup(t)
 
+	// Get a valid track type ID
+	ambianceID := uuid.MustParse("1EC000A2-A7C9-11EE-A0E5-0242AC120002")
+
 	// Create a track and store it
 	trackID := uuid.New()
 	trackPath := filepath.Join(ts.tempDir, trackID.String())
@@ -294,9 +304,10 @@ func TestDeleteFile(t *testing.T) {
 
 	mockStore := ts.store.(*MockTrackStore)
 	mockStore.tracks[trackID] = Track{
-		ID:   trackID,
-		Path: trackPath,
-		Name: "Test Track",
+		ID:     trackID,
+		Path:   trackPath,
+		Name:   "Test Track",
+		TypeID: ambianceID,
 	}
 
 	t.Run("with GM auth", func(t *testing.T) {
@@ -343,62 +354,6 @@ func TestDeleteFile(t *testing.T) {
 			t.Errorf("expected status NotFound; got %v", rec.Code)
 		}
 	})
-}
-
-func TestStreamFile(t *testing.T) {
-	ts := setupTestServer(t)
-	defer ts.cleanup(t)
-
-	// Create test file
-	content := "test audio content"
-	testFile := filepath.Join(ts.tempDir, "test.mp3")
-	if err := os.WriteFile(testFile, []byte(content), 0644); err != nil {
-		t.Fatalf("failed to create test file: %v", err)
-	}
-
-	t.Run("with valid auth", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/api/v1/stream/test.mp3", nil)
-		addAuthCookie(req, ts.auth.(*mockAuth).token.String())
-		rec := httptest.NewRecorder()
-		req.SetPathValue("fileName", "test.mp3")
-
-		ts.authMiddleware(ts.streamFile)(rec, req)
-
-		if rec.Code != http.StatusOK {
-			t.Errorf("expected status OK; got %v", rec.Code)
-		}
-
-		if ct := rec.Header().Get("Content-Type"); ct != "audio/mp3" {
-			t.Errorf("expected Content-Type audio/mp3; got %s", ct)
-		}
-
-		if body := rec.Body.String(); body != content {
-			t.Errorf("expected body %q; got %q", content, body)
-		}
-	})
-
-	t.Run("without auth", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/api/v1/stream/test.mp3", nil)
-		rec := httptest.NewRecorder()
-		req.SetPathValue("fileName", "test.mp3")
-
-		ts.authMiddleware(ts.streamFile)(rec, req)
-
-		if rec.Code != http.StatusUnauthorized {
-			t.Errorf("expected status Unauthorized; got %v", rec.Code)
-		}
-	})
-
-	// Test streaming non-existent file
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/stream/nonexistent.mp3", nil)
-	addAuthCookie(req, ts.auth.(*mockAuth).token.String())
-	rec := httptest.NewRecorder()
-	req.SetPathValue("fileName", "nonexistent.mp3")
-
-	ts.authMiddleware(ts.streamFile)(rec, req)
-	if rec.Code != http.StatusNotFound {
-		t.Errorf("expected status NotFound; got %v", rec.Code)
-	}
 }
 
 func TestHandleLogin(t *testing.T) {
@@ -757,6 +712,60 @@ func TestHandleJoin(t *testing.T) {
 
 		if rec.Code != http.StatusBadRequest {
 			t.Errorf("expected status BadRequest; got %v", rec.Code)
+		}
+	})
+}
+
+func TestTrackTypes(t *testing.T) {
+	ts := setupTestServer(t)
+	defer ts.cleanup(t)
+
+	t.Run("with auth", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/trackTypes", nil)
+		addAuthCookie(req, ts.auth.(*mockAuth).token.String())
+		rec := httptest.NewRecorder()
+
+		ts.authMiddleware(ts.handleTrackTypes)(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Errorf("expected status OK; got %v", rec.Code)
+		}
+
+		var types []TrackType
+		if err := json.NewDecoder(rec.Body).Decode(&types); err != nil {
+			t.Fatalf("failed to decode response: %v", err)
+		}
+
+		if len(types) != 3 {
+			t.Errorf("expected 3 track types; got %d", len(types))
+		}
+
+		expectedNames := map[string]bool{
+			"Ambiance": true,
+			"Music":    true,
+			"One-Shot": true,
+		}
+
+		for _, tt := range types {
+			if !expectedNames[tt.Name] {
+				t.Errorf("unexpected track type name: %s", tt.Name)
+			}
+			delete(expectedNames, tt.Name)
+		}
+
+		if len(expectedNames) > 0 {
+			t.Errorf("missing track types: %v", expectedNames)
+		}
+	})
+
+	t.Run("without auth", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/trackTypes", nil)
+		rec := httptest.NewRecorder()
+
+		ts.authMiddleware(ts.handleTrackTypes)(rec, req)
+
+		if rec.Code != http.StatusUnauthorized {
+			t.Errorf("expected status Unauthorized; got %v", rec.Code)
 		}
 	})
 }

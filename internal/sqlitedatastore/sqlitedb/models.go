@@ -9,5 +9,14 @@ type Track struct {
 	CreatedAt string
 	Name      string
 	Path      string
-	Type      string
+	TypeID    []byte
+}
+
+type TrackType struct {
+	ID                    []byte
+	Name                  string
+	Color                 string
+	IsRepeating           bool
+	AllowSimultaneousPlay bool
+	CreatedAt             string
 }

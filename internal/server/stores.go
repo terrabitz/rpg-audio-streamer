@@ -9,6 +9,7 @@ import (
 
 type Store interface {
 	TrackStore
+	TrackTypeStore
 }
 
 type Track struct {
@@ -16,7 +17,7 @@ type Track struct {
 	CreatedAt time.Time `json:"created_at,omitempty"`
 	Name      string    `json:"name,omitempty"`
 	Path      string    `json:"path,omitempty"`
-	Type      string    `json:"type,omitempty"`
+	TypeID    uuid.UUID `json:"type_id,omitempty"`
 }
 
 type TrackStore interface {
@@ -24,4 +25,16 @@ type TrackStore interface {
 	GetTracks(ctx context.Context) ([]Track, error)
 	GetTrackByID(ctx context.Context, trackID uuid.UUID) (Track, error)
 	DeleteTrack(ctx context.Context, trackID uuid.UUID) error
+}
+
+type TrackType struct {
+	ID                    uuid.UUID `json:"id,omitempty"`
+	Name                  string    `json:"name,omitempty"`
+	IsRepeating           bool      `json:"is_repeating,omitempty"`
+	AllowSimultaneousPlay bool      `json:"allow_simultaneous_play,omitempty"`
+}
+
+type TrackTypeStore interface {
+	GetTrackTypes(ctx context.Context) ([]TrackType, error)
+	GetTrackTypeByID(ctx context.Context, id uuid.UUID) (TrackType, error)
 }

@@ -16,7 +16,7 @@ func (db *SQLiteDatastore) SaveTrack(ctx context.Context, track *server.Track) e
 		CreatedAt: track.CreatedAt.Format(time.RFC3339),
 		Name:      track.Name,
 		Path:      track.Path,
-		Type:      track.Type,
+		TypeID:    track.TypeID[:],
 	}
 
 	if err := sqlitedb.New(db.DB).SaveTrack(ctx, dbTrack); err != nil {
@@ -67,11 +67,16 @@ func convertDBTrack(dbTrack sqlitedb.Track) (server.Track, error) {
 		return server.Track{}, fmt.Errorf("invalid CreatedAt: %w", err)
 	}
 
+	typeID, err := uuid.FromBytes(dbTrack.TypeID)
+	if err != nil {
+		return server.Track{}, fmt.Errorf("error converting track type ID to UUID: %w", err)
+	}
+
 	return server.Track{
 		ID:        id,
 		CreatedAt: createdAt,
 		Name:      dbTrack.Name,
 		Path:      dbTrack.Path,
-		Type:      dbTrack.Type,
+		TypeID:    typeID,
 	}, nil
 }
