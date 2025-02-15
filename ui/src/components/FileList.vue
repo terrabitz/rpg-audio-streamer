@@ -12,10 +12,13 @@
         <tr v-for="file in fileStore.tracks" :key="file.id">
           <td>{{ file.name }}</td>
           <td>
-            <v-chip class="ma-2" color="primary" text-color="white">{{ file.type }}</v-chip>
+            <v-chip :color="getTrackType(file.type_id)?.color" text-color="white">
+              {{ getTrackType(file.type_id)?.name }}
+            </v-chip>
           </td>
           <td class="d-flex align-center">
-            <AudioControls :fileID="file.id" :fileName="file.name" @play="handlePlay(file.id)"
+            <AudioControls :fileID="file.id" :fileName="file.name"
+              :allowRepeat="getTrackType(file.type_id)?.isRepeating" @play="handlePlay(file.id)"
               @repeat="handleRepeat(file.id)" @volume="vol => handleVolume(file.id, vol)"
               @seek="time => handleSeek(file.id, time)" />
             <v-btn icon size="small" color="error" @click="deleteFile(file)">
@@ -30,6 +33,7 @@
 
 <script setup lang="ts">
 import { useFileStore, type Track } from '@/stores/files'
+import { useTrackTypeStore } from '@/stores/trackTypes'
 import { useWebSocketStore } from '@/stores/websocket'
 import debounce from 'lodash.debounce'
 import { onMounted } from 'vue'
@@ -39,9 +43,11 @@ import AudioControls from './AudioControls.vue'
 const fileStore = useFileStore()
 const audioStore = useAudioStore()
 const wsStore = useWebSocketStore()
+const trackTypeStore = useTrackTypeStore()
 
-onMounted(() => {
-  fileStore.fetchFiles()
+onMounted(async () => {
+  await trackTypeStore.fetchTrackTypes()
+  await fileStore.fetchFiles()
 })
 
 async function deleteFile(file: Track) {
@@ -91,5 +97,9 @@ const handleSeek = (fileID: string, time: number) => {
   if (audioStore.tracks[fileID].isPlaying) {
     debouncedSendMessage('syncTrack', { fileID, currentTime: time })
   }
+}
+
+const getTrackType = (typeId: string) => {
+  return trackTypeStore.getTypeById(typeId)
 }
 </script>

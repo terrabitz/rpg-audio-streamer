@@ -13,7 +13,21 @@
               <v-file-input v-model="trackFile" label="Select a file" prepend-icon="$music" accept="audio/mp3"
                 :loading="isUploading" :disabled="isUploading" required></v-file-input>
               <v-text-field v-model="trackName" label="Track Name" required></v-text-field>
-              <v-select v-model="trackType" :items="trackTypes" label="Track Type" required></v-select>
+              <v-select v-model="selectedTypeId" :items="trackTypeStore.trackTypes" item-title="name" item-value="id"
+                label="Track Type" required>
+                <template v-slot:item="{ props, item }">
+                  <v-list-item v-bind="props" title="">
+                    <v-chip :color="item.raw.color" text-color="white">
+                      {{ item.raw.name }}
+                    </v-chip>
+                  </v-list-item>
+                </template>
+                <template v-slot:selection="{ item }">
+                  <v-chip v-if="item.raw.name" :color="item.raw.color" text-color="white">
+                    {{ item.raw.name }}
+                  </v-chip>
+                </template>
+              </v-select>
             </v-form>
             <div v-if="isDragging" class="drop-text">Drop files here</div>
           </div>
@@ -32,19 +46,24 @@
 <script setup lang="ts">
 import { apiClient } from '@/plugins/axios'
 import { useFileStore } from '@/stores/files'
+import { useTrackTypeStore } from '@/stores/trackTypes'
 import debounce from 'lodash/debounce'
-import { ref, watch } from 'vue'
+import { onMounted, ref, watch } from 'vue'
 
 const isUploading = ref(false)
 const uploadStatus = ref<{ type: 'success' | 'error', message: string } | null>(null)
 const fileStore = useFileStore()
+const trackTypeStore = useTrackTypeStore()
 const isDragging = ref(false)
 const showModal = ref(false)
 const formValid = ref(false)
 const trackName = ref('')
 const trackFile = ref<File | null>(null)
-const trackType = ref('')
-const trackTypes = ['Ambiance', 'Music', 'One-Shot']
+const selectedTypeId = ref('')  // Initialize selectedTypeId as empty string
+
+onMounted(async () => {
+  await trackTypeStore.fetchTrackTypes()
+})
 
 watch(trackFile, (file) => {
   if (file) {
@@ -56,7 +75,7 @@ const uploadTrack = async () => {
   const formData = new FormData()
   formData.append('files', trackFile.value as File)
   formData.append('name', trackName.value)
-  formData.append('type', trackType.value)
+  formData.append('typeId', selectedTypeId.value)  // Update to use typeId
 
   isUploading.value = true
   uploadStatus.value = null
@@ -105,7 +124,7 @@ const submitForm = async () => {
   showModal.value = false
   trackName.value = ''
   trackFile.value = null
-  trackType.value = ''
+  selectedTypeId.value = ''  // Reset selectedTypeId instead of trackType
 }
 </script>
 
