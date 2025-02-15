@@ -3,6 +3,7 @@ package main
 import (
 	"embed"
 	"fmt"
+	"io/fs"
 	"log"
 	"log/slog"
 	"os"
@@ -14,10 +15,14 @@ import (
 
 	"github.com/terrabitz/rpg-audio-streamer/internal/auth"
 	"github.com/terrabitz/rpg-audio-streamer/internal/server"
+	"github.com/terrabitz/rpg-audio-streamer/internal/sqlitedatastore"
 )
 
 //go:embed all:ui/dist
 var frontend embed.FS
+
+//go:embed sql/migrations/*
+var migrations embed.FS
 
 type Config struct {
 	Server server.Config
@@ -168,6 +173,25 @@ func startServer(cfg Config) error {
 	logger, err := setupLogger(cfg)
 	if err != nil {
 		return fmt.Errorf("couldn't initialize logger: %w", err)
+	}
+
+	migrationsSub, err := fs.Sub(migrations, "sql/migrations")
+	if err != nil {
+		log.Fatalf("couldn't find database migrations: %v", err)
+	}
+
+	db, err := sqlitedatastore.New("skaldbot.db")
+	if err != nil {
+		return fmt.Errorf("couldn't initialize SQLite DB: %w", err)
+	}
+
+	migrations, err := sqlitedatastore.NewMigration(migrationsSub, db)
+	if err != nil {
+		return fmt.Errorf("couldn't initialize migrations: %w", err)
+	}
+
+	if err := migrations.Up(); err != nil {
+		return fmt.Errorf("couldn't run migrations: %w", err)
 	}
 
 	authService := auth.New(cfg.Auth, logger)

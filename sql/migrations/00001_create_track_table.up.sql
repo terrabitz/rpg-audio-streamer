@@ -1,0 +1,7 @@
+CREATE TABLE tracks (
+    id BLOB PRIMARY KEY,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    name TEXT NOT NULL,
+    path TEXT NOT NULL,
+    type TEXT NOT NULL
+);
