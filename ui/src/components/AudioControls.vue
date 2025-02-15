@@ -3,9 +3,9 @@
     <v-btn icon size="small" @click="$emit('play')" class="mr-2" :class="{ 'button-active': audioState.isPlaying }">
       <v-icon>{{ audioState.isPlaying ? '$pause' : '$play' }}</v-icon>
     </v-btn>
-    <v-btn icon size="small" @click="$emit('repeat')" :class="{ 'button-active': audioState.isRepeating }" class="mr-2">
-      <v-icon>$repeat</v-icon>
-    </v-btn>
+    <v-icon size="small" color="grey-darken-1" class="mr-2">
+      {{ trackType.isRepeating ? '$repeat' : '$repeatOff' }}
+    </v-icon>
     <div class="d-flex align-center mr-2" style="min-width: 120px">
       <v-icon size="x-small" class="mr-2">$volume</v-icon>
       <v-slider :model-value="audioState.volume" @update:model-value="$emit('volume', $event)" density="compact"
@@ -51,7 +51,6 @@ watchEffect(() => {
 
 defineEmits<{
   (e: 'play'): void
-  (e: 'repeat'): void
   (e: 'volume', volume: number): void
   (e: 'seek', time: number): void
 }>();
