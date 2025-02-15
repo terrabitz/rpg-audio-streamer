@@ -1,7 +1,9 @@
 <template>
   <div v-if="trackType" class="d-flex align-center">
-    <v-btn icon size="small" @click="$emit('play')" class="mr-2" :class="{ 'button-active': audioState.isPlaying }">
-      <v-icon>{{ audioState.isPlaying ? '$pause' : '$play' }}</v-icon>
+    <v-btn icon size="small" class="mr-2" :disabled="fadeState?.inProgress"
+      :class="{ 'button-active': !fadeState?.inProgress && audioState.isPlaying }" @click="$emit('play')">
+      <v-progress-circular width="8" v-if="fadeState?.inProgress" indeterminate />
+      <v-icon v-else>{{ audioState.isPlaying ? '$pause' : '$play' }}</v-icon>
     </v-btn>
     <v-icon size="small" color="grey-darken-1" class="mr-2">
       {{ trackType.isRepeating ? '$repeat' : '$repeatOff' }}
@@ -23,6 +25,7 @@
 <script setup lang="ts">
 import { computed, watchEffect } from 'vue';
 import { useAudioStore } from '../stores/audio';
+import { useFadeStore } from '../stores/fadeStore';
 import { useFileStore } from '../stores/files';
 import { useTrackTypeStore } from '../stores/trackTypes';
 
@@ -34,10 +37,12 @@ const props = defineProps<{
 const audioStore = useAudioStore();
 const trackTypeStore = useTrackTypeStore();
 const fileStore = useFileStore();
+const fadeStore = useFadeStore();
 
 const track = computed(() => fileStore.tracks.find(t => t.id === props.fileID));
 const trackType = computed(() => track.value ? trackTypeStore.getTypeById(track.value.type_id) : null);
 const audioState = computed(() => audioStore.tracks[props.fileID]);
+const fadeState = computed(() => fadeStore.fadeStates[props.fileID]);
 
 // Wait for track type data before initializing audio track
 watchEffect(() => {

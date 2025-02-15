@@ -7,9 +7,11 @@
 import Hls from 'hls.js';
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useAudioStore, type AudioTrack } from '../stores/audio';
+import { useFadeStore } from '../stores/fadeStore';
 
 const props = defineProps<{ fileID: string }>()
 const audioStore = useAudioStore()
+const fadeStore = useFadeStore()
 const videoElement = ref<HTMLVideoElement | null>(null)
 
 interface FadeState {
@@ -81,6 +83,7 @@ function startFade(startVolume: number, targetVolume: number) {
     targetVolume,
     startTime: Date.now()
   }
+  fadeStore.setFading(props.fileID, true)
 }
 
 function applyFadeStep(track: AudioTrack, videoEl: HTMLVideoElement) {
@@ -93,6 +96,7 @@ function applyFadeStep(track: AudioTrack, videoEl: HTMLVideoElement) {
 
   if (fadePercent === 1) {
     fadeState.value = null
+    fadeStore.setFading(track.fileID, false)
     if (currentVolume <= 0.01) {
       videoEl.pause()
     }
