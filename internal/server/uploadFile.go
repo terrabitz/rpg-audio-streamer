@@ -33,8 +33,14 @@ func (s *Server) uploadFile(w http.ResponseWriter, r *http.Request) {
 	name := r.FormValue("name")
 	trackType := r.FormValue("type")
 
+	id, err := uuid.NewV7()
+	if err != nil {
+		s.logger.Error("failed to generate UUID", "error", err)
+		http.Error(w, "Failed to save track information", http.StatusInternalServerError)
+	}
+
 	tempDir := os.TempDir()
-	dstPath := filepath.Join(tempDir, handler.Filename)
+	dstPath := filepath.Join(tempDir, id.String())
 	dstFile, err := os.Create(dstPath)
 	if err != nil {
 		s.logger.Error("failed to create file", "error", err, "path", dstPath)
@@ -49,7 +55,7 @@ func (s *Server) uploadFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	hlsDir := filepath.Join(s.cfg.UploadDir, handler.Filename)
+	hlsDir := filepath.Join(s.cfg.UploadDir, id.String())
 	if err := os.MkdirAll(hlsDir, os.ModePerm); err != nil {
 		s.logger.Error("failed to create HLS directory", "error", err, "path", hlsDir)
 		http.Error(w, "Failed to save file", http.StatusInternalServerError)
@@ -87,12 +93,6 @@ func (s *Server) uploadFile(w http.ResponseWriter, r *http.Request) {
 
 	if err := os.Remove(dstPath); err != nil {
 		s.logger.Warn("failed to remove original file", "error", err, "path", dstPath)
-	}
-
-	id, err := uuid.NewV7()
-	if err != nil {
-		s.logger.Error("failed to generate UUID", "error", err)
-		http.Error(w, "Failed to save track information", http.StatusInternalServerError)
 	}
 
 	// Save track information to the datastore

@@ -9,7 +9,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
@@ -120,7 +119,6 @@ func (s *Server) Start() error {
 	mux.HandleFunc("/api/v1/stream/", s.authMiddleware(s.streamDirectory))
 	mux.HandleFunc("/api/v1/files", s.gmOnlyMiddleware(s.handleFiles))
 	mux.HandleFunc("/api/v1/files/{trackID}", s.gmOnlyMiddleware(s.handleFileDelete))
-	mux.HandleFunc("/api/v1/stream/{fileName}", s.authMiddleware(s.streamFile))
 	mux.HandleFunc("/api/v1/join-token", s.gmOnlyMiddleware(s.handleJoinToken))
 
 	// Apply global middleware
@@ -266,27 +264,6 @@ func (s *Server) handleFileDelete(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("Track deleted successfully"))
-}
-
-func (s *Server) streamFile(w http.ResponseWriter, r *http.Request) {
-	fileName := r.PathValue("fileName")
-	filePath := filepath.Join(s.cfg.UploadDir, fileName)
-
-	file, err := os.Open(filePath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			s.logger.Warn("file not found", "filename", fileName)
-			http.Error(w, "File not found", http.StatusNotFound)
-			return
-		}
-		s.logger.Error("failed to open file", "error", err, "filename", fileName)
-		http.Error(w, "Failed to open file", http.StatusInternalServerError)
-		return
-	}
-	defer file.Close()
-
-	w.Header().Set("Content-Type", "audio/mp3")
-	http.ServeContent(w, r, fileName, time.Time{}, file)
 }
 
 func (s *Server) streamDirectory(w http.ResponseWriter, r *http.Request) {
