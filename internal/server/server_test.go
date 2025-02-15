@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"log/slog"
@@ -16,7 +17,6 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/terrabitz/rpg-audio-streamer/internal/auth"
 	"github.com/terrabitz/rpg-audio-streamer/internal/middlewares"
-	"github.com/terrabitz/rpg-audio-streamer/internal/types"
 )
 
 type testServer struct {
@@ -138,7 +138,10 @@ func TestUploadFile(t *testing.T) {
 
 		// Verify track metadata was saved
 		mockStore := ts.store.(*MockTrackStore)
-		tracks := mockStore.GetTracks()
+		tracks, err := mockStore.GetTracks(context.Background())
+		if err != nil {
+			t.Fatalf("failed to get tracks: %v", err)
+		}
 		if len(tracks) != 1 {
 			t.Fatalf("expected 1 track; got %d", len(tracks))
 		}
@@ -217,7 +220,7 @@ func TestListFiles(t *testing.T) {
 			t.Errorf("expected status OK; got %v", rec.Code)
 		}
 
-		var files []types.FileInfo
+		var files []Track
 		if err := json.NewDecoder(rec.Body).Decode(&files); err != nil {
 			t.Fatalf("failed to decode response: %v", err)
 		}

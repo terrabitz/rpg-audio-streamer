@@ -14,8 +14,8 @@ func (m *MockTrackStore) SaveTrack(ctx context.Context, track *Track) error {
 	return nil
 }
 
-func (m *MockTrackStore) GetTracks() []Track {
-	return m.tracks
+func (m *MockTrackStore) GetTracks(ctx context.Context) ([]Track, error) {
+	return m.tracks, nil
 }
 
 func NewMockTrackStore(t *testing.T) *MockTrackStore {

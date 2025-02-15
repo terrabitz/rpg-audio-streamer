@@ -4,12 +4,16 @@
       <thead>
         <tr>
           <th>Name</th>
+          <th>Type</th>
           <th>Actions</th>
         </tr>
       </thead>
       <tbody>
-        <tr v-for="file in fileStore.files" :key="file.name">
+        <tr v-for="file in fileStore.tracks" :key="file.name">
           <td>{{ file.name }}</td>
+          <td>
+            <v-chip class="ma-2" color="primary" text-color="white">{{ file.type }}</v-chip>
+          </td>
           <td class="d-flex align-center">
             <AudioControls :fileName="file.name" @play="handlePlay(file.name)" @repeat="handleRepeat(file.name)"
               @volume="vol => handleVolume(file.name, vol)" @seek="time => handleSeek(file.name, time)" />
@@ -88,9 +92,3 @@ const handleSeek = (fileName: string, time: number) => {
   }
 }
 </script>
-
-<style scoped>
-video {
-  display: none
-}
-</style>

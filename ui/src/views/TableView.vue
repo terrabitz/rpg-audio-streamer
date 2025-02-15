@@ -53,7 +53,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <v-container class="px-4 py-8" style="max-width: 800px">
+  <v-container class="px-4 py-8" style="max-width: 1000px">
     <AudioPlayer />
     <div class="mb-8">
       <h1>My Table</h1>

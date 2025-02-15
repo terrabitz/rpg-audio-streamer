@@ -1,20 +1,23 @@
 import { apiClient } from '@/plugins/axios'
 import { defineStore } from 'pinia'
 
-interface FileInfo {
+interface Track {
+  id: string
+  createdAt: string
   name: string
-  size: number
+  path: string
+  type: string
 }
 
 export const useFileStore = defineStore('files', {
   state: () => ({
-    files: [] as FileInfo[]
+    tracks: [] as Track[]
   }),
   actions: {
     async fetchFiles() {
       try {
         const response = await apiClient.get('/files')
-        this.files = response.data
+        this.tracks = response.data
       } catch (error) {
         console.error('Error fetching files:', error)
       }
