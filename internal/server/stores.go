@@ -30,8 +30,9 @@ type TrackStore interface {
 type TrackType struct {
 	ID                    uuid.UUID `json:"id,omitempty"`
 	Name                  string    `json:"name,omitempty"`
-	IsRepeating           bool      `json:"is_repeating,omitempty"`
-	AllowSimultaneousPlay bool      `json:"allow_simultaneous_play,omitempty"`
+	Color                 string    `json:"color,omitempty"`
+	IsRepeating           bool      `json:"is_repeating"`
+	AllowSimultaneousPlay bool      `json:"allow_simultaneous_play"`
 }
 
 type TrackTypeStore interface {

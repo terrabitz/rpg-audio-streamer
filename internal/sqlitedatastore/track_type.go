@@ -43,6 +43,7 @@ func convertDBTrackType(dbTrackType sqlitedb.TrackType) (server.TrackType, error
 	return server.TrackType{
 		ID:                    id,
 		Name:                  dbTrackType.Name,
+		Color:                 dbTrackType.Color,
 		IsRepeating:           dbTrackType.IsRepeating,
 		AllowSimultaneousPlay: dbTrackType.AllowSimultaneousPlay,
 	}, nil
