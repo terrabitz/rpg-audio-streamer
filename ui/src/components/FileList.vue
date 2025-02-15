@@ -9,14 +9,15 @@
         </tr>
       </thead>
       <tbody>
-        <tr v-for="file in fileStore.tracks" :key="file.name">
+        <tr v-for="file in fileStore.tracks" :key="file.id">
           <td>{{ file.name }}</td>
           <td>
             <v-chip class="ma-2" color="primary" text-color="white">{{ file.type }}</v-chip>
           </td>
           <td class="d-flex align-center">
-            <AudioControls :fileName="file.name" @play="handlePlay(file.name)" @repeat="handleRepeat(file.name)"
-              @volume="vol => handleVolume(file.name, vol)" @seek="time => handleSeek(file.name, time)" />
+            <AudioControls :fileID="file.id" :fileName="file.name" @play="handlePlay(file.id)"
+              @repeat="handleRepeat(file.id)" @volume="vol => handleVolume(file.id, vol)"
+              @seek="time => handleSeek(file.id, time)" />
             <v-btn icon size="small" color="error" @click="deleteFile(file)">
               <v-icon>$delete</v-icon>
             </v-btn>
@@ -58,37 +59,37 @@ const debouncedSendMessage = debounce((method: string, payload: any) => {
 }, 100)
 
 // Event handlers just update state and send WS payloads
-const handlePlay = (fileName: string) => {
-  const state = audioStore.tracks[fileName]
+const handlePlay = (fileID: string) => {
+  const state = audioStore.tracks[fileID]
   const newState = { isPlaying: !state.isPlaying }
-  audioStore.updateTrackState(fileName, newState)
+  audioStore.updateTrackState(fileID, newState)
   if (newState.isPlaying) {
-    debouncedSendMessage('syncTrack', { ...audioStore.tracks[fileName] })
+    debouncedSendMessage('syncTrack', { ...audioStore.tracks[fileID] })
   } else {
-    debouncedSendMessage('syncTrack', { fileName, ...newState })
+    debouncedSendMessage('syncTrack', { fileID: fileID, ...newState })
   }
 }
 
-const handleRepeat = (fileName: string) => {
-  const state = audioStore.tracks[fileName]
+const handleRepeat = (fileID: string) => {
+  const state = audioStore.tracks[fileID]
   const newState = { isRepeating: !state.isRepeating }
-  audioStore.updateTrackState(fileName, newState)
+  audioStore.updateTrackState(fileID, newState)
   if (state.isPlaying) {
-    debouncedSendMessage('syncTrack', { fileName, ...newState })
+    debouncedSendMessage('syncTrack', { fileID: fileID, ...newState })
   }
 }
 
-const handleVolume = (fileName: string, volume: number) => {
-  audioStore.updateTrackState(fileName, { volume })
-  if (audioStore.tracks[fileName].isPlaying) {
-    debouncedSendMessage('syncTrack', { fileName, volume })
+const handleVolume = (fileID: string, volume: number) => {
+  audioStore.updateTrackState(fileID, { volume })
+  if (audioStore.tracks[fileID].isPlaying) {
+    debouncedSendMessage('syncTrack', { fileID, volume })
   }
 }
 
-const handleSeek = (fileName: string, time: number) => {
-  audioStore.updateTrackState(fileName, { currentTime: time })
-  if (audioStore.tracks[fileName].isPlaying) {
-    debouncedSendMessage('syncTrack', { fileName, currentTime: time })
+const handleSeek = (fileID: string, time: number) => {
+  audioStore.updateTrackState(fileID, { currentTime: time })
+  if (audioStore.tracks[fileID].isPlaying) {
+    debouncedSendMessage('syncTrack', { fileID, currentTime: time })
   }
 }
 </script>

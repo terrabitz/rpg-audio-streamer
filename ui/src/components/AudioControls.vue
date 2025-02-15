@@ -26,14 +26,15 @@ import { useAudioStore } from '../stores/audio';
 
 const props = defineProps<{
   fileName: string
+  fileID: string
 }>();
 
 const audioStore = useAudioStore();
 
 // Ensure track is initialized
-audioStore.initTrack(props.fileName);
+audioStore.initTrack(props.fileID, props.fileName);
 
-const audioState = computed(() => audioStore.tracks[props.fileName]);
+const audioState = computed(() => audioStore.tracks[props.fileID]);
 
 defineEmits<{
   (e: 'play'): void
