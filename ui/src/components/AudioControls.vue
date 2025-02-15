@@ -1,5 +1,5 @@
 <template>
-  <div class="d-flex align-center">
+  <div v-if="trackType" class="d-flex align-center">
     <v-btn icon size="small" @click="$emit('play')" class="mr-2" :class="{ 'button-active': audioState.isPlaying }">
       <v-icon>{{ audioState.isPlaying ? '$pause' : '$play' }}</v-icon>
     </v-btn>
@@ -21,8 +21,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, watchEffect } from 'vue';
 import { useAudioStore } from '../stores/audio';
+import { useFileStore } from '../stores/files';
+import { useTrackTypeStore } from '../stores/trackTypes';
 
 const props = defineProps<{
   fileName: string
@@ -30,11 +32,22 @@ const props = defineProps<{
 }>();
 
 const audioStore = useAudioStore();
+const trackTypeStore = useTrackTypeStore();
+const fileStore = useFileStore();
 
-// Ensure track is initialized
-audioStore.initTrack(props.fileID, props.fileName);
-
+const track = computed(() => fileStore.tracks.find(t => t.id === props.fileID));
+const trackType = computed(() => track.value ? trackTypeStore.getTypeById(track.value.type_id) : null);
 const audioState = computed(() => audioStore.tracks[props.fileID]);
+
+// Wait for track type data before initializing audio track
+watchEffect(() => {
+  if (trackType.value) {
+    audioStore.updateTrackState(props.fileID, {
+      name: props.fileName,
+      isRepeating: trackType.value.isRepeating,
+    });
+  }
+});
 
 defineEmits<{
   (e: 'play'): void

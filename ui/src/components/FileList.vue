@@ -17,8 +17,7 @@
             </v-chip>
           </td>
           <td class="d-flex align-center">
-            <AudioControls :fileID="file.id" :fileName="file.name"
-              :allowRepeat="getTrackType(file.type_id)?.isRepeating" @play="handlePlay(file.id)"
+            <AudioControls :fileID="file.id" :fileName="file.name" @play="handlePlay(file.id)"
               @repeat="handleRepeat(file.id)" @volume="vol => handleVolume(file.id, vol)"
               @seek="time => handleSeek(file.id, time)" />
             <v-btn icon size="small" color="error" @click="deleteFile(file)">
