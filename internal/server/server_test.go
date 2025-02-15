@@ -120,6 +120,8 @@ func TestUploadFile(t *testing.T) {
 		t.Fatalf("failed to create form file: %v", err)
 	}
 	part.Write(content)
+	writer.WriteField("name", "Test Track")
+	writer.WriteField("type", "ambiance")
 	writer.Close()
 
 	t.Run("with GM auth", func(t *testing.T) {
@@ -132,6 +134,21 @@ func TestUploadFile(t *testing.T) {
 
 		if rec.Code != http.StatusOK {
 			t.Errorf("expected status OK; got %v", rec.Code)
+		}
+
+		// Verify track metadata was saved
+		mockStore := ts.store.(*MockTrackStore)
+		tracks := mockStore.GetTracks()
+		if len(tracks) != 1 {
+			t.Fatalf("expected 1 track; got %d", len(tracks))
+		}
+
+		track := tracks[0]
+		if track.Name != "Test Track" {
+			t.Errorf("expected track name 'Test Track'; got %s", track.Name)
+		}
+		if track.Type != "ambiance" {
+			t.Errorf("expected track type 'ambiance'; got %s", track.Type)
 		}
 	})
 
