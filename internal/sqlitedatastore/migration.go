@@ -11,7 +11,7 @@ import (
 )
 
 type Migrations struct {
-	migrations *migrate.Migrate
+	*migrate.Migrate
 }
 
 func NewMigration(migrationDir fs.FS, db *SQLiteDatastore) (*Migrations, error) {
@@ -31,31 +31,23 @@ func NewMigration(migrationDir fs.FS, db *SQLiteDatastore) (*Migrations, error) 
 	}
 
 	return &Migrations{
-		migrations: m,
+		Migrate: m,
 	}, nil
 }
 
-func (m *Migrations) Up() error {
-	if err := m.migrations.Up(); err != nil {
-		return fmt.Errorf("error applying migrations: %w", err)
-	}
-
-	return nil
+type MigrateVersion struct {
+	Version uint
+	Dirty   bool
 }
 
-func (m *Migrations) Down() error {
-	if err := m.migrations.Steps(-1); err != nil {
-		return fmt.Errorf("error applying downwards migrations: %w", err)
-	}
-
-	return nil
-}
-
-func (m *Migrations) Version() (version uint, dirty bool, err error) {
-	version, dirty, err = m.migrations.Version()
+func (m *Migrations) Version() (*MigrateVersion, error) {
+	version, dirty, err := m.Migrate.Version()
 	if err != nil {
-		err = fmt.Errorf("couldn't get migration version: %w", err)
+		return nil, fmt.Errorf("couldn't get migration version: %w", err)
 	}
 
-	return version, dirty, err
+	return &MigrateVersion{
+		Version: version,
+		Dirty:   dirty,
+	}, nil
 }

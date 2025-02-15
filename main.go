@@ -2,6 +2,7 @@ package main
 
 import (
 	"embed"
+	"encoding/json"
 	"fmt"
 	"io/fs"
 	"log"
@@ -23,6 +24,10 @@ var frontend embed.FS
 
 //go:embed sql/migrations/*
 var migrations embed.FS
+
+const migrationsPath = "sql/migrations"
+
+const dbPath = "skaldbot.db"
 
 type Config struct {
 	Server server.Config
@@ -141,6 +146,113 @@ func main() {
 					return startServer(cfg)
 				},
 			},
+			{
+				Name:  "migrate",
+				Usage: "Run database migrations",
+				Subcommands: []*cli.Command{
+					{
+						Name:  "up",
+						Usage: "Apply all up migrations",
+						Flags: []cli.Flag{
+							&cli.IntFlag{
+								Name:  "steps",
+								Value: 0,
+								Usage: "Number of migrations to apply",
+							},
+						},
+						Action: func(cCtx *cli.Context) error {
+							migrationsSub, err := fs.Sub(migrations, migrationsPath)
+							if err != nil {
+								log.Fatalf("couldn't find database migrations: %v", err)
+							}
+
+							db, err := sqlitedatastore.New(dbPath)
+							if err != nil {
+								return fmt.Errorf("couldn't initialize SQLite DB: %w", err)
+							}
+
+							migrations, err := sqlitedatastore.NewMigration(migrationsSub, db)
+							if err != nil {
+								return fmt.Errorf("couldn't initialize migrations: %w", err)
+							}
+
+							steps := cCtx.Int("steps")
+							if steps == 0 {
+								if err := migrations.Up(); err != nil {
+									return fmt.Errorf("couldn't apply migrations: %w", err)
+								}
+							} else {
+								if err := migrations.Steps(steps); err != nil {
+									return fmt.Errorf("couldn't apply migrations: %w", err)
+								}
+							}
+							return nil
+						},
+					},
+					{
+						Name:  "down",
+						Usage: "Revert the last n migrations",
+						Flags: []cli.Flag{
+							&cli.IntFlag{
+								Name:  "steps",
+								Value: 1,
+								Usage: "Number of migrations to revert",
+							},
+						},
+						Action: func(cCtx *cli.Context) error {
+							migrationsSub, err := fs.Sub(migrations, migrationsPath)
+							if err != nil {
+								log.Fatalf("couldn't find database migrations: %v", err)
+							}
+
+							db, err := sqlitedatastore.New(dbPath)
+							if err != nil {
+								return fmt.Errorf("couldn't initialize SQLite DB: %w", err)
+							}
+
+							migrations, err := sqlitedatastore.NewMigration(migrationsSub, db)
+							if err != nil {
+								return fmt.Errorf("couldn't initialize migrations: %w", err)
+							}
+
+							steps := cCtx.Int("steps")
+							if err := migrations.Steps(-steps); err != nil {
+								return fmt.Errorf("couldn't revert migrations: %w", err)
+							}
+							return nil
+						},
+					},
+					{
+						Name:  "version",
+						Usage: "Print the current migration version",
+						Action: func(cCtx *cli.Context) error {
+							migrationsSub, err := fs.Sub(migrations, migrationsPath)
+							if err != nil {
+								log.Fatalf("couldn't find database migrations: %v", err)
+							}
+
+							db, err := sqlitedatastore.New(dbPath)
+							if err != nil {
+								return fmt.Errorf("couldn't initialize SQLite DB: %w", err)
+							}
+
+							migrations, err := sqlitedatastore.NewMigration(migrationsSub, db)
+							if err != nil {
+								return fmt.Errorf("couldn't initialize migrations: %w", err)
+							}
+
+							version, err := migrations.Version()
+							if err != nil {
+								return fmt.Errorf("couldn't get migration version: %w", err)
+							}
+
+							versionJSON, _ := json.MarshalIndent(version, "", "  ")
+							fmt.Println(string(versionJSON))
+							return nil
+						},
+					},
+				},
+			},
 		},
 	}
 
@@ -175,12 +287,12 @@ func startServer(cfg Config) error {
 		return fmt.Errorf("couldn't initialize logger: %w", err)
 	}
 
-	migrationsSub, err := fs.Sub(migrations, "sql/migrations")
+	migrationsSub, err := fs.Sub(migrations, migrationsPath)
 	if err != nil {
 		log.Fatalf("couldn't find database migrations: %v", err)
 	}
 
-	db, err := sqlitedatastore.New("skaldbot.db")
+	db, err := sqlitedatastore.New(dbPath)
 	if err != nil {
 		return fmt.Errorf("couldn't initialize SQLite DB: %w", err)
 	}
