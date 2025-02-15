@@ -1,9 +1,30 @@
 <template>
-  <div @dragover="handleDragOver" @dragleave="handleDragLeave" @drop="handleDrop" :class="{ 'dragging': isDragging }"
-    class="drop-area">
-    <v-file-input label="Select a file" prepend-icon="$music" accept="audio/mp3" @change="onFileChange"
-      :loading="isUploading" :disabled="isUploading"></v-file-input>
-    <div v-if="isDragging" class="drop-text">Drop files here</div>
+  <div>
+    <v-btn @click="showModal = true">Upload Track</v-btn>
+    <v-dialog persistent v-model="showModal" max-width="600px">
+      <v-card>
+        <v-card-title>
+          <span class="headline">Upload Track</span>
+        </v-card-title>
+        <v-card-text>
+          <div @dragover="handleDragOver" @dragleave="handleDragLeave" @drop="handleDrop"
+            :class="{ 'dragging': isDragging }" class="drop-area">
+            <v-form v-model="formValid" @submit.prevent>
+              <v-file-input v-model="trackFile" label="Select a file" prepend-icon="$music" accept="audio/mp3"
+                :loading="isUploading" :disabled="isUploading" required></v-file-input>
+              <v-text-field v-model="trackName" label="Track Name" required></v-text-field>
+              <v-select v-model="trackType" :items="trackTypes" label="Track Type" required></v-select>
+            </v-form>
+            <div v-if="isDragging" class="drop-text">Drop files here</div>
+          </div>
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer></v-spacer>
+          <v-btn color="error" @click="showModal = false">Cancel</v-btn>
+          <v-btn color="success" @click="submitForm" :disabled="!formValid">Upload</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
     <v-alert v-if="uploadStatus" :type="uploadStatus.type" :text="uploadStatus.message" class="mt-3"></v-alert>
   </div>
 </template>
@@ -12,26 +33,30 @@
 import { apiClient } from '@/plugins/axios'
 import { useFileStore } from '@/stores/files'
 import debounce from 'lodash/debounce'
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 
-const audioUrl = ref<string | null>(null)
 const isUploading = ref(false)
 const uploadStatus = ref<{ type: 'success' | 'error', message: string } | null>(null)
 const fileStore = useFileStore()
 const isDragging = ref(false)
+const showModal = ref(false)
+const formValid = ref(false)
+const trackName = ref('')
+const trackFile = ref<File | null>(null)
+const trackType = ref('')
+const trackTypes = ['Ambiance', 'Music', 'One-Shot']
 
-const onFileChange = async (event: Event) => {
-  const target = event.target as HTMLInputElement;
-  if (target.files && target.files[0]) {
-    const file = target.files[0];
-    audioUrl.value = URL.createObjectURL(file);
-    await uploadFile(file)
+watch(trackFile, (file) => {
+  if (file) {
+    trackName.value = file.name.replace(/\.[^/.]+$/, '')
   }
-};
+})
 
-const uploadFile = async (file: File) => {
+const uploadTrack = async () => {
   const formData = new FormData()
-  formData.append('files', file)
+  formData.append('files', trackFile.value as File)
+  formData.append('name', trackName.value)
+  formData.append('type', trackType.value)
 
   isUploading.value = true
   uploadStatus.value = null
@@ -64,13 +89,20 @@ const handleDragLeave = debounce(() => {
   isDragging.value = false
 }, 1000)
 
-const handleDrop = async (event: DragEvent) => {
+const handleDrop = (event: DragEvent) => {
   event.preventDefault()
   isDragging.value = false
   const files = event.dataTransfer?.files
   if (files && files.length > 0) {
-    await uploadFile(files[0])
+    const dataTransfer = new DataTransfer()
+    dataTransfer.items.add(files[0])
+    trackFile.value = dataTransfer.files[0]
   }
+}
+
+const submitForm = async () => {
+  await uploadTrack()
+  showModal.value = false
 }
 </script>
 
