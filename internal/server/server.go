@@ -37,6 +37,7 @@ type Server struct {
 	hub      *ws.Hub
 	upgrader websocket.Upgrader
 	auth     Authenticator
+	store    Store
 }
 
 type Config struct {
@@ -46,7 +47,7 @@ type Config struct {
 	CORS      middlewares.CorsConfig
 }
 
-func New(cfg Config, logger *slog.Logger, frontend fs.FS, auth Authenticator) (*Server, error) {
+func New(cfg Config, logger *slog.Logger, frontend fs.FS, auth Authenticator, store Store) (*Server, error) {
 	hub := ws.NewHub(logger)
 
 	srv := &Server{
@@ -55,6 +56,7 @@ func New(cfg Config, logger *slog.Logger, frontend fs.FS, auth Authenticator) (*
 		cfg:      cfg,
 		hub:      hub,
 		auth:     auth,
+		store:    store,
 		upgrader: websocket.Upgrader{
 			ReadBufferSize:  1024,
 			WriteBufferSize: 1024,

@@ -3,6 +3,7 @@ package main
 import (
 	"embed"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/fs"
 	"log"
@@ -11,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/golang-migrate/migrate/v4"
 	"github.com/joho/godotenv"
 	"github.com/urfave/cli/v2"
 
@@ -302,13 +304,13 @@ func startServer(cfg Config) error {
 		return fmt.Errorf("couldn't initialize migrations: %w", err)
 	}
 
-	if err := migrations.Up(); err != nil {
+	if err := migrations.Up(); err != nil && !errors.Is(err, migrate.ErrNoChange) {
 		return fmt.Errorf("couldn't run migrations: %w", err)
 	}
 
 	authService := auth.New(cfg.Auth, logger)
 
-	srv, err := server.New(cfg.Server, logger, frontend, authService)
+	srv, err := server.New(cfg.Server, logger, frontend, authService, db)
 	if err != nil {
 		return fmt.Errorf("couldn't create server: %w", err)
 	}

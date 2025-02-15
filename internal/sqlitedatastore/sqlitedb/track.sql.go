@@ -50,3 +50,26 @@ func (q *Queries) GetTracks(ctx context.Context) ([]Track, error) {
 	}
 	return items, nil
 }
+
+const saveTrack = `-- name: SaveTrack :exec
+insert into tracks (id, created_at, name, path, type) values (?1, ?2, ?3, ?4, ?5)
+`
+
+type SaveTrackParams struct {
+	ID        []byte
+	CreatedAt string
+	Name      string
+	Path      string
+	Type      string
+}
+
+func (q *Queries) SaveTrack(ctx context.Context, arg SaveTrackParams) error {
+	_, err := q.db.ExecContext(ctx, saveTrack,
+		arg.ID,
+		arg.CreatedAt,
+		arg.Name,
+		arg.Path,
+		arg.Type,
+	)
+	return err
+}

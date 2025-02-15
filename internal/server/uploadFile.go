@@ -8,6 +8,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"time"
+
+	"github.com/google/uuid"
 )
 
 func (s *Server) uploadFile(w http.ResponseWriter, r *http.Request) {
@@ -25,6 +28,10 @@ func (s *Server) uploadFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer file.Close()
+
+	// Retrieve additional metadata
+	name := r.FormValue("name")
+	trackType := r.FormValue("type")
 
 	tempDir := os.TempDir()
 	dstPath := filepath.Join(tempDir, handler.Filename)
@@ -80,6 +87,27 @@ func (s *Server) uploadFile(w http.ResponseWriter, r *http.Request) {
 
 	if err := os.Remove(dstPath); err != nil {
 		s.logger.Warn("failed to remove original file", "error", err, "path", dstPath)
+	}
+
+	id, err := uuid.NewV7()
+	if err != nil {
+		s.logger.Error("failed to generate UUID", "error", err)
+		http.Error(w, "Failed to save track information", http.StatusInternalServerError)
+	}
+
+	// Save track information to the datastore
+	track := Track{
+		ID:        id,
+		CreatedAt: time.Now(),
+		Name:      name,
+		Path:      hlsDir,
+		Type:      trackType,
+	}
+
+	if err := s.store.SaveTrack(r.Context(), &track); err != nil {
+		s.logger.Error("failed to save track information", "error", err)
+		http.Error(w, "Failed to save track information", http.StatusInternalServerError)
+		return
 	}
 
 	s.logger.Info("file uploaded and converted to HLS", "filename", handler.Filename)

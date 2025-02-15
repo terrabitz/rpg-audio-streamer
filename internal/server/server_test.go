@@ -75,12 +75,14 @@ func setupTestServer(t *testing.T) *testServer {
 		joinToken:     "valid-join-token",
 	}
 
+	mockTrackStore := NewMockTrackStore(t)
+
 	// Create test server
 	srv, err := New(Config{
 		Port:      8080,
 		UploadDir: tempDir,
 		CORS:      middlewares.CorsConfig{},
-	}, slog.New(slog.NewTextHandler(io.Discard, nil)), nil, mockAuth)
+	}, slog.New(slog.NewTextHandler(io.Discard, nil)), nil, mockAuth, mockTrackStore)
 	if err != nil {
 		t.Fatalf("failed to create server: %v", err)
 	}
