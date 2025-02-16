@@ -4,14 +4,12 @@
 </template>
 
 <script setup lang="ts">
-import { useTrackTypeStore } from '@/stores/trackTypes';
 import Hls from 'hls.js';
 import { onBeforeUnmount, ref, watch } from 'vue';
 import { useAudioStore } from '../stores/audio';
 
 const props = defineProps<{ fileID: string }>()
 const audioStore = useAudioStore()
-const trackTypeStore = useTrackTypeStore()
 const videoElement = ref<HTMLVideoElement | null>(null)
 
 const MIN_SEEK_SKEW = 0.5
