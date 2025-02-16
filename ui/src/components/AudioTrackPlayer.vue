@@ -45,11 +45,10 @@ function startAudioSync(fileID: string, videoElement: HTMLVideoElement) {
     hls.loadSource(`/api/v1/stream/${fileID}/index.m3u8`)
     hls.attachMedia(videoElement)
     hls.on(Hls.Events.MANIFEST_PARSED, () => {
-      if (audioStore.tracks[fileID].isPlaying) {
-        syncAll(videoElement)
-      }
+      syncAll(videoElement)
     })
     hls.on(Hls.Events.LEVEL_LOADED, (_, data) => {
+      // Once we figure out the total duration, update the store
       audioStore.updateTrackState(fileID, { duration: data.details.totalduration })
     })
   } else if (videoElement.canPlayType('application/vnd.apple.mpegurl')) {
@@ -102,6 +101,7 @@ function syncVolume(fileID: string, videoElement: HTMLVideoElement) {
   }
 
   if (Math.abs(currentVolume - desiredVolume) > MIN_VOLUME_SKEW) {
+    // Only start a fade if the desired volume is sufficiently different
     audioStore.setFading(props.fileID, true)
 
     // Clear any existing fade timers to start a new one
