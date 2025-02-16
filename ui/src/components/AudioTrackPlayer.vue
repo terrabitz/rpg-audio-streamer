@@ -14,6 +14,7 @@ const videoElement = ref<HTMLVideoElement | null>(null)
 
 const MIN_SEEK_SKEW = 0.5
 
+const MIN_VOLUME_SKEW = 0.01
 const FADE_DURATION = 2000 // 2 seconds
 const FADE_STEP_DURATION = 16 // 16ms per step
 const FADE_STEPS = Math.ceil(FADE_DURATION / FADE_STEP_DURATION)
@@ -77,12 +78,8 @@ function syncRepeating(fileID: string, videoElement: HTMLVideoElement) {
   videoElement.loop = state.isRepeating
 }
 
-function syncStateToVideoElement(desiredState: AudioTrack, videoElement: HTMLVideoElement) {
-  if (desiredState.isPlaying && videoElement.paused) {
-    videoElement.volume = 0
-    videoElement.play()
-  }
-
+function syncVolume(fileID: string, videoElement: HTMLVideoElement) {
+  const desiredState = audioStore.tracks[fileID]
   const currentVolume = videoElement.volume
   let desiredVolume = (desiredState.volume / 100) * (audioStore.masterVolume / 100)
   if (!desiredState.isPlaying && !videoElement.paused) {
@@ -92,7 +89,10 @@ function syncStateToVideoElement(desiredState: AudioTrack, videoElement: HTMLVid
   if (videoElement.paused) {
     // If our video is paused, we don't need to fade anything
     videoElement.volume = desiredVolume
-  } else if (Math.abs(currentVolume - desiredVolume) > 0.01 && desiredVolumePrev !== desiredVolume) {
+    return
+  }
+
+  if (Math.abs(currentVolume - desiredVolume) > MIN_VOLUME_SKEW && desiredVolumePrev !== desiredVolume) {
     audioStore.setFading(props.fileID, true)
     // Remember the desired volume so we don't start a new fade if it hasn't changed
     desiredVolumePrev = desiredVolume
@@ -122,7 +122,16 @@ function syncStateToVideoElement(desiredState: AudioTrack, videoElement: HTMLVid
       videoElement.volume = newVolume
     }, FADE_STEP_DURATION)
   }
+}
 
+function syncStateToVideoElement(desiredState: AudioTrack, videoElement: HTMLVideoElement) {
+  if (desiredState.isPlaying && videoElement.paused) {
+    videoElement.volume = 0
+    videoElement.play()
+  }
+
+
+  syncVolume(props.fileID, videoElement)
   syncRepeating(props.fileID, videoElement)
   syncCurrentTime(props.fileID, videoElement)
 }
