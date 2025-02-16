@@ -4,14 +4,12 @@
 </template>
 
 <script setup lang="ts">
-import { useTrackTypeStore } from '@/stores/trackTypes';
 import Hls from 'hls.js';
 import { onBeforeUnmount, ref, watch } from 'vue';
 import { useAudioStore } from '../stores/audio';
 
 const props = defineProps<{ fileID: string }>()
 const audioStore = useAudioStore()
-const trackTypeStore = useTrackTypeStore()
 const videoElement = ref<HTMLVideoElement | null>(null)
 
 const MIN_SEEK_SKEW = 0.5
@@ -188,25 +186,5 @@ function isFadeable(trackID: string) {
 
   // FIXME: This is a hack until we can better distinguish between fadeable and non-fadeable tracks
   return track.isRepeating
-}
-
-function fadeOut(videoElement: HTMLVideoElement) {
-  if (fadeTimer !== null) {
-    clearInterval(fadeTimer)
-  }
-
-  let currentFadeStep = 0
-  fadeTimer = setInterval(() => {
-    currentFadeStep++
-    if (currentFadeStep >= FADE_STEPS) {
-      videoElement.pause()
-      clearInterval(fadeTimer)
-      fadeTimer = undefined
-    }
-
-    const fadePercent = currentFadeStep / FADE_STEPS
-    const newVolume = videoElement.volume * (1 - fadePercent)
-    videoElement.volume = newVolume
-  }, FADE_STEP_DURATION)
 }
 </script>
