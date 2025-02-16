@@ -4,12 +4,14 @@
 </template>
 
 <script setup lang="ts">
+import { useTrackTypeStore } from '@/stores/trackTypes';
 import Hls from 'hls.js';
 import { onBeforeUnmount, ref, watch } from 'vue';
 import { useAudioStore } from '../stores/audio';
 
 const props = defineProps<{ fileID: string }>()
 const audioStore = useAudioStore()
+const trackTypeStore = useTrackTypeStore()
 const videoElement = ref<HTMLVideoElement | null>(null)
 
 const MIN_SEEK_SKEW = 0.5
@@ -100,6 +102,12 @@ function syncVolume(fileID: string, videoElement: HTMLVideoElement) {
     return
   }
 
+  if (!isFadeable(fileID)) {
+    // If we're not fadeable, just set the volume directly
+    videoElement.volume = desiredVolume
+    return
+  }
+
   if (Math.abs(currentVolume - desiredVolume) > MIN_VOLUME_SKEW) {
     // Only start a fade if the desired volume is sufficiently different
     audioStore.setFading(props.fileID, true)
@@ -170,5 +178,35 @@ function handleTimeUpdate(evt: Event) {
 function handleLoadedMetadata(evt: Event) {
   const videoElement = evt.target as HTMLVideoElement
   audioStore.updateTrackState(props.fileID, { duration: videoElement.duration })
+}
+
+function isFadeable(trackID: string) {
+  const track = audioStore.tracks[trackID]
+  if (!track) {
+    return false
+  }
+
+  // FIXME: This is a hack until we can better distinguish between fadeable and non-fadeable tracks
+  return track.isRepeating
+}
+
+function fadeOut(videoElement: HTMLVideoElement) {
+  if (fadeTimer !== null) {
+    clearInterval(fadeTimer)
+  }
+
+  let currentFadeStep = 0
+  fadeTimer = setInterval(() => {
+    currentFadeStep++
+    if (currentFadeStep >= FADE_STEPS) {
+      videoElement.pause()
+      clearInterval(fadeTimer)
+      fadeTimer = undefined
+    }
+
+    const fadePercent = currentFadeStep / FADE_STEPS
+    const newVolume = videoElement.volume * (1 - fadePercent)
+    videoElement.volume = newVolume
+  }, FADE_STEP_DURATION)
 }
 </script>
