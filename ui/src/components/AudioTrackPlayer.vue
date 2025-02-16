@@ -122,7 +122,6 @@ function syncVolume(fileID: string, videoElement: HTMLVideoElement) {
     // Start fade if volume is different
     let currentFadeStep = 0
     fadeTimer = setInterval(() => {
-      console.log("fading", currentFadeStep, FADE_STEPS)
       currentFadeStep++
       if (currentFadeStep >= FADE_STEPS) {
         // We're done fading; stop the video if desired and clear the timer
