@@ -19,7 +19,6 @@ const FADE_DURATION = 2000 // 2 seconds
 const FADE_STEP_DURATION = 16 // 16ms per step
 const FADE_STEPS = Math.ceil(FADE_DURATION / FADE_STEP_DURATION)
 let fadeTimer: number | undefined = undefined
-let desiredVolumePrev = -1
 
 watch(videoElement, (el) => {
   if (el) {
@@ -104,10 +103,8 @@ function syncVolume(fileID: string, videoElement: HTMLVideoElement) {
     return
   }
 
-  if (Math.abs(currentVolume - desiredVolume) > MIN_VOLUME_SKEW && desiredVolumePrev !== desiredVolume) {
+  if (Math.abs(currentVolume - desiredVolume) > MIN_VOLUME_SKEW) {
     audioStore.setFading(props.fileID, true)
-    // Remember the desired volume so we don't start a new fade if it hasn't changed
-    desiredVolumePrev = desiredVolume
 
     // Clear any existing fade timers to start a new one
     if (fadeTimer !== undefined) {
