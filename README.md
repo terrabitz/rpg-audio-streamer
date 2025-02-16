@@ -16,8 +16,8 @@ A simple synchronized soundboard designed for tabletop RPGs, allowing game maste
 ### Prerequisites
 
 - Go 1.21 or later
-- Node.js 18+ (for UI development)
-- SQLite 3
+- FFmpeg
+- Node.js 20+ (for UI development)
 
 ### Quick Start
 
@@ -162,3 +162,4 @@ cd ui && npm test
 ## License
 
 MIT License - See LICENSE file for details
+
