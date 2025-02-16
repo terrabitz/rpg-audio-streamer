@@ -65,6 +65,10 @@ function startAudioSync(fileID: string, videoElement: HTMLVideoElement) {
     syncVolume(fileID, videoElement)
   })
 
+  watch(() => audioStore.masterVolume, () => {
+    syncVolumeImmediate(fileID, videoElement)
+  })
+
   watch(() => audioStore.tracks[fileID].isRepeating, () => {
     syncRepeating(fileID, videoElement)
   })
@@ -118,6 +122,7 @@ function syncVolume(fileID: string, videoElement: HTMLVideoElement) {
     // Start fade if volume is different
     let currentFadeStep = 0
     fadeTimer = setInterval(() => {
+      console.log("fading", currentFadeStep, FADE_STEPS)
       currentFadeStep++
       if (currentFadeStep >= FADE_STEPS) {
         // We're done fading; stop the video if desired and clear the timer
@@ -135,6 +140,12 @@ function syncVolume(fileID: string, videoElement: HTMLVideoElement) {
       videoElement.volume = newVolume
     }, FADE_STEP_DURATION)
   }
+}
+
+function syncVolumeImmediate(fileID: string, videoElement: HTMLVideoElement) {
+  const desiredState = audioStore.tracks[fileID]
+  const desiredVolume = (desiredState.volume / 100) * (audioStore.masterVolume / 100)
+  videoElement.volume = desiredVolume
 }
 
 function syncRepeating(fileID: string, videoElement: HTMLVideoElement) {
