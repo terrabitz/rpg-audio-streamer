@@ -25,7 +25,6 @@
 <script setup lang="ts">
 import { computed, watchEffect } from 'vue';
 import { useAudioStore } from '../stores/audio';
-import { useFadeStore } from '../stores/fadeStore';
 import { useFileStore } from '../stores/files';
 import { useTrackTypeStore } from '../stores/trackTypes';
 
@@ -37,12 +36,11 @@ const props = defineProps<{
 const audioStore = useAudioStore();
 const trackTypeStore = useTrackTypeStore();
 const fileStore = useFileStore();
-const fadeStore = useFadeStore();
 
 const track = computed(() => fileStore.tracks.find(t => t.id === props.fileID));
 const trackType = computed(() => track.value ? trackTypeStore.getTypeById(track.value.type_id) : null);
 const audioState = computed(() => audioStore.tracks[props.fileID]);
-const fadeState = computed(() => fadeStore.fadeStates[props.fileID]);
+const fadeState = computed(() => audioStore.fadeStates[props.fileID]);
 
 // Wait for track type data before initializing audio track
 watchEffect(() => {

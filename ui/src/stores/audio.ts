@@ -10,6 +10,10 @@ export interface AudioTrack {
   duration: number
 }
 
+interface FadeStatus {
+  inProgress: boolean
+}
+
 function newAudioTrack(fileID: string, name: string): AudioTrack {
   return {
     fileID,
@@ -26,7 +30,8 @@ export const useAudioStore = defineStore('audio', {
   state: () => ({
     tracks: {} as Record<string, AudioTrack>,
     enabled: false,
-    masterVolume: 100
+    masterVolume: 100,
+    fadeStates: {} as Record<string, FadeStatus>  // Moved from fadeStore
   }),
   getters: {
     availableTracks: (state) => Object.values(state.tracks)
@@ -79,6 +84,12 @@ export const useAudioStore = defineStore('audio', {
           this.updateTrackState(track.fileID, track)
         }
       })
+    },
+    setFading(fileID: string, isFading: boolean) {
+      if (!this.fadeStates[fileID]) {
+        this.fadeStates[fileID] = { inProgress: false }
+      }
+      this.fadeStates[fileID].inProgress = isFading
     }
   }
 })
