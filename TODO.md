@@ -1,0 +1,28 @@
+# TODO
+
+Tasks to complete before releasing to my players:
+- [ ] Fix reconnection bug
+- [ ] Infrastructure setup
+
+Tasks to complete before GA of self-hostable:
+- [ ] Better file management
+- [ ] Improve initial setup experience
+- [ ] Automate Docker image build
+- [ ] Add example Docker and Docker Compose configurations
+
+Tasks to complete before GA of hosted:
+- [ ] Landing page
+- [ ] Deployment/infrastructure pipelines
+- [ ] Observability and analytics
+- [ ] Update authentication to use identity proxy
+- [ ] Add per-user storage quotas
+- [ ] Use cloud storage
+- [ ] Improve file management security (e.g. enforce size limits, validate content type, limits/timeouts to avoid DoS, process isolation)
+- [ ] Monetization (e.g. subscription for extra storage)
+
+Additional tasks:
+- [ ] Customizable tiled track layout
+- [ ] Mobile layout support
+- [ ] API docs
+- [ ] Integration with other streaming providers (YouTube, Spotify)
+- [ ] Discord integration
