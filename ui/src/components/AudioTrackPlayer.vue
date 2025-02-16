@@ -12,16 +12,9 @@ const props = defineProps<{ fileID: string }>()
 const audioStore = useAudioStore()
 const videoElement = ref<HTMLVideoElement | null>(null)
 
-interface FadeState {
-  startVolume: number
-  targetVolume: number
-  startTime: number
-}
-
 const FADE_DURATION = 2000 // 2 seconds
 const FADE_STEP_DURATION = 16 // 16ms per step
 const FADE_STEPS = Math.ceil(FADE_DURATION / FADE_STEP_DURATION)
-const fadeState = ref<FadeState | null>(null)
 let fadeTimer: number | undefined = undefined
 let desiredVolumePrev = -1
 
