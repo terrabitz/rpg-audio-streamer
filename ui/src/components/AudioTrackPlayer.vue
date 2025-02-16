@@ -6,7 +6,7 @@
 <script setup lang="ts">
 import Hls from 'hls.js';
 import { onBeforeUnmount, ref, watch } from 'vue';
-import { useAudioStore, type AudioTrack } from '../stores/audio';
+import { useAudioStore } from '../stores/audio';
 
 const props = defineProps<{ fileID: string }>()
 const audioStore = useAudioStore()
@@ -46,7 +46,7 @@ function startAudioSync(fileID: string, videoElement: HTMLVideoElement) {
     hls.attachMedia(videoElement)
     hls.on(Hls.Events.MANIFEST_PARSED, () => {
       if (audioStore.tracks[fileID].isPlaying) {
-        syncStateToVideoElement(audioStore.tracks[fileID], videoElement)
+        syncAll(videoElement)
       }
     })
     hls.on(Hls.Events.LEVEL_LOADED, (_, data) => {
@@ -54,18 +54,10 @@ function startAudioSync(fileID: string, videoElement: HTMLVideoElement) {
     })
   } else if (videoElement.canPlayType('application/vnd.apple.mpegurl')) {
     videoElement.src = `/api/v1/stream/${fileID}/index.m3u8`
-    syncStateToVideoElement(audioStore.tracks[fileID], videoElement)
+    syncAll(videoElement)
   }
 
   // Watch state and sync to video element
-  watch(() => audioStore.tracks[fileID].isRepeating, () => {
-    syncRepeating(fileID, videoElement)
-  })
-
-  watch(() => audioStore.tracks[fileID].currentTime, () => {
-    syncCurrentTime(fileID, videoElement)
-  })
-
   watch(() => audioStore.tracks[fileID].isPlaying, () => {
     syncIsPlaying(fileID, videoElement)
   })
@@ -73,20 +65,26 @@ function startAudioSync(fileID: string, videoElement: HTMLVideoElement) {
   watch(() => audioStore.tracks[fileID].volume, () => {
     syncVolume(fileID, videoElement)
   })
+
+  watch(() => audioStore.tracks[fileID].isRepeating, () => {
+    syncRepeating(fileID, videoElement)
+  })
+
+  watch(() => audioStore.tracks[fileID].currentTime, () => {
+    syncCurrentTime(fileID, videoElement)
+  })
 }
 
-function syncCurrentTime(fileID: string, videoElement: HTMLVideoElement) {
-  const state = audioStore.tracks[fileID]
+function syncIsPlaying(fileID: string, videoElement: HTMLVideoElement) {
+  const desiredState = audioStore.tracks[fileID]
 
-  // Only seek if difference is significant
-  if (Math.abs(videoElement.currentTime - state.currentTime) > MIN_SEEK_SKEW) {
-    videoElement.currentTime = state.currentTime
+  if (desiredState.isPlaying && videoElement.paused) {
+    videoElement.volume = 0
+    videoElement.play()
   }
-}
 
-function syncRepeating(fileID: string, videoElement: HTMLVideoElement) {
-  const state = audioStore.tracks[fileID]
-  videoElement.loop = state.isRepeating
+  // Sync volume, since we may need to update it if we're fading out to a pause
+  syncVolume(props.fileID, videoElement)
 }
 
 function syncVolume(fileID: string, videoElement: HTMLVideoElement) {
@@ -133,20 +131,23 @@ function syncVolume(fileID: string, videoElement: HTMLVideoElement) {
   }
 }
 
-function syncIsPlaying(fileID: string, videoElement: HTMLVideoElement) {
-  const desiredState = audioStore.tracks[fileID]
-
-  if (desiredState.isPlaying && videoElement.paused) {
-    videoElement.volume = 0
-    videoElement.play()
-  }
-
-  // Sync volume, since we may need to update it if we're fading out to a pause
-  syncVolume(props.fileID, videoElement)
+function syncRepeating(fileID: string, videoElement: HTMLVideoElement) {
+  const state = audioStore.tracks[fileID]
+  videoElement.loop = state.isRepeating
 }
 
-function syncStateToVideoElement(desiredState: AudioTrack, videoElement: HTMLVideoElement) {
+function syncCurrentTime(fileID: string, videoElement: HTMLVideoElement) {
+  const state = audioStore.tracks[fileID]
+
+  // Only seek if difference is significant
+  if (Math.abs(videoElement.currentTime - state.currentTime) > MIN_SEEK_SKEW) {
+    videoElement.currentTime = state.currentTime
+  }
+}
+
+function syncAll(videoElement: HTMLVideoElement) {
   syncIsPlaying(props.fileID, videoElement)
+  // syncIsPlaying already calls syncVolume, so we don't need to call it again
   syncRepeating(props.fileID, videoElement)
   syncCurrentTime(props.fileID, videoElement)
 }
