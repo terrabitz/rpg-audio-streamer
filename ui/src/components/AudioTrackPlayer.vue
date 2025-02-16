@@ -68,32 +68,6 @@ function startAudioSync(fileID: string, videoElement: HTMLVideoElement) {
   }, { deep: true })
 }
 
-function startFade(startVolume: number, targetVolume: number) {
-  fadeState.value = {
-    startVolume,
-    targetVolume,
-    startTime: Date.now()
-  }
-  audioStore.setFading(props.fileID, true)
-}
-
-function applyFadeStep(track: AudioTrack, videoEl: HTMLVideoElement) {
-  const elapsed = Date.now() - fadeState.value!.startTime
-  const fadePercent = Math.min(1, elapsed / FADE_DURATION)
-  const currentVolume = fadeState.value!.startVolume +
-    (fadeState.value!.targetVolume - fadeState.value!.startVolume) * fadePercent
-
-  videoEl.volume = (currentVolume / 100) * (audioStore.masterVolume / 100)
-
-  if (fadePercent === 1) {
-    fadeState.value = null
-    audioStore.setFading(track.fileID, false)
-    if (currentVolume <= 0.01) {
-      videoEl.pause()
-    }
-  }
-}
-
 function syncStateToVideoElement(desiredState: AudioTrack, videoElement: HTMLVideoElement) {
   if (desiredState.isPlaying && videoElement.paused) {
     videoElement.volume = 0
