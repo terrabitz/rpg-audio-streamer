@@ -51,7 +51,8 @@ watch(masterVolume, (newVolume) => {
   <v-container>
     <AudioPlayer v-if="audioStore.enabled" />
     <div class="d-flex align-center mb-4">
-      <v-btn @click="handleAudioToggle" :loading="connecting" :color="audioStore.enabled ? 'error' : 'success'">
+      <v-btn size="x-large" @click="handleAudioToggle" :loading="connecting"
+        :color="audioStore.enabled ? 'error' : 'success'">
         {{ buttonLabel }}
       </v-btn>
       <v-chip v-if="audioStore.enabled" :color="ws.isConnected ? 'success' : 'error'" class="ml-4">
