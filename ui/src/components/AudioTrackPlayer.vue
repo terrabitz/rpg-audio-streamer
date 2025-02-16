@@ -189,24 +189,4 @@ function isFadeable(trackID: string) {
   // FIXME: This is a hack until we can better distinguish between fadeable and non-fadeable tracks
   return track.isRepeating
 }
-
-function fadeOut(videoElement: HTMLVideoElement) {
-  if (fadeTimer !== null) {
-    clearInterval(fadeTimer)
-  }
-
-  let currentFadeStep = 0
-  fadeTimer = setInterval(() => {
-    currentFadeStep++
-    if (currentFadeStep >= FADE_STEPS) {
-      videoElement.pause()
-      clearInterval(fadeTimer)
-      fadeTimer = undefined
-    }
-
-    const fadePercent = currentFadeStep / FADE_STEPS
-    const newVolume = videoElement.volume * (1 - fadePercent)
-    videoElement.volume = newVolume
-  }, FADE_STEP_DURATION)
-}
 </script>
