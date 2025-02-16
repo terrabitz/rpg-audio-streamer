@@ -5,7 +5,7 @@
 
 <script setup lang="ts">
 import Hls from 'hls.js';
-import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { onBeforeUnmount, ref, watch } from 'vue';
 import { useAudioStore, type AudioTrack } from '../stores/audio';
 
 const props = defineProps<{ fileID: string }>()
@@ -19,24 +19,17 @@ interface FadeState {
 }
 
 const FADE_DURATION = 2000 // 2 seconds
+const FADE_STEP_DURATION = 16 // 16ms per step
+const FADE_STEPS = Math.ceil(FADE_DURATION / FADE_STEP_DURATION)
 const fadeState = ref<FadeState | null>(null)
-let fadeTimer: number | null = null
+let fadeTimer: number | undefined = undefined
+let desiredVolumePrev = -1
 
 watch(videoElement, (el) => {
   if (el) {
     console.log("registering video element", props.fileID)
     startAudioSync(props.fileID, el)
   }
-})
-
-onMounted(() => {
-  // Update ~60 times per second for smooth fading
-  fadeTimer = window.setInterval(() => {
-    const track = audioStore.tracks[props.fileID]
-    if (videoElement.value && fadeState.value && track) {
-      applyFadeStep(track, videoElement.value)
-    }
-  }, 16) // ~60fps
 })
 
 onBeforeUnmount(() => {
@@ -101,28 +94,57 @@ function applyFadeStep(track: AudioTrack, videoEl: HTMLVideoElement) {
   }
 }
 
-function syncStateToVideoElement(newState: AudioTrack, videoElement: HTMLVideoElement) {
-  if (!fadeState.value) {
-    if (newState.isPlaying && videoElement.paused) {
-      // Start fade in when playing
-      startFade(0, newState.volume)
-      const playPromise = videoElement.play()
-      if (playPromise !== undefined) {
-        playPromise.catch(() => {
-          audioStore.updateTrackState(newState.fileID, { isPlaying: false })
-        })
-      }
-    } else if (!newState.isPlaying && !videoElement.paused) {
-      // Start fade out when stopping
-      startFade(newState.volume, 0)
-    }
+function syncStateToVideoElement(desiredState: AudioTrack, videoElement: HTMLVideoElement) {
+  if (desiredState.isPlaying && videoElement.paused) {
+    videoElement.volume = 0
+    videoElement.play()
   }
 
-  // videoElement.volume = (newState.volume / 100) * (audioStore.masterVolume / 100)
+  const currentVolume = videoElement.volume
+  let desiredVolume = (desiredState.volume / 100) * (audioStore.masterVolume / 100)
+  if (!desiredState.isPlaying && !videoElement.paused) {
+    desiredVolume = 0
+  }
+
+  if (videoElement.paused) {
+    // If our video is paused, we don't need to fade anything
+    videoElement.volume = desiredVolume
+  } else if (Math.abs(currentVolume - desiredVolume) > 0.01 && desiredVolumePrev !== desiredVolume) {
+    audioStore.setFading(props.fileID, true)
+    // Remember the desired volume so we don't start a new fade if it hasn't changed
+    desiredVolumePrev = desiredVolume
+
+    // Clear any existing fade timers to start a new one
+    if (fadeTimer !== undefined) {
+      clearInterval(fadeTimer)
+    }
+
+    // Start fade if volume is different
+    let currentFadeStep = 0
+    fadeTimer = setInterval(() => {
+      currentFadeStep++
+      if (currentFadeStep >= FADE_STEPS) {
+        // We're done fading; stop the video if desired and clear the timer
+        if (!desiredState.isPlaying) {
+          videoElement.pause()
+        }
+        // Stop the loop once we've reached the desired volume
+        clearInterval(fadeTimer)
+        fadeTimer = undefined
+        audioStore.setFading(props.fileID, false)
+      }
+
+      const fadePercent = currentFadeStep / FADE_STEPS
+      const newVolume = desiredVolume * fadePercent + currentVolume * (1 - fadePercent)
+      videoElement.volume = newVolume
+    }, FADE_STEP_DURATION)
+  }
+
+  videoElement.loop = desiredState.isRepeating
 
   // Only seek if difference is significant
-  if (Math.abs(videoElement.currentTime - newState.currentTime) > 0.5) {
-    videoElement.currentTime = newState.currentTime
+  if (Math.abs(videoElement.currentTime - desiredState.currentTime) > 0.5) {
+    videoElement.currentTime = desiredState.currentTime
   }
 }
 

@@ -31,7 +31,7 @@ export const useAudioStore = defineStore('audio', {
     tracks: {} as Record<string, AudioTrack>,
     enabled: false,
     masterVolume: 100,
-    fadeStates: {} as Record<string, FadeStatus>  // Moved from fadeStore
+    fadeStates: {} as Record<string, FadeStatus>
   }),
   getters: {
     availableTracks: (state) => Object.values(state.tracks)
