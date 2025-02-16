@@ -59,9 +59,21 @@ function startAudioSync(fileID: string, videoElement: HTMLVideoElement) {
   }
 
   // Watch state and sync to video element
-  watch(() => audioStore.tracks[fileID], (state) => {
-    syncStateToVideoElement(state, videoElement)
-  }, { deep: true })
+  watch(() => audioStore.tracks[fileID].isRepeating, () => {
+    syncRepeating(fileID, videoElement)
+  })
+
+  watch(() => audioStore.tracks[fileID].currentTime, () => {
+    syncCurrentTime(fileID, videoElement)
+  })
+
+  watch(() => audioStore.tracks[fileID].isPlaying, () => {
+    syncIsPlaying(fileID, videoElement)
+  })
+
+  watch(() => audioStore.tracks[fileID].volume, () => {
+    syncVolume(fileID, videoElement)
+  })
 }
 
 function syncCurrentTime(fileID: string, videoElement: HTMLVideoElement) {
@@ -124,14 +136,20 @@ function syncVolume(fileID: string, videoElement: HTMLVideoElement) {
   }
 }
 
-function syncStateToVideoElement(desiredState: AudioTrack, videoElement: HTMLVideoElement) {
+function syncIsPlaying(fileID: string, videoElement: HTMLVideoElement) {
+  const desiredState = audioStore.tracks[fileID]
+
   if (desiredState.isPlaying && videoElement.paused) {
     videoElement.volume = 0
     videoElement.play()
   }
 
-
+  // Sync volume, since we may need to update it if we're fading out to a pause
   syncVolume(props.fileID, videoElement)
+}
+
+function syncStateToVideoElement(desiredState: AudioTrack, videoElement: HTMLVideoElement) {
+  syncIsPlaying(props.fileID, videoElement)
   syncRepeating(props.fileID, videoElement)
   syncCurrentTime(props.fileID, videoElement)
 }
