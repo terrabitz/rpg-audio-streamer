@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useDebugStore } from '@/stores/debug'
 import { useWebSocketStore } from '@/stores/websocket'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
@@ -10,6 +11,7 @@ const auth = useAuthStore()
 const router = useRouter()
 const ws = useWebSocketStore()
 const audioStore = useAudioStore()
+const debugStore = useDebugStore()
 const connecting = ref(false)
 const masterVolume = ref(100)
 
@@ -64,7 +66,7 @@ watch(masterVolume, (newVolume) => {
       </v-card-text>
     </v-card>
 
-    <PlayerFileList v-if="audioStore.enabled" />
+    <PlayerFileList v-if="debugStore.isDevMode" />
   </v-container>
 </template>
 
