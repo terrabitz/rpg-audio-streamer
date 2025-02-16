@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, watch } from 'vue';
-import { RouterLink, RouterView, useRouter } from 'vue-router';
+import { computed, onMounted, onUnmounted, watch } from 'vue';
+import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router';
 import DevDebugPanel from './components/DevDebugPanel.vue';
 import { useAudioStore } from './stores/audio';
 import { useAuthStore } from './stores/auth';
@@ -12,6 +12,8 @@ const router = useRouter()
 const wsStore = useWebSocketStore()
 const debugStore = useDebugStore()
 const audioStore = useAudioStore()
+const route = useRoute()
+const isPlayerView = computed(() => route.path === '/player')
 
 async function handleLogout() {
   await auth.logout()
@@ -51,20 +53,22 @@ onUnmounted(() => {
   <v-app theme="dark">
     <v-app-bar>
       <v-app-bar-title>
-        <RouterLink to="/" class="text-decoration-none" style="color: inherit">
+        <RouterLink v-if="!isPlayerView" to="/" class="text-decoration-none" style="color: inherit">
           <v-icon icon="custom:lute" class="mr-2" size="small" />
           Skald Bot
         </RouterLink>
+        <span v-else>
+          <v-icon icon="custom:lute" class="mr-2" size="small" />
+          Skald Bot
+        </span>
       </v-app-bar-title>
       <v-spacer></v-spacer>
       <v-btn v-if="debugStore.isDevMode" icon="$bug" @click="debugStore.togglePanel"></v-btn>
-      <template v-if="auth.authenticated">
-        <v-btn @click="handleLogout" color="error">
+      <template v-if="!isPlayerView">
+        <v-btn v-if="auth.authenticated" @click="handleLogout" color="error">
           Logout
         </v-btn>
-      </template>
-      <template v-else>
-        <v-btn to="/login" color="primary">
+        <v-btn v-else to="/login" color="primary">
           Login
         </v-btn>
       </template>
