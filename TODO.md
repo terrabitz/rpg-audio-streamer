@@ -27,3 +27,8 @@ Additional tasks:
 - [ ] API docs
 - [ ] Integration with other streaming providers (YouTube, Spotify)
 - [ ] Discord integration
+
+
+Bugs:
+- [ ] Fix issue with audio bounce when master volume is adjusted while fading
+- [ ] Fix issue with track reset in player view when navigating away
