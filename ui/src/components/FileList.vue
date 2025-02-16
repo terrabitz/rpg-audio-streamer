@@ -101,15 +101,6 @@ const handlePlay = (fileID: string) => {
   }
 }
 
-const handleRepeat = (fileID: string) => {
-  const state = audioStore.tracks[fileID]
-  const newState = { isRepeating: !state.isRepeating }
-  audioStore.updateTrackState(fileID, newState)
-  if (state.isPlaying) {
-    debouncedSendMessage('syncTrack', { fileID: fileID, ...newState })
-  }
-}
-
 const handleVolume = (fileID: string, volume: number) => {
   audioStore.updateTrackState(fileID, { volume })
   if (audioStore.tracks[fileID].isPlaying) {

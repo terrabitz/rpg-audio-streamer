@@ -1,7 +1,9 @@
 <template>
   <div v-if="trackType" class="d-flex align-center">
-    <v-btn icon size="small" @click="$emit('play')" class="mr-2" :class="{ 'button-active': audioState.isPlaying }">
-      <v-icon>{{ audioState.isPlaying ? '$pause' : '$play' }}</v-icon>
+    <v-btn icon size="small" class="mr-2" :disabled="fadeState?.inProgress"
+      :class="{ 'button-active': !fadeState?.inProgress && audioState.isPlaying }" @click="$emit('play')">
+      <v-progress-circular width="6" size="25" v-if="fadeState?.inProgress" indeterminate />
+      <v-icon v-else>{{ audioState.isPlaying ? '$pause' : '$play' }}</v-icon>
     </v-btn>
     <v-icon size="small" color="grey-darken-1" class="mr-2">
       {{ trackType.isRepeating ? '$repeat' : '$repeatOff' }}
@@ -38,6 +40,7 @@ const fileStore = useFileStore();
 const track = computed(() => fileStore.tracks.find(t => t.id === props.fileID));
 const trackType = computed(() => track.value ? trackTypeStore.getTypeById(track.value.type_id) : null);
 const audioState = computed(() => audioStore.tracks[props.fileID]);
+const fadeState = computed(() => audioStore.fadeStates[props.fileID]);
 
 // Wait for track type data before initializing audio track
 watchEffect(() => {
