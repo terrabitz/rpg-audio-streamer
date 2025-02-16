@@ -12,6 +12,8 @@ const props = defineProps<{ fileID: string }>()
 const audioStore = useAudioStore()
 const videoElement = ref<HTMLVideoElement | null>(null)
 
+const MIN_SEEK_SKEW = 0.5
+
 const FADE_DURATION = 2000 // 2 seconds
 const FADE_STEP_DURATION = 16 // 16ms per step
 const FADE_STEPS = Math.ceil(FADE_DURATION / FADE_STEP_DURATION)
@@ -59,6 +61,15 @@ function startAudioSync(fileID: string, videoElement: HTMLVideoElement) {
   watch(() => audioStore.tracks[fileID], (state) => {
     syncStateToVideoElement(state, videoElement)
   }, { deep: true })
+}
+
+function syncCurrentTimeState(fileID: string, videoElement: HTMLVideoElement) {
+  const state = audioStore.tracks[fileID]
+
+  // Only seek if difference is significant
+  if (Math.abs(videoElement.currentTime - state.currentTime) > MIN_SEEK_SKEW) {
+    videoElement.currentTime = state.currentTime
+  }
 }
 
 function syncStateToVideoElement(desiredState: AudioTrack, videoElement: HTMLVideoElement) {
@@ -109,10 +120,7 @@ function syncStateToVideoElement(desiredState: AudioTrack, videoElement: HTMLVid
 
   videoElement.loop = desiredState.isRepeating
 
-  // Only seek if difference is significant
-  if (Math.abs(videoElement.currentTime - desiredState.currentTime) > 0.5) {
-    videoElement.currentTime = desiredState.currentTime
-  }
+  syncCurrentTimeState(props.fileID, videoElement)
 }
 
 function handleEnded(evt: Event) {
