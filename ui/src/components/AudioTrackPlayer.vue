@@ -63,13 +63,18 @@ function startAudioSync(fileID: string, videoElement: HTMLVideoElement) {
   }, { deep: true })
 }
 
-function syncCurrentTimeState(fileID: string, videoElement: HTMLVideoElement) {
+function syncCurrentTime(fileID: string, videoElement: HTMLVideoElement) {
   const state = audioStore.tracks[fileID]
 
   // Only seek if difference is significant
   if (Math.abs(videoElement.currentTime - state.currentTime) > MIN_SEEK_SKEW) {
     videoElement.currentTime = state.currentTime
   }
+}
+
+function syncRepeating(fileID: string, videoElement: HTMLVideoElement) {
+  const state = audioStore.tracks[fileID]
+  videoElement.loop = state.isRepeating
 }
 
 function syncStateToVideoElement(desiredState: AudioTrack, videoElement: HTMLVideoElement) {
@@ -118,9 +123,8 @@ function syncStateToVideoElement(desiredState: AudioTrack, videoElement: HTMLVid
     }, FADE_STEP_DURATION)
   }
 
-  videoElement.loop = desiredState.isRepeating
-
-  syncCurrentTimeState(props.fileID, videoElement)
+  syncRepeating(props.fileID, videoElement)
+  syncCurrentTime(props.fileID, videoElement)
 }
 
 function handleEnded(evt: Event) {
