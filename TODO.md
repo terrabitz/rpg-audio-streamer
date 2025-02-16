@@ -2,6 +2,7 @@
 
 Tasks to complete before releasing to my players:
 - [ ] Fix reconnection bug
+- [ ] Add track type mixer
 - [ ] Infrastructure setup
 
 Tasks to complete before GA of self-hostable:
