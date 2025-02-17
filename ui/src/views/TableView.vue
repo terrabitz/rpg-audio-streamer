@@ -4,6 +4,7 @@ import { onMounted, ref } from 'vue'
 import AudioPlayer from '../components/AudioPlayer.vue'
 import AudioUploader from '../components/AudioUploader.vue'
 import FileList from '../components/FileList.vue'
+import VolumeMixer from '../components/VolumeMixer.vue'
 import { useBaseUrl } from '../composables/useBaseUrl'
 import { useAuthStore } from '../stores/auth'
 import { useJoinStore } from '../stores/join'
@@ -75,6 +76,7 @@ onMounted(() => {
     </template>
 
     <template v-else-if="auth.authenticated">
+      <VolumeMixer />
       <FileList />
     </template>
     <template v-else>
