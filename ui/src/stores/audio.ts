@@ -33,7 +33,8 @@ export const useAudioStore = defineStore('audio', {
     tracks: {} as Record<string, AudioTrack>,
     enabled: false,
     masterVolume: 100,
-    fadeStates: {} as Record<string, FadeStatus>
+    fadeStates: {} as Record<string, FadeStatus>,
+    typeVolumes: {} as Record<string, number>,
   }),
   getters: {
     availableTracks: (state) => Object.values(state.tracks)
@@ -58,7 +59,6 @@ export const useAudioStore = defineStore('audio', {
     getPlayingTracks() {
       return Object.values(this.tracks)
         .filter(track => track.isPlaying)
-
     },
     syncTracks(tracks: Partial<AudioTrack>[]) {
       // Only sync tracks if audio is enabled
@@ -87,6 +87,13 @@ export const useAudioStore = defineStore('audio', {
         this.fadeStates[fileID] = { inProgress: false }
       }
       this.fadeStates[fileID].inProgress = isFading
+    },
+    setTypeVolume(typeName: string, volume: number) {
+      this.typeVolumes[typeName] = volume
+    },
+
+    getTypeVolume(typeName: string): number {
+      return this.typeVolumes[typeName] ?? 100
     }
   }
 })

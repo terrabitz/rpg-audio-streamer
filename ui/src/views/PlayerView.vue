@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useDebugStore } from '@/stores/debug'
+import { useTrackTypeStore } from '@/stores/trackTypes'
 import { useWebSocketStore } from '@/stores/websocket'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
@@ -12,6 +13,7 @@ const router = useRouter()
 const ws = useWebSocketStore()
 const audioStore = useAudioStore()
 const debugStore = useDebugStore()
+const trackTypeStore = useTrackTypeStore()
 const connecting = ref(false)
 const masterVolume = ref(100)
 
@@ -25,6 +27,13 @@ onMounted(async () => {
   await auth.checkAuthStatus()
   if (!auth.authenticated) {
     router.push('/login')
+  }
+
+  await trackTypeStore.fetchTrackTypes()
+  for (const type of trackTypeStore.trackTypes) {
+    if (!audioStore.typeVolumes[type.name]) {
+      audioStore.typeVolumes[type.name] = 100
+    }
   }
 })
 
@@ -61,9 +70,16 @@ watch(masterVolume, (newVolume) => {
     </div>
 
     <v-card class="mt-4 audio-slider-card" border="sm" density="compact">
-      <v-card-title>Master Volume</v-card-title>
-      <v-card-text class="audio-slider-container">
-        <v-slider class="audio-slider mr-8 mt-2" v-model="masterVolume" min="0" max="100" prepend-icon="$volume" />
+      <v-card-title>Volume Mixer</v-card-title>
+      <v-card-text>
+        <div class="audio-slider-container mb-4">
+          <v-slider class="audio-slider mr-8" v-model="masterVolume" min="0" max="100" label="Master"
+            prepend-icon="$volume" />
+        </div>
+        <div v-for="type in trackTypeStore.trackTypes" :key="type.id" class="audio-slider-container mb-4">
+          <v-slider class="audio-slider mr-8" v-model="audioStore.typeVolumes[type.name]" min="0" max="100"
+            :label="type.name" :color="type.color" prepend-icon="$volume" />
+        </div>
       </v-card-text>
     </v-card>
 

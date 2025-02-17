@@ -6,7 +6,7 @@
 <script setup lang="ts">
 import Hls from 'hls.js';
 import { onBeforeUnmount, ref, watch } from 'vue';
-import { useAudioStore } from '../stores/audio';
+import { useAudioStore, type AudioTrack } from '../stores/audio';
 
 const props = defineProps<{ fileID: string }>()
 const audioStore = useAudioStore()
@@ -69,6 +69,10 @@ function startAudioSync(fileID: string, videoElement: HTMLVideoElement) {
     syncVolumeImmediate(fileID, videoElement)
   })
 
+  watch(() => audioStore.typeVolumes, () => {
+    syncVolumeImmediate(fileID, videoElement)
+  }, { deep: true })
+
   watch(() => audioStore.tracks[fileID].isRepeating, () => {
     syncRepeating(fileID, videoElement)
   })
@@ -90,10 +94,15 @@ function syncIsPlaying(fileID: string, videoElement: HTMLVideoElement) {
   syncVolume(props.fileID, videoElement)
 }
 
+function calculateDesiredVolume(trackState: AudioTrack): number {
+  const typeVolume = audioStore.getTypeVolume(trackState.trackType)
+  return (trackState.volume / 100) * (audioStore.masterVolume / 100) * (typeVolume / 100)
+}
+
 function syncVolume(fileID: string, videoElement: HTMLVideoElement) {
   const desiredState = audioStore.tracks[fileID]
   const currentVolume = videoElement.volume
-  let desiredVolume = (desiredState.volume / 100) * (audioStore.masterVolume / 100)
+  let desiredVolume = calculateDesiredVolume(desiredState)
   if (!desiredState.isPlaying && !videoElement.paused) {
     desiredVolume = 0
   }
@@ -143,7 +152,7 @@ function syncVolume(fileID: string, videoElement: HTMLVideoElement) {
 
 function syncVolumeImmediate(fileID: string, videoElement: HTMLVideoElement) {
   const desiredState = audioStore.tracks[fileID]
-  const desiredVolume = (desiredState.volume / 100) * (audioStore.masterVolume / 100)
+  const desiredVolume = calculateDesiredVolume(desiredState)
   videoElement.volume = desiredVolume
 }
 
