@@ -38,7 +38,7 @@ const trackTypeStore = useTrackTypeStore();
 const fileStore = useFileStore();
 
 const track = computed(() => fileStore.tracks.find(t => t.id === props.fileID));
-const trackType = computed(() => track.value ? trackTypeStore.getTypeById(track.value.type_id) : null);
+const trackType = computed(() => track.value ? trackTypeStore.getTypeById(track.value.typeID) : null);
 const audioState = computed(() => audioStore.tracks[props.fileID]);
 const fadeState = computed(() => audioStore.fadeStates[props.fileID]);
 

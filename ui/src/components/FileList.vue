@@ -12,8 +12,8 @@
         <tr v-for="file in fileStore.tracks" :key="file.id">
           <td>{{ file.name }}</td>
           <td>
-            <v-chip :color="getTrackType(file.type_id)?.color" text-color="white">
-              {{ getTrackType(file.type_id)?.name }}
+            <v-chip :color="getTrackType(file.typeID)?.color" text-color="white">
+              {{ getTrackType(file.typeID)?.name }}
             </v-chip>
           </td>
           <td class="d-flex align-center">
@@ -65,7 +65,7 @@ const handlePlay = (fileID: string) => {
   const track = fileStore.getTrackById(fileID)
   if (!track) return
 
-  const trackType = trackTypeStore.getTypeById(track.type_id)
+  const trackType = trackTypeStore.getTypeById(track.typeID)
   if (!trackType) return
 
   const state = audioStore.tracks[fileID]
@@ -78,7 +78,7 @@ const handlePlay = (fileID: string) => {
       if (otherID !== fileID && otherTrack.isPlaying) {
         // Check if other track is of the same type
         const otherTrackData = fileStore.getTrackById(otherID)
-        if (otherTrackData && otherTrackData.type_id === track.type_id) {
+        if (otherTrackData && otherTrackData.typeID === track.typeID) {
           // Stop the other track
           audioStore.updateTrackState(otherID, { isPlaying: false })
           wsStore.sendMessage('syncTrack', {

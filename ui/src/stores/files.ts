@@ -6,7 +6,7 @@ export interface Track {
   createdAt: string
   name: string
   path: string
-  type_id: string
+  typeID: string
 }
 
 export const useFileStore = defineStore('files', {
