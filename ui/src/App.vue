@@ -34,7 +34,7 @@ wsStore.addMessageHandler((message) => {
   if (message.method === 'syncRequest' && auth.role === 'gm') {
     // Send current state to requesting client
     wsStore.broadcast('syncAll', {
-      tracks: audioStore.getAllTrackStates(),
+      tracks: audioStore.getPlayingTracks(),
       to: message.senderId,
     })
   }
