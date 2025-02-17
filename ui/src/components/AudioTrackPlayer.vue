@@ -124,23 +124,19 @@ function syncVolume(fileID: string, videoElement: HTMLVideoElement) {
     audioStore.setFading(props.fileID, true)
 
     // Clear any existing fade timers to start a new one
-    if (fadeTimer !== undefined) {
-      clearInterval(fadeTimer)
-    }
+    stopFade()
 
     // Start fade if volume is different
     let currentFadeStep = 0
     fadeTimer = setInterval(() => {
       currentFadeStep++
+      console.log("fading", currentFadeStep, FADE_STEPS)
       if (currentFadeStep >= FADE_STEPS) {
         // We're done fading; stop the video if desired and clear the timer
         if (!desiredState.isPlaying) {
           videoElement.pause()
         }
-        // Stop the loop once we've reached the desired volume
-        clearInterval(fadeTimer)
-        fadeTimer = undefined
-        audioStore.setFading(props.fileID, false)
+        stopFade()
       }
 
       const fadePercent = currentFadeStep / FADE_STEPS
@@ -175,6 +171,15 @@ function syncAll(videoElement: HTMLVideoElement) {
   // syncIsPlaying already calls syncVolume, so we don't need to call it again
   syncRepeating(props.fileID, videoElement)
   syncCurrentTime(props.fileID, videoElement)
+}
+
+function stopFade() {
+  if (fadeTimer) {
+    clearInterval(fadeTimer)
+    fadeTimer = undefined
+  }
+
+  audioStore.setFading(props.fileID, false)
 }
 
 function handleEnded(evt: Event) {
