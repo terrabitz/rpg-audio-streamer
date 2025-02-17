@@ -25,6 +25,7 @@ Tasks to complete before GA of hosted:
 Additional tasks:
 - [ ] Customizable tiled track layout
 - [ ] Mobile layout support
+- [ ] Turn frontend into a PWA
 - [ ] API docs
 - [ ] Integration with other streaming providers (YouTube, Spotify)
 - [ ] Discord integration
