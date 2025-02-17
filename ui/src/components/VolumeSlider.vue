@@ -35,23 +35,19 @@ function iconForVolume() {
   if (props.modelValue > 0) return '$volumeLow'
   return '$volumeOff'
 }
+
+function colorForVolume() {
+  if (props.modelValue == 0) return 'grey-lighten-1'
+
+  return 'grey-lighten-4'
+}
 </script>
 
 <template>
-  <div class="audio-slider-container">
-    <v-slider class="audio-slider mr-8" :model-value="modelValue" @update:model-value="updateValue" min="0" max="100"
-      :label="label" :color="color" :prepend-icon="iconForVolume()" @click:prepend="toggleMute" />
-  </div>
+  <v-slider step="1" :model-value="modelValue" @update:model-value="updateValue" min="0" max="100" :label="label"
+    :color="color" hide-details density="compact">
+    <template #prepend>
+      <v-icon size="20" :color="colorForVolume()" :icon="iconForVolume()" @click="toggleMute"></v-icon>
+    </template>
+  </v-slider>
 </template>
-
-<style scoped>
-.audio-slider-container {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.audio-slider {
-  width: 100%;
-}
-</style>

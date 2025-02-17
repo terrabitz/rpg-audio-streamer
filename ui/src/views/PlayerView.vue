@@ -5,6 +5,7 @@ import { useWebSocketStore } from '@/stores/websocket'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import PlayerFileList from '../components/PlayerFileList.vue'
+import VolumeSlider from '../components/VolumeSlider.vue'
 import { useAudioStore } from '../stores/audio'
 import { useAuthStore } from '../stores/auth'
 
@@ -72,14 +73,9 @@ watch(masterVolume, (newVolume) => {
     <v-card class="mt-4 audio-slider-card" border="sm" density="compact">
       <v-card-title>Volume Mixer</v-card-title>
       <v-card-text>
-        <div class="audio-slider-container mb-4">
-          <v-slider class="audio-slider mr-8" v-model="masterVolume" min="0" max="100" label="Master"
-            prepend-icon="$volume" />
-        </div>
-        <div v-for="type in trackTypeStore.trackTypes" :key="type.id" class="audio-slider-container mb-4">
-          <v-slider class="audio-slider mr-8" v-model="audioStore.typeVolumes[type.name]" min="0" max="100"
-            :label="type.name" :color="type.color" prepend-icon="$volume" />
-        </div>
+        <VolumeSlider v-model="masterVolume" label="Master" class="mb-4" />
+        <VolumeSlider v-for="type in trackTypeStore.trackTypes" :key="type.id"
+          v-model="audioStore.typeVolumes[type.name]" :label="type.name" :color="type.color" class="mb-4" />
       </v-card-text>
     </v-card>
 
