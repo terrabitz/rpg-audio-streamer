@@ -1,7 +1,11 @@
 <template>
   <div>
-    <v-btn @click="showModal = true">Upload Track</v-btn>
     <v-dialog persistent v-model="showModal" max-width="600px">
+      <template v-slot:activator="{ props }">
+        <v-btn v-bind="props" prepend-icon="$upload">
+          Upload Track
+        </v-btn>
+      </template>
       <v-card>
         <v-card-title>
           <span class="headline">Upload Track</span>

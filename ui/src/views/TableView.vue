@@ -55,13 +55,14 @@ onMounted(() => {
 <template>
   <v-container class="px-4 py-8" style="max-width: 1000px">
     <AudioPlayer />
-    <div class="mb-8">
-      <h1>My Table</h1>
-      <div>
+    <div class="mb-8 d-flex align-center">
+      <h1 class="mr-4">My Table</h1>
+      <div class="d-flex">
         <v-btn v-if="auth.authenticated && auth.role === 'gm'" @click="handleGetJoinToken" :disabled="joinStore.loading"
-          :active="isCopied" width="200" active-color="green" :prepend-icon="isCopied ? '' : '$copy'">
+          :active="isCopied" width="200" active-color="green" :prepend-icon="isCopied ? '' : '$copy'" class="mr-4">
           {{ isCopied ? 'Copied to clipboard' : 'Get Join URL' }}
         </v-btn>
+        <AudioUploader v-if="auth.authenticated" />
       </div>
     </div>
 
@@ -72,7 +73,6 @@ onMounted(() => {
     </template>
 
     <template v-else-if="auth.authenticated">
-      <AudioUploader />
       <FileList />
     </template>
     <template v-else>

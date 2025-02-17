@@ -1,5 +1,5 @@
 import IconLute from '@/components/icons/IconLute.vue';
-import { mdiBug, mdiCircle, mdiContentCopy, mdiDelete, mdiHome, mdiLoading, mdiMusic, mdiPause, mdiPlay, mdiRefresh, mdiRepeat, mdiRepeatOff, mdiVolumeHigh } from '@mdi/js';
+import { mdiBug, mdiCircle, mdiContentCopy, mdiDelete, mdiHome, mdiLoading, mdiMusic, mdiPause, mdiPlay, mdiRefresh, mdiRepeat, mdiRepeatOff, mdiUpload, mdiVolumeHigh } from '@mdi/js';
 import { h } from 'vue';
 import { createVuetify, type IconProps, type IconSet } from 'vuetify';
 import { aliases, mdi } from 'vuetify/iconsets/mdi-svg';
@@ -32,6 +32,7 @@ export default createVuetify({
       circle: mdiCircle,
       refresh: mdiRefresh,
       loading: mdiLoading,
+      upload: mdiUpload,
     },
     sets: {
       mdi,
