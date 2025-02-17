@@ -1,15 +1,19 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { onMounted } from 'vue'
 import { useAudioStore } from '../stores/audio'
 import { useTrackTypeStore } from '../stores/trackTypes'
 import VolumeSlider from './VolumeSlider.vue'
 
 const audioStore = useAudioStore()
 const trackTypeStore = useTrackTypeStore()
-const masterVolume = ref(100)
 
-watch(masterVolume, (newVolume) => {
-  audioStore.masterVolume = newVolume
+onMounted(async () => {
+  await trackTypeStore.fetchTrackTypes()
+  for (const type of trackTypeStore.trackTypes) {
+    if (!audioStore.typeVolumes[type.name]) {
+      audioStore.typeVolumes[type.name] = 100
+    }
+  }
 })
 </script>
 
@@ -20,7 +24,7 @@ watch(masterVolume, (newVolume) => {
       <div class="mixer-controls">
         <div class="mixer-row">
           <span class="mixer-label">Master</span>
-          <VolumeSlider v-model="masterVolume" class="mixer-slider" />
+          <VolumeSlider v-model="audioStore.masterVolume" class="mixer-slider" />
         </div>
         <v-divider class="my-4" />
         <div v-for="type in trackTypeStore.trackTypes" :key="type.id" class="mixer-row">
