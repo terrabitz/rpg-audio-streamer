@@ -68,8 +68,12 @@ const handlePlay = (fileID: string) => {
   const trackType = trackTypeStore.getTypeById(track.typeID)
   if (!trackType) return
 
-  const state = audioStore.tracks[fileID]
-  const newState = { isPlaying: !state.isPlaying }
+  const state = audioStore.tracks[fileID] || {}
+  const newState = {
+    isPlaying: !state.isPlaying,
+    trackType: trackType.name,
+    name: track.name
+  }
 
   // If we're starting playback and the track type doesn't allow simultaneous play
   if (newState.isPlaying && !trackType.allowSimultaneousPlay) {
