@@ -74,6 +74,7 @@ watch(masterVolume, (newVolume) => {
       <v-card-title>Volume Mixer</v-card-title>
       <v-card-text>
         <VolumeSlider v-model="masterVolume" label="Master" class="mb-4" />
+        <v-divider class="mb-4" />
         <VolumeSlider v-for="type in trackTypeStore.trackTypes" :key="type.id"
           v-model="audioStore.typeVolumes[type.name]" :label="type.name" :color="type.color" class="mb-4" />
       </v-card-text>
