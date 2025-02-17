@@ -55,8 +55,8 @@ onMounted(() => {
 <template>
   <v-container class="px-4 py-8" style="max-width: 1000px">
     <AudioPlayer />
-    <div class="mb-8 d-flex align-center">
-      <h1 class="mr-4">My Table</h1>
+    <div class="d-flex align-center">
+      <h1 class="mr-8">My Table</h1>
       <div class="d-flex">
         <v-btn v-if="auth.authenticated && auth.role === 'gm'" @click="handleGetJoinToken" :disabled="joinStore.loading"
           :active="isCopied" width="200" active-color="green" :prepend-icon="isCopied ? '' : '$copy'" class="mr-4">
@@ -65,6 +65,8 @@ onMounted(() => {
         <AudioUploader v-if="auth.authenticated" />
       </div>
     </div>
+
+    <v-divider class="mt-3 mb-1" />
 
     <template v-if="auth.loading">
       <div class="text-center py-12">
