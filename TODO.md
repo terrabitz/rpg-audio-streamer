@@ -28,7 +28,7 @@ Additional tasks:
 - [ ] API docs
 - [ ] Integration with other streaming providers (YouTube, Spotify)
 - [ ] Discord integration
-
+- [ ] Add automatic updates for the GIF demo on the README
 
 Bugs:
 - [ ] Fix issue with audio bounce when master volume is adjusted while fading
