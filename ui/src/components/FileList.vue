@@ -19,9 +19,7 @@
           <td class="d-flex align-center">
             <AudioControls :fileID="file.id" :fileName="file.name" @play="handlePlay(file.id)"
               @volume="vol => handleVolume(file.id, vol)" @seek="time => handleSeek(file.id, time)" />
-            <v-btn icon size="small" color="error" @click="deleteFile(file)">
-              <v-icon>$delete</v-icon>
-            </v-btn>
+            <v-btn class="ml-3" icon="$delete" size="small" color="error" @click="deleteFile(file)" />
           </td>
         </tr>
       </tbody>
