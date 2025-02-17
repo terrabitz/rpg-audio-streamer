@@ -116,12 +116,20 @@ rpg-audio-streamer/
 
 ### Development Setup
 
-1. Start the backend with dev mode:
+1. Install [air](https://github.com/air-verse/air) if you haven't done so already
+
    ```bash
-   go run main.go serve --dev-mode
+   go install github.com/air-verse/air@latest
    ```
 
-2. Start the UI development server:
+2. Start the backend:
+
+   ```bash
+   air
+   ```
+
+3. In a separate termina, start the Vue dev server:
+
    ```bash
    cd ui
    npm run dev
