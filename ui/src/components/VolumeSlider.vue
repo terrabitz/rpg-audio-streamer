@@ -36,7 +36,7 @@ function iconForVolume() {
 }
 
 function colorForVolume() {
-  if (props.modelValue == 0) return 'grey-lighten-1'
+  if (props.modelValue == 0) return 'grey-darken-1'
 
   return 'grey-lighten-4'
 }
@@ -46,7 +46,7 @@ function colorForVolume() {
   <v-slider step="1" :model-value="modelValue" @update:model-value="updateValue" min="0" max="100" :color="color"
     hide-details density="compact">
     <template #prepend>
-      <v-icon size="20" :color="colorForVolume()" :icon="iconForVolume()" @click="toggleMute"></v-icon>
+      <v-icon size="22" :color="colorForVolume()" :icon="iconForVolume()" @click="toggleMute"></v-icon>
     </template>
   </v-slider>
 </template>
