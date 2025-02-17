@@ -12,16 +12,14 @@
         <tr v-for="file in fileStore.tracks" :key="file.id">
           <td>{{ file.name }}</td>
           <td>
-            <v-chip :color="getTrackType(file.type_id)?.color" text-color="white">
-              {{ getTrackType(file.type_id)?.name }}
+            <v-chip :color="getTrackType(file.typeID)?.color" text-color="white">
+              {{ getTrackType(file.typeID)?.name }}
             </v-chip>
           </td>
           <td class="d-flex align-center">
             <AudioControls :fileID="file.id" :fileName="file.name" @play="handlePlay(file.id)"
               @volume="vol => handleVolume(file.id, vol)" @seek="time => handleSeek(file.id, time)" />
-            <v-btn icon size="small" color="error" @click="deleteFile(file)">
-              <v-icon>$delete</v-icon>
-            </v-btn>
+            <v-btn class="ml-3" icon="$delete" size="small" color="error" @click="deleteFile(file)" />
           </td>
         </tr>
       </tbody>
@@ -67,11 +65,15 @@ const handlePlay = (fileID: string) => {
   const track = fileStore.getTrackById(fileID)
   if (!track) return
 
-  const trackType = trackTypeStore.getTypeById(track.type_id)
+  const trackType = trackTypeStore.getTypeById(track.typeID)
   if (!trackType) return
 
-  const state = audioStore.tracks[fileID]
-  const newState = { isPlaying: !state.isPlaying }
+  const state = audioStore.tracks[fileID] || {}
+  const newState = {
+    isPlaying: !state.isPlaying,
+    trackType: trackType.name,
+    name: track.name
+  }
 
   // If we're starting playback and the track type doesn't allow simultaneous play
   if (newState.isPlaying && !trackType.allowSimultaneousPlay) {
@@ -80,7 +82,7 @@ const handlePlay = (fileID: string) => {
       if (otherID !== fileID && otherTrack.isPlaying) {
         // Check if other track is of the same type
         const otherTrackData = fileStore.getTrackById(otherID)
-        if (otherTrackData && otherTrackData.type_id === track.type_id) {
+        if (otherTrackData && otherTrackData.typeID === track.typeID) {
           // Stop the other track
           audioStore.updateTrackState(otherID, { isPlaying: false })
           wsStore.sendMessage('syncTrack', {

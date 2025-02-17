@@ -17,7 +17,7 @@ type Track struct {
 	CreatedAt time.Time `json:"createdAt,omitempty"`
 	Name      string    `json:"name,omitempty"`
 	Path      string    `json:"path,omitempty"`
-	TypeID    uuid.UUID `json:"type_id,omitempty"`
+	TypeID    uuid.UUID `json:"typeID,omitempty"`
 }
 
 type TrackStore interface {

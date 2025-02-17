@@ -8,13 +8,14 @@ export interface AudioTrack {
   isRepeating: boolean
   currentTime: number
   duration: number
+  trackType: string
 }
 
 interface FadeStatus {
   inProgress: boolean
 }
 
-function newAudioTrack(fileID: string, name: string): AudioTrack {
+function newAudioTrack(fileID: string, name: string, typeId: string = ""): AudioTrack {
   return {
     fileID,
     name,
@@ -22,7 +23,8 @@ function newAudioTrack(fileID: string, name: string): AudioTrack {
     volume: 100,
     isRepeating: false,
     currentTime: 0,
-    duration: 0
+    duration: 0,
+    trackType: "",
   }
 }
 
@@ -31,19 +33,21 @@ export const useAudioStore = defineStore('audio', {
     tracks: {} as Record<string, AudioTrack>,
     enabled: false,
     masterVolume: 100,
-    fadeStates: {} as Record<string, FadeStatus>
+    fadeStates: {} as Record<string, FadeStatus>,
+    typeVolumes: {} as Record<string, number>,
   }),
   getters: {
     availableTracks: (state) => Object.values(state.tracks)
   },
   actions: {
-    initTrack(fileID: string, name: string) {
+    initTrack(fileID: string, name: string, typeId: string = "") {
       if (!this.tracks[fileID]) {
-        this.tracks[fileID] = newAudioTrack(fileID, name)
+        this.tracks[fileID] = newAudioTrack(fileID, name, typeId)
       }
     },
     updateTrackState(fileID: string, updates: Partial<AudioTrack>) {
       const track = this.tracks[fileID] ? this.tracks[fileID] : newAudioTrack(fileID, "")
+
       this.tracks[fileID] = {
         ...track,
         ...updates
@@ -52,16 +56,9 @@ export const useAudioStore = defineStore('audio', {
     removeTrack(fildID: string) {
       delete this.tracks[fildID]
     },
-    getAllTrackStates() {
+    getPlayingTracks() {
       return Object.values(this.tracks)
-        .filter(track => track.isPlaying)  // Only include playing tracks
-        .map(track => ({
-          fileID: track.fileID,
-          isPlaying: track.isPlaying,
-          volume: track.volume,
-          isRepeating: track.isRepeating,
-          currentTime: track.currentTime
-        }))
+        .filter(track => track.isPlaying)
     },
     syncTracks(tracks: Partial<AudioTrack>[]) {
       // Only sync tracks if audio is enabled
@@ -90,6 +87,13 @@ export const useAudioStore = defineStore('audio', {
         this.fadeStates[fileID] = { inProgress: false }
       }
       this.fadeStates[fileID].inProgress = isFading
+    },
+    setTypeVolume(typeName: string, volume: number) {
+      this.typeVolumes[typeName] = volume
+    },
+
+    getTypeVolume(typeName: string): number {
+      return this.typeVolumes[typeName] ?? 100
     }
   }
 })

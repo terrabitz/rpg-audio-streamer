@@ -1,7 +1,9 @@
 # TODO
 
 Tasks to complete before releasing to my players:
-- [ ] Fix reconnection bug
+- [X] Fix reconnection bug
+- [X] Add player track type mixer
+- [ ] Add GM track type mixer
 - [ ] Infrastructure setup
 
 Tasks to complete before GA of self-hostable:
@@ -26,3 +28,8 @@ Additional tasks:
 - [ ] API docs
 - [ ] Integration with other streaming providers (YouTube, Spotify)
 - [ ] Discord integration
+
+
+Bugs:
+- [ ] Fix issue with audio bounce when master volume is adjusted while fading
+- [ ] Fix issue with track reset in player view when navigating away
