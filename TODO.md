@@ -30,6 +30,7 @@ Additional tasks:
 - [ ] Integration with other streaming providers (YouTube, Spotify)
 - [ ] Discord integration
 - [ ] Add automatic updates for the GIF demo on the README
+- [ ] Better navigation (e.g. restricting access to login if we're authenticated, removing navigation to most pages as a player)
 
 Bugs:
 - [ ] Fix issue with audio bounce when master volume is adjusted while fading
