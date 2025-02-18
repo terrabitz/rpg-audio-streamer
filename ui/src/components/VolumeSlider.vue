@@ -4,6 +4,7 @@ import { ref } from 'vue';
 const props = defineProps<{
   modelValue: number
   color?: string
+  max?: number
 }>()
 
 const emit = defineEmits<{
@@ -43,8 +44,8 @@ function colorForVolume() {
 </script>
 
 <template>
-  <v-slider step="1" :model-value="modelValue" @update:model-value="updateValue" min="0" max="100" :color="color"
-    hide-details density="compact">
+  <v-slider step="1" :model-value="modelValue" @update:model-value="updateValue" min="0" :max="max ?? 100"
+    :color="color" hide-details density="compact">
     <template #prepend>
       <v-icon size="22" :color="colorForVolume()" :icon="iconForVolume()" @click="toggleMute"></v-icon>
     </template>

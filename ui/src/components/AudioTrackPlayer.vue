@@ -123,13 +123,13 @@ function syncVolume(fileID: string, videoElement: HTMLVideoElement) {
 
   if (videoElement.paused) {
     // If our video is paused, we don't need to fade anything
-    videoElement.volume = desiredVolume * volumeMultiplier
+    setVolume(desiredVolume * volumeMultiplier)
     return
   }
 
   if (!isFadeable(fileID)) {
     // If we're not fadeable, just set the volume directly
-    videoElement.volume = desiredVolume * volumeMultiplier
+    setVolume(desiredVolume * volumeMultiplier)
     return
   }
 
@@ -154,7 +154,7 @@ function syncVolume(fileID: string, videoElement: HTMLVideoElement) {
 
       const fadePercent = currentFadeStep / FADE_STEPS
       const newVolume = (getDesiredVolume(desiredState) * fadePercent + currentVolume * (1 - fadePercent)) * getVolumeMultiplier()
-      videoElement.volume = newVolume
+      setVolume(newVolume)
     }, FADE_STEP_DURATION)
   }
 }
@@ -162,7 +162,7 @@ function syncVolume(fileID: string, videoElement: HTMLVideoElement) {
 function syncVolumeImmediate(fileID: string, videoElement: HTMLVideoElement) {
   const desiredState = audioStore.tracks[fileID]
   const desiredVolume = getDesiredVolume(desiredState) * getVolumeMultiplier()
-  videoElement.volume = desiredVolume
+  setVolume(desiredVolume)
 }
 
 function syncRepeating(fileID: string, videoElement: HTMLVideoElement) {
@@ -223,5 +223,19 @@ function isFadeable(trackID: string) {
 
   // FIXME: This is a hack until we can better distinguish between fadeable and non-fadeable tracks
   return track.isRepeating
+}
+
+function setVolume(newVolume: number) {
+  if (!videoElement.value) {
+    return
+  }
+
+  if (newVolume < 0) {
+    newVolume = 0;
+  } else if (newVolume > 1) {
+    newVolume = 1;
+  }
+
+  videoElement.value.volume = newVolume;
 }
 </script>

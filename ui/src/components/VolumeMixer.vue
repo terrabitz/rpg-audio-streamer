@@ -24,7 +24,7 @@ onMounted(async () => {
       <div class="mixer-controls">
         <div class="mixer-row">
           <span class="mixer-label">Master</span>
-          <VolumeSlider v-model="audioStore.masterVolume" class="mixer-slider" />
+          <VolumeSlider v-model="audioStore.masterVolume" class="mixer-slider" :max="200" />
         </div>
         <v-divider class="my-4" />
         <div v-for="type in trackTypeStore.trackTypes" :key="type.id" class="mixer-row">
