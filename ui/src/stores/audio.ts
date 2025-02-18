@@ -1,4 +1,5 @@
 import { defineStore } from 'pinia'
+import { patchObject } from '../composables/util'
 
 export interface AudioTrack {
   fileID: string
@@ -48,10 +49,7 @@ export const useAudioStore = defineStore('audio', {
     updateTrackState(fileID: string, updates: Partial<AudioTrack>) {
       const track = this.tracks[fileID] ? this.tracks[fileID] : newAudioTrack(fileID, "")
 
-      this.tracks[fileID] = {
-        ...track,
-        ...updates
-      }
+      this.tracks[fileID] = patchObject(track, updates)
     },
     removeTrack(fildID: string) {
       delete this.tracks[fildID]

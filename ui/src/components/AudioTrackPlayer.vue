@@ -66,10 +66,14 @@ function startAudioSync(fileID: string, videoElement: HTMLVideoElement) {
   })
 
   watch(() => audioStore.masterVolume, () => {
+    if (fadeTimer) return
+
     syncVolumeImmediate(fileID, videoElement)
   })
 
   watch(() => audioStore.typeVolumes, () => {
+    if (fadeTimer) return
+
     syncVolumeImmediate(fileID, videoElement)
   }, { deep: true })
 
@@ -94,39 +98,47 @@ function syncIsPlaying(fileID: string, videoElement: HTMLVideoElement) {
   syncVolume(props.fileID, videoElement)
 }
 
-function calculateDesiredVolume(trackState: AudioTrack): number {
-  const typeVolume = audioStore.getTypeVolume(trackState.trackType)
-  return (trackState.volume / 100) * (audioStore.masterVolume / 100) * (typeVolume / 100)
+function getDesiredVolume(desiredState: AudioTrack) {
+  if (!desiredState.isPlaying) {
+    return 0
+  }
+
+  return desiredState.volume / 100
+}
+
+function getVolumeMultiplier() {
+  const typeVolume = audioStore.getTypeVolume(audioStore.tracks[props.fileID].trackType) ?? 100
+  return (audioStore.masterVolume / 100) * (typeVolume / 100)
 }
 
 function syncVolume(fileID: string, videoElement: HTMLVideoElement) {
   const desiredState = audioStore.tracks[fileID]
-  const currentVolume = videoElement.volume
-  let desiredVolume = calculateDesiredVolume(desiredState)
-  if (!desiredState.isPlaying && !videoElement.paused) {
-    desiredVolume = 0
+  let volumeMultiplier = getVolumeMultiplier()
+  if (volumeMultiplier < 0.01) {
+    volumeMultiplier = 0.01
   }
+
+  const currentVolume = videoElement.volume / getVolumeMultiplier()
+  let desiredVolume = getDesiredVolume(desiredState)
 
   if (videoElement.paused) {
     // If our video is paused, we don't need to fade anything
-    videoElement.volume = desiredVolume
+    setVolume(desiredVolume * volumeMultiplier)
     return
   }
 
   if (!isFadeable(fileID)) {
     // If we're not fadeable, just set the volume directly
-    videoElement.volume = desiredVolume
+    setVolume(desiredVolume * volumeMultiplier)
     return
   }
 
   if (Math.abs(currentVolume - desiredVolume) > MIN_VOLUME_SKEW) {
     // Only start a fade if the desired volume is sufficiently different
-    audioStore.setFading(props.fileID, true)
 
     // Clear any existing fade timers to start a new one
-    if (fadeTimer !== undefined) {
-      clearInterval(fadeTimer)
-    }
+    stopFade()
+    audioStore.setFading(props.fileID, true)
 
     // Start fade if volume is different
     let currentFadeStep = 0
@@ -137,23 +149,20 @@ function syncVolume(fileID: string, videoElement: HTMLVideoElement) {
         if (!desiredState.isPlaying) {
           videoElement.pause()
         }
-        // Stop the loop once we've reached the desired volume
-        clearInterval(fadeTimer)
-        fadeTimer = undefined
-        audioStore.setFading(props.fileID, false)
+        stopFade()
       }
 
       const fadePercent = currentFadeStep / FADE_STEPS
-      const newVolume = desiredVolume * fadePercent + currentVolume * (1 - fadePercent)
-      videoElement.volume = newVolume
+      const newVolume = (getDesiredVolume(desiredState) * fadePercent + currentVolume * (1 - fadePercent)) * getVolumeMultiplier()
+      setVolume(newVolume)
     }, FADE_STEP_DURATION)
   }
 }
 
 function syncVolumeImmediate(fileID: string, videoElement: HTMLVideoElement) {
   const desiredState = audioStore.tracks[fileID]
-  const desiredVolume = calculateDesiredVolume(desiredState)
-  videoElement.volume = desiredVolume
+  const desiredVolume = getDesiredVolume(desiredState) * getVolumeMultiplier()
+  setVolume(desiredVolume)
 }
 
 function syncRepeating(fileID: string, videoElement: HTMLVideoElement) {
@@ -175,6 +184,15 @@ function syncAll(videoElement: HTMLVideoElement) {
   // syncIsPlaying already calls syncVolume, so we don't need to call it again
   syncRepeating(props.fileID, videoElement)
   syncCurrentTime(props.fileID, videoElement)
+}
+
+function stopFade() {
+  if (fadeTimer) {
+    clearInterval(fadeTimer)
+    fadeTimer = undefined
+  }
+
+  audioStore.setFading(props.fileID, false)
 }
 
 function handleEnded(evt: Event) {
@@ -205,5 +223,19 @@ function isFadeable(trackID: string) {
 
   // FIXME: This is a hack until we can better distinguish between fadeable and non-fadeable tracks
   return track.isRepeating
+}
+
+function setVolume(newVolume: number) {
+  if (!videoElement.value) {
+    return
+  }
+
+  if (newVolume < 0) {
+    newVolume = 0;
+  } else if (newVolume > 1) {
+    newVolume = 1;
+  }
+
+  videoElement.value.volume = newVolume;
 }
 </script>

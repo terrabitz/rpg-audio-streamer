@@ -217,7 +217,10 @@ func (s *Server) Start() error {
 
 	go s.hub.Run()
 
-	s.logger.Info("starting server", "port", s.cfg.Port)
+	s.logger.Info("starting server",
+		slog.Int("port", s.cfg.Port),
+		slog.Bool("devMode", s.cfg.DevMode),
+	)
 	return srv.ListenAndServe()
 }
 

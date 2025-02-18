@@ -28,11 +28,12 @@
 </template>
 
 <script setup lang="ts">
+import { patchObject } from '@/composables/util'
 import { useFileStore, type Track } from '@/stores/files'
 import { useTrackTypeStore } from '@/stores/trackTypes'
 import { useWebSocketStore } from '@/stores/websocket'
 import debounce from 'lodash.debounce'
-import { onMounted } from 'vue'
+import { onMounted, watch } from 'vue'
 import { useAudioStore } from '../stores/audio'
 import AudioControls from './AudioControls.vue'
 
@@ -97,7 +98,12 @@ const handlePlay = (fileID: string) => {
   // Update the current track's state
   audioStore.updateTrackState(fileID, newState)
   if (newState.isPlaying) {
-    debouncedSendMessage('syncTrack', { ...audioStore.tracks[fileID] })
+    const state = audioStore.tracks[fileID]
+    const stateToSend = patchObject(
+      state,
+      { volume: state.volume * audioStore.masterVolume / 100 },
+    )
+    debouncedSendMessage('syncTrack', { ...stateToSend })
   } else {
     debouncedSendMessage('syncTrack', { fileID: fileID, ...newState })
   }
@@ -106,7 +112,7 @@ const handlePlay = (fileID: string) => {
 const handleVolume = (fileID: string, volume: number) => {
   audioStore.updateTrackState(fileID, { volume })
   if (audioStore.tracks[fileID].isPlaying) {
-    debouncedSendMessage('syncTrack', { fileID, volume })
+    debouncedSendMessage('syncTrack', { fileID, volume: volume * audioStore.masterVolume / 100 })
   }
 }
 
@@ -120,4 +126,19 @@ const handleSeek = (fileID: string, time: number) => {
 const getTrackType = (typeId: string) => {
   return trackTypeStore.getTypeById(typeId)
 }
+
+const updateAllTrackVolumes = debounce(() => {
+  Object.entries(audioStore.tracks).forEach(([fileID, track]) => {
+    if (track.isPlaying) {
+      wsStore.sendMessage('syncTrack', {
+        fileID,
+        volume: track.volume * audioStore.masterVolume / 100
+      })
+    }
+  })
+}, 100)
+
+watch(() => audioStore.masterVolume, () => {
+  updateAllTrackVolumes()
+})
 </script>
