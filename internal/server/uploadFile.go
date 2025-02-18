@@ -2,7 +2,6 @@ package server
 
 import (
 	"bytes"
-	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -95,15 +94,15 @@ func (s *Server) uploadFile(w http.ResponseWriter, r *http.Request) {
 	cmd.Stdout = &out
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
-		s.logger.Error("failed to convert file to HLS", "error", err, "path", dstPath)
-		fmt.Println(out.String())
-		fmt.Println(stderr.String())
+		s.logger.Error("failed to convert file to HLS",
+			"err", err,
+			"path", dstPath,
+			"ffmpegStderr", stderr.String(),
+		)
+
 		http.Error(w, "Failed to convert file", http.StatusInternalServerError)
 		return
 	}
-
-	fmt.Println(out.String())
-	fmt.Println(stderr.String())
 
 	if err := os.Remove(dstPath); err != nil {
 		s.logger.Warn("failed to remove original file", "error", err, "path", dstPath)
