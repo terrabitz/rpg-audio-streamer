@@ -32,9 +32,16 @@ watch(() => auth.authenticated, (isAuthenticated) => {
 // Handle sync requests from players
 wsStore.addMessageHandler((message) => {
   if (message.method === 'syncRequest' && auth.role === 'gm') {
+    const tracks = audioStore.getPlayingTracks()
+    const audioAdjusted = tracks.map((track) => {
+      return {
+        ...track,
+        volume: track.volume * audioStore.masterVolume / 100,
+      }
+    })
     // Send current state to requesting client
     wsStore.broadcast('syncAll', {
-      tracks: audioStore.getPlayingTracks(),
+      tracks: audioAdjusted,
       to: message.senderId,
     })
   }
