@@ -1,0 +1,44 @@
+version: '3.8'
+
+services:
+  skald:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: skald
+    restart: unless-stopped
+    env_file: ../.env
+    environment:
+      - UPLOAD_DIR=/data/app/uploads
+      - DB_PATH=/data/app/skaldbot.db
+    ports:
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+    volumes:
+      - data:/data/app
+      - caddy_data:/data/caddy
+      - caddy_config:/config/caddy
+    # healthcheck:
+    #   test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
+    #   interval: 30s
+    #   timeout: 10s
+    #   retries: 3
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+        reservations:
+          memory: 512M
+
+volumes:
+  data:
+    name: skald_data
+  caddy_data:
+    name: skald_caddy_data
+  caddy_config:
+    name: skald_caddy_config

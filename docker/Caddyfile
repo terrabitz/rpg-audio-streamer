@@ -1,29 +1,15 @@
-:80, :443 {
-    # Security headers
-    header {
-        Strict-Transport-Security "max-age=31536000; includeSubDomains"
-        X-Content-Type-Options "nosniff"
-        X-Frame-Options "DENY"
-        X-XSS-Protection "1; mode=block"
-        Permissions-Policy interest-cohort=()
-        -Server
-    }
+{$SITE_HOSTNAME:localhost:80} {
+	handle /api/* {
+		reverse_proxy :8080
+	}
 
-    # API routes
-    handle /api/* {
-        reverse_proxy localhost:8080
-    }
+	handle {
+		root * /srv
+		try_files {path} /index.html
+		file_server
+	}
 
-    # SPA routes
-    handle {
-        root * /srv
-        try_files {path} /index.html
-        file_server
-        encode gzip
-    }
-
-    # TLS configuration
-    tls {
-        issuer acme
-    }
+	encode {
+		zstd
+	}
 }

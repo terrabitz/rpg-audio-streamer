@@ -38,10 +38,12 @@ COPY docker/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 # Expose HTTP and HTTPS ports
 EXPOSE 80 443 8080
 
-RUN mkdir -p /data/uploads && \
-  chown -R nobody:nobody /data && \
-  chown -R nobody:nobody /app && \
-  chown -R nobody:nobody /srv
+RUN mkdir -p /data/app/uploads  \
+  && mkdir -p /config \
+  && chown -R nobody:nobody /data  \
+  && chown -R nobody:nobody /app  \
+  && chown -R nobody:nobody /config  \
+  && chown -R nobody:nobody /srv
 
 # Start supervisord
 CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]
