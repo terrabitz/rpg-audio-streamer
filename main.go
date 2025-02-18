@@ -21,9 +21,6 @@ import (
 	"github.com/terrabitz/rpg-audio-streamer/internal/sqlitedatastore"
 )
 
-//go:embed all:ui/dist
-var frontend embed.FS
-
 //go:embed sql/migrations/*
 var migrations embed.FS
 
@@ -310,7 +307,7 @@ func startServer(cfg Config) error {
 
 	authService := auth.New(cfg.Auth, logger)
 
-	srv, err := server.New(cfg.Server, logger, frontend, authService, db)
+	srv, err := server.New(cfg.Server, logger, authService, db)
 	if err != nil {
 		return fmt.Errorf("couldn't create server: %w", err)
 	}

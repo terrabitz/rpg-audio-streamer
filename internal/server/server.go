@@ -46,16 +46,15 @@ type Config struct {
 	CORS      middlewares.CorsConfig
 }
 
-func New(cfg Config, logger *slog.Logger, frontend fs.FS, auth Authenticator, store Store) (*Server, error) {
+func New(cfg Config, logger *slog.Logger, auth Authenticator, store Store) (*Server, error) {
 	hub := ws.NewHub(logger)
 
 	srv := &Server{
-		logger:   logger,
-		frontend: frontend,
-		cfg:      cfg,
-		hub:      hub,
-		auth:     auth,
-		store:    store,
+		logger: logger,
+		cfg:    cfg,
+		hub:    hub,
+		auth:   auth,
+		store:  store,
 		upgrader: websocket.Upgrader{
 			ReadBufferSize:  1024,
 			WriteBufferSize: 1024,
@@ -104,12 +103,9 @@ func (s *Server) Start() error {
 		return fmt.Errorf("failed to create upload directory: %w", err)
 	}
 
-	frontendFS := http.FileServer(http.FS(s.frontend))
-
 	mux := http.NewServeMux()
 
 	// Public endpoints
-	mux.HandleFunc("/", frontendFS.ServeHTTP)
 	mux.HandleFunc("/api/v1/login", s.handleLogin)
 	mux.HandleFunc("/api/v1/join", s.handleJoin)
 	mux.HandleFunc("/api/v1/auth/status", s.handleAuthStatus)
