@@ -28,6 +28,7 @@
 </template>
 
 <script setup lang="ts">
+import { patchObject } from '@/composables/util'
 import { useFileStore, type Track } from '@/stores/files'
 import { useTrackTypeStore } from '@/stores/trackTypes'
 import { useWebSocketStore } from '@/stores/websocket'
@@ -98,8 +99,11 @@ const handlePlay = (fileID: string) => {
   audioStore.updateTrackState(fileID, newState)
   if (newState.isPlaying) {
     const state = audioStore.tracks[fileID]
-    state.volume *= audioStore.masterVolume / 100
-    debouncedSendMessage('syncTrack', { ...state })
+    const stateToSend = patchObject(
+      state,
+      { volume: state.volume * audioStore.masterVolume / 100 },
+    )
+    debouncedSendMessage('syncTrack', { ...stateToSend })
   } else {
     debouncedSendMessage('syncTrack', { fileID: fileID, ...newState })
   }
