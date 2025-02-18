@@ -135,10 +135,10 @@ function syncVolume(fileID: string, videoElement: HTMLVideoElement) {
 
   if (Math.abs(currentVolume - desiredVolume) > MIN_VOLUME_SKEW) {
     // Only start a fade if the desired volume is sufficiently different
-    audioStore.setFading(props.fileID, true)
 
     // Clear any existing fade timers to start a new one
     stopFade()
+    audioStore.setFading(props.fileID, true)
 
     // Start fade if volume is different
     let currentFadeStep = 0
