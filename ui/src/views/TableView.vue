@@ -4,7 +4,7 @@ import { onMounted, ref } from 'vue'
 import AudioPlayer from '../components/AudioPlayer.vue'
 import AudioUploader from '../components/AudioUploader.vue'
 import FileList from '../components/FileList.vue'
-import VolumeMixer from '../components/VolumeMixer.vue'
+import VolumeSlider from '../components/VolumeSlider.vue'
 import { useBaseUrl } from '../composables/useBaseUrl'
 import { useAuthStore } from '../stores/auth'
 import { useJoinStore } from '../stores/join'
@@ -76,7 +76,13 @@ onMounted(() => {
     </template>
 
     <template v-else-if="auth.authenticated">
-      <VolumeMixer />
+      <v-card class="audio-slider-card" border="sm" density="compact">
+        <v-card-title>Volume Mixer</v-card-title>
+        <v-card-text>
+          <span class="mixer-label">Master</span>
+          <VolumeSlider v-model="audioStore.masterVolume" class="mixer-slider" />
+        </v-card-text>
+      </v-card>
       <FileList />
     </template>
     <template v-else>
@@ -84,3 +90,9 @@ onMounted(() => {
     </template>
   </v-container>
 </template>
+
+<style scoped>
+.audio-slider-card {
+  max-width: 500px;
+}
+</style>
