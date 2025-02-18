@@ -33,5 +33,5 @@ Additional tasks:
 - [ ] Better navigation (e.g. restricting access to login if we're authenticated, removing navigation to most pages as a player)
 
 Bugs:
-- [ ] Fix issue with audio bounce when master volume is adjusted while fading
+- [X] Fix issue with audio bounce when master volume is adjusted while fading
 - [ ] Fix issue with track reset in player view when navigating away

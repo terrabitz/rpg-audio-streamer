@@ -66,10 +66,14 @@ function startAudioSync(fileID: string, videoElement: HTMLVideoElement) {
   })
 
   watch(() => audioStore.masterVolume, () => {
+    if (fadeTimer) return
+
     syncVolumeImmediate(fileID, videoElement)
   })
 
   watch(() => audioStore.typeVolumes, () => {
+    if (fadeTimer) return
+
     syncVolumeImmediate(fileID, videoElement)
   }, { deep: true })
 
@@ -94,18 +98,28 @@ function syncIsPlaying(fileID: string, videoElement: HTMLVideoElement) {
   syncVolume(props.fileID, videoElement)
 }
 
-function calculateDesiredVolume(trackState: AudioTrack): number {
-  const typeVolume = audioStore.getTypeVolume(trackState.trackType)
-  return (trackState.volume / 100) * (audioStore.masterVolume / 100) * (typeVolume / 100)
+function getDesiredVolume(desiredState: AudioTrack) {
+  if (!desiredState.isPlaying) {
+    return 0
+  }
+
+  return desiredState.volume / 100
+}
+
+function getVolumeMultiplier() {
+  const typeVolume = audioStore.getTypeVolume(audioStore.tracks[props.fileID].trackType) ?? 100
+  return (audioStore.masterVolume / 100) * (typeVolume / 100)
 }
 
 function syncVolume(fileID: string, videoElement: HTMLVideoElement) {
   const desiredState = audioStore.tracks[fileID]
-  const currentVolume = videoElement.volume
-  let desiredVolume = calculateDesiredVolume(desiredState)
-  if (!desiredState.isPlaying && !videoElement.paused) {
-    desiredVolume = 0
+  let volumeMultiplier = getVolumeMultiplier()
+  if (volumeMultiplier < 0.01) {
+    volumeMultiplier = 0.01
   }
+
+  const currentVolume = videoElement.volume / getVolumeMultiplier()
+  let desiredVolume = getDesiredVolume(desiredState)
 
   if (videoElement.paused) {
     // If our video is paused, we don't need to fade anything
@@ -130,7 +144,6 @@ function syncVolume(fileID: string, videoElement: HTMLVideoElement) {
     let currentFadeStep = 0
     fadeTimer = setInterval(() => {
       currentFadeStep++
-      console.log("fading", currentFadeStep, FADE_STEPS)
       if (currentFadeStep >= FADE_STEPS) {
         // We're done fading; stop the video if desired and clear the timer
         if (!desiredState.isPlaying) {
@@ -140,7 +153,7 @@ function syncVolume(fileID: string, videoElement: HTMLVideoElement) {
       }
 
       const fadePercent = currentFadeStep / FADE_STEPS
-      const newVolume = desiredVolume * fadePercent + currentVolume * (1 - fadePercent)
+      const newVolume = (getDesiredVolume(desiredState) * fadePercent + currentVolume * (1 - fadePercent)) * getVolumeMultiplier()
       videoElement.volume = newVolume
     }, FADE_STEP_DURATION)
   }
@@ -148,7 +161,7 @@ function syncVolume(fileID: string, videoElement: HTMLVideoElement) {
 
 function syncVolumeImmediate(fileID: string, videoElement: HTMLVideoElement) {
   const desiredState = audioStore.tracks[fileID]
-  const desiredVolume = calculateDesiredVolume(desiredState)
+  const desiredVolume = getDesiredVolume(desiredState) * getVolumeMultiplier()
   videoElement.volume = desiredVolume
 }
 
