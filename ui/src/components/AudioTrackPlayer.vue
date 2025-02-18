@@ -123,13 +123,13 @@ function syncVolume(fileID: string, videoElement: HTMLVideoElement) {
 
   if (videoElement.paused) {
     // If our video is paused, we don't need to fade anything
-    videoElement.volume = desiredVolume
+    videoElement.volume = desiredVolume * volumeMultiplier
     return
   }
 
   if (!isFadeable(fileID)) {
     // If we're not fadeable, just set the volume directly
-    videoElement.volume = desiredVolume
+    videoElement.volume = desiredVolume * volumeMultiplier
     return
   }
 
