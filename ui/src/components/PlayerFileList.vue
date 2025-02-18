@@ -19,23 +19,17 @@
         </tr>
       </tbody>
     </v-table>
-    <AudioPlayer v-if="audioStore.enabled" />
   </v-container>
 </template>
 
 <script setup lang="ts">
-import { wsHandlers } from '@/composables/wsHandlers'
 import { useWebSocketStore } from '@/stores/websocket'
 import { ref } from 'vue'
 import { useAudioStore } from '../stores/audio'
-import AudioPlayer from './AudioPlayer.vue'
 
 const audioStore = useAudioStore()
 const wsStore = useWebSocketStore()
 const isRefreshing = ref(false)
-
-// Set up sync handling with audio elements
-wsHandlers()
 
 function handleRefresh() {
   isRefreshing.value = true
