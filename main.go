@@ -26,12 +26,15 @@ var migrations embed.FS
 
 const migrationsPath = "sql/migrations"
 
-const dbPath = "skaldbot.db"
-
 type Config struct {
 	Server server.Config
 	Log    LogConfig
 	Auth   auth.Config
+	DB     DBConfig
+}
+
+type DBConfig struct {
+	Path string
 }
 
 type LogConfig struct {
@@ -140,6 +143,13 @@ func main() {
 						Usage:       "Enables development mode",
 						Destination: &cfg.Server.DevMode,
 					},
+					&cli.StringFlag{
+						Name:        "db-path",
+						EnvVars:     []string{"DB_PATH"},
+						Value:       "skaldbot.db",
+						Usage:       "Path to SQLite database file",
+						Destination: &cfg.DB.Path,
+					},
 				},
 				Action: func(cCtx *cli.Context) error {
 					return startServer(cfg)
@@ -148,6 +158,15 @@ func main() {
 			{
 				Name:  "migrate",
 				Usage: "Run database migrations",
+				Flags: []cli.Flag{
+					&cli.StringFlag{
+						Name:        "db-path",
+						EnvVars:     []string{"DB_PATH"},
+						Value:       "skaldbot.db",
+						Usage:       "Path to SQLite database file",
+						Destination: &cfg.DB.Path,
+					},
+				},
 				Subcommands: []*cli.Command{
 					{
 						Name:  "up",
@@ -165,7 +184,7 @@ func main() {
 								log.Fatalf("couldn't find database migrations: %v", err)
 							}
 
-							db, err := sqlitedatastore.New(dbPath)
+							db, err := sqlitedatastore.New(cfg.DB.Path)
 							if err != nil {
 								return fmt.Errorf("couldn't initialize SQLite DB: %w", err)
 							}
@@ -204,7 +223,7 @@ func main() {
 								log.Fatalf("couldn't find database migrations: %v", err)
 							}
 
-							db, err := sqlitedatastore.New(dbPath)
+							db, err := sqlitedatastore.New(cfg.DB.Path)
 							if err != nil {
 								return fmt.Errorf("couldn't initialize SQLite DB: %w", err)
 							}
@@ -230,7 +249,7 @@ func main() {
 								log.Fatalf("couldn't find database migrations: %v", err)
 							}
 
-							db, err := sqlitedatastore.New(dbPath)
+							db, err := sqlitedatastore.New(cfg.DB.Path)
 							if err != nil {
 								return fmt.Errorf("couldn't initialize SQLite DB: %w", err)
 							}
@@ -291,7 +310,7 @@ func startServer(cfg Config) error {
 		log.Fatalf("couldn't find database migrations: %v", err)
 	}
 
-	db, err := sqlitedatastore.New(dbPath)
+	db, err := sqlitedatastore.New(cfg.DB.Path)
 	if err != nil {
 		return fmt.Errorf("couldn't initialize SQLite DB: %w", err)
 	}
