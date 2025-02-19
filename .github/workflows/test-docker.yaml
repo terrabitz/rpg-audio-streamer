@@ -1,12 +1,14 @@
 name: Test Docker
 
 on:
+  workflow_dispatch:
   pull_request:
     paths:
       - 'docker/**'
 
 jobs:
   build:
+    name: Build Docker Image
     runs-on: ubuntu-latest
     steps:
       - name: Set up QEMU
