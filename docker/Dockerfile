@@ -21,8 +21,15 @@ RUN CGOENABLED=1 go build -tags netgo,osusergo -ldflags "-linkmode 'external' -e
 # Stage 3: Create the final runtime image
 FROM caddy:2.7-alpine
 
-# Install FFmpeg and supervisord
-RUN apk add --no-cache ffmpeg supervisor
+# Add s6-overlay
+ADD https://github.com/just-containers/s6-overlay/releases/download/v3.1.6.2/s6-overlay-noarch.tar.xz /tmp
+ADD https://github.com/just-containers/s6-overlay/releases/download/v3.1.6.2/s6-overlay-x86_64.tar.xz /tmp
+RUN tar -C / -Jxpf /tmp/s6-overlay-noarch.tar.xz && \
+  tar -C / -Jxpf /tmp/s6-overlay-x86_64.tar.xz && \
+  rm /tmp/s6-overlay-*.tar.xz
+
+# Install FFmpeg
+RUN apk add --no-cache ffmpeg
 
 # Set up directories
 WORKDIR /app
@@ -31,23 +38,26 @@ WORKDIR /app
 COPY --from=backend-builder /app/server /app/server
 COPY --from=frontend-builder /ui/dist /srv
 
-# Copy Caddy and supervisor configurations
+# Copy Caddy and s6 configurations
 COPY docker/Caddyfile /etc/caddy/Caddyfile
-COPY docker/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+COPY docker/s6-rc.d /etc/s6-overlay/s6-rc.d
 
-# Expose HTTP and HTTPS ports
-EXPOSE 80 443 8080
-
-RUN mkdir -p /data/app/uploads  \
+# Create directories and set permissions
+RUN mkdir -p /data/app/uploads \
   && mkdir -p /config \
-  && chown -R nobody:nobody /data  \
-  && chown -R nobody:nobody /app  \
-  && chown -R nobody:nobody /config  \
+  && chown -R nobody:nobody /data \
+  && chown -R nobody:nobody /app \
+  && chown -R nobody:nobody /config \
   && chown -R nobody:nobody /srv
 
 # Set default env vars for Docker layout
 ENV DB_PATH=/data/app/skaldbot.db \
-  UPLOAD_DIR=/data/app/uploads
+  UPLOAD_DIR=/data/app/uploads \
+  S6_KEEP_ENV=1 \
+  S6_BEHAVIOUR_IF_STAGE2_FAILS=2 \
+  S6_CMD_WAIT_FOR_SERVICES_MAXTIME=0
 
-# Start supervisord
-CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]
+# Expose ports
+EXPOSE 80 443 8080
+
+ENTRYPOINT ["/init"]

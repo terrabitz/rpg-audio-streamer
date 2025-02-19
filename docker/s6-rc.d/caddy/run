@@ -1,0 +1,4 @@
+#!/command/execlineb -P
+with-contenv
+cd /srv
+caddy run --config /etc/caddy/Caddyfile --adapter caddyfile
