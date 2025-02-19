@@ -1,3 +1,10 @@
+## [1.0.1](https://github.com/terrabitz/rpg-audio-streamer/compare/v1.0.0...v1.0.1) (2025-02-19)
+
+
+### Bug Fixes
+
+* Fix Docker release ([#21](https://github.com/terrabitz/rpg-audio-streamer/issues/21)) ([f4234ad](https://github.com/terrabitz/rpg-audio-streamer/commit/f4234ad2a2b5db59f1a4c6b686022f72d3e8b273))
+
 # 1.0.0 (2025-02-19)
 
 
