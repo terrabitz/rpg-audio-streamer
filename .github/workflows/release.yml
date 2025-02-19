@@ -43,8 +43,6 @@ jobs:
     if: needs.version.outputs.new_release_published == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
@@ -61,8 +59,7 @@ jobs:
       - name: Build and push
         uses: docker/build-push-action@v5
         with:
-          context: .
-          file: ./docker/Dockerfile
+          file: '{context}/docker/Dockerfile'
           platforms: linux/amd64,linux/arm64
           push: true
           tags: |
