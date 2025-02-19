@@ -19,7 +19,7 @@ COPY internal internal
 RUN CGOENABLED=1 go build -tags netgo,osusergo -ldflags "-linkmode 'external' -extldflags '-static'" -o server main.go
 
 # Stage 3: Create the final runtime image
-FROM caddy:2.7-alpine
+FROM alpine:3.21.3
 
 # Add s6-overlay
 ADD https://github.com/just-containers/s6-overlay/releases/download/v3.1.6.2/s6-overlay-noarch.tar.xz /tmp
@@ -28,8 +28,10 @@ RUN tar -C / -Jxpf /tmp/s6-overlay-noarch.tar.xz && \
   tar -C / -Jxpf /tmp/s6-overlay-x86_64.tar.xz && \
   rm /tmp/s6-overlay-*.tar.xz
 
-# Install FFmpeg
-RUN apk add --no-cache ffmpeg
+# Install OS packages
+RUN apk add --no-cache \
+  ffmpeg \
+  caddy
 
 # Set up directories
 WORKDIR /app
