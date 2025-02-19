@@ -1,0 +1,34 @@
+services:
+  skald:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: skald
+    restart: unless-stopped
+    env_file: ../.env
+    ports:
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+    volumes:
+      - data:/data/app
+      - caddy_data:/data/caddy
+      - caddy_config:/config/caddy
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+        reservations:
+          memory: 512M
+
+volumes:
+  data:
+    name: skald_data
+  caddy_data:
+    name: skald_caddy_data
+  caddy_config:
+    name: skald_caddy_config

@@ -13,13 +13,105 @@ A simple synchronized soundboard designed for tabletop RPGs, allowing game maste
 
 ## Installation
 
-### Prerequisites
+### Using Docker (Recommended)
+
+#### Option 1: Docker Compose
+
+1. Create a new directory and add the following files:
+
+   ```bash
+   mkdir rpg-audio-streamer && cd rpg-audio-streamer
+   ```
+
+<!-- FIXME: fix this step -->
+2. Generate a password hash:
+   ```bash
+   go run ./cmd/hashpass/main.go
+   ```
+
+3. Create an environment file:
+   ```bash
+   # Generate secure tokens
+   TOKEN_SECRET=$(openssl rand -hex 64)
+   JOIN_TOKEN=$(openssl rand -hex 32)
+
+   # Create .env file
+   cat > .env << EOL
+   ROOT_USERNAME=admin
+   ROOT_PASSWORD_HASH='<password-from-step-2>'
+   TOKEN_SECRET=$TOKEN_SECRET
+   JOIN_TOKEN=$JOIN_TOKEN
+   HOSTNAME=<your-server-hostname>
+   EOL
+   ```
+
+4. Create a docker-compose.yml:
+   ```yaml
+   services:
+     app:
+       image: ghcr.io/terrabitz/rpg-audio-streamer:latest
+       restart: unless-stopped
+       env_file: .env
+       ports:
+         - "80:80"
+         - "443:443"
+       volumes:
+         - data:/data/app
+         - caddy_data:/data/caddy
+         - caddy_config:/config/caddy
+
+   volumes:
+     data:
+     caddy_data:
+     caddy_config:
+   ```
+
+5. Start the server:
+   ```bash
+   docker compose up -d
+   ```
+
+#### Option 2: Plain Docker
+
+1. Create data directories:
+   ```bash
+   mkdir -p data/app/uploads
+   ```
+
+2. Generate configuration:
+   ```bash
+   # Generate secure tokens
+   TOKEN_SECRET=$(openssl rand -hex 64)
+   JOIN_TOKEN=$(openssl rand -hex 32)
+
+   # Generate password hash
+   docker run --rm ghcr.io/terrabitz/rpg-audio-streamer:latest ./server hash-password
+   ```
+
+3. Run the container:
+   ```bash
+   docker run -d \
+     --name rpg-audio-streamer \
+     -p 80:80 \
+     -e ROOT_USERNAME=admin \
+     -e ROOT_PASSWORD_HASH=<hash from step 2> \
+     -e TOKEN_SECRET=$TOKEN_SECRET \
+     -e JOIN_TOKEN=$JOIN_TOKEN \
+     -e UPLOAD_DIR=/data/app/uploads \
+     -e DB_PATH=/data/app/skaldbot.db \
+     -v $PWD/data:/data/app \
+     ghcr.io/terrabitz/rpg-audio-streamer:latest
+   ```
+
+### Manual Installation (Alternative)
+
+#### Prerequisites
 
 - Go 1.21 or later
 - FFmpeg
 - Node.js 20+ (for UI development)
 
-### Quick Start
+#### Quick Start
 
 1. Clone the repository:
    ```bash

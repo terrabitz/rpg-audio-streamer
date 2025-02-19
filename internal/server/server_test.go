@@ -83,7 +83,7 @@ func setupTestServer(t *testing.T) *testServer {
 		Port:      8080,
 		UploadDir: tempDir,
 		CORS:      middlewares.CorsConfig{},
-	}, slog.New(slog.NewTextHandler(io.Discard, nil)), nil, mockAuth, mockTrackStore)
+	}, slog.New(slog.NewTextHandler(io.Discard, nil)), mockAuth, mockTrackStore)
 	if err != nil {
 		t.Fatalf("failed to create server: %v", err)
 	}

@@ -3,8 +3,8 @@
 Tasks to complete before releasing to my players:
 - [X] Fix reconnection bug
 - [X] Add player track type mixer
-- [ ] Add GM track type mixer
-- [ ] Infrastructure setup
+- [X] Add GM track type mixer
+- [X] Infrastructure setup
 
 Tasks to complete before GA of self-hostable:
 - [ ] Better file management

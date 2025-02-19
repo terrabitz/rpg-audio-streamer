@@ -1,0 +1,15 @@
+{$HOSTNAME:localhost:80} {
+	handle /api/* {
+		reverse_proxy :8080
+	}
+
+	handle {
+		root * /app/frontend
+		try_files {path} /index.html
+		file_server
+	}
+
+	encode {
+		zstd
+	}
+}

@@ -1,0 +1,46 @@
+# Dependencies
+**/node_modules
+**/dist
+**/vendor
+
+# Environment and secrets
+**/.env
+**/.env.*
+!**/.env.production
+**/*.pem
+**/*.key
+
+# Build artifacts
+**/build
+**/bin
+**/*.exe
+**/*.dll
+**/*.so
+**/*.dylib
+
+# Development artifacts
+**/.git
+**/.gitignore
+**/.idea
+**/.vscode
+**/.DS_Store
+**/Thumbs.db
+**/*.log
+**/*.swp
+**/coverage
+**/.coverage
+
+# Project specific
+**/uploads
+**/*.mp3
+**/*.wav
+**/*.ogg
+**/*.m4a
+**/README.md
+**/LICENSE
+**/.github
+**/docs
+**/tests
+**/*_test.go
+**/*.test.ts
+**/*.spec.ts

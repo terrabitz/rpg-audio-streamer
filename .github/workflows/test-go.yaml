@@ -1,6 +1,7 @@
-name: Test
+name: Test Go
 
 on:
+  workflow_dispatch:
   pull_request:
     paths:
       - '**.go'
