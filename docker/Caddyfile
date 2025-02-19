@@ -1,4 +1,4 @@
-{$SITE_HOSTNAME:localhost:80} {
+{$HOSTNAME:localhost:80} {
 	handle /api/* {
 		reverse_proxy :8080
 	}
