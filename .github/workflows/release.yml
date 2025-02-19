@@ -18,7 +18,9 @@ jobs:
   version:
     runs-on: ubuntu-latest
     outputs:
-      new_version: ${{ steps.semantic.outputs.new_release_version }}
+      new_release_version: ${{ steps.semantic.outputs.new_release_version }}
+      new_release_major_version: ${{ steps.semantic.outputs.new_release_major_version }}
+      new_release_minor_version: ${{ steps.semantic.outputs.new_release_minor_version }}
       new_release_published: ${{ steps.semantic.outputs.new_release_published }}
     steps:
       - uses: actions/checkout@v4
@@ -65,7 +67,9 @@ jobs:
           push: true
           tags: |
             ghcr.io/${{ github.repository }}:latest
-            ghcr.io/${{ github.repository }}:${{ needs.version.outputs.new_version }}
+            ghcr.io/${{ github.repository }}:${{ needs.version.outputs.new_release_version }}
+            ghcr.io/${{ github.repository }}:${{ needs.version.outputs.new_release_major_version }}
+            ghcr.io/${{ github.repository }}:${{ needs.version.outputs.new_release_major_version }}.${{ needs.version.outputs.new_release_minor_version }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
