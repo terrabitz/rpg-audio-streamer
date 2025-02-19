@@ -1,3 +1,11 @@
+{
+    admin off
+    persist_config off
+    storage file_system {
+        root /caddy/data
+    }
+}
+
 {$HOSTNAME:localhost:80} {
 	handle /api/* {
 		reverse_proxy :8080

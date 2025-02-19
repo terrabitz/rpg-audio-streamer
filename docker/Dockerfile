@@ -52,15 +52,14 @@ COPY docker/Caddyfile /etc/caddy/Caddyfile
 COPY docker/s6-rc.d /etc/s6-overlay/s6-rc.d
 
 # Create directories and set permissions
-RUN mkdir -p /data/app/uploads \
-  && mkdir -p /config \
-  && chown -R nobody:nobody /data \
+RUN mkdir -p /app/data/uploads \
+  && mkdir -p /caddy/data \
   && chown -R nobody:nobody /app \
-  && chown -R nobody:nobody /config
+  && chown -R nobody:nobody /caddy
 
 # Set default env vars for Docker layout
-ENV DB_PATH=/data/app/skaldbot.db \
-  UPLOAD_DIR=/data/app/uploads
+ENV DB_PATH=/app/data/skaldbot.db \
+  UPLOAD_DIR=/app/data/uploads
 
 # Set s6-overlay environment variables
 ENV  S6_KEEP_ENV=1 \
