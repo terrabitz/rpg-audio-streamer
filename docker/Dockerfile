@@ -45,5 +45,9 @@ RUN mkdir -p /data/app/uploads  \
   && chown -R nobody:nobody /config  \
   && chown -R nobody:nobody /srv
 
+# Set default env vars for Docker layout
+ENV DB_PATH=/data/app/skaldbot.db \
+  UPLOAD_DIR=/data/app/uploads
+
 # Start supervisord
 CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]
