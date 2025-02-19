@@ -60,8 +60,10 @@ RUN mkdir -p /data/app/uploads \
 
 # Set default env vars for Docker layout
 ENV DB_PATH=/data/app/skaldbot.db \
-  UPLOAD_DIR=/data/app/uploads \
-  S6_KEEP_ENV=1 \
+  UPLOAD_DIR=/data/app/uploads
+
+# Set s6-overlay environment variables
+ENV  S6_KEEP_ENV=1 \
   S6_BEHAVIOUR_IF_STAGE2_FAILS=2 \
   S6_CMD_WAIT_FOR_SERVICES_MAXTIME=0
 
