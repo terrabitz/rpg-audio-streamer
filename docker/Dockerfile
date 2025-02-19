@@ -21,11 +21,18 @@ RUN CGOENABLED=1 go build -tags netgo,osusergo -ldflags "-linkmode 'external' -e
 # Stage 3: Create the final runtime image
 FROM alpine:3.21.3
 
-# Add s6-overlay
-ADD https://github.com/just-containers/s6-overlay/releases/download/v3.1.6.2/s6-overlay-noarch.tar.xz /tmp
-ADD https://github.com/just-containers/s6-overlay/releases/download/v3.1.6.2/s6-overlay-x86_64.tar.xz /tmp
-RUN tar -C / -Jxpf /tmp/s6-overlay-noarch.tar.xz && \
-  tar -C / -Jxpf /tmp/s6-overlay-x86_64.tar.xz && \
+ARG TARGETARCH
+
+# Add s6-overlay with architecture support
+RUN S6_ARCH=$(case ${TARGETARCH} in \
+  "amd64") echo "x86_64";; \
+  "arm64") echo "aarch64";; \
+  *) echo "unsupported architecture: ${TARGETARCH}" && exit 1;; \
+  esac) && \
+  wget -q "https://github.com/just-containers/s6-overlay/releases/download/v3.1.6.2/s6-overlay-noarch.tar.xz" -O /tmp/s6-overlay-noarch.tar.xz && \
+  wget -q "https://github.com/just-containers/s6-overlay/releases/download/v3.1.6.2/s6-overlay-${S6_ARCH}.tar.xz" -O /tmp/s6-overlay-arch.tar.xz && \
+  tar -C / -Jxpf /tmp/s6-overlay-noarch.tar.xz && \
+  tar -C / -Jxpf /tmp/s6-overlay-arch.tar.xz && \
   rm /tmp/s6-overlay-*.tar.xz
 
 # Install OS packages
