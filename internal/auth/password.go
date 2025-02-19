@@ -19,11 +19,11 @@ type params struct {
 }
 
 var defaultParams = &params{
-	memory:      1024 * 1024, // 1GB
-	iterations:  4,           // 4 iterations
-	parallelism: 4,           // 4 parallel threads
-	saltLength:  16,          // 16 bytes
-	keyLength:   32,          // 32 bytes
+	memory:      1024 * 64, // 64 MB
+	iterations:  2,         // 4 iterations
+	parallelism: 2,         // 4 parallel threads
+	saltLength:  16,        // 16 bytes
+	keyLength:   32,        // 32 bytes
 }
 
 func HashPassword(password string) (string, error) {
