@@ -6,7 +6,7 @@ COPY ui .
 RUN npm install && npm run build
 
 # Stage 2: Build Go backend
-FROM golang:1.24 AS backend-builder
+FROM golang:1.24-alpine AS backend-builder
 
 WORKDIR /app
 COPY go.mod go.sum ./
@@ -16,7 +16,7 @@ COPY main.go .
 COPY sql sql
 COPY internal internal
 
-RUN CGOENABLED=1 go build -tags netgo,osusergo -ldflags "-linkmode 'external' -extldflags '-static'" -o server main.go
+RUN CGOENABLED=1 go build -o server main.go
 
 # Stage 3: Create the final runtime image
 FROM alpine:3.21.3
