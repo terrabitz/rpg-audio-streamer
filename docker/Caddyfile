@@ -4,7 +4,7 @@
 	}
 
 	handle {
-		root * /srv
+		root * /app/frontend
 		try_files {path} /index.html
 		file_server
 	}

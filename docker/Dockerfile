@@ -16,7 +16,7 @@ COPY main.go .
 COPY sql sql
 COPY internal internal
 
-RUN CGOENABLED=1 go build -o server main.go
+RUN CGOENABLED=1 go build -o backend main.go
 
 # Stage 3: Create the final runtime image
 FROM alpine:3.21.3
@@ -44,8 +44,8 @@ RUN apk add --no-cache \
 WORKDIR /app
 
 # Copy built backend and frontend
-COPY --from=backend-builder /app/server /app/server
-COPY --from=frontend-builder /ui/dist /srv
+COPY --from=backend-builder /app/backend /app/backend
+COPY --from=frontend-builder /ui/dist /app/frontend
 
 # Copy Caddy and s6 configurations
 COPY docker/Caddyfile /etc/caddy/Caddyfile
@@ -56,8 +56,7 @@ RUN mkdir -p /data/app/uploads \
   && mkdir -p /config \
   && chown -R nobody:nobody /data \
   && chown -R nobody:nobody /app \
-  && chown -R nobody:nobody /config \
-  && chown -R nobody:nobody /srv
+  && chown -R nobody:nobody /config
 
 # Set default env vars for Docker layout
 ENV DB_PATH=/data/app/skaldbot.db \
