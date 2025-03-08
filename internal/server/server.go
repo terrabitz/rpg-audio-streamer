@@ -67,36 +67,6 @@ func New(cfg Config, logger *slog.Logger, auth Authenticator, store Store) (*Ser
 	return srv, nil
 }
 
-type AuthedHandlerFunc func(http.ResponseWriter, *http.Request, *auth.Token)
-
-func (s *Server) authMiddleware(next AuthedHandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		cookie, err := readCookie(r, authCookieName)
-		if err != nil {
-			http.Error(w, "Unauthorized", http.StatusUnauthorized)
-			return
-		}
-
-		token, err := s.auth.ValidateToken(cookie)
-		if err != nil {
-			http.Error(w, "Invalid token", http.StatusUnauthorized)
-			return
-		}
-
-		next(w, r, token)
-	}
-}
-
-func (s *Server) gmOnlyMiddleware(next AuthedHandlerFunc) http.HandlerFunc {
-	return s.authMiddleware(func(w http.ResponseWriter, r *http.Request, token *auth.Token) {
-		if token.Role != auth.RoleGM {
-			http.Error(w, "Unauthorized", http.StatusUnauthorized)
-			return
-		}
-		next(w, r, token)
-	})
-}
-
 func (s *Server) Start() error {
 	// Ensure upload directory exists
 	if err := os.MkdirAll(s.cfg.UploadDir, os.ModePerm); err != nil {
