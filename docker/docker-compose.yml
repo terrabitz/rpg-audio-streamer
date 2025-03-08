@@ -1,14 +1,12 @@
 services:
   skald:
-    build:
-      context: ..
-      dockerfile: docker/Dockerfile
+    image: ghcr.io/terrabitz/rpg-audio-streamer
     container_name: skald
     restart: unless-stopped
     env_file: ../.env
     ports:
-      - "${HTTP_PORT:-80}:80"
-      - "${HTTPS_PORT:-443}:443"
+      - "80:80"
+      - "443:443"
     volumes:
       - app_data:/app/data
       - caddy_data:/caddy/data
@@ -17,12 +15,6 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
-    deploy:
-      resources:
-        limits:
-          memory: 1G
-        reservations:
-          memory: 512M
 
 volumes:
   app_data:
