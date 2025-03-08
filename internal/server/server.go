@@ -67,7 +67,9 @@ func New(cfg Config, logger *slog.Logger, auth Authenticator, store Store) (*Ser
 	return srv, nil
 }
 
-func (s *Server) authMiddleware(next http.HandlerFunc) http.HandlerFunc {
+type AuthedHandlerFunc func(http.ResponseWriter, *http.Request, *auth.Token)
+
+func (s *Server) authMiddleware(next AuthedHandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		cookie, err := readCookie(r, authCookieName)
 		if err != nil {
@@ -81,19 +83,17 @@ func (s *Server) authMiddleware(next http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 
-		ctx := SetAuthToken(r.Context(), token)
-		next(w, r.WithContext(ctx))
+		next(w, r, token)
 	}
 }
 
-func (s *Server) gmOnlyMiddleware(next http.HandlerFunc) http.HandlerFunc {
-	return s.authMiddleware(func(w http.ResponseWriter, r *http.Request) {
-		token, ok := GetAuthToken(r.Context())
-		if !ok || token.Role != auth.RoleGM {
-			http.Error(w, "Forbidden", http.StatusForbidden)
+func (s *Server) gmOnlyMiddleware(next AuthedHandlerFunc) http.HandlerFunc {
+	return s.authMiddleware(func(w http.ResponseWriter, r *http.Request, token *auth.Token) {
+		if token.Role != auth.RoleGM {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
 		}
-		next(w, r)
+		next(w, r, token)
 	})
 }
 
@@ -111,12 +111,12 @@ func (s *Server) Start() error {
 	mux.HandleFunc("/api/v1/auth/status", s.handleAuthStatus)
 	mux.HandleFunc("/api/v1/auth/logout", s.handleLogout)
 
-	// Protected endpoints
-	mux.HandleFunc("/api/v1/stream/", s.authMiddleware(s.streamDirectory))
+	// Protected endpoints with role validation
 	mux.HandleFunc("/api/v1/files", s.gmOnlyMiddleware(s.handleFiles))
 	mux.HandleFunc("/api/v1/files/{trackID}", s.gmOnlyMiddleware(s.handleFileDelete))
-	mux.HandleFunc("/api/v1/trackTypes", s.authMiddleware(s.handleTrackTypes))
 	mux.HandleFunc("/api/v1/join-token", s.gmOnlyMiddleware(s.handleJoinToken))
+	mux.HandleFunc("/api/v1/stream/", s.authMiddleware(s.streamDirectory))
+	mux.HandleFunc("/api/v1/trackTypes", s.authMiddleware(s.handleTrackTypes))
 
 	// Apply global middleware
 	handler := middlewares.LoggerMiddleware(s.logger)(
@@ -220,7 +220,7 @@ func (s *Server) Start() error {
 	return srv.ListenAndServe()
 }
 
-func (s *Server) handleFiles(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleFiles(w http.ResponseWriter, r *http.Request, token *auth.Token) {
 	switch r.Method {
 	case http.MethodGet:
 		s.listFiles(w, r)
@@ -231,7 +231,7 @@ func (s *Server) handleFiles(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (s *Server) handleFileDelete(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleFileDelete(w http.ResponseWriter, r *http.Request, token *auth.Token) {
 	if r.Method != http.MethodDelete {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -266,20 +266,13 @@ func (s *Server) handleFileDelete(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("Track deleted successfully"))
 }
 
-func (s *Server) streamDirectory(w http.ResponseWriter, r *http.Request) {
+func (s *Server) streamDirectory(w http.ResponseWriter, r *http.Request, token *auth.Token) {
 	relativePath := strings.TrimPrefix(r.URL.Path, "/api/v1/stream/")
 	filePath := filepath.Join(s.cfg.UploadDir, relativePath)
 	http.ServeFile(w, r, filePath)
 }
 
-func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
-	token, ok := GetAuthToken(r.Context())
-	if !ok {
-		s.logger.Error("failed to get auth token from context")
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
-		return
-	}
-
+func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request, token *auth.Token) {
 	conn, err := s.upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		s.logger.Error("websocket upgrade failed", "error", err)
@@ -395,7 +388,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (s *Server) handleJoinToken(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleJoinToken(w http.ResponseWriter, r *http.Request, token *auth.Token) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return

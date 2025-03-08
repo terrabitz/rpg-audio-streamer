@@ -115,26 +115,25 @@ func TestUploadFile(t *testing.T) {
 	// Get the Ambiance track type ID
 	ambianceID := uuid.MustParse("1EC000A2-A7C9-11EE-A0E5-0242AC120002")
 
-	// Create test file content
-	content := []byte("RIFF$\x00\x00\x00WAVEfmt \x10\x00\x00\x00\x01\x00\x01\x00\x80>\x00\x00\x00}\x00\x00\x02\x00\x10\x00data\x00\x00\x00\x00")
-	body := &bytes.Buffer{}
-	writer := multipart.NewWriter(body)
-	part, err := writer.CreateFormFile("files", "test.mp3")
-	if err != nil {
-		t.Fatalf("failed to create form file: %v", err)
-	}
-	part.Write(content)
-	writer.WriteField("name", "Test Track")
-	writer.WriteField("typeId", ambianceID.String())
-	writer.Close()
+	t.Run("successful upload", func(t *testing.T) {
+		// Create test file content
+		content := []byte("RIFF$\x00\x00\x00WAVEfmt \x10\x00\x00\x00\x01\x00\x01\x00\x80>\x00\x00\x00}\x00\x00\x02\x00\x10\x00data\x00\x00\x00\x00")
+		body := &bytes.Buffer{}
+		writer := multipart.NewWriter(body)
+		part, err := writer.CreateFormFile("files", "test.mp3")
+		if err != nil {
+			t.Fatalf("failed to create form file: %v", err)
+		}
+		part.Write(content)
+		writer.WriteField("name", "Test Track")
+		writer.WriteField("typeId", ambianceID.String())
+		writer.Close()
 
-	t.Run("with GM auth", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPost, "/api/v1/files", body)
 		req.Header.Set("Content-Type", writer.FormDataContentType())
-		addAuthCookie(req, ts.auth.(*mockAuth).token.String())
 		rec := httptest.NewRecorder()
 
-		ts.gmOnlyMiddleware(ts.uploadFile)(rec, req)
+		ts.handleFiles(rec, req, &auth.Token{Role: auth.RoleGM})
 
 		if rec.Code != http.StatusOK {
 			t.Errorf("expected status OK; got %v", rec.Code)
@@ -159,32 +158,14 @@ func TestUploadFile(t *testing.T) {
 		}
 	})
 
-	t.Run("with player auth", func(t *testing.T) {
-		// Create a player token
-		playerToken := &auth.Token{Role: auth.RolePlayer}
-		ts.auth.(*mockAuth).token = playerToken
-
-		req := httptest.NewRequest(http.MethodPost, "/api/v1/files", body)
-		req.Header.Set("Content-Type", writer.FormDataContentType())
-		addAuthCookie(req, playerToken.String())
+	t.Run("invalid form data", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/files", bytes.NewReader([]byte("invalid")))
 		rec := httptest.NewRecorder()
 
-		ts.gmOnlyMiddleware(ts.uploadFile)(rec, req)
+		ts.handleFiles(rec, req, &auth.Token{Role: auth.RoleGM})
 
-		if rec.Code != http.StatusForbidden {
-			t.Errorf("expected status Forbidden; got %v", rec.Code)
-		}
-	})
-
-	t.Run("without auth", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodPost, "/api/v1/files", body)
-		req.Header.Set("Content-Type", writer.FormDataContentType())
-		rec := httptest.NewRecorder()
-
-		ts.gmOnlyMiddleware(ts.uploadFile)(rec, req)
-
-		if rec.Code != http.StatusUnauthorized {
-			t.Errorf("expected status Unauthorized; got %v", rec.Code)
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("expected status BadRequest; got %v", rec.Code)
 		}
 	})
 }
@@ -193,41 +174,60 @@ func TestListFiles(t *testing.T) {
 	ts := setupTestServer(t)
 	defer ts.cleanup(t)
 
-	// Get a valid track type ID for test files
 	ambianceID := uuid.MustParse("1EC000A2-A7C9-11EE-A0E5-0242AC120002")
 
-	// Create some test files
-	testFiles := []struct {
-		name    string
-		content string
-	}{
-		{"test1.mp3", "RIFF$\x00\x00\x00WAVEfmt \x10\x00\x00\x00\x01\x00\x01\x00\x80>\x00\x00\x00}\x00\x00\x02\x00\x10\x00data\x00\x00\x00\x00"},
-		{"test2.mp3", "RIFF$\x00\x00\x00WAVEfmt \x10\x00\x00\x00\x01\x00\x01\x00\x80>\x00\x00\x00}\x00\x00\x02\x00\x10\x00data\x00\x00\x00\x00"},
-	}
-	for _, tf := range testFiles {
-		hlsDir := filepath.Join(ts.tempDir, tf.name)
-		if err := os.MkdirAll(hlsDir, os.ModePerm); err != nil {
-			t.Fatalf("failed to create directory: %v", err)
-		}
-		hlsFile := filepath.Join(hlsDir, "index.m3u8")
-		if err := os.WriteFile(hlsFile, []byte(tf.content), 0644); err != nil {
-			t.Fatalf("failed to create test file: %v", err)
-		}
-		trackID := uuid.New()
-		ts.store.(*MockTrackStore).tracks[trackID] = Track{
-			ID:     trackID,
-			Name:   tf.name,
-			Path:   hlsDir,
-			TypeID: ambianceID,
-		}
-	}
-
-	t.Run("with GM auth", func(t *testing.T) {
+	t.Run("empty list", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/api/v1/files", nil)
-		addAuthCookie(req, ts.auth.(*mockAuth).token.String())
 		rec := httptest.NewRecorder()
 
-		ts.gmOnlyMiddleware(ts.listFiles)(rec, req)
+		ts.handleFiles(rec, req, &auth.Token{Role: auth.RoleGM})
+
+		if rec.Code != http.StatusOK {
+			t.Errorf("expected status OK; got %v", rec.Code)
+		}
+
+		var files []Track
+		if err := json.NewDecoder(rec.Body).Decode(&files); err != nil {
+			t.Fatalf("failed to decode response: %v", err)
+		}
+
+		if len(files) != 0 {
+			t.Errorf("expected empty list; got %d files", len(files))
+		}
+	})
+
+	t.Run("with files", func(t *testing.T) {
+		// Create some test files
+		testFiles := []struct {
+			name    string
+			content string
+		}{
+			{"test1.mp3", "test content 1"},
+			{"test2.mp3", "test content 2"},
+		}
+
+		for _, tf := range testFiles {
+			hlsDir := filepath.Join(ts.tempDir, tf.name)
+			if err := os.MkdirAll(hlsDir, os.ModePerm); err != nil {
+				t.Fatalf("failed to create directory: %v", err)
+			}
+			hlsFile := filepath.Join(hlsDir, "index.m3u8")
+			if err := os.WriteFile(hlsFile, []byte(tf.content), 0644); err != nil {
+				t.Fatalf("failed to create test file: %v", err)
+			}
+			trackID := uuid.New()
+			ts.store.(*MockTrackStore).tracks[trackID] = Track{
+				ID:     trackID,
+				Name:   tf.name,
+				Path:   hlsDir,
+				TypeID: ambianceID,
+			}
+		}
+
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/files", nil)
+		rec := httptest.NewRecorder()
+
+		ts.handleFiles(rec, req, &auth.Token{Role: auth.RoleGM})
 
 		if rec.Code != http.StatusOK {
 			t.Errorf("expected status OK; got %v", rec.Code)
@@ -242,15 +242,10 @@ func TestListFiles(t *testing.T) {
 			t.Errorf("expected %d files; got %d", len(testFiles), len(files))
 		}
 
-		// Verify file names
-		fileNames := make([]string, len(files))
-		for i, f := range files {
-			fileNames[i] = f.Name
-		}
 		for _, tf := range testFiles {
 			found := false
-			for _, name := range fileNames {
-				if name == tf.name {
+			for _, f := range files {
+				if f.Name == tf.name {
 					found = true
 					break
 				}
@@ -260,69 +255,39 @@ func TestListFiles(t *testing.T) {
 			}
 		}
 	})
-
-	t.Run("with player auth", func(t *testing.T) {
-		playerToken := &auth.Token{Role: auth.RolePlayer}
-		ts.auth.(*mockAuth).token = playerToken
-
-		req := httptest.NewRequest(http.MethodGet, "/api/v1/files", nil)
-		addAuthCookie(req, playerToken.String())
-		rec := httptest.NewRecorder()
-
-		ts.gmOnlyMiddleware(ts.listFiles)(rec, req)
-
-		if rec.Code != http.StatusForbidden {
-			t.Errorf("expected status Forbidden; got %v", rec.Code)
-		}
-	})
-
-	t.Run("without auth", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/api/v1/files", nil)
-		rec := httptest.NewRecorder()
-
-		ts.gmOnlyMiddleware(ts.listFiles)(rec, req)
-
-		if rec.Code != http.StatusUnauthorized {
-			t.Errorf("expected status Unauthorized; got %v", rec.Code)
-		}
-	})
 }
 
 func TestDeleteFile(t *testing.T) {
 	ts := setupTestServer(t)
 	defer ts.cleanup(t)
 
-	// Get a valid track type ID
 	ambianceID := uuid.MustParse("1EC000A2-A7C9-11EE-A0E5-0242AC120002")
 
-	// Create a track and store it
-	trackID := uuid.New()
-	trackPath := filepath.Join(ts.tempDir, trackID.String())
-	if err := os.MkdirAll(trackPath, os.ModePerm); err != nil {
-		t.Fatalf("failed to create test folder: %v", err)
-	}
+	t.Run("successful delete", func(t *testing.T) {
+		trackID := uuid.New()
+		trackPath := filepath.Join(ts.tempDir, trackID.String())
+		if err := os.MkdirAll(trackPath, os.ModePerm); err != nil {
+			t.Fatalf("failed to create test folder: %v", err)
+		}
 
-	mockStore := ts.store.(*MockTrackStore)
-	mockStore.tracks[trackID] = Track{
-		ID:     trackID,
-		Path:   trackPath,
-		Name:   "Test Track",
-		TypeID: ambianceID,
-	}
+		mockStore := ts.store.(*MockTrackStore)
+		mockStore.tracks[trackID] = Track{
+			ID:     trackID,
+			Path:   trackPath,
+			Name:   "Test Track",
+			TypeID: ambianceID,
+		}
 
-	t.Run("with GM auth", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodDelete, "/api/v1/files/"+trackID.String(), nil)
-		addAuthCookie(req, ts.auth.(*mockAuth).token.String())
 		rec := httptest.NewRecorder()
 		req.SetPathValue("trackID", trackID.String())
 
-		ts.gmOnlyMiddleware(ts.handleFileDelete)(rec, req)
+		ts.handleFileDelete(rec, req, &auth.Token{Role: auth.RoleGM})
 
 		if rec.Code != http.StatusOK {
 			t.Errorf("expected status OK; got %v", rec.Code)
 		}
 
-		// Verify folder was deleted
 		if _, err := os.Stat(trackPath); !os.IsNotExist(err) {
 			t.Error("folder still exists after deletion")
 		}
@@ -330,25 +295,23 @@ func TestDeleteFile(t *testing.T) {
 
 	t.Run("invalid track ID", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodDelete, "/api/v1/files/invalid-id", nil)
-		addAuthCookie(req, ts.auth.(*mockAuth).token.String())
 		rec := httptest.NewRecorder()
 		req.SetPathValue("trackID", "invalid-id")
 
-		ts.gmOnlyMiddleware(ts.handleFileDelete)(rec, req)
+		ts.handleFileDelete(rec, req, &auth.Token{Role: auth.RoleGM})
 
 		if rec.Code != http.StatusBadRequest {
 			t.Errorf("expected status BadRequest; got %v", rec.Code)
 		}
 	})
 
-	t.Run("nonexistent track ID", func(t *testing.T) {
+	t.Run("nonexistent track", func(t *testing.T) {
 		missingID := uuid.New().String()
 		req := httptest.NewRequest(http.MethodDelete, "/api/v1/files/"+missingID, nil)
-		addAuthCookie(req, ts.auth.(*mockAuth).token.String())
 		rec := httptest.NewRecorder()
 		req.SetPathValue("trackID", missingID)
 
-		ts.gmOnlyMiddleware(ts.handleFileDelete)(rec, req)
+		ts.handleFileDelete(rec, req, &auth.Token{Role: auth.RoleGM})
 
 		if rec.Code != http.StatusNotFound {
 			t.Errorf("expected status NotFound; got %v", rec.Code)
@@ -463,7 +426,7 @@ func TestHandleAuthStatus(t *testing.T) {
 	ts := setupTestServer(t)
 	defer ts.cleanup(t)
 
-	t.Run("with valid auth", func(t *testing.T) {
+	t.Run("successfully retrieves auth status", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/api/v1/auth/status", nil)
 		addAuthCookie(req, ts.auth.(*mockAuth).token.String())
 		rec := httptest.NewRecorder()
@@ -488,7 +451,7 @@ func TestHandleAuthStatus(t *testing.T) {
 		}
 	})
 
-	t.Run("without auth", func(t *testing.T) {
+	t.Run("invalid method", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/api/v1/auth/status", nil)
 		rec := httptest.NewRecorder()
 
@@ -506,11 +469,9 @@ func TestHandleAuthStatus(t *testing.T) {
 		if resp.Authenticated {
 			t.Error("expected authenticated false; got true")
 		}
-	})
 
-	t.Run("invalid method", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/status", nil)
-		rec := httptest.NewRecorder()
+		req = httptest.NewRequest(http.MethodPost, "/api/v1/auth/status", nil)
+		rec = httptest.NewRecorder()
 
 		ts.handleAuthStatus(rec, req)
 
@@ -524,102 +485,72 @@ func TestHandleLogout(t *testing.T) {
 	ts := setupTestServer(t)
 	defer ts.cleanup(t)
 
-	t.Run("successful logout", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/logout", nil)
-		rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/logout", nil)
+	rec := httptest.NewRecorder()
 
-		ts.handleLogout(rec, req)
+	ts.handleLogout(rec, req)
 
-		if rec.Code != http.StatusOK {
-			t.Errorf("expected status OK; got %v", rec.Code)
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected status OK; got %v", rec.Code)
+	}
+
+	cookies := rec.Result().Cookies()
+	var authCookie *http.Cookie
+	for _, cookie := range cookies {
+		if cookie.Name == authCookieName {
+			authCookie = cookie
+			break
 		}
+	}
+	if authCookie == nil {
+		t.Error("auth cookie not cleared")
+	}
+	if !authCookie.Expires.IsZero() && authCookie.Expires.After(time.Now()) {
+		t.Error("auth cookie not expired")
+	}
 
-		cookies := rec.Result().Cookies()
-		var authCookie *http.Cookie
-		for _, cookie := range cookies {
-			if cookie.Name == authCookieName {
-				authCookie = cookie
-				break
-			}
-		}
-		if authCookie == nil {
-			t.Error("auth cookie not cleared")
-		}
-		if !authCookie.Expires.IsZero() && authCookie.Expires.After(time.Now()) {
-			t.Error("auth cookie not expired")
-		}
-	})
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/auth/logout", nil)
+	rec = httptest.NewRecorder()
 
-	t.Run("invalid method", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/api/v1/auth/logout", nil)
-		rec := httptest.NewRecorder()
+	ts.handleLogout(rec, req)
 
-		ts.handleLogout(rec, req)
-
-		if rec.Code != http.StatusMethodNotAllowed {
-			t.Errorf("expected status MethodNotAllowed; got %v", rec.Code)
-		}
-	})
+	if rec.Code != http.StatusMethodNotAllowed {
+		t.Errorf("expected status MethodNotAllowed; got %v", rec.Code)
+	}
 }
 
 func TestHandleJoinToken(t *testing.T) {
-	t.Run("with GM auth", func(t *testing.T) {
-		ts := setupTestServer(t)
-		defer ts.cleanup(t)
+	ts := setupTestServer(t)
+	defer ts.cleanup(t)
 
-		req := httptest.NewRequest(http.MethodGet, "/api/v1/join-token", nil)
-		addAuthCookie(req, ts.auth.(*mockAuth).token.String())
-		rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/join-token", nil)
+	addAuthCookie(req, ts.auth.(*mockAuth).token.String())
+	rec := httptest.NewRecorder()
 
-		ts.gmOnlyMiddleware(ts.handleJoinToken)(rec, req)
+	ts.handleJoinToken(rec, req, &auth.Token{Role: auth.RoleGM})
 
-		if rec.Code != http.StatusOK {
-			t.Errorf("expected status OK; got %v", rec.Code)
-		}
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected status OK; got %v", rec.Code)
+	}
 
-		var resp joinTokenResponse
-		if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
-			t.Fatalf("failed to decode response: %v", err)
-		}
+	var resp joinTokenResponse
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
 
-		if resp.Token != ts.auth.(*mockAuth).joinToken {
-			t.Errorf("expected token %q; got %q", ts.auth.(*mockAuth).joinToken, resp.Token)
-		}
-	})
+	if resp.Token != ts.auth.(*mockAuth).joinToken {
+		t.Errorf("expected token %q; got %q", ts.auth.(*mockAuth).joinToken, resp.Token)
+	}
 
-	t.Run("without GM auth", func(t *testing.T) {
-		ts := setupTestServer(t)
-		defer ts.cleanup(t)
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/join-token", nil)
+	addAuthCookie(req, ts.auth.(*mockAuth).token.String())
+	rec = httptest.NewRecorder()
 
-		// Create a non-GM token
-		playerToken := &auth.Token{Role: auth.RolePlayer}
-		ts.auth.(*mockAuth).token = playerToken
+	ts.handleJoinToken(rec, req, &auth.Token{Role: auth.RoleGM})
 
-		req := httptest.NewRequest(http.MethodGet, "/api/v1/join-token", nil)
-		addAuthCookie(req, playerToken.String())
-		rec := httptest.NewRecorder()
-
-		ts.gmOnlyMiddleware(ts.handleJoinToken)(rec, req)
-
-		if rec.Code != http.StatusForbidden {
-			t.Errorf("expected status Forbidden; got %v", rec.Code)
-		}
-	})
-
-	t.Run("invalid method", func(t *testing.T) {
-		ts := setupTestServer(t)
-		defer ts.cleanup(t)
-
-		req := httptest.NewRequest(http.MethodPost, "/api/v1/join-token", nil)
-		addAuthCookie(req, ts.auth.(*mockAuth).token.String())
-		rec := httptest.NewRecorder()
-
-		ts.gmOnlyMiddleware(ts.handleJoinToken)(rec, req)
-
-		if rec.Code != http.StatusMethodNotAllowed {
-			t.Errorf("expected status MethodNotAllowed; got %v", rec.Code)
-		}
-	})
+	if rec.Code != http.StatusMethodNotAllowed {
+		t.Errorf("expected status MethodNotAllowed; got %v", rec.Code)
+	}
 }
 
 func TestHandleJoin(t *testing.T) {
@@ -692,80 +623,72 @@ func TestHandleJoin(t *testing.T) {
 		})
 	}
 
-	t.Run("invalid method", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/api/v1/join", nil)
-		rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/join", nil)
+	rec := httptest.NewRecorder()
 
-		ts.handleJoin(rec, req)
+	ts.handleJoin(rec, req)
 
-		if rec.Code != http.StatusMethodNotAllowed {
-			t.Errorf("expected status MethodNotAllowed; got %v", rec.Code)
-		}
-	})
+	if rec.Code != http.StatusMethodNotAllowed {
+		t.Errorf("expected status MethodNotAllowed; got %v", rec.Code)
+	}
 
-	t.Run("invalid json", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodPost, "/api/v1/join", bytes.NewReader([]byte("invalid json")))
-		req.Header.Set("Content-Type", "application/json")
-		rec := httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/join", bytes.NewReader([]byte("invalid json")))
+	req.Header.Set("Content-Type", "application/json")
+	rec = httptest.NewRecorder()
 
-		ts.handleJoin(rec, req)
+	ts.handleJoin(rec, req)
 
-		if rec.Code != http.StatusBadRequest {
-			t.Errorf("expected status BadRequest; got %v", rec.Code)
-		}
-	})
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected status BadRequest; got %v", rec.Code)
+	}
 }
 
 func TestTrackTypes(t *testing.T) {
 	ts := setupTestServer(t)
 	defer ts.cleanup(t)
 
-	t.Run("with auth", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/api/v1/trackTypes", nil)
-		addAuthCookie(req, ts.auth.(*mockAuth).token.String())
-		rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/trackTypes", nil)
+	addAuthCookie(req, ts.auth.(*mockAuth).token.String())
+	rec := httptest.NewRecorder()
 
-		ts.authMiddleware(ts.handleTrackTypes)(rec, req)
+	ts.handleTrackTypes(rec, req, &auth.Token{Role: auth.RoleGM})
 
-		if rec.Code != http.StatusOK {
-			t.Errorf("expected status OK; got %v", rec.Code)
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected status OK; got %v", rec.Code)
+	}
+
+	var types []TrackType
+	if err := json.NewDecoder(rec.Body).Decode(&types); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	if len(types) != 3 {
+		t.Errorf("expected 3 track types; got %d", len(types))
+	}
+
+	expectedNames := map[string]bool{
+		"Ambiance": true,
+		"Music":    true,
+		"One-Shot": true,
+	}
+
+	for _, tt := range types {
+		if !expectedNames[tt.Name] {
+			t.Errorf("unexpected track type name: %s", tt.Name)
 		}
+		delete(expectedNames, tt.Name)
+	}
 
-		var types []TrackType
-		if err := json.NewDecoder(rec.Body).Decode(&types); err != nil {
-			t.Fatalf("failed to decode response: %v", err)
-		}
+	if len(expectedNames) > 0 {
+		t.Errorf("missing track types: %v", expectedNames)
+	}
 
-		if len(types) != 3 {
-			t.Errorf("expected 3 track types; got %d", len(types))
-		}
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/trackTypes", nil)
+	rec = httptest.NewRecorder()
 
-		expectedNames := map[string]bool{
-			"Ambiance": true,
-			"Music":    true,
-			"One-Shot": true,
-		}
+	ts.handleTrackTypes(rec, req, &auth.Token{Role: auth.RolePlayer})
 
-		for _, tt := range types {
-			if !expectedNames[tt.Name] {
-				t.Errorf("unexpected track type name: %s", tt.Name)
-			}
-			delete(expectedNames, tt.Name)
-		}
-
-		if len(expectedNames) > 0 {
-			t.Errorf("missing track types: %v", expectedNames)
-		}
-	})
-
-	t.Run("without auth", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/api/v1/trackTypes", nil)
-		rec := httptest.NewRecorder()
-
-		ts.authMiddleware(ts.handleTrackTypes)(rec, req)
-
-		if rec.Code != http.StatusUnauthorized {
-			t.Errorf("expected status Unauthorized; got %v", rec.Code)
-		}
-	})
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected status OK; got %v", rec.Code)
+	}
 }

@@ -3,9 +3,11 @@ package server
 import (
 	"encoding/json"
 	"net/http"
+
+	"github.com/terrabitz/rpg-audio-streamer/internal/auth"
 )
 
-func (s *Server) handleTrackTypes(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleTrackTypes(w http.ResponseWriter, r *http.Request, token *auth.Token) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
