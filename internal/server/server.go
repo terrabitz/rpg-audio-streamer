@@ -105,82 +105,11 @@ func (s *Server) Start() error {
 		Handler: mux,
 	}
 
-	s.hub.HandleFunc("ping", func(payload json.RawMessage, c *ws.Client) {
-		if err := c.Send(ws.Message{
-			Method:  "pong",
-			Payload: payload,
-		}); err != nil {
-			s.logger.Error("failed to send pong message", "error", err)
-		}
-	})
-
-	s.hub.HandleFunc("broadcast", func(payload json.RawMessage, c *ws.Client) {
-		if c.Token.Role != auth.RoleGM {
-			s.logger.Warn("unauthorized broadcast attempt", "role", c.Token.Role)
-			return
-		}
-
-		s.hub.Broadcast(ws.Message{
-			Method:   "broadcast",
-			SenderID: c.ID,
-			Payload:  payload,
-		}, ws.ExceptClient(c)) // Don't send back to sender
-	})
-
-	s.hub.HandleFunc("syncRequest", func(payload json.RawMessage, c *ws.Client) {
-		// Only forward to GM clients
-		s.hub.Broadcast(ws.Message{
-			Method:   "syncRequest",
-			SenderID: c.ID,
-			Payload:  payload,
-		}, ws.ToGMOnly())
-	})
-
-	s.hub.HandleFunc("syncAll", func(payload json.RawMessage, c *ws.Client) {
-		if c.Token.Role != auth.RoleGM {
-			s.logger.Warn("unauthorized broadcast attempt", "role", c.Token.Role)
-			return
-		}
-
-		// Extract target client ID from payload
-		var syncPayload struct {
-			Tracks []any  `json:"tracks"`
-			To     string `json:"to"`
-		}
-		if err := json.Unmarshal(payload, &syncPayload); err != nil {
-			s.logger.Error("failed to unmarshal sync payload", "error", err)
-			return
-		}
-
-		// If a target client is specified, only send to them
-		if syncPayload.To != "" {
-			s.hub.Broadcast(ws.Message{
-				Method:   "syncAll",
-				SenderID: c.ID,
-				Payload:  payload,
-			}, ws.ToClientID(syncPayload.To))
-		} else {
-			// Otherwise broadcast to all players
-			s.hub.Broadcast(ws.Message{
-				Method:   "syncAll",
-				SenderID: c.ID,
-				Payload:  payload,
-			}, ws.ToPlayersOnly())
-		}
-	})
-
-	s.hub.HandleFunc("syncTrack", func(payload json.RawMessage, c *ws.Client) {
-		if c.Token.Role != auth.RoleGM {
-			s.logger.Warn("unauthorized syncTrack command", "role", c.Token.Role)
-			return
-		}
-		s.hub.Broadcast(ws.Message{
-			Method:   "syncTrack",
-			SenderID: c.ID,
-			Payload:  payload,
-		}, ws.ToPlayersOnly())
-	})
-
+	s.hub.HandleFunc("ping", s.handlePing)
+	s.hub.HandleFunc("broadcast", s.handleBroadcast)
+	s.hub.HandleFunc("syncRequest", s.handleSyncRequest)
+	s.hub.HandleFunc("syncAll", s.handleSyncAll)
+	s.hub.HandleFunc("syncTrack", s.handleSyncTrack)
 	go s.hub.Run()
 
 	s.logger.Info("starting server",
