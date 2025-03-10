@@ -1,0 +1,273 @@
+openapi: 3.1.0
+info:
+  title: Skald Bot API
+  version: 1.0.0
+  description: API for managing and streaming audio tracks for tabletop RPG games
+
+servers:
+  - url: https://skald.hackandsla.sh
+    description: Production server
+
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: auth_token
+
+  schemas:
+    LoginRequest:
+      type: object
+      required:
+        - username
+        - password
+      properties:
+        username:
+          type: string
+        password:
+          type: string
+
+    LoginResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        error:
+          type: string
+
+    JoinRequest:
+      type: object
+      required:
+        - token
+      properties:
+        token:
+          type: string
+
+    JoinTokenResponse:
+      type: object
+      properties:
+        token:
+          type: string
+
+    AuthStatusResponse:
+      type: object
+      properties:
+        authenticated:
+          type: boolean
+        role:
+          type: string
+          enum: [gm, player]
+
+    Track:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        createdAt:
+          type: string
+          format: date-time
+        name:
+          type: string
+        path:
+          type: string
+        typeId:
+          type: string
+          format: uuid
+
+    TrackType:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+
+paths:
+  /api/v1/login:
+    post:
+      summary: Authenticate user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginResponse"
+        "401":
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginResponse"
+
+  /api/v1/join:
+    post:
+      summary: Join as player using a token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/JoinRequest"
+      responses:
+        "200":
+          description: Join successful
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginResponse"
+        "401":
+          description: Invalid join token
+
+  /api/v1/auth/status:
+    get:
+      summary: Get current authentication status
+      responses:
+        "200":
+          description: Authentication status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthStatusResponse"
+
+  /api/v1/auth/logout:
+    post:
+      summary: Logout current user
+      responses:
+        "200":
+          description: Logout successful
+
+  /api/v1/files:
+    get:
+      summary: List all audio tracks
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: List of tracks
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Track"
+        "403":
+          description: Not authorized
+    post:
+      summary: Upload new audio track
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                files:
+                  type: string
+                  format: binary
+                name:
+                  type: string
+                typeId:
+                  type: string
+                  format: uuid
+      responses:
+        "200":
+          description: File uploaded successfully
+        "403":
+          description: Not authorized
+
+  /api/v1/files/{trackID}:
+    delete:
+      summary: Delete an audio track
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: trackID
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Track deleted successfully
+        "403":
+          description: Not authorized
+        "404":
+          description: Track not found
+
+  /api/v1/join-token:
+    get:
+      summary: Get a new join token for players
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Join token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JoinTokenResponse"
+        "403":
+          description: Not authorized
+
+  /api/v1/stream/{path}:
+    get:
+      summary: Stream audio content
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: path
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Audio stream
+          content:
+            application/vnd.apple.mpegurl:
+              schema:
+                type: string
+        "403":
+          description: Not authorized
+        "404":
+          description: File not found
+
+  /api/v1/trackTypes:
+    get:
+      summary: Get available track types
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: List of track types
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TrackType"
+        "403":
+          description: Not authorized
+
+  /api/v1/ws:
+    get:
+      summary: WebSocket connection for real-time updates
+      security:
+        - cookieAuth: []
+      responses:
+        "101":
+          description: Switching protocols to WebSocket
+        "403":
+          description: Not authorized
