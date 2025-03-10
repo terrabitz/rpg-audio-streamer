@@ -5,6 +5,10 @@ import (
 	"fmt"
 	"log/slog"
 	"sync"
+
+	"github.com/google/uuid"
+	"github.com/gorilla/websocket"
+	"github.com/terrabitz/rpg-audio-streamer/internal/auth"
 )
 
 type Hub struct {
@@ -18,7 +22,7 @@ type Hub struct {
 }
 
 func NewHub(logger *slog.Logger) *Hub {
-	return &Hub{
+	hub := &Hub{
 		clients:    make(map[*Client]bool),
 		broadcast:  make(chan []byte),
 		register:   make(chan *Client),
@@ -26,6 +30,14 @@ func NewHub(logger *slog.Logger) *Hub {
 		logger:     logger,
 		handlers:   make(map[string]HandlerFunc),
 	}
+
+	hub.HandleFunc("ping", hub.handlePing)
+	hub.HandleFunc("broadcast", hub.handleBroadcast)
+	hub.HandleFunc("syncRequest", hub.handleSyncRequest)
+	hub.HandleFunc("syncAll", hub.handleSyncAll)
+	hub.HandleFunc("syncTrack", hub.handleSyncTrack)
+
+	return hub
 }
 
 func (h *Hub) Run() {
@@ -57,12 +69,23 @@ func (h *Hub) Run() {
 	}
 }
 
-func (h *Hub) Register(c *Client) {
-	h.logger.Debug("registering new client",
-		"id", c.ID,
-		"role", c.Token.Role,
+func (h *Hub) Register(conn *websocket.Conn, token *auth.Token) {
+	client := &Client{
+		ID:    uuid.New().String(),
+		hub:   h,
+		conn:  conn,
+		send:  make(chan []byte, 256),
+		Token: token,
+	}
+
+	h.logger.Debug("new websocket connection",
+		"clientId", client.ID,
+		"role", token.Role,
 	)
-	h.register <- c
+	h.register <- client
+
+	go client.WritePump()
+	go client.ReadPump()
 }
 
 type Message struct {

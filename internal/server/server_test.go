@@ -16,6 +16,7 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
+	"github.com/gorilla/websocket"
 	"github.com/terrabitz/rpg-audio-streamer/internal/auth"
 	"github.com/terrabitz/rpg-audio-streamer/internal/middlewares"
 )
@@ -60,6 +61,20 @@ func (m *mockAuth) ValidateJoinToken(joinToken string) (*auth.Token, error) {
 	return nil, auth.ErrInvalidJoinToken
 }
 
+type mockWSRegisterer struct {
+	t *testing.T
+}
+
+func (m *mockWSRegisterer) Register(conn *websocket.Conn, token *auth.Token) {
+	// For testing purposes, just verify the inputs are not nil
+	if conn == nil {
+		m.t.Error("WebSocket connection is nil")
+	}
+	if token == nil {
+		m.t.Error("auth token is nil")
+	}
+}
+
 func setupTestServer(t *testing.T) *testServer {
 	t.Helper()
 
@@ -77,13 +92,14 @@ func setupTestServer(t *testing.T) *testServer {
 	}
 
 	mockTrackStore := NewMockTrackStore(t)
+	mockWSReg := &mockWSRegisterer{t: t}
 
 	// Create test server
 	srv, err := New(Config{
 		Port:      8080,
 		UploadDir: tempDir,
 		CORS:      middlewares.CorsConfig{},
-	}, slog.New(slog.NewTextHandler(io.Discard, nil)), mockAuth, mockTrackStore)
+	}, slog.New(slog.NewTextHandler(io.Discard, nil)), mockAuth, mockTrackStore, mockWSReg)
 	if err != nil {
 		t.Fatalf("failed to create server: %v", err)
 	}

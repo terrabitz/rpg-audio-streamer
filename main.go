@@ -19,6 +19,7 @@ import (
 	"github.com/terrabitz/rpg-audio-streamer/internal/auth"
 	"github.com/terrabitz/rpg-audio-streamer/internal/server"
 	"github.com/terrabitz/rpg-audio-streamer/internal/sqlitedatastore"
+	ws "github.com/terrabitz/rpg-audio-streamer/internal/websocket"
 )
 
 //go:embed sql/migrations/*
@@ -326,10 +327,15 @@ func startServer(cfg Config) error {
 
 	authService := auth.New(cfg.Auth, logger)
 
-	srv, err := server.New(cfg.Server, logger, authService, db)
+	hub := ws.NewHub(logger)
+
+	srv, err := server.New(cfg.Server, logger, authService, db, hub)
 	if err != nil {
 		return fmt.Errorf("couldn't create server: %w", err)
 	}
+
+	// FIXME use cleaner shutdown handling
+	go hub.Run()
 
 	return srv.Start()
 }

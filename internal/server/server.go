@@ -14,7 +14,6 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/terrabitz/rpg-audio-streamer/internal/auth"
 	"github.com/terrabitz/rpg-audio-streamer/internal/middlewares"
-	ws "github.com/terrabitz/rpg-audio-streamer/internal/websocket"
 )
 
 const (
@@ -29,11 +28,15 @@ type Authenticator interface {
 	ValidateJoinToken(joinToken string) (*auth.Token, error)
 }
 
+type WSRegisterer interface {
+	Register(conn *websocket.Conn, token *auth.Token)
+}
+
 type Server struct {
 	cfg      Config
 	logger   *slog.Logger
 	frontend fs.FS
-	hub      *ws.Hub
+	hub      WSRegisterer
 	upgrader websocket.Upgrader
 	auth     Authenticator
 	store    Store
@@ -46,8 +49,7 @@ type Config struct {
 	CORS      middlewares.CorsConfig
 }
 
-func New(cfg Config, logger *slog.Logger, auth Authenticator, store Store) (*Server, error) {
-	hub := ws.NewHub(logger)
+func New(cfg Config, logger *slog.Logger, auth Authenticator, store Store, hub WSRegisterer) (*Server, error) {
 
 	srv := &Server{
 		logger: logger,
@@ -104,13 +106,6 @@ func (s *Server) Start() error {
 		Addr:    fmt.Sprintf(":%d", s.cfg.Port),
 		Handler: mux,
 	}
-
-	s.hub.HandleFunc("ping", s.handlePing)
-	s.hub.HandleFunc("broadcast", s.handleBroadcast)
-	s.hub.HandleFunc("syncRequest", s.handleSyncRequest)
-	s.hub.HandleFunc("syncAll", s.handleSyncAll)
-	s.hub.HandleFunc("syncTrack", s.handleSyncTrack)
-	go s.hub.Run()
 
 	s.logger.Info("starting server",
 		slog.Int("port", s.cfg.Port),
@@ -178,16 +173,7 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request, token *
 		return
 	}
 
-	client := ws.NewClient(s.hub, conn, token)
-	s.hub.Register(client)
-
-	s.logger.Debug("new websocket connection",
-		"clientId", client.ID,
-		"role", token.Role,
-	)
-
-	go client.WritePump()
-	go client.ReadPump()
+	s.hub.Register(conn, token)
 }
 
 type loginRequest struct {
