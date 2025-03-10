@@ -1,4 +1,4 @@
-.PHONY: ui sqlc go
+.PHONY: ui sqlc go test
 
 sqlc:
 	sqlc generate
@@ -8,3 +8,6 @@ ui:
 
 go:
 	air
+
+test:
+	go test -v -cover ./...
