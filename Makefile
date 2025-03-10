@@ -11,3 +11,6 @@ go:
 
 test:
 	go test -v -cover ./...
+
+generate:
+	cd ui && npm run generate-api-client
