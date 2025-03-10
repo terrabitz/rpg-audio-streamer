@@ -88,12 +88,6 @@ func (h *Hub) Register(conn *websocket.Conn, token *auth.Token) {
 	go client.ReadPump()
 }
 
-type Message struct {
-	Method   string          `json:"method"`
-	Payload  json.RawMessage `json:"payload"`
-	SenderID string          `json:"senderId"`
-}
-
 type BroadcastOption func(*Client) bool
 
 // Common broadcast filters

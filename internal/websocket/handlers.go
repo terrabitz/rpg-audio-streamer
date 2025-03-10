@@ -6,6 +6,12 @@ import (
 	"github.com/terrabitz/rpg-audio-streamer/internal/auth"
 )
 
+type Message struct {
+	Method   string          `json:"method"`
+	Payload  json.RawMessage `json:"payload"`
+	SenderID string          `json:"senderId"`
+}
+
 func (h *Hub) handlePing(payload json.RawMessage, c *Client) {
 	if err := c.Send(Message{
 		Method:  "pong",
