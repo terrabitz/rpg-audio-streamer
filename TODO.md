@@ -31,6 +31,8 @@ Additional tasks:
 - [ ] Discord integration
 - [ ] Add automatic updates for the GIF demo on the README
 - [ ] Better navigation (e.g. restricting access to login if we're authenticated, removing navigation to most pages as a player)
+- [ ] Save table audio state (i.e. volumes)
+- [ ] Add "always start track from beginning" option
 
 Bugs:
 - [X] Fix issue with audio bounce when master volume is adjusted while fading
