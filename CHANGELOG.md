@@ -1,3 +1,10 @@
+# [1.2.0](https://github.com/terrabitz/rpg-audio-streamer/compare/v1.1.0...v1.2.0) (2025-03-11)
+
+
+### Features
+
+* Support API documentation generation with Redocly ([#28](https://github.com/terrabitz/rpg-audio-streamer/issues/28)) ([9e51e64](https://github.com/terrabitz/rpg-audio-streamer/commit/9e51e64d5203be6dc7d91dfbaa4f0272f4e2c14a))
+
 # [1.1.0](https://github.com/terrabitz/rpg-audio-streamer/compare/v1.0.1...v1.1.0) (2025-03-11)
 
 
