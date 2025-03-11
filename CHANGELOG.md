@@ -1,3 +1,10 @@
+# [1.1.0](https://github.com/terrabitz/rpg-audio-streamer/compare/v1.0.1...v1.1.0) (2025-03-11)
+
+
+### Features
+
+* Add OpenAPI spec and client generation ([#22](https://github.com/terrabitz/rpg-audio-streamer/issues/22)) ([8f1f96a](https://github.com/terrabitz/rpg-audio-streamer/commit/8f1f96a3b9385c51a6706bbc72dd43a620767d1b))
+
 ## [1.0.1](https://github.com/terrabitz/rpg-audio-streamer/compare/v1.0.0...v1.0.1) (2025-02-19)
 
 
