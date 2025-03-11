@@ -282,5 +282,5 @@ export type GetApiV1WsErrors = {
 };
 
 export type ClientOptions = {
-    baseUrl: 'https://skald.hackandsla.sh' | (string & {});
+    baseUrl: `${string}://${string}` | (string & {});
 };

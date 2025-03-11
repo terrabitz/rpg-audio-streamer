@@ -4,10 +4,6 @@ info:
   version: 1.0.0
   description: API for managing and streaming audio tracks for tabletop RPG games
 
-servers:
-  - url: https://skald.hackandsla.sh
-    description: Production server
-
 components:
   securitySchemes:
     cookieAuth:

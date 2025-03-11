@@ -14,6 +14,4 @@ import { createClientConfig } from '../plugins/api';
  */
 export type CreateClientConfig<T extends DefaultClientOptions = ClientOptions> = (override?: Config<DefaultClientOptions & T>) => Config<Required<DefaultClientOptions> & T>;
 
-export const client = createClient(createClientConfig(createConfig<ClientOptions>({
-    baseUrl: 'https://skald.hackandsla.sh'
-})));
+export const client = createClient(createClientConfig(createConfig<ClientOptions>()));
