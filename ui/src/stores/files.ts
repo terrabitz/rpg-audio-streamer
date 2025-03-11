@@ -1,13 +1,5 @@
-import { apiClient } from '@/plugins/axios'
+import { deleteApiV1FilesByTrackId, getApiV1Files, postApiV1Files, type Track } from '@/apiClient'
 import { defineStore } from 'pinia'
-
-export interface Track {
-  id: string
-  createdAt: string
-  name: string
-  path: string
-  typeID: string
-}
 
 export const useFileStore = defineStore('files', {
   state: () => ({
@@ -21,15 +13,15 @@ export const useFileStore = defineStore('files', {
   actions: {
     async fetchFiles() {
       try {
-        const response = await apiClient.get('/files')
-        this.tracks = response.data
+        const { data } = await getApiV1Files<true>()
+        this.tracks = data
       } catch (error) {
         console.error('Error fetching files:', error)
       }
     },
     async deleteFile(trackId: string) {
       try {
-        await apiClient.delete(`/files/${trackId}`)
+        await deleteApiV1FilesByTrackId<true>({ path: { trackID: trackId } })
         await this.fetchFiles()
       } catch (error) {
         console.error('Error deleting file:', error)
@@ -38,15 +30,25 @@ export const useFileStore = defineStore('files', {
     },
     async uploadFile(formData: FormData) {
       try {
-        await apiClient.post('/files', formData, {
-          headers: {
-            'Content-Type': 'multipart/form-data'
+        const files = formData.get('files') as Blob | null
+        const name = formData.get('name') as string | null
+        const typeId = formData.get('typeId') as string | null
+
+        if (!files || !name || !typeId) {
+          throw new Error('Missing required fields')
+        }
+
+        await postApiV1Files({
+          body: {
+            files,
+            name,
+            typeId
           }
         })
         await this.fetchFiles()
-      } catch (error) {
+      } catch (error: any) {
         console.error('Error uploading file:', error)
-        throw error
+        throw new Error('Failed to upload file')
       }
     }
   }

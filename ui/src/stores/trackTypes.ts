@@ -1,13 +1,5 @@
-import { apiClient } from '@/plugins/axios'
+import { getApiV1TrackTypes, type TrackType } from '@/apiClient'
 import { defineStore } from 'pinia'
-
-export interface TrackType {
-  id: string
-  name: string
-  color: string
-  isRepeating: boolean
-  allowSimultaneousPlay: boolean
-}
 
 export const useTrackTypeStore = defineStore('trackTypes', {
   state: () => ({
@@ -21,8 +13,8 @@ export const useTrackTypeStore = defineStore('trackTypes', {
   actions: {
     async fetchTrackTypes() {
       try {
-        const response = await apiClient.get('/trackTypes')
-        this.trackTypes = response.data
+        const { data } = await getApiV1TrackTypes<true>()
+        this.trackTypes = data
       } catch (error) {
         console.error('Error fetching track types:', error)
         throw error
