@@ -6,8 +6,8 @@ export type LoginRequest = {
 };
 
 export type LoginResponse = {
-    success?: boolean;
-    error?: string;
+    success: boolean;
+    error: string;
 };
 
 export type JoinRequest = {
@@ -15,25 +15,25 @@ export type JoinRequest = {
 };
 
 export type JoinTokenResponse = {
-    token?: string;
+    token: string;
 };
 
 export type AuthStatusResponse = {
-    authenticated?: boolean;
-    role?: 'gm' | 'player';
+    authenticated: boolean;
+    role: 'gm' | 'player';
 };
 
 export type Track = {
-    id?: string;
-    createdAt?: string;
-    name?: string;
-    path?: string;
-    typeId?: string;
+    id: string;
+    createdAt: string;
+    name: string;
+    path: string;
+    typeId: string;
 };
 
 export type TrackType = {
-    id?: string;
-    name?: string;
+    id: string;
+    name: string;
 };
 
 export type PostApiV1LoginData = {

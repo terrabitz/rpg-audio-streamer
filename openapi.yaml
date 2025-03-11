@@ -29,6 +29,9 @@ components:
 
     LoginResponse:
       type: object
+      required:
+        - success
+        - error
       properties:
         success:
           type: boolean
@@ -45,12 +48,17 @@ components:
 
     JoinTokenResponse:
       type: object
+      required:
+        - token
       properties:
         token:
           type: string
 
     AuthStatusResponse:
       type: object
+      required:
+        - authenticated
+        - role
       properties:
         authenticated:
           type: boolean
@@ -60,6 +68,12 @@ components:
 
     Track:
       type: object
+      required:
+        - id
+        - createdAt
+        - name
+        - path
+        - typeId
       properties:
         id:
           type: string
@@ -77,6 +91,9 @@ components:
 
     TrackType:
       type: object
+      required:
+        - id
+        - name
       properties:
         id:
           type: string
