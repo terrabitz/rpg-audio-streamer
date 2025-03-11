@@ -14,7 +14,7 @@ export function getWebSocketUrl(): string {
   }
 
   const protocol = baseUrl.protocol === 'https:' ? 'wss:' : 'ws:'
-  return `${protocol}//${baseUrl.host}${baseUrl.pathname}/ws`
+  return `${protocol}//${baseUrl.host}/api/v1/ws`
 }
 
 export interface WebSocketMessage<T = any> {
