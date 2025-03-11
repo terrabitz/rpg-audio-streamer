@@ -12,9 +12,11 @@
     "type-check": "vue-tsc --build",
     "lint": "eslint . --fix",
     "format": "prettier --write src/",
-    "build-dev": "vite build -h"
+    "build-dev": "vite build -h",
+    "generate-api-client": "openapi-ts"
   },
   "dependencies": {
+    "@hey-api/client-fetch": "^0.8.3",
     "@mdi/js": "^7.4.47",
     "axios": "^1.7.9",
     "hls.js": "^1.5.20",
@@ -26,6 +28,7 @@
     "vuetify": "^3.7.9"
   },
   "devDependencies": {
+    "@hey-api/openapi-ts": "^0.64.10",
     "@tsconfig/node22": "^22.0.0",
     "@types/jsdom": "^21.1.7",
     "@types/lodash.debounce": "^4.0.9",

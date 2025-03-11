@@ -1,5 +1,5 @@
-import { apiClient } from '@/plugins/axios'
-import type { AuthResponse, LoginRequest, LoginResponse, Role } from '@/types/auth'
+import { getApiV1AuthStatus, type LoginRequest, postApiV1AuthLogout, postApiV1Login } from '@/client/apiClient'
+import type { Role } from '@/types/auth'
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
@@ -10,8 +10,7 @@ export const useAuthStore = defineStore('auth', () => {
 
   async function checkAuthStatus() {
     try {
-      const response = await apiClient.get(`/auth/status`)
-      const data = response.data as AuthResponse
+      const { data } = await getApiV1AuthStatus<true>()
 
       authenticated.value = data.authenticated
       role.value = data.authenticated && data.role ? data.role : null
@@ -28,8 +27,7 @@ export const useAuthStore = defineStore('auth', () => {
     loading.value = true
     try {
       const loginData: LoginRequest = { username, password }
-      const response = await apiClient.post('/login', loginData)
-      const data = response.data as LoginResponse
+      const { data } = await postApiV1Login<true>({ body: loginData })
 
       if (data.success) {
         await checkAuthStatus()
@@ -46,11 +44,12 @@ export const useAuthStore = defineStore('auth', () => {
 
   async function logout() {
     try {
-      await apiClient.post(`/auth/logout`)
+      await postApiV1AuthLogout<true>()
       authenticated.value = false
       role.value = null
     } catch (error) {
       console.error('Failed to logout:', error)
+      throw error
     }
   }
 

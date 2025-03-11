@@ -48,7 +48,7 @@
 </template>
 
 <script setup lang="ts">
-import { apiClient } from '@/plugins/axios'
+import { postApiV1Files } from '@/client/apiClient'
 import { useFileStore } from '@/stores/files'
 import { useTrackTypeStore } from '@/stores/trackTypes'
 import debounce from 'lodash/debounce'
@@ -79,17 +79,28 @@ const uploadTrack = async () => {
   const formData = new FormData()
   formData.append('files', trackFile.value as File)
   formData.append('name', trackName.value)
-  formData.append('typeId', selectedTypeId.value)  // Update to use typeId
+  formData.append('typeID', selectedTypeId.value)  // Update to use typeID
 
   isUploading.value = true
   uploadStatus.value = null
 
   try {
-    await apiClient.post('/files', formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data'
+    const files = formData.get('files') as Blob | null
+    const name = formData.get('name') as string | null
+    const typeID = formData.get('typeID') as string | null
+
+    if (!files || !name || !typeID) {
+      throw new Error('Missing required fields')
+    }
+
+    await postApiV1Files<true>({
+      body: {
+        files,
+        name,
+        typeID
       }
     })
+
     uploadStatus.value = { type: 'success', message: 'File uploaded successfully!' }
     setTimeout(() => {
       uploadStatus.value = null

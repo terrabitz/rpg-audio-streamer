@@ -28,8 +28,9 @@
 </template>
 
 <script setup lang="ts">
+import { type Track } from '@/client/apiClient'
 import { patchObject } from '@/composables/util'
-import { useFileStore, type Track } from '@/stores/files'
+import { useFileStore } from '@/stores/files'
 import { useTrackTypeStore } from '@/stores/trackTypes'
 import { useWebSocketStore } from '@/stores/websocket'
 import debounce from 'lodash.debounce'
@@ -123,8 +124,8 @@ const handleSeek = (fileID: string, time: number) => {
   }
 }
 
-const getTrackType = (typeId: string) => {
-  return trackTypeStore.getTypeById(typeId)
+const getTrackType = (typeID: string) => {
+  return trackTypeStore.getTypeById(typeID)
 }
 
 const updateAllTrackVolumes = debounce(() => {

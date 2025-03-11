@@ -119,7 +119,7 @@ function syncVolume(fileID: string, videoElement: HTMLVideoElement) {
   }
 
   const currentVolume = videoElement.volume / getVolumeMultiplier()
-  let desiredVolume = getDesiredVolume(desiredState)
+  const desiredVolume = getDesiredVolume(desiredState)
 
   if (videoElement.paused) {
     // If our video is paused, we don't need to fade anything

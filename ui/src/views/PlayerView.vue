@@ -52,7 +52,7 @@ function handleAudioToggle() {
   if (!audioStore.enabled) {
     connecting.value = true
     audioStore.enabled = true
-    wsStore.broadcast('syncRequest', {})
+    wsStore.sendMessage('syncRequest', {})
     setTimeout(() => {
       connecting.value = false
     }, 2000)
