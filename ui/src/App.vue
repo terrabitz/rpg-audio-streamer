@@ -40,7 +40,7 @@ wsStore.addMessageHandler((message) => {
       }
     })
     // Send current state to requesting client
-    wsStore.broadcast('syncAll', {
+    wsStore.sendMessage('syncAll', {
       tracks: audioAdjusted,
       to: message.senderId,
     })
