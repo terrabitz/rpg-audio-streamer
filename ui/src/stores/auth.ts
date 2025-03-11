@@ -1,4 +1,4 @@
-import { getApiV1AuthStatus, type LoginRequest, postApiV1AuthLogout, postApiV1Login } from '@/apiClient'
+import { getApiV1AuthStatus, type LoginRequest, postApiV1AuthLogout, postApiV1Login } from '@/client/apiClient'
 import type { Role } from '@/types/auth'
 import { defineStore } from 'pinia'
 import { ref } from 'vue'

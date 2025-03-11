@@ -1,4 +1,4 @@
-import { getApiV1JoinToken, postApiV1Join } from '@/apiClient'
+import { getApiV1JoinToken, postApiV1Join } from '@/client/apiClient'
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 

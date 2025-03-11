@@ -48,7 +48,7 @@
 </template>
 
 <script setup lang="ts">
-import { postApiV1Files } from '@/apiClient'
+import { postApiV1Files } from '@/client/apiClient'
 import { useFileStore } from '@/stores/files'
 import { useTrackTypeStore } from '@/stores/trackTypes'
 import debounce from 'lodash/debounce'

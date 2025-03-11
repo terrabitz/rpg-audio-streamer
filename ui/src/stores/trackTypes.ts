@@ -1,4 +1,4 @@
-import { getApiV1TrackTypes, type TrackType } from '@/apiClient'
+import { getApiV1TrackTypes, type TrackType } from '@/client/apiClient'
 import { defineStore } from 'pinia'
 
 export const useTrackTypeStore = defineStore('trackTypes', {

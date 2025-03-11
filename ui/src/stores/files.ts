@@ -1,4 +1,4 @@
-import { deleteApiV1FilesByTrackId, getApiV1Files, postApiV1Files, type Track } from '@/apiClient'
+import { deleteApiV1FilesByTrackId, getApiV1Files, postApiV1Files, type Track } from '@/client/apiClient'
 import { defineStore } from 'pinia'
 
 export const useFileStore = defineStore('files', {
