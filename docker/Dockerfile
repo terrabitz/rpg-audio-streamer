@@ -3,7 +3,7 @@ FROM node:20 AS frontend-builder
 
 WORKDIR /ui
 COPY ui .
-RUN npm install && npm run build
+RUN npm ci && npm run build
 
 # Stage 2: Build Go backend
 FROM golang:1.24-alpine AS backend-builder
@@ -43,7 +43,7 @@ RUN apk add --no-cache \
 # Set up directories
 WORKDIR /app
 
-# Copy built backend and frontend
+# Copy built backend, frontend and docs
 COPY --from=backend-builder /app/backend /app/backend
 COPY --from=frontend-builder /ui/dist /app/frontend
 
