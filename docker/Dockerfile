@@ -3,7 +3,7 @@ FROM node:20 AS frontend-builder
 
 WORKDIR /ui
 COPY ui .
-RUN npm install && npm run build
+RUN npm ci && npm run build
 
 # Stage 2: Build Go backend
 FROM golang:1.24-alpine AS backend-builder
@@ -18,12 +18,7 @@ COPY internal internal
 
 RUN CGOENABLED=1 go build -o backend main.go
 
-# Stage 3: Generate API documentation
-FROM redocly/cli AS docs-builder
-COPY openapi.yaml /tmp/openapi.yaml
-RUN redocly build-docs /tmp/openapi.yaml -o /tmp/index.html
-
-# Stage 4: Create the final runtime image
+# Stage 3: Create the final runtime image
 FROM alpine:3.21.3
 
 ARG TARGETARCH
@@ -51,7 +46,6 @@ WORKDIR /app
 # Copy built backend, frontend and docs
 COPY --from=backend-builder /app/backend /app/backend
 COPY --from=frontend-builder /ui/dist /app/frontend
-COPY --from=docs-builder /tmp/index.html /app/frontend/docs/index.html
 
 # Copy Caddy and s6 configurations
 COPY docker/Caddyfile /etc/caddy/Caddyfile
