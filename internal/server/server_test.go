@@ -142,7 +142,7 @@ func TestUploadFile(t *testing.T) {
 		}
 		part.Write(content)
 		writer.WriteField("name", "Test Track")
-		writer.WriteField("typeId", ambianceID.String())
+		writer.WriteField("typeID", ambianceID.String())
 		writer.Close()
 
 		req := httptest.NewRequest(http.MethodPost, "/api/v1/files", body)

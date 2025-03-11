@@ -69,7 +69,7 @@ components:
         - createdAt
         - name
         - path
-        - typeId
+        - typeID
       properties:
         id:
           type: string
@@ -81,7 +81,7 @@ components:
           type: string
         path:
           type: string
-        typeId:
+        typeID:
           type: string
           format: uuid
 
@@ -199,7 +199,7 @@ paths:
                   format: binary
                 name:
                   type: string
-                typeId:
+                typeID:
                   type: string
                   format: uuid
       responses:

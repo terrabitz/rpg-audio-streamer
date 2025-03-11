@@ -79,7 +79,7 @@ const uploadTrack = async () => {
   const formData = new FormData()
   formData.append('files', trackFile.value as File)
   formData.append('name', trackName.value)
-  formData.append('typeId', selectedTypeId.value)  // Update to use typeId
+  formData.append('typeID', selectedTypeId.value)  // Update to use typeID
 
   isUploading.value = true
   uploadStatus.value = null
@@ -87,9 +87,9 @@ const uploadTrack = async () => {
   try {
     const files = formData.get('files') as Blob | null
     const name = formData.get('name') as string | null
-    const typeId = formData.get('typeId') as string | null
+    const typeID = formData.get('typeID') as string | null
 
-    if (!files || !name || !typeId) {
+    if (!files || !name || !typeID) {
       throw new Error('Missing required fields')
     }
 
@@ -97,7 +97,7 @@ const uploadTrack = async () => {
       body: {
         files,
         name,
-        typeId
+        typeID
       }
     })
 

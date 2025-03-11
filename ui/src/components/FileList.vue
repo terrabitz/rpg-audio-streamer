@@ -123,8 +123,8 @@ const handleSeek = (fileID: string, time: number) => {
   }
 }
 
-const getTrackType = (typeId: string) => {
-  return trackTypeStore.getTypeById(typeId)
+const getTrackType = (typeID: string) => {
+  return trackTypeStore.getTypeById(typeID)
 }
 
 const updateAllTrackVolumes = debounce(() => {

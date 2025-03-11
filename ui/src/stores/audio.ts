@@ -16,7 +16,7 @@ interface FadeStatus {
   inProgress: boolean
 }
 
-function newAudioTrack(fileID: string, name: string, typeId: string = ""): AudioTrack {
+function newAudioTrack(fileID: string, name: string, typeID: string = ""): AudioTrack {
   return {
     fileID,
     name,
@@ -41,9 +41,9 @@ export const useAudioStore = defineStore('audio', {
     availableTracks: (state) => Object.values(state.tracks)
   },
   actions: {
-    initTrack(fileID: string, name: string, typeId: string = "") {
+    initTrack(fileID: string, name: string, typeID: string = "") {
       if (!this.tracks[fileID]) {
-        this.tracks[fileID] = newAudioTrack(fileID, name, typeId)
+        this.tracks[fileID] = newAudioTrack(fileID, name, typeID)
       }
     },
     updateTrackState(fileID: string, updates: Partial<AudioTrack>) {

@@ -28,7 +28,7 @@ export type Track = {
     createdAt: string;
     name: string;
     path: string;
-    typeId: string;
+    typeID: string;
 };
 
 export type TrackType = {
@@ -144,7 +144,7 @@ export type PostApiV1FilesData = {
     body: {
         files?: Blob | File;
         name?: string;
-        typeId?: string;
+        typeID?: string;
     };
     path?: never;
     query?: never;

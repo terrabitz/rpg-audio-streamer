@@ -58,7 +58,7 @@ func (s *Server) uploadFile(w http.ResponseWriter, r *http.Request) {
 
 	// Retrieve additional metadata
 	name := r.FormValue("name")
-	typeIDStr := r.FormValue("typeId")
+	typeIDStr := r.FormValue("typeID")
 
 	typeID, err := uuid.Parse(typeIDStr)
 	if err != nil {

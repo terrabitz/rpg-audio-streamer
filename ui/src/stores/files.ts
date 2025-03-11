@@ -32,9 +32,9 @@ export const useFileStore = defineStore('files', {
       try {
         const files = formData.get('files') as Blob | null
         const name = formData.get('name') as string | null
-        const typeId = formData.get('typeId') as string | null
+        const typeID = formData.get('typeID') as string | null
 
-        if (!files || !name || !typeId) {
+        if (!files || !name || !typeID) {
           throw new Error('Missing required fields')
         }
 
@@ -42,7 +42,7 @@ export const useFileStore = defineStore('files', {
           body: {
             files,
             name,
-            typeId
+            typeID
           }
         })
         await this.fetchFiles()
