@@ -94,12 +94,21 @@ components:
       required:
         - id
         - name
+        - color
+        - isRepeating
+        - allowSimultaneousPlay
       properties:
         id:
           type: string
           format: uuid
         name:
           type: string
+        color:
+          type: string
+        isRepeating:
+          type: boolean
+        allowSimultaneousPlay:
+          type: boolean
 
 paths:
   /api/v1/login:

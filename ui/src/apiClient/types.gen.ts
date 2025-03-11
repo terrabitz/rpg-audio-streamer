@@ -34,6 +34,9 @@ export type Track = {
 export type TrackType = {
     id: string;
     name: string;
+    color: string;
+    isRepeating: boolean;
+    allowSimultaneousPlay: boolean;
 };
 
 export type PostApiV1LoginData = {
