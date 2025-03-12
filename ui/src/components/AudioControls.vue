@@ -10,9 +10,6 @@
     </v-icon>
     <div class="d-flex align-center mr-2" style="min-width: 120px">
       <VolumeSlider v-model="audioState.volume" @update:model-value="$emit('volume', $event)" />
-      <!-- <v-icon size="x-small" class="mr-2">$volume</v-icon>
-      <v-slider :model-value="audioState.volume" @update:model-value="$emit('volume', $event)" density="compact"
-        hide-details max="100" min="0" step="1"></v-slider> -->
     </div>
     <div class="d-flex align-center" style="min-width: 300px">
       <span class="text-caption mr-2">{{ formatTime(audioState.currentTime) }}</span>
