@@ -76,7 +76,7 @@ onUnmounted(() => {
         <v-card class="audio-slider-card" border="sm" density="compact">
           <v-card-text class="d-flex align-center py-2">
             <span class="mr-4">Master Volume</span>
-            <VolumeSlider v-model="audioStore.masterVolume" class="flex-grow-1" />
+            <VolumeSlider v-model="audioStore.masterVolume" />
           </v-card-text>
         </v-card>
       </div>
