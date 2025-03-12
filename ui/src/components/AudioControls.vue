@@ -1,5 +1,5 @@
 <template>
-  <div v-if="trackType" class="audio-control-tile">
+  <div v-if="trackType" class="audio-control-tile" :class="{ 'is-active': isActive }">
     <div class="text-center pa-2 text-subtitle-1 position-relative">
       {{ props.fileName }}
       <v-btn icon="$dotsVertical" size="small" variant="text" @click.stop="showControls = true"
@@ -76,6 +76,28 @@ const fadeState = computed(() => audioStore.fadeStates[props.fileID]);
 
 const showControls = ref(false);
 
+const isActive = computed(() => audioState.value?.isPlaying);
+
+function darkenColor(color: string, amount: number): string {
+  // Convert hex to RGB
+  const r = parseInt(color.slice(1, 3), 16);
+  const g = parseInt(color.slice(3, 5), 16);
+  const b = parseInt(color.slice(5, 7), 16);
+
+  // Darken by amount
+  const darkerR = Math.floor(r * amount);
+  const darkerG = Math.floor(g * amount);
+  const darkerB = Math.floor(b * amount);
+
+  // Convert back to hex
+  return `#${darkerR.toString(16).padStart(2, '0')}${darkerG.toString(16).padStart(2, '0')}${darkerB.toString(16).padStart(2, '0')}`;
+}
+
+const darkerColor = computed(() => {
+  if (!trackType.value?.color) return '';
+  return darkenColor(trackType.value.color, 0.14);
+});
+
 // Wait for track type data before initializing audio track
 watchEffect(() => {
   if (trackType.value) {
@@ -108,6 +130,12 @@ function formatTime(seconds: number): string {
 
 .audio-control-tile {
   cursor: pointer;
+  height: 100%;
+  transition: background-color 0.3s ease;
+}
+
+.audio-control-tile.is-active {
+  background-color: v-bind('darkerColor');
 }
 
 .play-status {
