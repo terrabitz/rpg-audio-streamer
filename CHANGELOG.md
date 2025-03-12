@@ -1,3 +1,10 @@
+# [1.3.0](https://github.com/terrabitz/rpg-audio-streamer/compare/v1.2.0...v1.3.0) (2025-03-12)
+
+
+### Features
+
+* Use Tiled Layout for Audio Tracks ([#29](https://github.com/terrabitz/rpg-audio-streamer/issues/29)) ([0505c51](https://github.com/terrabitz/rpg-audio-streamer/commit/0505c51b4f557cff2c19fec466900adaca854a31))
+
 # [1.2.0](https://github.com/terrabitz/rpg-audio-streamer/compare/v1.1.0...v1.2.0) (2025-03-11)
 
 
