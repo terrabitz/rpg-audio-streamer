@@ -35,9 +35,11 @@
               <v-icon size="small" color="grey-darken-1" class="mx-2">
                 {{ trackType.isRepeating ? '$repeat' : '$repeatOff' }}
               </v-icon>
-              <v-slider :model-value="audioState.currentTime" @update:model-value="$emit('seek', $event)"
-                density="compact" hide-details :max="audioState.duration" min="0" step="0.1" class="ml-4" />
-              <span class="text-caption ml-2">{{ formatTime(audioState.duration) }}</span>
+              <v-slider thumb-size="0" :model-value="audioState.currentTime" readonly density="compact" hide-details
+                :max="audioState.duration" min="0" step="0.1" class="ml-3" />
+              <span class="text-caption ml-2">{{ formatTime(audioState.currentTime) }} / {{
+                formatTime(audioState.duration)
+              }}</span>
             </div>
           </div>
         </v-card-text>
