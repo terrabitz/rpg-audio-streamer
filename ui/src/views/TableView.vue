@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { useAudioStore } from '@/stores/audio'
-import { onMounted, ref } from 'vue'
+import { onMounted, onUnmounted, ref } from 'vue'
 import AudioPlayer from '../components/AudioPlayer.vue'
-import AudioUploader from '../components/AudioUploader.vue'
 import FileList from '../components/FileList.vue'
+import TableActions from '../components/TableActions.vue'
 import VolumeSlider from '../components/VolumeSlider.vue'
+import { useAppBar } from '../composables/useAppBar'
 import { useBaseUrl } from '../composables/useBaseUrl'
 import { useAuthStore } from '../stores/auth'
 import { useJoinStore } from '../stores/join'
@@ -13,6 +14,7 @@ const auth = useAuthStore()
 const joinStore = useJoinStore()
 const audioStore = useAudioStore()
 const { getBaseUrl } = useBaseUrl()
+const { setTitle, setActions } = useAppBar()
 
 const joinUrl = ref<string>('')
 const isCopied = ref(false)
@@ -49,26 +51,20 @@ async function handleGetJoinToken() {
 }
 
 onMounted(() => {
+  setTitle('My Table')
+  setActions([TableActions])
   audioStore.enabled = true
+})
+
+onUnmounted(() => {
+  setActions([])
+  setTitle('Skald Bot')
 })
 </script>
 
 <template>
-  <v-container class="px-4 py-8" style="max-width: 1000px">
+  <v-container class="py-2">
     <AudioPlayer />
-    <div class="d-flex align-center">
-      <h1 class="mr-8">My Table</h1>
-      <div class="d-flex">
-        <v-btn v-if="auth.authenticated && auth.role === 'gm'" @click="handleGetJoinToken" :disabled="joinStore.loading"
-          :active="isCopied" width="200" active-color="green" :prepend-icon="isCopied ? '' : '$copy'" class="mr-4">
-          {{ isCopied ? 'Copied to clipboard' : 'Get Join URL' }}
-        </v-btn>
-        <AudioUploader v-if="auth.authenticated" />
-      </div>
-    </div>
-
-    <v-divider class="mt-3 mb-1" />
-
     <template v-if="auth.loading">
       <div class="text-center py-12">
         <p>Loading...</p>
