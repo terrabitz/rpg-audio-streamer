@@ -1,9 +1,9 @@
 <template>
   <div v-if="trackType" class="audio-control-tile" :class="{ 'is-active': isActive }">
-    <div class="text-center pa-2 text-subtitle-1 position-relative">
+    <div class="text-center pa-1 text-subtitle-1 position-relative">
       {{ props.fileName }}
       <v-btn icon="$dotsVertical" size="small" variant="text" @click.stop="showControls = true"
-        class="position-absolute top-0 right-0 mt-1 mr-1" />
+        class="position-absolute top-0 right-0" />
     </div>
     <v-divider></v-divider>
     <div class="d-flex flex-column pa-1 position-relative">

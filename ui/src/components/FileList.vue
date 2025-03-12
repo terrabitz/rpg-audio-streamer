@@ -1,6 +1,6 @@
 <template>
   <v-container>
-    <v-row>
+    <v-row :dense="true">
       <v-col v-for="file in fileStore.tracks" :key="file.id" cols="6" sm="4" md="3" lg="2">
         <v-card class="file-tile" @click="handlePlay(file.id)">
           <AudioControls :fileID="file.id" :fileName="file.name" @volume="vol => handleVolume(file.id, vol)"
