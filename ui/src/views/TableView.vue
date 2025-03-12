@@ -76,13 +76,14 @@ onMounted(() => {
     </template>
 
     <template v-else-if="auth.authenticated">
-      <v-card class="audio-slider-card" border="sm" density="compact">
-        <v-card-title>Volume Mixer</v-card-title>
-        <v-card-text>
-          <span class="mixer-label">Master</span>
-          <VolumeSlider v-model="audioStore.masterVolume" class="mixer-slider" />
-        </v-card-text>
-      </v-card>
+      <div class="d-flex justify-center">
+        <v-card class="audio-slider-card" border="sm" density="compact">
+          <v-card-text class="d-flex align-center py-2">
+            <span class="mr-4">Master Volume</span>
+            <VolumeSlider v-model="audioStore.masterVolume" class="flex-grow-1" />
+          </v-card-text>
+        </v-card>
+      </div>
       <FileList />
     </template>
     <template v-else>
@@ -93,6 +94,6 @@ onMounted(() => {
 
 <style scoped>
 .audio-slider-card {
-  max-width: 500px;
+  width: 400px;
 }
 </style>
