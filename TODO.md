@@ -7,10 +7,10 @@ Tasks to complete before releasing to my players:
 - [X] Infrastructure setup
 
 Tasks to complete before GA of self-hostable:
+- [X] Automate Docker image build
+- [X] Add example Docker and Docker Compose configurations
 - [ ] Better file management
 - [ ] Improve initial setup experience
-- [ ] Automate Docker image build
-- [ ] Add example Docker and Docker Compose configurations
 
 Tasks to complete before GA of hosted:
 - [ ] Landing page
@@ -23,10 +23,11 @@ Tasks to complete before GA of hosted:
 - [ ] Monetization (e.g. subscription for extra storage)
 
 Additional tasks:
-- [ ] Customizable tiled track layout
+- [X] API docs
+- [X] Tiled track layout
+- [ ] Customizable track order
 - [ ] Mobile layout support
 - [ ] Turn frontend into a PWA
-- [ ] API docs
 - [ ] Integration with other streaming providers (YouTube, Spotify)
 - [ ] Discord integration
 - [ ] Add automatic updates for the GIF demo on the README

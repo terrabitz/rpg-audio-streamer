@@ -2,6 +2,7 @@
 import { computed, onMounted, onUnmounted, watch } from 'vue';
 import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router';
 import DevDebugPanel from './components/DevDebugPanel.vue';
+import { useAppBar } from './composables/useAppBar';
 import { useAudioStore } from './stores/audio';
 import { useAuthStore } from './stores/auth';
 import { useDebugStore } from './stores/debug';
@@ -14,6 +15,8 @@ const debugStore = useDebugStore()
 const audioStore = useAudioStore()
 const route = useRoute()
 const isPlayerView = computed(() => route.path === '/player')
+
+const { title, actions } = useAppBar()
 
 async function handleLogout() {
   await auth.logout()
@@ -62,13 +65,16 @@ onUnmounted(() => {
       <v-app-bar-title>
         <RouterLink v-if="!isPlayerView" to="/" class="text-decoration-none" style="color: inherit">
           <v-icon icon="custom:lute" class="mr-2" size="small" />
-          Skald Bot
+          {{ title }}
         </RouterLink>
         <span v-else>
           <v-icon icon="custom:lute" class="mr-2" size="small" />
-          Skald Bot
+          {{ title }}
         </span>
       </v-app-bar-title>
+
+      <component v-for="(action, index) in actions" :key="index" :is="action" />
+
       <v-spacer></v-spacer>
       <v-btn v-if="debugStore.isDevMode" icon="$bug" @click="debugStore.togglePanel"></v-btn>
       <template v-if="!isPlayerView">
