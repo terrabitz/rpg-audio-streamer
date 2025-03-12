@@ -1,29 +1,13 @@
 <template>
   <v-container>
-    <v-table>
-      <thead>
-        <tr>
-          <th>Name</th>
-          <th>Type</th>
-          <th>Actions</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr v-for="file in fileStore.tracks" :key="file.id">
-          <td>{{ file.name }}</td>
-          <td>
-            <v-chip :color="getTrackType(file.typeID)?.color" text-color="white">
-              {{ getTrackType(file.typeID)?.name }}
-            </v-chip>
-          </td>
-          <td class="d-flex align-center">
-            <AudioControls :fileID="file.id" :fileName="file.name" @play="handlePlay(file.id)"
-              @volume="vol => handleVolume(file.id, vol)" @seek="time => handleSeek(file.id, time)" />
-            <v-btn class="ml-3" icon="$delete" size="small" color="error" @click="deleteFile(file)" />
-          </td>
-        </tr>
-      </tbody>
-    </v-table>
+    <v-row>
+      <v-col v-for="file in fileStore.tracks" :key="file.id" cols="6" sm="4" md="3" lg="2">
+        <v-card class="file-tile" @click="handlePlay(file.id)">
+          <AudioControls :fileID="file.id" :fileName="file.name" @volume="vol => handleVolume(file.id, vol)"
+            @seek="time => handleSeek(file.id, time)" @delete="deleteFile(file)" />
+        </v-card>
+      </v-col>
+    </v-row>
   </v-container>
 </template>
 
@@ -143,3 +127,14 @@ watch(() => audioStore.masterVolume, () => {
   updateAllTrackVolumes()
 })
 </script>
+
+<style scoped>
+.file-tile {
+  transition: all 0.2s ease;
+}
+
+.file-tile:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+</style>
