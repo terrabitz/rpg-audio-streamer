@@ -27,16 +27,16 @@
           <v-btn icon="$close" size="small" variant="text" @click="showControls = false" class="float-right" />
         </v-card-title>
         <v-card-text>
-          <div class="d-flex flex-column gap-4 pa-2">
+          <div class="d-flex flex-column">
             <div class="d-flex align-center">
-              <v-icon size="small" color="grey-darken-1" class="mr-2">
-                {{ trackType.isRepeating ? '$repeat' : '$repeatOff' }}
-              </v-icon>
               <VolumeSlider v-model="audioState.volume" @update:model-value="$emit('volume', $event)" />
             </div>
             <div class="d-flex align-center">
+              <v-icon size="small" color="grey-darken-1" class="mx-2">
+                {{ trackType.isRepeating ? '$repeat' : '$repeatOff' }}
+              </v-icon>
               <v-slider :model-value="audioState.currentTime" @update:model-value="$emit('seek', $event)"
-                density="compact" hide-details :max="audioState.duration" min="0" step="0.1" class="mx-2" />
+                density="compact" hide-details :max="audioState.duration" min="0" step="0.1" class="ml-4" />
               <span class="text-caption ml-2">{{ formatTime(audioState.duration) }}</span>
             </div>
           </div>
