@@ -1,12 +1,16 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { useBaseUrl } from '../composables/useBaseUrl'
+import { useAudioStore } from '../stores/audio'
 import { useAuthStore } from '../stores/auth'
 import { useJoinStore } from '../stores/join'
 import AudioUploader from './AudioUploader.vue'
+import VolumeSlider from './VolumeSlider.vue'
 
 const auth = useAuthStore()
 const joinStore = useJoinStore()
+const audioStore = useAudioStore();
+
 const { getBaseUrl } = useBaseUrl()
 const isCopied = ref(false)
 
@@ -33,6 +37,7 @@ async function handleGetJoinToken() {
       active-color="green" :prepend-icon="isCopied ? '' : '$copy'" class="mr-2">
       {{ isCopied ? 'Copied to clipboard' : 'Get Join URL' }}
     </v-btn>
-    <AudioUploader />
+    <AudioUploader class="mr-4" />
+    <VolumeSlider v-model="audioStore.masterVolume" />
   </template>
 </template>

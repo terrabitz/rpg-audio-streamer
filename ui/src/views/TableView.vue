@@ -4,7 +4,6 @@ import { onMounted, onUnmounted, ref } from 'vue'
 import AudioPlayer from '../components/AudioPlayer.vue'
 import FileList from '../components/FileList.vue'
 import TableActions from '../components/TableActions.vue'
-import VolumeSlider from '../components/VolumeSlider.vue'
 import { useAppBar } from '../composables/useAppBar'
 import { useBaseUrl } from '../composables/useBaseUrl'
 import { useAuthStore } from '../stores/auth'
@@ -72,14 +71,6 @@ onUnmounted(() => {
     </template>
 
     <template v-else-if="auth.authenticated">
-      <div class="d-flex justify-center">
-        <v-card class="audio-slider-card" border="sm" density="compact">
-          <v-card-text class="d-flex align-center py-2">
-            <span class="mr-4">Master Volume</span>
-            <VolumeSlider v-model="audioStore.masterVolume" />
-          </v-card-text>
-        </v-card>
-      </div>
       <FileList />
     </template>
     <template v-else>
@@ -88,8 +79,4 @@ onUnmounted(() => {
   </v-container>
 </template>
 
-<style scoped>
-.audio-slider-card {
-  width: 400px;
-}
-</style>
+<style scoped></style>
