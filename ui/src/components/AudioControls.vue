@@ -6,14 +6,14 @@
         class="position-absolute top-0 right-0 mt-1 mr-1" />
     </div>
     <v-divider></v-divider>
-    <div class="d-flex flex-column pa-3 position-relative">
-      <div class="d-flex justify-space-between align-center">
-        <v-chip :color="trackType?.color" text-color="white" size="small" @click.stop>
+    <div class="d-flex flex-column pa-1 position-relative">
+      <div class="d-flex justify-space-between align-center mx-2">
+        <v-chip :color="trackType?.color" text-color="white" size="x-small" @click.stop>
           {{ trackType?.name }}
         </v-chip>
         <div class="play-status mr-2">
-          <v-progress-circular v-if="fadeState?.inProgress" width="3" size="24" indeterminate />
-          <v-icon v-else size="36">
+          <v-progress-circular v-if="fadeState?.inProgress" width="3" size="20" indeterminate />
+          <v-icon v-else size="24">
             {{ audioState.isPlaying ? '$pause' : '$play' }}
           </v-icon>
         </div>
