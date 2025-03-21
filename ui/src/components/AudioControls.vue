@@ -27,6 +27,7 @@
           <v-btn icon="$close" size="small" variant="text" @click="showControls = false" class="float-right" />
         </v-card-title>
         <v-card-text>
+          <TrackTypeSelector v-bind:model-value="selectedTrackType" @update:model-value="console.log($event)" />
           <div class="d-flex flex-column">
             <div class="d-flex align-center">
               <VolumeSlider v-model="audioState.volume" @update:model-value="$emit('volume', $event)" />
@@ -60,6 +61,7 @@ import { computed, ref, watchEffect } from 'vue';
 import { useAudioStore } from '../stores/audio';
 import { useFileStore } from '../stores/files';
 import { useTrackTypeStore } from '../stores/trackTypes';
+import TrackTypeSelector from './TrackTypeSelector.vue';
 import VolumeSlider from './VolumeSlider.vue';
 
 const props = defineProps<{
@@ -76,6 +78,7 @@ const trackType = computed(() => track.value ? trackTypeStore.getTypeById(track.
 const audioState = computed(() => audioStore.tracks[props.fileID]);
 const fadeState = computed(() => audioStore.fadeStates[props.fileID]);
 
+const selectedTrackType = ref(trackType.value?.id || '');
 const showControls = ref(false);
 
 const isActive = computed(() => audioState.value?.isPlaying);
