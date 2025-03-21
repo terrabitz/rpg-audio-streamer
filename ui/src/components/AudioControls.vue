@@ -134,6 +134,7 @@ function formatTime(seconds: number): string {
   cursor: pointer;
   height: 100%;
   transition: background-color 0.3s ease;
+  user-select: none;
 }
 
 .audio-control-tile.is-active {
