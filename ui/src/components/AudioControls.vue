@@ -8,7 +8,7 @@
     <v-divider></v-divider>
     <div class="d-flex flex-column pa-1 position-relative">
       <div class="d-flex justify-space-between align-center mx-2">
-        <v-chip :color="trackType?.color" text-color="white" size="x-small" @click.stop>
+        <v-chip :color="trackType?.color" text-color="white" size="x-small">
           {{ trackType?.name }}
         </v-chip>
         <div class="play-status mr-2">
