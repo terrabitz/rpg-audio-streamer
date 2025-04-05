@@ -85,6 +85,22 @@ components:
           type: string
           format: uuid
 
+    UpdateTrackRequest:
+      type: object
+      required:
+        - id
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          nullable: true
+        typeID:
+          type: string
+          format: uuid
+          nullable: true
+
     TrackType:
       type: object
       required:
@@ -227,6 +243,38 @@ paths:
           description: Not authorized
         "404":
           description: Track not found
+    put:
+      summary: Update audio track information
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: trackID
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateTrackRequest"
+      responses:
+        "200":
+          description: Track updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Track"
+        "400":
+          description: Invalid request body
+        "403":
+          description: Not authorized
+        "404":
+          description: Track not found
+        "500":
+          description: Internal server error
 
   /api/v1/join-token:
     get:
