@@ -21,6 +21,8 @@ func (s *Server) handleFiles(w http.ResponseWriter, r *http.Request, token *auth
 		s.listFiles(w, r)
 	case http.MethodPost:
 		s.uploadFile(w, r)
+	case http.MethodPut:
+		s.updateFile(w, r)
 	default:
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 	}
@@ -154,6 +156,39 @@ func (s *Server) uploadFile(w http.ResponseWriter, r *http.Request) {
 	s.logger.Info("file uploaded and converted to HLS", "filename", handler.Filename)
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("File uploaded and converted to HLS successfully"))
+}
+
+func (s *Server) updateFile(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPut {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req UpdateTrackRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		s.logger.Error("failed to decode update request", "error", err)
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	trackIDString := r.PathValue("trackID")
+	trackID, err := uuid.Parse(trackIDString)
+	if err != nil {
+		http.Error(w, "Invalid track ID", http.StatusBadRequest)
+		return
+	}
+
+	track, err := s.store.UpdateTrack(r.Context(), trackID, req)
+	if err != nil {
+		s.logger.Error("failed to update track", "error", err)
+		http.Error(w, "Failed to update track", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(track); err != nil {
+		s.logger.Error("failed to encode response", "error", err)
+	}
 }
 
 func (s *Server) handleFileDelete(w http.ResponseWriter, r *http.Request, token *auth.Token) {
