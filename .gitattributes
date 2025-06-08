@@ -6,3 +6,7 @@
 *.tiff filter=lfs diff=lfs merge=lfs -text
 *.webp filter=lfs diff=lfs merge=lfs -text
 *.svg filter=lfs diff=lfs merge=lfs -text
+
+ui/public/docs/* linguist-generated=true
+ui/src/client/apiClient/* linguist-generated=true
+internal/sqlitedatastore/sqlitedb/* linguist-generated=true

@@ -71,6 +71,13 @@ export const postApiV1AuthLogout = <ThrowOnError extends boolean = false>(option
  */
 export const getApiV1Files = <ThrowOnError extends boolean = false>(options?: Options<GetApiV1FilesData, ThrowOnError>) => {
     return (options?.client ?? _heyApiClient).get<GetApiV1FilesResponse, unknown, ThrowOnError>({
+        security: [
+            {
+                in: 'cookie',
+                name: 'auth_token',
+                type: 'apiKey'
+            }
+        ],
         url: '/api/v1/files',
         ...options
     });
@@ -82,6 +89,13 @@ export const getApiV1Files = <ThrowOnError extends boolean = false>(options?: Op
 export const postApiV1Files = <ThrowOnError extends boolean = false>(options: Options<PostApiV1FilesData, ThrowOnError>) => {
     return (options.client ?? _heyApiClient).post<unknown, unknown, ThrowOnError>({
         ...formDataBodySerializer,
+        security: [
+            {
+                in: 'cookie',
+                name: 'auth_token',
+                type: 'apiKey'
+            }
+        ],
         url: '/api/v1/files',
         ...options,
         headers: {
@@ -96,6 +110,13 @@ export const postApiV1Files = <ThrowOnError extends boolean = false>(options: Op
  */
 export const deleteApiV1FilesByTrackId = <ThrowOnError extends boolean = false>(options: Options<DeleteApiV1FilesByTrackIdData, ThrowOnError>) => {
     return (options.client ?? _heyApiClient).delete<unknown, unknown, ThrowOnError>({
+        security: [
+            {
+                in: 'cookie',
+                name: 'auth_token',
+                type: 'apiKey'
+            }
+        ],
         url: '/api/v1/files/{trackID}',
         ...options
     });
@@ -106,6 +127,13 @@ export const deleteApiV1FilesByTrackId = <ThrowOnError extends boolean = false>(
  */
 export const putApiV1FilesByTrackId = <ThrowOnError extends boolean = false>(options: Options<PutApiV1FilesByTrackIdData, ThrowOnError>) => {
     return (options.client ?? _heyApiClient).put<PutApiV1FilesByTrackIdResponse, unknown, ThrowOnError>({
+        security: [
+            {
+                in: 'cookie',
+                name: 'auth_token',
+                type: 'apiKey'
+            }
+        ],
         url: '/api/v1/files/{trackID}',
         ...options,
         headers: {
@@ -120,6 +148,13 @@ export const putApiV1FilesByTrackId = <ThrowOnError extends boolean = false>(opt
  */
 export const getApiV1JoinToken = <ThrowOnError extends boolean = false>(options?: Options<GetApiV1JoinTokenData, ThrowOnError>) => {
     return (options?.client ?? _heyApiClient).get<GetApiV1JoinTokenResponse, unknown, ThrowOnError>({
+        security: [
+            {
+                in: 'cookie',
+                name: 'auth_token',
+                type: 'apiKey'
+            }
+        ],
         url: '/api/v1/join-token',
         ...options
     });
@@ -130,6 +165,13 @@ export const getApiV1JoinToken = <ThrowOnError extends boolean = false>(options?
  */
 export const getApiV1StreamByPath = <ThrowOnError extends boolean = false>(options: Options<GetApiV1StreamByPathData, ThrowOnError>) => {
     return (options.client ?? _heyApiClient).get<GetApiV1StreamByPathResponse, unknown, ThrowOnError>({
+        security: [
+            {
+                in: 'cookie',
+                name: 'auth_token',
+                type: 'apiKey'
+            }
+        ],
         url: '/api/v1/stream/{path}',
         ...options
     });
@@ -140,6 +182,13 @@ export const getApiV1StreamByPath = <ThrowOnError extends boolean = false>(optio
  */
 export const getApiV1TrackTypes = <ThrowOnError extends boolean = false>(options?: Options<GetApiV1TrackTypesData, ThrowOnError>) => {
     return (options?.client ?? _heyApiClient).get<GetApiV1TrackTypesResponse, unknown, ThrowOnError>({
+        security: [
+            {
+                in: 'cookie',
+                name: 'auth_token',
+                type: 'apiKey'
+            }
+        ],
         url: '/api/v1/trackTypes',
         ...options
     });
@@ -150,6 +199,13 @@ export const getApiV1TrackTypes = <ThrowOnError extends boolean = false>(options
  */
 export const getApiV1Ws = <ThrowOnError extends boolean = false>(options?: Options<GetApiV1WsData, ThrowOnError>) => {
     return (options?.client ?? _heyApiClient).get<unknown, unknown, ThrowOnError>({
+        security: [
+            {
+                in: 'cookie',
+                name: 'auth_token',
+                type: 'apiKey'
+            }
+        ],
         url: '/api/v1/ws',
         ...options
     });
