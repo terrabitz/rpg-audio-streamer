@@ -1,4 +1,4 @@
-import { deleteApiV1FilesByTrackId, getApiV1Files, postApiV1Files, type Track } from '@/client/apiClient'
+import { deleteApiV1FilesByTrackId, getApiV1Files, postApiV1Files, putApiV1FilesByTrackId, type Track, type UpdateTrackRequest } from '@/client/apiClient'
 import { defineStore } from 'pinia'
 
 export const useFileStore = defineStore('files', {
@@ -49,6 +49,37 @@ export const useFileStore = defineStore('files', {
       } catch (error: any) {
         console.error('Error uploading file:', error)
         throw new Error('Failed to upload file')
+      }
+    },
+    async updateTrack(trackId: string, update: { name?: string; typeID?: string }) {
+      try {
+        const trackRequest: UpdateTrackRequest = {
+          id: trackId
+        }
+
+        if (update.name !== undefined) {
+          trackRequest.name = update.name
+        }
+
+        if (update.typeID !== undefined) {
+          trackRequest.typeID = update.typeID
+        }
+
+        const { data } = await putApiV1FilesByTrackId<true>({
+          path: { trackID: trackId },
+          body: trackRequest
+        })
+
+        // Update the track in the store
+        const index = this.tracks.findIndex(t => t.id === trackId)
+        if (index !== -1) {
+          this.tracks[index] = data
+        }
+
+        return data
+      } catch (error) {
+        console.error('Error updating track:', error)
+        throw error
       }
     }
   }

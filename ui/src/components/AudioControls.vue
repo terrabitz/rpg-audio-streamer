@@ -23,11 +23,12 @@
     <v-dialog v-model="showControls" max-width="400px" @click:outside="showControls = false">
       <v-card>
         <v-card-title class="text-body-1">
-          {{ props.fileName }}
           <v-btn icon="$close" size="small" variant="text" @click="showControls = false" class="float-right" />
         </v-card-title>
         <v-card-text>
-          <TrackTypeSelector v-bind:model-value="selectedTrackType" @update:model-value="console.log($event)" />
+          <v-text-field v-model="editName" label="Track Name" variant="underlined" hide-details
+            class="pa-0 ma-0"></v-text-field>
+          <TrackTypeSelector v-model="editTrackType" />
           <div class="d-flex flex-column">
             <div class="d-flex align-center">
               <VolumeSlider v-model="audioState.volume" @update:model-value="$emit('volume', $event)" />
@@ -46,9 +47,13 @@
         </v-card-text>
         <v-divider></v-divider>
         <v-card-actions>
-          <v-spacer></v-spacer>
-          <v-btn color="error" variant="text" prepend-icon="$delete" @click="$emit('delete')">
-            Delete Track
+          <v-btn color="error" variant="text" prepend-icon="$delete" @click="$emit('delete')" />
+
+          <v-spacer />
+
+          <v-btn color="primary" variant="text" prepend-icon="$save" @click="saveTrackChanges" :loading="isSaving"
+            :disabled="!hasChanges">
+            Save Changes
           </v-btn>
         </v-card-actions>
       </v-card>
@@ -78,10 +83,69 @@ const trackType = computed(() => track.value ? trackTypeStore.getTypeById(track.
 const audioState = computed(() => audioStore.tracks[props.fileID]);
 const fadeState = computed(() => audioStore.fadeStates[props.fileID]);
 
-const selectedTrackType = ref(trackType.value?.id || '');
 const showControls = ref(false);
+const isSaving = ref(false);
 
 const isActive = computed(() => audioState.value?.isPlaying);
+
+const editName = ref(props.fileName);
+const editTrackType = ref(trackType.value?.id || '');
+
+// Computed property to check if there are any changes to save
+const hasChanges = computed(() => {
+  if (!track.value) return false;
+  return editName.value !== track.value.name || editTrackType.value !== track.value.typeID;
+});
+
+// Reset edit values when dialog opens
+watchEffect(() => {
+  if (showControls.value && track.value) {
+    editName.value = track.value.name;
+    editTrackType.value = track.value.typeID;
+  }
+});
+
+async function saveTrackChanges() {
+  if (!track.value) return;
+
+  try {
+    isSaving.value = true;
+
+    // Only update if values have changed
+    const updates: { name?: string; typeID?: string } = {};
+
+    if (editName.value !== track.value.name) {
+      updates.name = editName.value;
+    }
+
+    if (editTrackType.value !== track.value.typeID) {
+      updates.typeID = editTrackType.value;
+    }
+
+    // Only make API call if something has changed
+    if (Object.keys(updates).length > 0) {
+      const updatedTrack = await fileStore.updateTrack(track.value.id, updates);
+
+      // Update audio track state if track type changed (may affect isRepeating)
+      if (updates.typeID && updatedTrack) {
+        const newTrackType = trackTypeStore.getTypeById(updatedTrack.typeID);
+        if (newTrackType) {
+          audioStore.updateTrackState(props.fileID, {
+            isRepeating: newTrackType.isRepeating
+          });
+        }
+      }
+    }
+
+    // Close the dialog after successful save
+    showControls.value = false;
+  } catch (error) {
+    console.error('Failed to update track:', error);
+    // You could add error handling UI here
+  } finally {
+    isSaving.value = false;
+  }
+}
 
 function darkenColor(color: string, amount: number): string {
   // Convert hex to RGB
