@@ -28,6 +28,7 @@ Tasks to complete before GA of hosted:
 Additional tasks:
 - [X] API docs
 - [X] Tiled track layout
+- [X] Make the player view URL the same as the join URL
 - [ ] Customizable track order
 - [ ] Mobile layout support
 - [ ] Turn frontend into a PWA
@@ -37,7 +38,6 @@ Additional tasks:
 - [ ] Better navigation (e.g. restricting access to login if we're authenticated, removing navigation to most pages as a player)
 - [ ] Save table audio state (i.e. volumes)
 - [ ] Add "always start track from beginning" option
-- [ ] Make the player view URL the same as the join URL
 
 Bugs:
 - [X] Fix issue with audio bounce when master volume is adjusted while fading
