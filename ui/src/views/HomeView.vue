@@ -14,8 +14,7 @@ const auth = useAuthStore();
       </p>
 
       <div class="d-flex flex-wrap justify-center gap-4">
-        <v-btn to="/table" color="primary" size="large" variant="elevated">
-          <v-icon left>{{ auth.role === 'gm' ? 'mdi-table-large' : 'mdi-headphones' }}</v-icon>
+        <v-btn to="/table" color="primary" size="large" variant="elevated" prepend-icon="$headphones">
           {{ auth.role === 'gm' ? 'Go to My Table' : 'Connect to Audio' }}
         </v-btn>
       </div>
