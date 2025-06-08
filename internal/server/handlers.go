@@ -21,8 +21,6 @@ func (s *Server) handleFiles(w http.ResponseWriter, r *http.Request, token *auth
 		s.listFiles(w, r)
 	case http.MethodPost:
 		s.uploadFile(w, r)
-	case http.MethodPut:
-		s.updateFile(w, r)
 	default:
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 	}
@@ -156,6 +154,17 @@ func (s *Server) uploadFile(w http.ResponseWriter, r *http.Request) {
 	s.logger.Info("file uploaded and converted to HLS", "filename", handler.Filename)
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("File uploaded and converted to HLS successfully"))
+}
+
+func (s *Server) handleFile(w http.ResponseWriter, r *http.Request, token *auth.Token) {
+	switch r.Method {
+	case http.MethodDelete:
+		s.handleFileDelete(w, r, token)
+	case http.MethodPut:
+		s.updateFile(w, r)
+	default:
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	}
 }
 
 func (s *Server) updateFile(w http.ResponseWriter, r *http.Request) {
