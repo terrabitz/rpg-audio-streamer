@@ -10,6 +10,7 @@ import { useAudioStore, type AudioTrack } from '../stores/audio'
 import { useAuthStore } from '../stores/auth'
 import { useJoinStore } from '../stores/join'
 import { useBaseUrl } from '../composables/useBaseUrl'
+import { useAppBar } from '@/composables/useAppBar'
 
 const auth = useAuthStore()
 const route = useRoute()
@@ -20,6 +21,7 @@ const debugStore = useDebugStore()
 const connecting = ref(false)
 const joiningWithToken = ref(false)
 const { getBaseUrl } = useBaseUrl()
+const { setTitle } = useAppBar()
 
 const buttonLabel = computed(() => {
   if (joiningWithToken.value) return 'Joining Table...'
@@ -59,7 +61,8 @@ onMounted(async () => {
     }
   }
 
-  await auth.checkAuthStatus()
+  setTitle('Game Session')
+  audioStore.enabled = false
 
   wsStore.addMessageHandler(handleSyncAll)
   wsStore.addMessageHandler(handleSyncTrack)

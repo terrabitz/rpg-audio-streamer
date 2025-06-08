@@ -2,10 +2,8 @@
 import { useAudioStore, type AudioTrack } from '@/stores/audio'
 import { useWebSocketStore } from '@/stores/websocket'
 import { computed, onMounted, onUnmounted, ref } from 'vue'
-import AudioPlayer from '../components/AudioPlayer.vue'
-import FileList from '../components/FileList.vue'
-import TableActions from '../components/TableActions.vue'
-import PlayerView from './PlayerView.vue'
+import TableViewGM from './TableViewGM.vue'
+import TableViewPlayer from './TableViewPlayer.vue'
 import { useAppBar } from '../composables/useAppBar'
 import { useAuthStore } from '../stores/auth'
 import { useJoinStore } from '../stores/join'
@@ -20,6 +18,10 @@ const joiningWithToken = ref(false)
 
 const isPlayerView = computed(() => {
   return auth.role === 'player' || !auth.authenticated
+})
+
+const isGMView = computed(() => {
+  return auth.role === 'gm' && auth.authenticated
 })
 
 function handleSyncAll(message: { method: string, payload: { tracks: AudioTrack[] } }) {
@@ -39,19 +41,6 @@ function handleSyncTrack(message: { method: string, payload: Partial<AudioTrack>
 
 onMounted(async () => {
   await auth.checkAuthStatus()
-
-  if (auth.role === 'gm') {
-    setTitle('My Table')
-    setActions([TableActions])
-  } else {
-    setTitle('Game Session')
-  }
-
-  if (auth.authenticated && auth.role === 'gm') {
-    audioStore.enabled = true
-  } else {
-    audioStore.enabled = false
-  }
 
   // Add WebSocket message handlers
   wsStore.addMessageHandler(handleSyncAll)
@@ -83,13 +72,12 @@ onUnmounted(() => {
 
     <!-- Player View -->
     <template v-else-if="isPlayerView">
-      <PlayerView />
+      <TableViewPlayer />
     </template>
 
     <!-- GM View -->
-    <template v-else-if="auth.authenticated && auth.role === 'gm'">
-      <AudioPlayer />
-      <FileList />
+    <template v-else-if="isGMView">
+      <TableViewGM />
     </template>
 
     <!-- Not Authenticated -->
