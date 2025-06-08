@@ -10,6 +10,7 @@ Tasks to complete before GA of self-hostable:
 - [X] Automate Docker image build
 - [X] Add example Docker and Docker Compose configurations
 - [X] File metadata editing
+- [ ] Multiple tables
 - [ ] Better file management
 - [ ] Improve initial setup experience
 - [ ] Multiple tables
@@ -27,6 +28,7 @@ Tasks to complete before GA of hosted:
 Additional tasks:
 - [X] API docs
 - [X] Tiled track layout
+- [X] Make the player view URL the same as the join URL
 - [ ] Customizable track order
 - [ ] Mobile layout support
 - [ ] Turn frontend into a PWA

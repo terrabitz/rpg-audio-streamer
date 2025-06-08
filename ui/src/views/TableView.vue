@@ -1,80 +1,88 @@
 <script setup lang="ts">
-import { useAudioStore } from '@/stores/audio'
-import { onMounted, onUnmounted, ref } from 'vue'
-import AudioPlayer from '../components/AudioPlayer.vue'
-import FileList from '../components/FileList.vue'
-import TableActions from '../components/TableActions.vue'
+import { useAudioStore, type AudioTrack } from '@/stores/audio'
+import { useWebSocketStore } from '@/stores/websocket'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
+import TableViewGM from './TableViewGM.vue'
+import TableViewPlayer from './TableViewPlayer.vue'
 import { useAppBar } from '../composables/useAppBar'
-import { useBaseUrl } from '../composables/useBaseUrl'
 import { useAuthStore } from '../stores/auth'
 import { useJoinStore } from '../stores/join'
 
 const auth = useAuthStore()
 const joinStore = useJoinStore()
+const wsStore = useWebSocketStore()
 const audioStore = useAudioStore()
-const { getBaseUrl } = useBaseUrl()
 const { setTitle, setActions } = useAppBar()
 
-const joinUrl = ref<string>('')
-const isCopied = ref(false)
+const joiningWithToken = ref(false)
 
-async function copyToClipboard(text: string) {
-  if (navigator.clipboard) {
-    await navigator.clipboard.writeText(text)
-  } else {
-    const textArea = document.createElement('textarea')
-    textArea.value = text
-    document.body.appendChild(textArea)
-    textArea.focus()
-    textArea.select()
-    try {
-      document.execCommand('copy')
-    } catch (err) {
-      console.error('Fallback: Oops, unable to copy', err)
-    }
-    document.body.removeChild(textArea)
+const isPlayerView = computed(() => {
+  return auth.role === 'player' || !auth.authenticated
+})
+
+const isGMView = computed(() => {
+  return auth.role === 'gm' && auth.authenticated
+})
+
+function handleSyncAll(message: { method: string, payload: { tracks: AudioTrack[] } }) {
+  if (message.method === 'syncAll' && message.payload.tracks) {
+    console.log('handleSyncAll', message)
+    audioStore.syncTracks(message.payload.tracks)
   }
 }
 
-async function handleGetJoinToken() {
-  await joinStore.fetchToken()
-  if (joinStore.token) {
-    const url = `${getBaseUrl()}/join/${joinStore.token}`
-    await copyToClipboard(url)
-    joinUrl.value = url
-    isCopied.value = true
-    setTimeout(() => {
-      isCopied.value = false
-    }, 2000)
+function handleSyncTrack(message: { method: string, payload: Partial<AudioTrack> }) {
+  if (message.method === 'syncTrack' && message.payload.fileID) {
+    console.log('handleSyncTrack', message)
+    const { fileID, ...updates } = message.payload
+    audioStore.updateTrackState(fileID, updates)
   }
 }
 
-onMounted(() => {
-  setTitle('My Table')
-  setActions([TableActions])
-  audioStore.enabled = true
+onMounted(async () => {
+  await auth.checkAuthStatus()
+
+  // Add WebSocket message handlers
+  wsStore.addMessageHandler(handleSyncAll)
+  wsStore.addMessageHandler(handleSyncTrack)
 })
 
 onUnmounted(() => {
   setActions([])
-  setTitle('Skald Bot')
+  setTitle('RPG Audio Streamer')
+
+  // Remove WebSocket handlers
+  wsStore.removeMessageHandler(handleSyncAll)
+  wsStore.removeMessageHandler(handleSyncTrack)
 })
 </script>
 
 <template>
   <v-container class="py-2">
-    <AudioPlayer />
-    <template v-if="auth.loading">
+    <!-- Loading State -->
+    <template v-if="auth.loading || joiningWithToken">
       <div class="text-center py-12">
-        <p>Loading...</p>
+        <h2 class="text-h4 mb-4">{{ joiningWithToken ? 'Joining Table...' : 'Loading...' }}</h2>
+        <v-progress-circular indeterminate size="64"></v-progress-circular>
+        <div v-if="joinStore.error" class="mt-4 text-error">
+          {{ joinStore.error }}
+        </div>
       </div>
     </template>
 
-    <template v-else-if="auth.authenticated">
-      <FileList />
+    <!-- Player View -->
+    <template v-else-if="isPlayerView">
+      <TableViewPlayer />
     </template>
+
+    <!-- GM View -->
+    <template v-else-if="isGMView">
+      <TableViewGM />
+    </template>
+
+    <!-- Not Authenticated -->
     <template v-else>
-      <p>Please login to start managing your audio files</p>
+      <p>Please <router-link to="/login">login</router-link> to start managing your audio files</p>
     </template>
   </v-container>
 </template>
