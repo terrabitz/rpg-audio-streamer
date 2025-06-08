@@ -1,3 +1,10 @@
+## [1.4.1](https://github.com/terrabitz/rpg-audio-streamer/compare/v1.4.0...v1.4.1) (2025-06-08)
+
+
+### Bug Fixes
+
+* Improve frontend routing for players ([#38](https://github.com/terrabitz/rpg-audio-streamer/issues/38)) ([694da04](https://github.com/terrabitz/rpg-audio-streamer/commit/694da04a880aae6885ace5c6fe96825bfb063649))
+
 # [1.4.0](https://github.com/terrabitz/rpg-audio-streamer/compare/v1.3.0...v1.4.0) (2025-06-08)
 
 
