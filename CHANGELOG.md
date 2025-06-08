@@ -1,3 +1,10 @@
+# [1.5.0](https://github.com/terrabitz/rpg-audio-streamer/compare/v1.4.1...v1.5.0) (2025-06-08)
+
+
+### Features
+
+* Save frontend state ([#39](https://github.com/terrabitz/rpg-audio-streamer/issues/39)) ([099807d](https://github.com/terrabitz/rpg-audio-streamer/commit/099807df6118d844b178925cdea20a43b59cf5ae))
+
 ## [1.4.1](https://github.com/terrabitz/rpg-audio-streamer/compare/v1.4.0...v1.4.1) (2025-06-08)
 
 
