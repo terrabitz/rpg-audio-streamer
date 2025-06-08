@@ -10,6 +10,7 @@ Tasks to complete before GA of self-hostable:
 - [X] Automate Docker image build
 - [X] Add example Docker and Docker Compose configurations
 - [X] File metadata editing
+- [ ] Multiple tables
 - [ ] Better file management
 - [ ] Improve initial setup experience
 - [ ] Multiple tables
@@ -36,6 +37,7 @@ Additional tasks:
 - [ ] Better navigation (e.g. restricting access to login if we're authenticated, removing navigation to most pages as a player)
 - [ ] Save table audio state (i.e. volumes)
 - [ ] Add "always start track from beginning" option
+- [ ] Make the player view URL the same as the join URL
 
 Bugs:
 - [X] Fix issue with audio bounce when master volume is adjusted while fading
