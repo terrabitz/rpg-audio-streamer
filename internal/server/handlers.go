@@ -161,13 +161,13 @@ func (s *Server) handleFile(w http.ResponseWriter, r *http.Request, token *auth.
 	case http.MethodDelete:
 		s.handleFileDelete(w, r, token)
 	case http.MethodPut:
-		s.updateFile(w, r)
+		s.handleFileUpdate(w, r)
 	default:
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 	}
 }
 
-func (s *Server) updateFile(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleFileUpdate(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPut {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
