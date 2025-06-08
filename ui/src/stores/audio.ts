@@ -25,7 +25,7 @@ function newAudioTrack(fileID: string, name: string, typeID: string = ""): Audio
     isRepeating: false,
     currentTime: 0,
     duration: 0,
-    trackType: "",
+    trackType: typeID,
   }
 }
 
@@ -37,6 +37,7 @@ export const useAudioStore = defineStore('audio', {
     fadeStates: {} as Record<string, FadeStatus>,
     typeVolumes: {} as Record<string, number>,
   }),
+  persist: true,
   getters: {
     availableTracks: (state) => Object.values(state.tracks)
   },
@@ -93,5 +94,5 @@ export const useAudioStore = defineStore('audio', {
     getTypeVolume(typeName: string): number {
       return this.typeVolumes[typeName] ?? 100
     }
-  }
+  },
 })

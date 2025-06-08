@@ -5,6 +5,7 @@ export const useFileStore = defineStore('files', {
   state: () => ({
     tracks: [] as Track[]
   }),
+  persist: true,
   getters: {
     getTrackById: (state) => {
       return (id: string) => state.tracks.find(track => track.id === id)
