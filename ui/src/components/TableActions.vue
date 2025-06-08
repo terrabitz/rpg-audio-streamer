@@ -21,7 +21,7 @@ async function copyToClipboard(text: string) {
 async function handleGetJoinToken() {
   await joinStore.fetchToken()
   if (joinStore.token) {
-    const url = `${getBaseUrl()}/join/${joinStore.token}`
+    const url = `${getBaseUrl()}/table/${joinStore.token}`
     await copyToClipboard(url)
     isCopied.value = true
     setTimeout(() => {

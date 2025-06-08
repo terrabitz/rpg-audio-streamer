@@ -10,7 +10,7 @@ const router = createRouter({
       component: HomeView,
     },
     {
-      path: '/table',
+      path: '/table/:token?',
       name: 'table',
       component: () => import('../views/TableView.vue'),
     },
@@ -18,16 +18,6 @@ const router = createRouter({
       path: '/login',
       name: 'login',
       component: () => import('../views/LoginView.vue'),
-    },
-    {
-      path: '/join/:token',
-      name: 'join',
-      component: () => import('../views/JoinView.vue'),
-    },
-    {
-      path: '/player',
-      name: 'player',
-      component: () => import('../views/PlayerView.vue'),
     },
   ],
 })

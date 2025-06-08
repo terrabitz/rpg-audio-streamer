@@ -14,7 +14,10 @@ const wsStore = useWebSocketStore()
 const debugStore = useDebugStore()
 const audioStore = useAudioStore()
 const route = useRoute()
-const isPlayerView = computed(() => route.path === '/player')
+const isPlayerView = computed(() => {
+  // Check if we're in a player context within the table view
+  return route.name === 'table' && (!auth.authenticated || auth.role === 'player')
+})
 
 const { title, actions } = useAppBar()
 
@@ -50,8 +53,8 @@ wsStore.addMessageHandler((message) => {
   }
 })
 
-onMounted(() => {
-  auth.checkAuthStatus()
+onMounted(async () => {
+  await auth.checkAuthStatus()
 })
 
 onUnmounted(() => {

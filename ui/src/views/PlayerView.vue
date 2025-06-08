@@ -2,21 +2,27 @@
 import { useDebugStore } from '@/stores/debug'
 import { useWebSocketStore } from '@/stores/websocket'
 import { computed, onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute } from 'vue-router'
 import AudioPlayer from '../components/AudioPlayer.vue'
 import PlayerFileList from '../components/PlayerFileList.vue'
 import VolumeMixer from '../components/VolumeMixer.vue'
 import { useAudioStore, type AudioTrack } from '../stores/audio'
 import { useAuthStore } from '../stores/auth'
+import { useJoinStore } from '../stores/join'
+import { useBaseUrl } from '../composables/useBaseUrl'
 
 const auth = useAuthStore()
-const router = useRouter()
+const route = useRoute()
+const joinStore = useJoinStore()
 const wsStore = useWebSocketStore()
 const audioStore = useAudioStore()
 const debugStore = useDebugStore()
 const connecting = ref(false)
+const joiningWithToken = ref(false)
+const { getBaseUrl } = useBaseUrl()
 
 const buttonLabel = computed(() => {
+  if (joiningWithToken.value) return 'Joining Table...'
   if (connecting.value) return 'Connecting...'
   if (audioStore.enabled) return 'Disconnect Audio'
   return 'Connect Audio'
@@ -39,10 +45,21 @@ function handleSyncTrack(message: { method: string, payload: Partial<AudioTrack>
 }
 
 onMounted(async () => {
-  await auth.checkAuthStatus()
-  if (!auth.authenticated) {
-    router.push('/login')
+  // Check if we have a token in the route params
+  const token = route.params.token as string | undefined
+
+  if (token) {
+    // If we have a token, attempt to join with it
+    joiningWithToken.value = true
+    const success = await joinStore.submitJoinToken(token)
+    joiningWithToken.value = false
+
+    if (!success) {
+      console.error('Failed to join with token')
+    }
   }
+
+  await auth.checkAuthStatus()
 
   wsStore.addMessageHandler(handleSyncAll)
   wsStore.addMessageHandler(handleSyncTrack)
@@ -64,19 +81,52 @@ function handleAudioToggle() {
 
 <template>
   <v-container>
-    <AudioPlayer v-if="audioStore.enabled" />
-    <div class="d-flex align-center mb-4">
-      <v-btn size="x-large" @click="handleAudioToggle" :loading="connecting"
-        :color="audioStore.enabled ? 'error' : 'success'">
-        {{ buttonLabel }}
-      </v-btn>
-      <v-chip v-if="audioStore.enabled" :color="wsStore.isConnected ? 'success' : 'error'" class="ml-4">
-        {{ wsStore.isConnected ? 'Connected' : 'Disconnected' }}
-      </v-chip>
+    <div v-if="joiningWithToken" class="text-center my-8">
+      <h2 class="text-h4 mb-4">Joining Table...</h2>
+      <v-progress-circular indeterminate size="64"></v-progress-circular>
+      <div v-if="joinStore.error" class="mt-4 text-error">
+        {{ joinStore.error }}
+      </div>
     </div>
 
-    <VolumeMixer class="mt-4" />
+    <div v-else-if="!auth.authenticated && !route.params.token">
+      <div class="text-center my-8">
+        <h2 class="text-h4 mb-4">Join a Game Session</h2>
+        <p class="mb-6">You need a table link from your Game Master to connect to the audio stream.</p>
+        <v-card>
+          <v-card-text>
+            <p>Ask your GM to share their table link with you</p>
+            <p class="mt-4">The link will look like
+              <code class="px-2 py-1 rounded bg-primary-lighten-5 text-secondary">
+                {{ getBaseUrl() }}/table/abc123...
+              </code>
+            </p>
+          </v-card-text>
+        </v-card>
+      </div>
+    </div>
 
-    <PlayerFileList v-if="debugStore.isDevMode" />
+    <div v-else>
+      <AudioPlayer v-if="audioStore.enabled" />
+
+      <div v-if="joinStore.error" class="my-4 pa-4 bg-error-lighten-4 rounded">
+        <p class="text-error">{{ joinStore.error }}</p>
+        <p>Please try again with a valid join token.</p>
+      </div>
+
+      <div class="d-flex align-center mb-4">
+        <v-btn size="x-large" @click="handleAudioToggle" :loading="connecting"
+          :color="audioStore.enabled ? 'error' : 'success'">
+          {{ buttonLabel }}
+        </v-btn>
+        <v-chip v-if="audioStore.enabled" :color="wsStore.isConnected ? 'success' : 'error'" class="ml-4">
+          {{ wsStore.isConnected ? 'Connected' : 'Disconnected' }}
+        </v-chip>
+      </div>
+
+      <VolumeMixer class="mt-4" />
+
+      <PlayerFileList v-if="debugStore.isDevMode" />
+    </div>
   </v-container>
 </template>
