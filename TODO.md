@@ -9,8 +9,10 @@ Tasks to complete before releasing to my players:
 Tasks to complete before GA of self-hostable:
 - [X] Automate Docker image build
 - [X] Add example Docker and Docker Compose configurations
+- [X] File metadata editing
 - [ ] Better file management
 - [ ] Improve initial setup experience
+- [ ] Multiple tables
 
 Tasks to complete before GA of hosted:
 - [ ] Landing page

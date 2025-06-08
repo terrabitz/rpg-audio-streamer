@@ -56,6 +56,28 @@ func (db *SQLiteDatastore) DeleteTrack(ctx context.Context, trackID uuid.UUID) e
 	return sqlitedb.New(db.DB).DeleteTrackByID(ctx, trackID[:])
 }
 
+func (db *SQLiteDatastore) UpdateTrack(ctx context.Context, trackID uuid.UUID, update server.UpdateTrackRequest) (server.Track, error) {
+	params := sqlitedb.UpdateTrackParams{
+		ID: trackID[:],
+	}
+
+	if update.Name != nil {
+		params.Name.String = *update.Name
+		params.Name.Valid = true
+	}
+
+	if update.TypeID != nil {
+		params.TypeID = update.TypeID[:]
+	}
+
+	dbTrack, err := sqlitedb.New(db.DB).UpdateTrack(ctx, params)
+	if err != nil {
+		return server.Track{}, fmt.Errorf("couldn't update track in SQLite: %w", err)
+	}
+
+	return convertDBTrack(dbTrack)
+}
+
 func convertDBTrack(dbTrack sqlitedb.Track) (server.Track, error) {
 	id, err := uuid.FromBytes(dbTrack.ID)
 	if err != nil {

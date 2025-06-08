@@ -20,11 +20,18 @@ type Track struct {
 	TypeID    uuid.UUID `json:"typeID,omitempty"`
 }
 
+type UpdateTrackRequest struct {
+	ID     uuid.UUID  `json:"id"`
+	Name   *string    `json:"name"`
+	TypeID *uuid.UUID `json:"typeID"`
+}
+
 type TrackStore interface {
 	SaveTrack(ctx context.Context, track *Track) error
 	GetTracks(ctx context.Context) ([]Track, error)
 	GetTrackByID(ctx context.Context, trackID uuid.UUID) (Track, error)
 	DeleteTrack(ctx context.Context, trackID uuid.UUID) error
+	UpdateTrack(ctx context.Context, trackID uuid.UUID, update UpdateTrackRequest) (Track, error)
 }
 
 type TrackType struct {

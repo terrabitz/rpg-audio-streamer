@@ -7,6 +7,7 @@ package sqlitedb
 
 import (
 	"context"
+	"database/sql"
 )
 
 const deleteTrackByID = `-- name: DeleteTrackByID :exec
@@ -89,4 +90,32 @@ func (q *Queries) SaveTrack(ctx context.Context, arg SaveTrackParams) error {
 		arg.TypeID,
 	)
 	return err
+}
+
+const updateTrack = `-- name: UpdateTrack :one
+update tracks
+set
+  name = coalesce(?1, name),
+  type_id = coalesce(?2, type_id)
+where id = ?3
+returning id, created_at, name, path, type_id
+`
+
+type UpdateTrackParams struct {
+	Name   sql.NullString
+	TypeID []byte
+	ID     []byte
+}
+
+func (q *Queries) UpdateTrack(ctx context.Context, arg UpdateTrackParams) (Track, error) {
+	row := q.db.QueryRowContext(ctx, updateTrack, arg.Name, arg.TypeID, arg.ID)
+	var i Track
+	err := row.Scan(
+		&i.ID,
+		&i.CreatedAt,
+		&i.Name,
+		&i.Path,
+		&i.TypeID,
+	)
+	return i, err
 }

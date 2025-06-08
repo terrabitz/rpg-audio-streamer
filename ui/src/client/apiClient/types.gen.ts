@@ -31,6 +31,12 @@ export type Track = {
     typeID: string;
 };
 
+export type UpdateTrackRequest = {
+    id: string;
+    name?: string;
+    typeID?: string;
+};
+
 export type TrackType = {
     id: string;
     name: string;
@@ -191,6 +197,43 @@ export type DeleteApiV1FilesByTrackIdResponses = {
      */
     200: unknown;
 };
+
+export type PutApiV1FilesByTrackIdData = {
+    body: UpdateTrackRequest;
+    path: {
+        trackID: string;
+    };
+    query?: never;
+    url: '/api/v1/files/{trackID}';
+};
+
+export type PutApiV1FilesByTrackIdErrors = {
+    /**
+     * Invalid request body
+     */
+    400: unknown;
+    /**
+     * Not authorized
+     */
+    403: unknown;
+    /**
+     * Track not found
+     */
+    404: unknown;
+    /**
+     * Internal server error
+     */
+    500: unknown;
+};
+
+export type PutApiV1FilesByTrackIdResponses = {
+    /**
+     * Track updated successfully
+     */
+    200: Track;
+};
+
+export type PutApiV1FilesByTrackIdResponse = PutApiV1FilesByTrackIdResponses[keyof PutApiV1FilesByTrackIdResponses];
 
 export type GetApiV1JoinTokenData = {
     body?: never;

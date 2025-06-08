@@ -42,6 +42,24 @@ func (m *MockTrackStore) DeleteTrack(ctx context.Context, trackID uuid.UUID) err
 	return nil
 }
 
+func (m *MockTrackStore) UpdateTrack(ctx context.Context, trackID uuid.UUID, update UpdateTrackRequest) (Track, error) {
+	track, ok := m.tracks[trackID]
+	if !ok {
+		return Track{}, fmt.Errorf("track not found")
+	}
+
+	if update.Name != nil {
+		track.Name = *update.Name
+	}
+
+	if update.TypeID != nil {
+		track.TypeID = *update.TypeID
+	}
+
+	m.tracks[trackID] = track
+	return track, nil
+}
+
 func (m *MockTrackStore) GetTrackTypes(ctx context.Context) ([]TrackType, error) {
 	var result []TrackType
 	for _, t := range m.trackTypes {
@@ -74,19 +92,19 @@ func NewMockTrackStore(t *testing.T) *MockTrackStore {
 	store.trackTypes[ambianceID] = TrackType{
 		ID:                    ambianceID,
 		Name:                  "Ambiance",
-		IsRepeating:          true,
+		IsRepeating:           true,
 		AllowSimultaneousPlay: true,
 	}
 	store.trackTypes[musicID] = TrackType{
 		ID:                    musicID,
 		Name:                  "Music",
-		IsRepeating:          true,
+		IsRepeating:           true,
 		AllowSimultaneousPlay: false,
 	}
 	store.trackTypes[oneShotID] = TrackType{
 		ID:                    oneShotID,
 		Name:                  "One-Shot",
-		IsRepeating:          false,
+		IsRepeating:           false,
 		AllowSimultaneousPlay: true,
 	}
 
