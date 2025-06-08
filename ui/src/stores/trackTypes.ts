@@ -5,6 +5,7 @@ export const useTrackTypeStore = defineStore('trackTypes', {
   state: () => ({
     trackTypes: [] as TrackType[]
   }),
+  persist: true,
   getters: {
     getTypeById: (state) => (id: string) => {
       return state.trackTypes.find(type => type.id === id)

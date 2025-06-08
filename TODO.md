@@ -10,10 +10,10 @@ Tasks to complete before GA of self-hostable:
 - [X] Automate Docker image build
 - [X] Add example Docker and Docker Compose configurations
 - [X] File metadata editing
+- [ ] Save table audio state (i.e. volumes)
 - [ ] Multiple tables
 - [ ] Better file management
 - [ ] Improve initial setup experience
-- [ ] Multiple tables
 
 Tasks to complete before GA of hosted:
 - [ ] Landing page
@@ -30,13 +30,12 @@ Additional tasks:
 - [X] Tiled track layout
 - [X] Make the player view URL the same as the join URL
 - [ ] Customizable track order
-- [ ] Mobile layout support
+- [ ] Mobile layout support for GMs
 - [ ] Turn frontend into a PWA
 - [ ] Integration with other streaming providers (YouTube, Spotify)
 - [ ] Discord integration
 - [ ] Add automatic updates for the GIF demo on the README
 - [ ] Better navigation (e.g. restricting access to login if we're authenticated, removing navigation to most pages as a player)
-- [ ] Save table audio state (i.e. volumes)
 - [ ] Add "always start track from beginning" option
 
 Bugs:
