@@ -1,3 +1,10 @@
+# [1.4.0](https://github.com/terrabitz/rpg-audio-streamer/compare/v1.3.0...v1.4.0) (2025-06-08)
+
+
+### Features
+
+* Allow updating track metadata ([#30](https://github.com/terrabitz/rpg-audio-streamer/issues/30)) ([2b4a7d8](https://github.com/terrabitz/rpg-audio-streamer/commit/2b4a7d84a864605360bbd3a80b9855f733fc9347))
+
 # [1.3.0](https://github.com/terrabitz/rpg-audio-streamer/compare/v1.2.0...v1.3.0) (2025-03-12)
 
 
