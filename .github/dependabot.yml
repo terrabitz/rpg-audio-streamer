@@ -20,6 +20,10 @@ updates:
         applies-to: version-updates
         patterns:
           - "*"
+      security-updates:
+        applies-to: security-updates
+        patterns:
+          - "*"
 
   - package-ecosystem: "npm"
     directory: "/ui"
@@ -30,6 +34,10 @@ updates:
         applies-to: version-updates
         patterns:
           - "*"
+      security-updates:
+        applies-to: security-updates
+        patterns:
+          - "*"
 
   - package-ecosystem: "github-actions"
     directory: "/"
@@ -38,5 +46,9 @@ updates:
     groups:
       all-updates:
         applies-to: version-updates
+        patterns:
+          - "*"
+      security-updates:
+        applies-to: security-updates
         patterns:
           - "*"
