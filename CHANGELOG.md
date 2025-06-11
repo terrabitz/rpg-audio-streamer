@@ -1,3 +1,10 @@
+## [1.5.1](https://github.com/terrabitz/rpg-audio-streamer/compare/v1.5.0...v1.5.1) (2025-06-11)
+
+
+### Bug Fixes
+
+* Fix role switch issue ([#49](https://github.com/terrabitz/rpg-audio-streamer/issues/49)) ([29f161c](https://github.com/terrabitz/rpg-audio-streamer/commit/29f161c6494cfea473ab4c3546b15f52cf44ad0c))
+
 # [1.5.0](https://github.com/terrabitz/rpg-audio-streamer/compare/v1.4.1...v1.5.0) (2025-06-08)
 
 
