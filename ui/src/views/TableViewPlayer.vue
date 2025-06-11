@@ -50,7 +50,8 @@ onMounted(async () => {
   // Check if we have a token in the route params
   const token = route.params.token as string | undefined
 
-  if (token) {
+  await auth.checkAuthStatus()
+  if (!auth.authenticated && token) {
     // If we have a token, attempt to join with it
     joiningWithToken.value = true
     const success = await joinStore.submitJoinToken(token)
@@ -59,6 +60,7 @@ onMounted(async () => {
     if (!success) {
       console.error('Failed to join with token')
     }
+    return
   }
 
   setTitle('Game Session')

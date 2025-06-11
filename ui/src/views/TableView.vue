@@ -1,20 +1,10 @@
 <script setup lang="ts">
-import { useAudioStore, type AudioTrack } from '@/stores/audio'
-import { useWebSocketStore } from '@/stores/websocket'
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted } from 'vue'
 import TableViewGM from './TableViewGM.vue'
 import TableViewPlayer from './TableViewPlayer.vue'
-import { useAppBar } from '../composables/useAppBar'
 import { useAuthStore } from '../stores/auth'
-import { useJoinStore } from '../stores/join'
 
 const auth = useAuthStore()
-const joinStore = useJoinStore()
-const wsStore = useWebSocketStore()
-const audioStore = useAudioStore()
-const { setTitle, setActions } = useAppBar()
-
-const joiningWithToken = ref(false)
 
 const isPlayerView = computed(() => {
   return auth.role === 'player' || !auth.authenticated
@@ -24,54 +14,16 @@ const isGMView = computed(() => {
   return auth.role === 'gm' && auth.authenticated
 })
 
-function handleSyncAll(message: { method: string, payload: { tracks: AudioTrack[] } }) {
-  if (message.method === 'syncAll' && message.payload.tracks) {
-    console.log('handleSyncAll', message)
-    audioStore.syncTracks(message.payload.tracks)
-  }
-}
-
-function handleSyncTrack(message: { method: string, payload: Partial<AudioTrack> }) {
-  if (message.method === 'syncTrack' && message.payload.fileID) {
-    console.log('handleSyncTrack', message)
-    const { fileID, ...updates } = message.payload
-    audioStore.updateTrackState(fileID, updates)
-  }
-}
 
 onMounted(async () => {
   await auth.checkAuthStatus()
-
-  // Add WebSocket message handlers
-  wsStore.addMessageHandler(handleSyncAll)
-  wsStore.addMessageHandler(handleSyncTrack)
-})
-
-onUnmounted(() => {
-  setActions([])
-  setTitle('RPG Audio Streamer')
-
-  // Remove WebSocket handlers
-  wsStore.removeMessageHandler(handleSyncAll)
-  wsStore.removeMessageHandler(handleSyncTrack)
 })
 </script>
 
 <template>
   <v-container class="py-2">
-    <!-- Loading State -->
-    <template v-if="auth.loading || joiningWithToken">
-      <div class="text-center py-12">
-        <h2 class="text-h4 mb-4">{{ joiningWithToken ? 'Joining Table...' : 'Loading...' }}</h2>
-        <v-progress-circular indeterminate size="64"></v-progress-circular>
-        <div v-if="joinStore.error" class="mt-4 text-error">
-          {{ joinStore.error }}
-        </div>
-      </div>
-    </template>
-
     <!-- Player View -->
-    <template v-else-if="isPlayerView">
+    <template v-if="isPlayerView">
       <TableViewPlayer />
     </template>
 
