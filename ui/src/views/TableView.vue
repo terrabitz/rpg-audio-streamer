@@ -9,15 +9,12 @@ import { useAuthStore } from '../stores/auth'
 import { useJoinStore } from '../stores/join'
 
 const auth = useAuthStore()
-const joinStore = useJoinStore()
 const wsStore = useWebSocketStore()
 const audioStore = useAudioStore()
 const { setTitle, setActions } = useAppBar()
 
-const joiningWithToken = ref(false)
-
 const isPlayerView = computed(() => {
-  return auth.role === 'player' || !auth.authenticated
+  return auth.role === 'player' && auth.authenticated
 })
 
 const isGMView = computed(() => {
@@ -59,19 +56,8 @@ onUnmounted(() => {
 
 <template>
   <v-container class="py-2">
-    <!-- Loading State -->
-    <template v-if="auth.loading || joiningWithToken">
-      <div class="text-center py-12">
-        <h2 class="text-h4 mb-4">{{ joiningWithToken ? 'Joining Table...' : 'Loading...' }}</h2>
-        <v-progress-circular indeterminate size="64"></v-progress-circular>
-        <div v-if="joinStore.error" class="mt-4 text-error">
-          {{ joinStore.error }}
-        </div>
-      </div>
-    </template>
-
     <!-- Player View -->
-    <template v-else-if="isPlayerView">
+    <template v-if="isPlayerView">
       <TableViewPlayer />
     </template>
 
