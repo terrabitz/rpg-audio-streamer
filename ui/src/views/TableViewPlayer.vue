@@ -9,7 +9,6 @@ import VolumeMixer from '../components/VolumeMixer.vue'
 import { useAudioStore, type AudioTrack } from '../stores/audio'
 import { useAuthStore } from '../stores/auth'
 import { useJoinStore } from '../stores/join'
-import { useBaseUrl } from '../composables/useBaseUrl'
 import { useAppBar } from '@/composables/useAppBar'
 
 const auth = useAuthStore()
@@ -20,7 +19,6 @@ const audioStore = useAudioStore()
 const debugStore = useDebugStore()
 const connecting = ref(false)
 const joiningWithToken = ref(false)
-const { getBaseUrl } = useBaseUrl()
 const { setTitle } = useAppBar()
 
 const buttonLabel = computed(() => {
