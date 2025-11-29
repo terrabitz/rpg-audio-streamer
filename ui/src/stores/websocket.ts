@@ -63,16 +63,19 @@ export const useWebSocketStore = defineStore('websocket', () => {
   }
 
   function sendMessage<T>(method: string, payload: T) {
-    if (isConnected.value) {
-      const msg: WebSocketMessage<T> = { method, payload }
-      client.value.sendMessage(msg)
-
-      messageHistory.value.push({
-        ...msg,
-        timestamp: Date.now(),
-        direction: 'sent'
-      })
+    if (!isConnected.value) {
+      console.warn('WebSocket is not connected. Cannot send message:', method)
+      return
     }
+
+    const msg: WebSocketMessage<T> = { method, payload }
+    client.value.sendMessage(msg)
+
+    messageHistory.value.push({
+      ...msg,
+      timestamp: Date.now(),
+      direction: 'sent'
+    })
   }
 
   function addMessageHandler(handler: MessageHandler) {

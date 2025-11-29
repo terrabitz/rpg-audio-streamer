@@ -9,7 +9,6 @@ import VolumeMixer from '../components/VolumeMixer.vue'
 import { useAudioStore, type AudioTrack } from '../stores/audio'
 import { useAuthStore } from '../stores/auth'
 import { useJoinStore } from '../stores/join'
-import { useBaseUrl } from '../composables/useBaseUrl'
 import { useAppBar } from '@/composables/useAppBar'
 
 const auth = useAuthStore()
@@ -20,7 +19,6 @@ const audioStore = useAudioStore()
 const debugStore = useDebugStore()
 const connecting = ref(false)
 const joiningWithToken = ref(false)
-const { getBaseUrl } = useBaseUrl()
 const { setTitle } = useAppBar()
 
 const buttonLabel = computed(() => {
@@ -29,7 +27,6 @@ const buttonLabel = computed(() => {
   if (audioStore.enabled) return 'Disconnect Audio'
   return 'Connect Audio'
 })
-
 
 function handleSyncAll(message: { method: string, payload: { tracks: AudioTrack[] } }) {
   if (message.method === 'syncAll' && message.payload.tracks) {
@@ -91,23 +88,6 @@ function handleAudioToggle() {
       <v-progress-circular indeterminate size="64"></v-progress-circular>
       <div v-if="joinStore.error" class="mt-4 text-error">
         {{ joinStore.error }}
-      </div>
-    </div>
-
-    <div v-else-if="!auth.authenticated && !route.params.token">
-      <div class="text-center my-8">
-        <h2 class="text-h4 mb-4">Join a Game Session</h2>
-        <p class="mb-6">You need a table link from your Game Master to connect to the audio stream.</p>
-        <v-card>
-          <v-card-text>
-            <p>Ask your GM to share their table link with you</p>
-            <p class="mt-4">The link will look like
-              <code class="px-2 py-1 rounded bg-primary-lighten-5 text-secondary">
-                {{ getBaseUrl() }}/table/abc123...
-              </code>
-            </p>
-          </v-card-text>
-        </v-card>
       </div>
     </div>
 

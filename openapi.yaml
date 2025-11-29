@@ -10,6 +10,9 @@ components:
       type: apiKey
       in: cookie
       name: auth_token
+    bearerAuth:
+      type: http
+      scheme: bearer
 
   schemas:
     LoginRequest:
@@ -168,6 +171,9 @@ paths:
   /api/v1/auth/status:
     get:
       summary: Get current authentication status
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
       responses:
         "200":
           description: Authentication status
@@ -179,6 +185,9 @@ paths:
   /api/v1/auth/logout:
     post:
       summary: Logout current user
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
       responses:
         "200":
           description: Logout successful
@@ -188,6 +197,7 @@ paths:
       summary: List all audio tracks
       security:
         - cookieAuth: []
+        - bearerAuth: []
       responses:
         "200":
           description: List of tracks
@@ -203,6 +213,7 @@ paths:
       summary: Upload new audio track
       security:
         - cookieAuth: []
+        - bearerAuth: []
       requestBody:
         required: true
         content:
@@ -229,6 +240,7 @@ paths:
       summary: Delete an audio track
       security:
         - cookieAuth: []
+        - bearerAuth: []
       parameters:
         - name: trackID
           in: path
@@ -247,6 +259,7 @@ paths:
       summary: Update audio track information
       security:
         - cookieAuth: []
+        - bearerAuth: []
       parameters:
         - name: trackID
           in: path
@@ -281,6 +294,7 @@ paths:
       summary: Get a new join token for players
       security:
         - cookieAuth: []
+        - bearerAuth: []
       responses:
         "200":
           description: Join token
@@ -296,6 +310,7 @@ paths:
       summary: Stream audio content
       security:
         - cookieAuth: []
+        - bearerAuth: []
       parameters:
         - name: path
           in: path
@@ -319,6 +334,7 @@ paths:
       summary: Get available track types
       security:
         - cookieAuth: []
+        - bearerAuth: []
       responses:
         "200":
           description: List of track types
@@ -336,6 +352,7 @@ paths:
       summary: WebSocket connection for real-time updates
       security:
         - cookieAuth: []
+        - bearerAuth: []
       responses:
         "101":
           description: Switching protocols to WebSocket

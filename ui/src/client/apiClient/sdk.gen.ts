@@ -51,6 +51,17 @@ export const postApiV1Join = <ThrowOnError extends boolean = false>(options: Opt
  */
 export const getApiV1AuthStatus = <ThrowOnError extends boolean = false>(options?: Options<GetApiV1AuthStatusData, ThrowOnError>) => {
     return (options?.client ?? _heyApiClient).get<GetApiV1AuthStatusResponses, unknown, ThrowOnError>({
+        security: [
+            {
+                in: 'cookie',
+                name: 'auth_token',
+                type: 'apiKey'
+            },
+            {
+                scheme: 'bearer',
+                type: 'http'
+            }
+        ],
         url: '/api/v1/auth/status',
         ...options
     });
@@ -61,6 +72,17 @@ export const getApiV1AuthStatus = <ThrowOnError extends boolean = false>(options
  */
 export const postApiV1AuthLogout = <ThrowOnError extends boolean = false>(options?: Options<PostApiV1AuthLogoutData, ThrowOnError>) => {
     return (options?.client ?? _heyApiClient).post<PostApiV1AuthLogoutResponses, unknown, ThrowOnError>({
+        security: [
+            {
+                in: 'cookie',
+                name: 'auth_token',
+                type: 'apiKey'
+            },
+            {
+                scheme: 'bearer',
+                type: 'http'
+            }
+        ],
         url: '/api/v1/auth/logout',
         ...options
     });
@@ -76,6 +98,10 @@ export const getApiV1Files = <ThrowOnError extends boolean = false>(options?: Op
                 in: 'cookie',
                 name: 'auth_token',
                 type: 'apiKey'
+            },
+            {
+                scheme: 'bearer',
+                type: 'http'
             }
         ],
         url: '/api/v1/files',
@@ -94,6 +120,10 @@ export const postApiV1Files = <ThrowOnError extends boolean = false>(options: Op
                 in: 'cookie',
                 name: 'auth_token',
                 type: 'apiKey'
+            },
+            {
+                scheme: 'bearer',
+                type: 'http'
             }
         ],
         url: '/api/v1/files',
@@ -115,6 +145,10 @@ export const deleteApiV1FilesByTrackId = <ThrowOnError extends boolean = false>(
                 in: 'cookie',
                 name: 'auth_token',
                 type: 'apiKey'
+            },
+            {
+                scheme: 'bearer',
+                type: 'http'
             }
         ],
         url: '/api/v1/files/{trackID}',
@@ -132,6 +166,10 @@ export const putApiV1FilesByTrackId = <ThrowOnError extends boolean = false>(opt
                 in: 'cookie',
                 name: 'auth_token',
                 type: 'apiKey'
+            },
+            {
+                scheme: 'bearer',
+                type: 'http'
             }
         ],
         url: '/api/v1/files/{trackID}',
@@ -153,6 +191,10 @@ export const getApiV1JoinToken = <ThrowOnError extends boolean = false>(options?
                 in: 'cookie',
                 name: 'auth_token',
                 type: 'apiKey'
+            },
+            {
+                scheme: 'bearer',
+                type: 'http'
             }
         ],
         url: '/api/v1/join-token',
@@ -170,6 +212,10 @@ export const getApiV1StreamByPath = <ThrowOnError extends boolean = false>(optio
                 in: 'cookie',
                 name: 'auth_token',
                 type: 'apiKey'
+            },
+            {
+                scheme: 'bearer',
+                type: 'http'
             }
         ],
         url: '/api/v1/stream/{path}',
@@ -187,6 +233,10 @@ export const getApiV1TrackTypes = <ThrowOnError extends boolean = false>(options
                 in: 'cookie',
                 name: 'auth_token',
                 type: 'apiKey'
+            },
+            {
+                scheme: 'bearer',
+                type: 'http'
             }
         ],
         url: '/api/v1/trackTypes',
@@ -204,6 +254,10 @@ export const getApiV1Ws = <ThrowOnError extends boolean = false>(options?: Optio
                 in: 'cookie',
                 name: 'auth_token',
                 type: 'apiKey'
+            },
+            {
+                scheme: 'bearer',
+                type: 'http'
             }
         ],
         url: '/api/v1/ws',

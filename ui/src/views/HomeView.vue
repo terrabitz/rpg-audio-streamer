@@ -15,7 +15,7 @@ const auth = useAuthStore();
 
       <div class="d-flex flex-wrap justify-center gap-4">
         <v-btn to="/table" color="primary" size="large" variant="elevated" prepend-icon="$headphones">
-          {{ auth.role === 'gm' ? 'Go to My Table' : 'Connect to Audio' }}
+          Go to My Table
         </v-btn>
       </div>
     </div>
@@ -31,7 +31,7 @@ const auth = useAuthStore();
           GM Login
         </v-btn>
 
-        <v-btn class="ml-4" to="/table" color="primary" size="large" variant="elevated" prepend-icon="$accountMusic">
+        <v-btn class="ml-4" to="/join" color="primary" size="large" variant="elevated" prepend-icon="$accountMusic">
           Join as Player
         </v-btn>
 
