@@ -108,7 +108,7 @@ func (s *Server) registerHandlers() *http.ServeMux {
 	// Protected endpoints with role validation
 	mux.HandleFunc("/api/v1/files", s.gmOnlyMiddleware(s.handleFiles))
 	mux.HandleFunc("/api/v1/files/{trackID}", s.gmOnlyMiddleware(s.handleFile))
-	mux.HandleFunc("/api/v1/join-token", s.gmOnlyMiddleware(s.handleJoinToken))
+	mux.HandleFunc("/api/v1/join-token", s.gmOnlyMiddleware(s.handleGetJoinToken))
 	mux.HandleFunc("/api/v1/stream/", s.authMiddleware(s.streamDirectory))
 	mux.HandleFunc("/api/v1/trackTypes", s.authMiddleware(s.handleTrackTypes))
 

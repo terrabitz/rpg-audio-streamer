@@ -543,7 +543,7 @@ func TestHandleJoinToken(t *testing.T) {
 	addAuthCookie(req, ts.auth.(*mockAuth).token.String())
 	rec := httptest.NewRecorder()
 
-	ts.handleJoinToken(rec, req, &auth.Token{Role: auth.RoleGM})
+	ts.handleGetJoinToken(rec, req, &auth.Token{Role: auth.RoleGM})
 
 	if rec.Code != http.StatusOK {
 		t.Errorf("expected status OK; got %v", rec.Code)
@@ -562,7 +562,7 @@ func TestHandleJoinToken(t *testing.T) {
 	addAuthCookie(req, ts.auth.(*mockAuth).token.String())
 	rec = httptest.NewRecorder()
 
-	ts.handleJoinToken(rec, req, &auth.Token{Role: auth.RoleGM})
+	ts.handleGetJoinToken(rec, req, &auth.Token{Role: auth.RoleGM})
 
 	if rec.Code != http.StatusMethodNotAllowed {
 		t.Errorf("expected status MethodNotAllowed; got %v", rec.Code)
