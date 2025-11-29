@@ -280,42 +280,14 @@ func (s *Server) handleAuthStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var joinToken string
-	authHeader := r.Header.Get("Authorization")
-	if authHeader != "" {
-		const prefix = "Bearer "
-		if strings.HasPrefix(authHeader, prefix) {
-			joinToken = strings.TrimPrefix(authHeader, prefix)
-		}
-	}
-
-	if joinToken != "" {
-		token, err := s.auth.ValidateJoinToken(joinToken)
-		if err == nil {
-			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(authStatusResponse{
-				Authenticated: true,
-				Role:          token.Role,
-			})
-			return
-		}
-	}
-
-	// Fall back to cookie authentication
-	cookie, err := readCookie(r, authCookieName)
+	token, err := s.getToken(r)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(authStatusResponse{Authenticated: false})
 		return
 	}
 
-	token, err := s.auth.ValidateToken(cookie)
 	w.Header().Set("Content-Type", "application/json")
-	if err != nil {
-		json.NewEncoder(w).Encode(authStatusResponse{Authenticated: false})
-		return
-	}
-
 	json.NewEncoder(w).Encode(authStatusResponse{
 		Authenticated: true,
 		Role:          token.Role,
