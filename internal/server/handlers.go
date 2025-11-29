@@ -34,10 +34,7 @@ func (s *Server) listFiles(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(tracks); err != nil {
-		s.logger.Error("failed to encode response", "error", err)
-	}
+	respondJSON(w, http.StatusOK, tracks)
 }
 
 func (s *Server) uploadFile(w http.ResponseWriter, r *http.Request) {
@@ -194,10 +191,7 @@ func (s *Server) handleFileUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(track); err != nil {
-		s.logger.Error("failed to encode response", "error", err)
-	}
+	respondJSON(w, http.StatusOK, track)
 }
 
 func (s *Server) handleFileDelete(w http.ResponseWriter, r *http.Request, token *auth.Token) {
@@ -282,13 +276,11 @@ func (s *Server) handleAuthStatus(w http.ResponseWriter, r *http.Request) {
 
 	token, err := s.getToken(r)
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(authStatusResponse{Authenticated: false})
+		respondJSON(w, http.StatusOK, authStatusResponse{Authenticated: false})
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(authStatusResponse{
+	respondJSON(w, http.StatusOK, authStatusResponse{
 		Authenticated: true,
 		Role:          token.Role,
 	})
@@ -326,8 +318,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	token, err := s.auth.ValidateCredentials(creds)
 	if err != nil {
 		s.logger.Info("login failed", "username", req.Username)
-		w.WriteHeader(http.StatusUnauthorized)
-		json.NewEncoder(w).Encode(loginResponse{
+		respondJSON(w, http.StatusUnauthorized, loginResponse{
 			Success: false,
 			Error:   "Invalid credentials",
 		})
@@ -337,8 +328,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	// Set auth cookie
 	s.writeCookie(w, authCookieName, token.String(), token.ExpiresAt)
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(loginResponse{
+	respondJSON(w, http.StatusOK, loginResponse{
 		Success: true,
 	})
 }
@@ -353,8 +343,7 @@ func (s *Server) handleJoinToken(w http.ResponseWriter, r *http.Request, token *
 		Token: s.auth.GetJoinToken(),
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(resp)
+	respondJSON(w, http.StatusOK, resp)
 }
 
 func (s *Server) handleJoin(w http.ResponseWriter, r *http.Request) {
@@ -373,8 +362,7 @@ func (s *Server) handleJoin(w http.ResponseWriter, r *http.Request) {
 	token, err := s.auth.ValidateJoinToken(req.Token)
 	if err != nil {
 		s.logger.Info("join failed", "error", err)
-		w.WriteHeader(http.StatusUnauthorized)
-		json.NewEncoder(w).Encode(loginResponse{
+		respondJSON(w, http.StatusUnauthorized, loginResponse{
 			Success: false,
 			Error:   "Invalid join token",
 		})
@@ -382,9 +370,7 @@ func (s *Server) handleJoin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.writeCookie(w, authCookieName, token.String(), token.ExpiresAt)
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(loginResponse{
+	respondJSON(w, http.StatusOK, loginResponse{
 		Success: true,
 	})
 }
@@ -402,6 +388,11 @@ func (s *Server) handleTrackTypes(w http.ResponseWriter, r *http.Request, token 
 		return
 	}
 
+	respondJSON(w, http.StatusOK, trackTypes)
+}
+
+func respondJSON(w http.ResponseWriter, status int, payload any) {
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(trackTypes)
+	w.WriteHeader(status)
+	json.NewEncoder(w).Encode(payload)
 }
