@@ -539,7 +539,7 @@ func TestHandleJoinToken(t *testing.T) {
 	ts := setupTestServer(t)
 	defer ts.cleanup(t)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/join-token", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/joinToken", nil)
 	addAuthCookie(req, ts.auth.(*mockAuth).token.String())
 	rec := httptest.NewRecorder()
 
@@ -558,7 +558,7 @@ func TestHandleJoinToken(t *testing.T) {
 		t.Errorf("expected token %q; got %q", ts.auth.(*mockAuth).joinToken, resp.Token)
 	}
 
-	req = httptest.NewRequest(http.MethodPost, "/api/v1/join-token", nil)
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/joinToken", nil)
 	addAuthCookie(req, ts.auth.(*mockAuth).token.String())
 	rec = httptest.NewRecorder()
 

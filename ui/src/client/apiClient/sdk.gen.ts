@@ -197,7 +197,7 @@ export const getApiV1JoinToken = <ThrowOnError extends boolean = false>(options?
                 type: 'http'
             }
         ],
-        url: '/api/v1/join-token',
+        url: '/api/v1/joinToken',
         ...options
     });
 };

@@ -289,7 +289,7 @@ paths:
         "500":
           description: Internal server error
 
-  /api/v1/join-token:
+  /api/v1/joinToken:
     get:
       summary: Get a new join token for players
       security:

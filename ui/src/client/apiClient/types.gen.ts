@@ -239,7 +239,7 @@ export type GetApiV1JoinTokenData = {
     body?: never;
     path?: never;
     query?: never;
-    url: '/api/v1/join-token';
+    url: '/api/v1/joinToken';
 };
 
 export type GetApiV1JoinTokenErrors = {
