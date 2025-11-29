@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { useDebugStore } from '@/stores/debug'
 import { useWebSocketStore } from '@/stores/websocket'
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import AudioPlayer from '../components/AudioPlayer.vue'
 import PlayerFileList from '../components/PlayerFileList.vue'
@@ -62,23 +62,41 @@ onMounted(async () => {
 
   setTitle('Game Session')
   audioStore.enabled = false
-
-  wsStore.addMessageHandler(handleSyncAll)
-  wsStore.addMessageHandler(handleSyncTrack)
 })
 
-function handleAudioToggle() {
+onUnmounted(() => {
+  disconnectAudio()
+})
+
+async function handleAudioToggle() {
   if (!audioStore.enabled) {
-    connecting.value = true
-    audioStore.enabled = true
-    wsStore.sendMessage('syncRequest', {})
-    setTimeout(() => {
-      connecting.value = false
-    }, 2000)
+    await connectAudio()
   } else {
-    audioStore.enabled = false
+    disconnectAudio()
   }
 }
+
+async function connectAudio() {
+  connecting.value = true
+  await wsStore.connect()
+  wsStore.addMessageHandler(handleSyncAll)
+  wsStore.addMessageHandler(handleSyncTrack)
+
+
+  wsStore.sendMessage('syncRequest', {})
+  setTimeout(() => {
+    connecting.value = false
+  }, 2000)
+  audioStore.enabled = true
+}
+
+function disconnectAudio() {
+  audioStore.enabled = false
+  wsStore.removeMessageHandler(handleSyncAll)
+  wsStore.removeMessageHandler(handleSyncTrack)
+  wsStore.disconnect()
+}
+
 </script>
 
 <template>

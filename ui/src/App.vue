@@ -26,33 +26,6 @@ async function handleLogout() {
   router.push('/')
 }
 
-// Connect when authenticated, disconnect when not
-watch(() => auth.authenticated, (isAuthenticated) => {
-  if (isAuthenticated) {
-    wsStore.connect()
-  } else {
-    wsStore.disconnect()
-  }
-})
-
-// Handle sync requests from players
-wsStore.addMessageHandler((message) => {
-  if (message.method === 'syncRequest' && auth.role === 'gm') {
-    const tracks = audioStore.getPlayingTracks()
-    const audioAdjusted = tracks.map((track) => {
-      return {
-        ...track,
-        volume: track.volume * audioStore.masterVolume / 100,
-      }
-    })
-    // Send current state to requesting client
-    wsStore.sendMessage('syncAll', {
-      tracks: audioAdjusted,
-      to: message.senderId,
-    })
-  }
-})
-
 onMounted(async () => {
   await auth.checkAuthStatus()
 })
