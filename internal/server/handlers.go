@@ -357,9 +357,3 @@ func (s *Server) handleTrackTypes(w http.ResponseWriter, r *http.Request, token 
 
 	respondJSON(w, http.StatusOK, trackTypes)
 }
-
-func respondJSON(w http.ResponseWriter, status int, payload any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(payload)
-}
