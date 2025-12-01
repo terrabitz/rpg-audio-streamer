@@ -8,21 +8,17 @@ import PlayerFileList from '../components/PlayerFileList.vue'
 import VolumeMixer from '../components/VolumeMixer.vue'
 import { useAudioStore, type AudioTrack } from '../stores/audio'
 import { useAuthStore } from '../stores/auth'
-import { useJoinStore } from '../stores/join'
 import { useAppBar } from '@/composables/useAppBar'
 
 const auth = useAuthStore()
 const route = useRoute()
-const joinStore = useJoinStore()
 const wsStore = useWebSocketStore()
 const audioStore = useAudioStore()
 const debugStore = useDebugStore()
 const connecting = ref(false)
-const joiningWithToken = ref(false)
 const { setTitle } = useAppBar()
 
 const buttonLabel = computed(() => {
-  if (joiningWithToken.value) return 'Joining Table...'
   if (connecting.value) return 'Connecting...'
   if (audioStore.enabled) return 'Disconnect Audio'
   return 'Connect Audio'
@@ -47,19 +43,7 @@ onMounted(async () => {
   // Check if we have a token in the route params
   const token = route.params.token as string | undefined
 
-  await auth.checkAuthStatus()
-  if (!auth.authenticated && token) {
-    // If we have a token, attempt to join with it
-    joiningWithToken.value = true
-    const success = await joinStore.submitJoinToken(token)
-    joiningWithToken.value = false
-
-    if (!success) {
-      console.error('Failed to join with token')
-    }
-    return
-  }
-
+  await auth.checkAuthStatus(token)
   setTitle('Game Session')
   audioStore.enabled = false
 })
@@ -101,35 +85,20 @@ function disconnectAudio() {
 
 <template>
   <v-container>
-    <div v-if="joiningWithToken" class="text-center my-8">
-      <h2 class="text-h4 mb-4">Joining Table...</h2>
-      <v-progress-circular indeterminate size="64"></v-progress-circular>
-      <div v-if="joinStore.error" class="mt-4 text-error">
-        {{ joinStore.error }}
-      </div>
+    <AudioPlayer v-if="audioStore.enabled" token=":" />
+
+    <div class="d-flex align-center mb-4">
+      <v-btn size="x-large" @click="handleAudioToggle" :loading="connecting"
+        :color="audioStore.enabled ? 'error' : 'success'">
+        {{ buttonLabel }}
+      </v-btn>
+      <v-chip v-if="audioStore.enabled" :color="wsStore.isConnected ? 'success' : 'error'" class="ml-4">
+        {{ wsStore.isConnected ? 'Connected' : 'Disconnected' }}
+      </v-chip>
     </div>
 
-    <div v-else>
-      <AudioPlayer v-if="audioStore.enabled" />
+    <VolumeMixer class="mt-4" />
 
-      <div v-if="joinStore.error" class="my-4 pa-4 bg-error-lighten-4 rounded">
-        <p class="text-error">{{ joinStore.error }}</p>
-        <p>Please try again with a valid join token.</p>
-      </div>
-
-      <div class="d-flex align-center mb-4">
-        <v-btn size="x-large" @click="handleAudioToggle" :loading="connecting"
-          :color="audioStore.enabled ? 'error' : 'success'">
-          {{ buttonLabel }}
-        </v-btn>
-        <v-chip v-if="audioStore.enabled" :color="wsStore.isConnected ? 'success' : 'error'" class="ml-4">
-          {{ wsStore.isConnected ? 'Connected' : 'Disconnected' }}
-        </v-chip>
-      </div>
-
-      <VolumeMixer class="mt-4" />
-
-      <PlayerFileList v-if="debugStore.isDevMode" />
-    </div>
+    <PlayerFileList v-if="debugStore.isDevMode" />
   </v-container>
 </template>

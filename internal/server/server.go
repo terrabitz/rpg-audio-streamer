@@ -70,23 +70,25 @@ func (s *Server) Start() error {
 		return fmt.Errorf("failed to create upload directory: %w", err)
 	}
 
-	mux := s.registerHandlers()
+	apiMux := s.registerHandlers()
 
 	// Apply global middleware
-	handler := middlewares.LoggerMiddleware(s.logger)(
+	apiHandler := middlewares.LoggerMiddleware(s.logger)(
 		middlewares.CORSMiddleware(middlewares.CorsConfig{
 			AllowedOrigins: s.cfg.CORS.AllowedOrigins,
 			DevMode:        s.cfg.DevMode,
-		})(mux),
+		})(apiMux),
 	)
 
-	mux = http.NewServeMux()
+	mux := http.NewServeMux()
+	// NOTE, we want to register this separately, because we don't want to apply
+	// the same default middleware we apply to the API routes.
 	mux.HandleFunc("/api/v1/ws", s.authMiddleware(s.handleWebSocket))
-	mux.Handle("/", handler)
+	mux.Handle("/", apiHandler)
 
 	srv := &http.Server{
 		Addr:    fmt.Sprintf(":%d", s.cfg.Port),
-		Handler: mux,
+		Handler: apiMux,
 	}
 
 	s.logger.Info("starting server",
@@ -101,7 +103,6 @@ func (s *Server) registerHandlers() *http.ServeMux {
 
 	// Public endpoints
 	mux.HandleFunc("/api/v1/login", s.handleLogin)
-	mux.HandleFunc("/api/v1/join", s.handleJoin)
 	mux.HandleFunc("/api/v1/auth/status", s.handleAuthStatus)
 	mux.HandleFunc("/api/v1/auth/logout", s.handleLogout)
 

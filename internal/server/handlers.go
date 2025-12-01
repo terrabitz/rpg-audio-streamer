@@ -245,27 +245,9 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request, token *
 	s.hub.Register(conn, token)
 }
 
-type loginRequest struct {
-	Username string `json:"username"`
-	Password string `json:"password"`
-}
-
-type loginResponse struct {
-	Success bool   `json:"success"`
-	Error   string `json:"error,omitempty"`
-}
-
 type authStatusResponse struct {
 	Authenticated bool      `json:"authenticated"`
 	Role          auth.Role `json:"role,omitempty"`
-}
-
-type joinTokenResponse struct {
-	Token string `json:"token"`
-}
-
-type joinRequest struct {
-	Token string `json:"token"`
 }
 
 func (s *Server) handleAuthStatus(w http.ResponseWriter, r *http.Request) {
@@ -295,6 +277,16 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 	// Always clear the cookie, regardless of authentication method
 	s.clearCookie(w, authCookieName)
 	w.WriteHeader(http.StatusOK)
+}
+
+type loginRequest struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
+}
+
+type loginResponse struct {
+	Success bool   `json:"success"`
+	Error   string `json:"error,omitempty"`
 }
 
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
@@ -333,6 +325,10 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+type joinTokenResponse struct {
+	Token string `json:"token"`
+}
+
 func (s *Server) handleGetJoinToken(w http.ResponseWriter, r *http.Request, token *auth.Token) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -344,35 +340,6 @@ func (s *Server) handleGetJoinToken(w http.ResponseWriter, r *http.Request, toke
 	}
 
 	respondJSON(w, http.StatusOK, resp)
-}
-
-func (s *Server) handleJoin(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	var req joinRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		s.logger.Error("failed to decode join request", "error", err)
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
-		return
-	}
-
-	token, err := s.auth.ValidateJoinToken(req.Token)
-	if err != nil {
-		s.logger.Info("join failed", "error", err)
-		respondJSON(w, http.StatusUnauthorized, loginResponse{
-			Success: false,
-			Error:   "Invalid join token",
-		})
-		return
-	}
-
-	s.writeCookie(w, authCookieName, token.String(), token.ExpiresAt)
-	respondJSON(w, http.StatusOK, loginResponse{
-		Success: true,
-	})
 }
 
 func (s *Server) handleTrackTypes(w http.ResponseWriter, r *http.Request, token *auth.Token) {

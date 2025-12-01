@@ -70,29 +70,6 @@ export type PostApiV1LoginResponses = {
 
 export type PostApiV1LoginResponse = PostApiV1LoginResponses[keyof PostApiV1LoginResponses];
 
-export type PostApiV1JoinData = {
-    body: JoinRequest;
-    path?: never;
-    query?: never;
-    url: '/api/v1/join';
-};
-
-export type PostApiV1JoinErrors = {
-    /**
-     * Invalid join token
-     */
-    401: unknown;
-};
-
-export type PostApiV1JoinResponses = {
-    /**
-     * Join successful
-     */
-    200: LoginResponse;
-};
-
-export type PostApiV1JoinResponse = PostApiV1JoinResponses[keyof PostApiV1JoinResponses];
-
 export type GetApiV1AuthStatusData = {
     body?: never;
     path?: never;

@@ -1,4 +1,4 @@
-import { getApiV1JoinToken, postApiV1Join } from '@/client/apiClient'
+import { getApiV1JoinToken } from '@/client/apiClient'
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
@@ -23,24 +23,6 @@ export const useJoinStore = defineStore('join', () => {
     }
   }
 
-  async function submitJoinToken(token: string) {
-    loading.value = true
-    error.value = null
-
-    try {
-      const { data } = await postApiV1Join<true>({
-        body: { token }
-      })
-      return data.success
-    } catch (err) {
-      console.error('Failed to join table:', err)
-      error.value = 'Failed to join table'
-      return false
-    } finally {
-      loading.value = false
-    }
-  }
-
   function clearToken() {
     token.value = null
     error.value = null
@@ -52,6 +34,5 @@ export const useJoinStore = defineStore('join', () => {
     error,
     fetchToken,
     clearToken,
-    submitJoinToken
   }
 })
