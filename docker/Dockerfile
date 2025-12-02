@@ -1,5 +1,5 @@
 # Stage 1: Build Vue frontend
-FROM node:20 AS frontend-builder
+FROM node:24 AS frontend-builder
 
 WORKDIR /ui
 COPY ui .
@@ -19,7 +19,7 @@ COPY internal internal
 RUN CGOENABLED=1 go build -o backend main.go
 
 # Stage 3: Create the final runtime image
-FROM alpine:3.21.3
+FROM alpine:3
 
 ARG TARGETARCH
 
