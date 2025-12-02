@@ -44,9 +44,11 @@ export const useWebSocketStore = defineStore('websocket', () => {
         }
       },
       // onClose
-      () => {
+      (event: CloseEvent) => {
         isConnected.value = false
-        console.log('WebSocket disconnected')
+        const reason = event.reason || 'No reason provided'
+        const code = event.code
+        console.log(`WebSocket disconnected: [${code}] ${reason}`)
       },
       // onError
       (error) => {

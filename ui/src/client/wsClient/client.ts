@@ -9,7 +9,7 @@ export class WSClient {
   async connect(
     onOpen: () => void,
     onMessage: (data: any) => void,
-    onClose: () => void,
+    onClose: (event: CloseEvent) => void,
     onError: (error: Event) => void
   ): Promise<void> {
     if (this.socket?.readyState === WebSocket.OPEN) {
