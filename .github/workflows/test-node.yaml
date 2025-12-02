@@ -1,0 +1,65 @@
+name: Test Node
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "ui/**"
+
+jobs:
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: "./ui/.nvmrc"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: ./ui
+
+      - name: Run tests
+        run: npm test
+        working-directory: ./ui
+
+  lint:
+    name: Run Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: "./ui/.nvmrc"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: ./ui
+
+      - name: Run tests
+        run: npm run lint
+        working-directory: ./ui
+
+  build:
+    name: Run Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: "./ui/.nvmrc"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: ./ui
+
+      - name: Run tests
+        run: npm run build
+        working-directory: ./ui
