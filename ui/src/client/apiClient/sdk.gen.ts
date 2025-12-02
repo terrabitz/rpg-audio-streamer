@@ -218,8 +218,9 @@ export const getApiV1Ws = <ThrowOnError extends boolean = false>(options?: Optio
                 type: 'apiKey'
             },
             {
-                scheme: 'bearer',
-                type: 'http'
+                in: 'query',
+                name: 'token',
+                type: 'apiKey'
             }
         ],
         url: '/api/v1/ws',

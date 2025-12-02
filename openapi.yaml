@@ -13,6 +13,10 @@ components:
     bearerAuth:
       type: http
       scheme: bearer
+    queryAuth:
+      type: apiKey
+      in: query
+      name: token
 
   schemas:
     LoginRequest:
@@ -327,7 +331,7 @@ paths:
       summary: WebSocket connection for real-time updates
       security:
         - cookieAuth: []
-        - bearerAuth: []
+        - queryAuth: []
       responses:
         "101":
           description: Switching protocols to WebSocket
