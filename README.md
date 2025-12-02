@@ -176,17 +176,6 @@ The server can be configured using environment variables or command-line flags:
 - `LOG_FORMAT` (default: json) - Log format (json/pretty)
 - `LOG_LEVEL` (default: info) - Log level (debug/info/warn/error)
 
-## API Endpoints
-
-### Authentication
-- `POST /api/v1/auth/login` - Admin login
-- `POST /api/v1/auth/join` - Player join with token
-
-### File Management
-- `GET /api/v1/files` - List available audio files
-- `POST /api/v1/files` - Upload new audio files
-- `DELETE /api/v1/files/{filename}` - Delete an audio file
-- `GET /api/v1/stream/{filename}` - Stream an audio file
 
 ## Developer Guide
 
