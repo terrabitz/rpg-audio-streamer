@@ -7,8 +7,12 @@ import VolumeSlider from './VolumeSlider.vue'
 const audioStore = useAudioStore()
 const trackTypeStore = useTrackTypeStore()
 
+const props = defineProps<{
+  token?: string
+}>()
+
 onMounted(async () => {
-  await trackTypeStore.fetchTrackTypes()
+  await trackTypeStore.fetchTrackTypes(props.token)
   for (const type of trackTypeStore.trackTypes) {
     if (!audioStore.typeVolumes[type.name]) {
       audioStore.typeVolumes[type.name] = 100

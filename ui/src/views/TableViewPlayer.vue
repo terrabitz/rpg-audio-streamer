@@ -18,6 +18,9 @@ const debugStore = useDebugStore()
 const connecting = ref(false)
 const { setTitle } = useAppBar()
 
+// Check if we have a token in the route params
+const token = route.params.token as string | undefined
+
 const buttonLabel = computed(() => {
   if (connecting.value) return 'Connecting...'
   if (audioStore.enabled) return 'Disconnect Audio'
@@ -40,9 +43,6 @@ function handleSyncTrack(message: { method: string, payload: Partial<AudioTrack>
 }
 
 onMounted(async () => {
-  // Check if we have a token in the route params
-  const token = route.params.token as string | undefined
-
   await auth.checkAuthStatus(token)
   setTitle('Game Session')
   audioStore.enabled = false
@@ -62,7 +62,7 @@ async function handleAudioToggle() {
 
 async function connectAudio() {
   connecting.value = true
-  await wsStore.connect()
+  await wsStore.connect(token)
   wsStore.addMessageHandler(handleSyncAll)
   wsStore.addMessageHandler(handleSyncTrack)
 
@@ -85,7 +85,7 @@ function disconnectAudio() {
 
 <template>
   <v-container>
-    <AudioPlayer v-if="audioStore.enabled" token=":" />
+    <AudioPlayer v-if="audioStore.enabled" :token="token" />
 
     <div class="d-flex align-center mb-4">
       <v-btn size="x-large" @click="handleAudioToggle" :loading="connecting"
@@ -97,7 +97,7 @@ function disconnectAudio() {
       </v-chip>
     </div>
 
-    <VolumeMixer class="mt-4" />
+    <VolumeMixer class="mt-4" :token="token" />
 
     <PlayerFileList v-if="debugStore.isDevMode" />
   </v-container>

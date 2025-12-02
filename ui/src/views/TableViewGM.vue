@@ -8,7 +8,6 @@ import { useAuthStore } from '@/stores/auth';
 import { useWebSocketStore, type WebSocketMessage } from '@/stores/websocket';
 import { onMounted, onUnmounted } from 'vue';
 
-const auth = useAuthStore()
 const audioStore = useAudioStore()
 const wsStore = useWebSocketStore()
 

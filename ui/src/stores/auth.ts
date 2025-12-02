@@ -8,9 +8,15 @@ export const useAuthStore = defineStore('auth', () => {
   const loading = ref(false)
   const role = ref<Role | null>(null)
 
-  async function checkAuthStatus() {
+  async function checkAuthStatus(token?: string) {
     try {
-      const { data } = await getApiV1AuthStatus<true>()
+      const options = token ? {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      } : undefined
+
+      const { data } = await getApiV1AuthStatus<true>(options)
 
       authenticated.value = data.authenticated
       role.value = data.authenticated && data.role ? data.role : null

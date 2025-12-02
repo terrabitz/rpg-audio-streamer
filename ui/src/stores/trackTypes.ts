@@ -12,9 +12,15 @@ export const useTrackTypeStore = defineStore('trackTypes', {
     }
   },
   actions: {
-    async fetchTrackTypes() {
+    async fetchTrackTypes(token?: string) {
       try {
-        const { data } = await getApiV1TrackTypes<true>()
+        const options = token ? {
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        } : undefined
+
+        const { data } = await getApiV1TrackTypes<true>(options)
         this.trackTypes = data
       } catch (error) {
         console.error('Error fetching track types:', error)

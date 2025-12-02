@@ -1,7 +1,15 @@
 <script setup lang="ts">
 import { useAuthStore } from '../stores/auth';
+import { useJoinStore } from '@/stores/join';
+import { onMounted } from 'vue';
 
 const auth = useAuthStore();
+const joinStore = useJoinStore();
+
+onMounted(async () => {
+  await joinStore.fetchToken();
+});
+
 </script>
 
 <template>
@@ -14,7 +22,8 @@ const auth = useAuthStore();
       </p>
 
       <div class="d-flex flex-wrap justify-center gap-4">
-        <v-btn to="/table" color="primary" size="large" variant="elevated" prepend-icon="$headphones">
+        <v-btn :to="'/table/' + joinStore.token" color="primary" size="large" variant="elevated"
+          prepend-icon="$headphones">
           Go to My Table
         </v-btn>
       </div>

@@ -4,11 +4,11 @@
 </template>
 
 <script setup lang="ts">
-import Hls from 'hls.js';
+import Hls, { type HlsConfig } from 'hls.js';
 import { onBeforeUnmount, ref, watch } from 'vue';
 import { useAudioStore, type AudioTrack } from '../stores/audio';
 
-const props = defineProps<{ fileID: string }>()
+const props = defineProps<{ fileID: string, token?: string }>()
 const audioStore = useAudioStore()
 const videoElement = ref<HTMLVideoElement | null>(null)
 
@@ -41,7 +41,15 @@ onBeforeUnmount(() => {
 function startAudioSync(fileID: string, videoElement: HTMLVideoElement) {
   // Set up HLS.js if supported
   if (Hls.isSupported()) {
-    const hls = new Hls()
+    let options: Partial<HlsConfig> = {}
+    if (props.token) {
+      options = {
+        xhrSetup: function (xhr, url) {
+          xhr.setRequestHeader('Authorization', `Bearer ${props.token}`)
+        }
+      }
+    }
+    const hls = new Hls(options)
     hls.loadSource(`/api/v1/stream/${fileID}/index.m3u8`)
     hls.attachMedia(videoElement)
     hls.on(Hls.Events.MANIFEST_PARSED, () => {
