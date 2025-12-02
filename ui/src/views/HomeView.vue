@@ -1,7 +1,15 @@
 <script setup lang="ts">
 import { useAuthStore } from '../stores/auth';
+import { useJoinStore } from '@/stores/join';
+import { onMounted } from 'vue';
 
 const auth = useAuthStore();
+const joinStore = useJoinStore();
+
+onMounted(async () => {
+  await joinStore.fetchToken();
+});
+
 </script>
 
 <template>
@@ -14,8 +22,9 @@ const auth = useAuthStore();
       </p>
 
       <div class="d-flex flex-wrap justify-center gap-4">
-        <v-btn to="/table" color="primary" size="large" variant="elevated" prepend-icon="$headphones">
-          {{ auth.role === 'gm' ? 'Go to My Table' : 'Connect to Audio' }}
+        <v-btn :to="'/table/' + joinStore.token" color="primary" size="large" variant="elevated"
+          prepend-icon="$headphones">
+          Go to My Table
         </v-btn>
       </div>
     </div>
@@ -31,7 +40,7 @@ const auth = useAuthStore();
           GM Login
         </v-btn>
 
-        <v-btn class="ml-4" to="/table" color="primary" size="large" variant="elevated" prepend-icon="$accountMusic">
+        <v-btn class="ml-4" to="/join" color="primary" size="large" variant="elevated" prepend-icon="$accountMusic">
           Join as Player
         </v-btn>
 

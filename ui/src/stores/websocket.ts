@@ -21,8 +21,8 @@ export const useWebSocketStore = defineStore('websocket', () => {
   const messageHistory = ref<StoredMessage[]>([])
   const client = shallowRef<WSClient>(new WSClient())
 
-  function connect() {
-    client.value.connect(
+  async function connect(token?: string) {
+    await client.value.connect(
       // onOpen
       () => {
         isConnected.value = true
@@ -44,16 +44,19 @@ export const useWebSocketStore = defineStore('websocket', () => {
         }
       },
       // onClose
-      () => {
+      (event: CloseEvent) => {
         isConnected.value = false
-        console.log('WebSocket disconnected')
-        setTimeout(connect, 5000)
+        const reason = event.reason || 'No reason provided'
+        const code = event.code
+        console.log(`WebSocket disconnected: [${code}] ${reason}`)
       },
       // onError
       (error) => {
         console.error('WebSocket error:', error)
         client.value.disconnect()
-      }
+        setTimeout(connect, 5000, token)
+      },
+      token,
     )
   }
 
@@ -63,16 +66,19 @@ export const useWebSocketStore = defineStore('websocket', () => {
   }
 
   function sendMessage<T>(method: string, payload: T) {
-    if (isConnected.value) {
-      const msg: WebSocketMessage<T> = { method, payload }
-      client.value.sendMessage(msg)
-
-      messageHistory.value.push({
-        ...msg,
-        timestamp: Date.now(),
-        direction: 'sent'
-      })
+    if (!isConnected.value) {
+      console.warn('WebSocket is not connected. Cannot send message:', method)
+      return
     }
+
+    const msg: WebSocketMessage<T> = { method, payload }
+    client.value.sendMessage(msg)
+
+    messageHistory.value.push({
+      ...msg,
+      timestamp: Date.now(),
+      direction: 'sent'
+    })
   }
 
   function addMessageHandler(handler: MessageHandler) {

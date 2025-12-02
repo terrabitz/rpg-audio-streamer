@@ -3,8 +3,10 @@ import { computed, onMounted } from 'vue'
 import TableViewGM from './TableViewGM.vue'
 import TableViewPlayer from './TableViewPlayer.vue'
 import { useAuthStore } from '../stores/auth'
+import { useRoute } from 'vue-router'
 
 const auth = useAuthStore()
+const route = useRoute()
 
 const isPlayerView = computed(() => {
   return auth.role === 'player' || !auth.authenticated
@@ -16,7 +18,9 @@ const isGMView = computed(() => {
 
 
 onMounted(async () => {
-  await auth.checkAuthStatus()
+  const token = route.params.token as string | undefined
+
+  await auth.checkAuthStatus(token)
 })
 </script>
 

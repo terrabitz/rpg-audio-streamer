@@ -6,21 +6,34 @@ export class WSClient {
     this.url = getWebSocketUrl();
   }
 
-  connect(
+  async connect(
     onOpen: () => void,
     onMessage: (data: any) => void,
-    onClose: () => void,
-    onError: (error: Event) => void
-  ) {
+    onClose: (event: CloseEvent) => void,
+    onError: (error: Event) => void,
+    token?: string,
+  ): Promise<void> {
     if (this.socket?.readyState === WebSocket.OPEN) {
       return;
     }
 
-    this.socket = new WebSocket(this.url);
-    this.socket.onopen = onOpen;
-    this.socket.onmessage = (event) => onMessage(event.data);
-    this.socket.onclose = onClose;
-    this.socket.onerror = onError;
+    return new Promise<void>((resolve, reject) => {
+      const url = token ? `${this.url}?token=${encodeURIComponent(token)}` : this.url;
+      this.socket = new WebSocket(url);
+
+      this.socket.onopen = () => {
+        onOpen();
+        resolve();
+      };
+
+      this.socket.onmessage = (event) => onMessage(event.data);
+      this.socket.onclose = onClose;
+
+      this.socket.onerror = (error) => {
+        onError(error);
+        reject(error);
+      };
+    });
   }
 
   disconnect() {

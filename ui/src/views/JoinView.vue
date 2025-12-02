@@ -1,36 +1,23 @@
 <script setup lang="ts">
-import { onMounted } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
-import { useJoinStore } from '../stores/join'
+import { useBaseUrl } from '../composables/useBaseUrl'
+const { getBaseUrl } = useBaseUrl()
 
-const route = useRoute()
-const router = useRouter()
-const joinStore = useJoinStore()
-
-onMounted(async () => {
-  const token = route.params.token as string
-  if (!token) {
-    router.push('/')
-    return
-  }
-
-  const success = await joinStore.submitJoinToken(token)
-  if (success) {
-    router.push('/player')
-  }
-})
 </script>
 
 <template>
-  <main class="container mx-auto px-4 py-8">
-    <div class="text-center">
-      <h1 class="text-2xl font-bold mb-4">Joining Table...</h1>
-      <div v-if="joinStore.loading" class="mb-4">
-        <p>Connecting to table...</p>
-      </div>
-      <div v-else-if="joinStore.error" class="text-red-500">
-        <p>{{ joinStore.error }}</p>
-      </div>
+  <v-container>
+    <div class="text-center my-8">
+      <h2 class="text-h4 mb-4">How to Join</h2>
+      <v-card>
+        <v-card-text>
+          <p>Ask your GM to share their invite link with you</p>
+          <p class="mt-4">The link will look like this:
+            <code class="px-2 py-1 rounded bg-primary-lighten-5 text-secondary">
+                {{ getBaseUrl() }}/table/abc123...
+              </code>
+          </p>
+        </v-card-text>
+      </v-card>
     </div>
-  </main>
+  </v-container>
 </template>

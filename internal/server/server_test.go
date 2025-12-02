@@ -539,11 +539,11 @@ func TestHandleJoinToken(t *testing.T) {
 	ts := setupTestServer(t)
 	defer ts.cleanup(t)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/join-token", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/joinToken", nil)
 	addAuthCookie(req, ts.auth.(*mockAuth).token.String())
 	rec := httptest.NewRecorder()
 
-	ts.handleJoinToken(rec, req, &auth.Token{Role: auth.RoleGM})
+	ts.handleGetJoinToken(rec, req, &auth.Token{Role: auth.RoleGM})
 
 	if rec.Code != http.StatusOK {
 		t.Errorf("expected status OK; got %v", rec.Code)
@@ -558,104 +558,14 @@ func TestHandleJoinToken(t *testing.T) {
 		t.Errorf("expected token %q; got %q", ts.auth.(*mockAuth).joinToken, resp.Token)
 	}
 
-	req = httptest.NewRequest(http.MethodPost, "/api/v1/join-token", nil)
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/joinToken", nil)
 	addAuthCookie(req, ts.auth.(*mockAuth).token.String())
 	rec = httptest.NewRecorder()
 
-	ts.handleJoinToken(rec, req, &auth.Token{Role: auth.RoleGM})
+	ts.handleGetJoinToken(rec, req, &auth.Token{Role: auth.RoleGM})
 
 	if rec.Code != http.StatusMethodNotAllowed {
 		t.Errorf("expected status MethodNotAllowed; got %v", rec.Code)
-	}
-}
-
-func TestHandleJoin(t *testing.T) {
-	ts := setupTestServer(t)
-	defer ts.cleanup(t)
-
-	tests := []struct {
-		name           string
-		joinToken      string
-		expectedCode   int
-		expectedError  string
-		checkAuthToken bool
-	}{
-		{
-			name:           "successful join",
-			joinToken:      "valid-join-token",
-			expectedCode:   http.StatusOK,
-			checkAuthToken: true,
-		},
-		{
-			name:          "invalid join token",
-			joinToken:     "invalid-token",
-			expectedCode:  http.StatusUnauthorized,
-			expectedError: "Invalid join token",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			req := joinRequest{
-				Token: tt.joinToken,
-			}
-			body, err := json.Marshal(req)
-			if err != nil {
-				t.Fatalf("failed to marshal request body: %v", err)
-			}
-
-			httpReq := httptest.NewRequest(http.MethodPost, "/api/v1/join", bytes.NewReader(body))
-			httpReq.Header.Set("Content-Type", "application/json")
-			rec := httptest.NewRecorder()
-
-			ts.handleJoin(rec, httpReq)
-
-			if rec.Code != tt.expectedCode {
-				t.Errorf("expected status %v; got %v", tt.expectedCode, rec.Code)
-			}
-
-			var resp loginResponse
-			if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
-				t.Fatalf("failed to decode response: %v", err)
-			}
-
-			if tt.expectedError != "" && resp.Error != tt.expectedError {
-				t.Errorf("expected error %q; got %q", tt.expectedError, resp.Error)
-			}
-
-			if tt.checkAuthToken {
-				cookies := rec.Result().Cookies()
-				var authCookie *http.Cookie
-				for _, cookie := range cookies {
-					if cookie.Name == authCookieName {
-						authCookie = cookie
-						break
-					}
-				}
-				if authCookie == nil {
-					t.Error("auth cookie not set")
-				}
-			}
-		})
-	}
-
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/join", nil)
-	rec := httptest.NewRecorder()
-
-	ts.handleJoin(rec, req)
-
-	if rec.Code != http.StatusMethodNotAllowed {
-		t.Errorf("expected status MethodNotAllowed; got %v", rec.Code)
-	}
-
-	req = httptest.NewRequest(http.MethodPost, "/api/v1/join", bytes.NewReader([]byte("invalid json")))
-	req.Header.Set("Content-Type", "application/json")
-	rec = httptest.NewRecorder()
-
-	ts.handleJoin(rec, req)
-
-	if rec.Code != http.StatusBadRequest {
-		t.Errorf("expected status BadRequest; got %v", rec.Code)
 	}
 }
 
