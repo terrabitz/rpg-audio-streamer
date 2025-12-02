@@ -10,14 +10,16 @@ export class WSClient {
     onOpen: () => void,
     onMessage: (data: any) => void,
     onClose: (event: CloseEvent) => void,
-    onError: (error: Event) => void
+    onError: (error: Event) => void,
+    token?: string,
   ): Promise<void> {
     if (this.socket?.readyState === WebSocket.OPEN) {
       return;
     }
 
     return new Promise<void>((resolve, reject) => {
-      this.socket = new WebSocket(this.url);
+      const url = token ? `${this.url}?token=${encodeURIComponent(token)}` : this.url;
+      this.socket = new WebSocket(url);
 
       this.socket.onopen = () => {
         onOpen();

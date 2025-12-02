@@ -21,7 +21,7 @@ export const useWebSocketStore = defineStore('websocket', () => {
   const messageHistory = ref<StoredMessage[]>([])
   const client = shallowRef<WSClient>(new WSClient())
 
-  async function connect() {
+  async function connect(token?: string) {
     await client.value.connect(
       // onOpen
       () => {
@@ -54,8 +54,9 @@ export const useWebSocketStore = defineStore('websocket', () => {
       (error) => {
         console.error('WebSocket error:', error)
         client.value.disconnect()
-        setTimeout(connect, 5000)
-      }
+        setTimeout(connect, 5000, token)
+      },
+      token,
     )
   }
 
