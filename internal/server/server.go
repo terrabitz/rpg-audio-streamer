@@ -88,7 +88,7 @@ func (s *Server) Start() error {
 
 	srv := &http.Server{
 		Addr:    fmt.Sprintf(":%d", s.cfg.Port),
-		Handler: apiMux,
+		Handler: mux,
 	}
 
 	s.logger.Info("starting server",
