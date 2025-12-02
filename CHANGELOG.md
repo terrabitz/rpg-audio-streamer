@@ -1,3 +1,10 @@
+## [1.5.2](https://github.com/terrabitz/rpg-audio-streamer/compare/v1.5.1...v1.5.2) (2025-12-02)
+
+
+### Bug Fixes
+
+* Allow explicit auth with invite code ([#86](https://github.com/terrabitz/rpg-audio-streamer/issues/86)) ([5e95b24](https://github.com/terrabitz/rpg-audio-streamer/commit/5e95b24c332ebd63a9deb436ec06f4541cff5254))
+
 ## [1.5.1](https://github.com/terrabitz/rpg-audio-streamer/compare/v1.5.0...v1.5.1) (2025-06-11)
 
 
