@@ -35,7 +35,7 @@ async function handleGetJoinToken() {
   <template v-if="auth.authenticated">
     <v-btn v-if="auth.role === 'gm'" @click="handleGetJoinToken" :disabled="joinStore.loading" :active="isCopied"
       active-color="green" :prepend-icon="isCopied ? '' : '$copy'" class="mr-2">
-      {{ isCopied ? 'Copied to clipboard' : 'Get Join URL' }}
+      {{ isCopied ? 'Copied to clipboard' : 'Copy invite link' }}
     </v-btn>
     <AudioUploader class="mr-4" />
     <VolumeSlider v-model="audioStore.masterVolume" />
