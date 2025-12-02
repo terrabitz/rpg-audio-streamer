@@ -23,41 +23,36 @@ func (s *Server) authMiddleware(next AuthedHandlerFunc) http.HandlerFunc {
 }
 
 func (s *Server) getToken(r *http.Request) (*auth.Token, error) {
-	authHeader := r.Header.Get("Authorization")
-	if authHeader != "" {
-		return s.getTokenFromAuthorizationHeader(authHeader)
+	cookie, err := readCookie(r, authCookieName)
+	if err == nil {
+		return s.auth.ValidateToken(cookie)
 	}
 
-	return s.getTokenFromCookie(r)
+	// This is a hack for the WS endpoint, which can't use an Authorization header.
+	if tokenParam := r.FormValue("token"); tokenParam != "" {
+		return s.auth.ValidateJoinToken(tokenParam)
+	}
+
+	authHeaderToken, err := getAuthorizationBearerToken(r)
+	if err == nil {
+		return s.auth.ValidateJoinToken(authHeaderToken)
+	}
+
+	return nil, fmt.Errorf("No valid authentication method found")
 }
 
-func (s *Server) getTokenFromAuthorizationHeader(authHeader string) (*auth.Token, error) {
+func getAuthorizationBearerToken(r *http.Request) (string, error) {
+	authHeader := r.Header.Get("Authorization")
+	if authHeader == "" {
+		return "", fmt.Errorf("Missing Authorization header")
+	}
+
 	const prefix = "Bearer "
 	if !strings.HasPrefix(authHeader, prefix) {
-		return nil, fmt.Errorf("Invalid bearer token format")
+		return "", fmt.Errorf("Invalid bearer token format")
 	}
 
-	joinToken := strings.TrimPrefix(authHeader, prefix)
-	token, err := s.auth.ValidateJoinToken(joinToken)
-	if err != nil {
-		return nil, fmt.Errorf("Invalid join token")
-	}
-
-	return token, nil
-}
-
-func (s *Server) getTokenFromCookie(r *http.Request) (*auth.Token, error) {
-	cookie, err := readCookie(r, authCookieName)
-	if err != nil {
-		return nil, fmt.Errorf("Unauthorized")
-	}
-
-	token, err := s.auth.ValidateToken(cookie)
-	if err != nil {
-		return nil, fmt.Errorf("Invalid auth token")
-	}
-
-	return token, nil
+	return strings.TrimPrefix(authHeader, prefix), nil
 }
 
 func (s *Server) gmOnlyMiddleware(next AuthedHandlerFunc) http.HandlerFunc {
