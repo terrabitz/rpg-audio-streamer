@@ -8,7 +8,7 @@ export class WSClient {
 
   async connect(
     onOpen: () => void,
-    onMessage: (data: any) => void,
+    onMessage: (data: string) => void,
     onClose: (event: CloseEvent) => void,
     onError: (error: Event) => void,
     token?: string,

@@ -1,5 +1,5 @@
 <template>
-  <v-select :model-value="modelValue" @update:model-value="$emit('update:modelValue', $event)"
+  <v-select :model-value="props.modelValue" @update:model-value="emit('update:modelValue', $event)"
     :items="trackTypeStore.trackTypes" item-title="name" item-value="id" label="Track Type" required>
     <template v-slot:item="{ props, item }">
       <v-list-item v-bind="props" title="">

@@ -47,7 +47,7 @@ export const useFileStore = defineStore('files', {
           }
         })
         await this.fetchFiles()
-      } catch (error: any) {
+      } catch (error: unknown) {
         console.error('Error uploading file:', error)
         throw new Error('Failed to upload file')
       }

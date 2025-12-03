@@ -4,7 +4,6 @@ import FileList from '@/components/FileList.vue';
 import TableActions from '@/components/TableActions.vue';
 import { useAppBar } from '@/composables/useAppBar';
 import { useAudioStore } from '@/stores/audio';
-import { useAuthStore } from '@/stores/auth';
 import { useWebSocketStore, type WebSocketMessage } from '@/stores/websocket';
 import { onMounted, onUnmounted } from 'vue';
 
@@ -14,7 +13,7 @@ const wsStore = useWebSocketStore()
 const { setTitle, setActions } = useAppBar()
 
 
-function handleSyncRequest(message: WebSocketMessage<any>) {
+function handleSyncRequest(message: WebSocketMessage<unknown>) {
   if (message.method === 'syncRequest') {
     const tracks = audioStore.getPlayingTracks()
     const audioAdjusted = tracks.map((track) => {

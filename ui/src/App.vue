@@ -1,9 +1,8 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, watch } from 'vue';
+import { computed, onMounted, onUnmounted } from 'vue';
 import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router';
 import DevDebugPanel from './components/DevDebugPanel.vue';
 import { useAppBar } from './composables/useAppBar';
-import { useAudioStore } from './stores/audio';
 import { useAuthStore } from './stores/auth';
 import { useDebugStore } from './stores/debug';
 import { useWebSocketStore } from './stores/websocket';
@@ -12,7 +11,6 @@ const auth = useAuthStore()
 const router = useRouter()
 const wsStore = useWebSocketStore()
 const debugStore = useDebugStore()
-const audioStore = useAudioStore()
 const route = useRoute()
 const isPlayerView = computed(() => {
   // Check if we're in a player context within the table view

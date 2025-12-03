@@ -42,7 +42,7 @@ async function deleteFile(file: Track) {
   }
 }
 
-const debouncedSendMessage = debounce((method: string, payload: any) => {
+const debouncedSendMessage = debounce((method: string, payload: unknown) => {
   wsStore.sendMessage(method, payload)
 }, 100)
 
@@ -106,10 +106,6 @@ const handleSeek = (fileID: string, time: number) => {
   if (audioStore.tracks[fileID].isPlaying) {
     debouncedSendMessage('syncTrack', { fileID, currentTime: time })
   }
-}
-
-const getTrackType = (typeID: string) => {
-  return trackTypeStore.getTypeById(typeID)
 }
 
 const updateAllTrackVolumes = debounce(() => {

@@ -22,6 +22,7 @@ async function handleSubmit() {
     }
   } catch (e) {
     error.value = 'Invalid credentials'
+    console.error('Login failed:', e)
   }
 }
 </script>

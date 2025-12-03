@@ -1,17 +1,23 @@
 import IconLute from '@/components/icons/IconLute.vue';
 import { mdiAccountMusic, mdiBug, mdiCircle, mdiContentCopy, mdiContentSave, mdiDelete, mdiDotsVertical, mdiHeadphones, mdiHome, mdiLoading, mdiLogin, mdiMusic, mdiPause, mdiPlay, mdiRefresh, mdiRepeat, mdiRepeatOff, mdiUpload, mdiVolumeHigh, mdiVolumeLow, mdiVolumeMedium, mdiVolumeOff } from '@mdi/js';
-import { h } from 'vue';
+import { h, type Component } from 'vue';
 import { createVuetify, type IconProps, type IconSet } from 'vuetify';
 import { aliases, mdi } from 'vuetify/iconsets/mdi-svg';
 import 'vuetify/styles';
 
-const customSvgNameToComponent: any = {
+const customSvgNameToComponent: Record<string, Component> = {
   lute: IconLute
 };
 
 const custom: IconSet = {
-  component: (props: IconProps) =>
-    h(props.tag, [h(customSvgNameToComponent[props.icon as string], { class: 'v-icon__svg' })]),
+  component: (props: IconProps) => {
+    const component = customSvgNameToComponent[props.icon as string];
+    if (!component) {
+      return h(props.tag);
+    }
+
+    return h(props.tag, [h(component, { class: 'v-icon__svg' })]);
+  },
 }
 
 export default createVuetify({

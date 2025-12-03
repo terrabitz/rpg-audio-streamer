@@ -44,7 +44,7 @@ function startAudioSync(fileID: string, videoElement: HTMLVideoElement) {
     let options: Partial<HlsConfig> = {}
     if (props.token) {
       options = {
-        xhrSetup: function (xhr, url) {
+        xhrSetup: function (xhr) {
           xhr.setRequestHeader('Authorization', `Bearer ${props.token}`)
         }
       }
@@ -76,13 +76,13 @@ function startAudioSync(fileID: string, videoElement: HTMLVideoElement) {
   watch(() => audioStore.masterVolume, () => {
     if (fadeTimer) return
 
-    syncVolumeImmediate(fileID, videoElement)
+    syncVolumeImmediate(fileID)
   })
 
   watch(() => audioStore.typeVolumes, () => {
     if (fadeTimer) return
 
-    syncVolumeImmediate(fileID, videoElement)
+    syncVolumeImmediate(fileID)
   }, { deep: true })
 
   watch(() => audioStore.tracks[fileID].isRepeating, () => {
@@ -167,7 +167,7 @@ function syncVolume(fileID: string, videoElement: HTMLVideoElement) {
   }
 }
 
-function syncVolumeImmediate(fileID: string, videoElement: HTMLVideoElement) {
+function syncVolumeImmediate(fileID: string) {
   const desiredState = audioStore.tracks[fileID]
   const desiredVolume = getDesiredVolume(desiredState) * getVolumeMultiplier()
   setVolume(desiredVolume)
