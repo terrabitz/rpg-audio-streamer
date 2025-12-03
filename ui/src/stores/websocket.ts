@@ -2,18 +2,18 @@ import { defineStore } from 'pinia'
 import { ref, shallowRef } from 'vue'
 import { WSClient } from '../client/wsClient'
 
-export interface WebSocketMessage<T = any> {
+export interface WebSocketMessage<T = unknown> {
   method: string
   senderId?: string
   payload: T
 }
 
-interface StoredMessage<T = any> extends WebSocketMessage<T> {
+interface StoredMessage<T = unknown> extends WebSocketMessage<T> {
   timestamp: number
   direction: 'sent' | 'received'
 }
 
-type MessageHandler<T = any> = (message: WebSocketMessage<T>) => void
+type MessageHandler<T = unknown> = (message: WebSocketMessage<T>) => void
 
 export const useWebSocketStore = defineStore('websocket', () => {
   const isConnected = ref(false)
@@ -40,7 +40,7 @@ export const useWebSocketStore = defineStore('websocket', () => {
           messageHistory.value.push(storedMessage)
           messageHandlers.value.forEach(handler => handler(message))
         } catch (error) {
-          console.error('Failed to parse WebSocket message:', data)
+          console.error(`Failed to parse WebSocket\nmessage:${data}\nerror:${error}`, data)
         }
       },
       // onClose

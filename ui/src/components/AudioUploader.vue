@@ -114,11 +114,14 @@ const handleDrop = (event: DragEvent) => {
   event.preventDefault()
   isDragging.value = false
   const files = event.dataTransfer?.files
-  if (files && files.length > 0) {
-    const dataTransfer = new DataTransfer()
-    dataTransfer.items.add(files[0])
-    trackFile.value = dataTransfer.files[0]
-  }
+  if (!files) return
+  if (!files[0]) return
+
+  const dataTransfer = new DataTransfer()
+  dataTransfer.items.add(files[0])
+  if (!dataTransfer.files[0]) return
+
+  trackFile.value = dataTransfer.files[0]
 }
 
 const submitForm = async () => {

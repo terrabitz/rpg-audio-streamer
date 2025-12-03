@@ -1,6 +1,6 @@
-import { ref, type Component } from 'vue'
+import { ref, shallowRef, type Component } from 'vue'
 
-const actions = ref<Component[]>([])
+const actions = shallowRef<Component[]>([])
 const title = ref<string>('Skald Bot')
 
 export function useAppBar() {

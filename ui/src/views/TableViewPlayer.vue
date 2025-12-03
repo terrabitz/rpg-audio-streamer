@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useDebugStore } from '@/stores/debug'
-import { useWebSocketStore } from '@/stores/websocket'
+import { useWebSocketStore, type WebSocketMessage } from '@/stores/websocket'
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import AudioPlayer from '../components/AudioPlayer.vue'
@@ -27,17 +27,25 @@ const buttonLabel = computed(() => {
   return 'Connect Audio'
 })
 
-function handleSyncAll(message: { method: string, payload: { tracks: AudioTrack[] } }) {
-  if (message.method === 'syncAll' && message.payload.tracks) {
+function handleSyncAll(message: WebSocketMessage) {
+  if (message.method === 'syncAll' &&
+    message.payload &&
+    typeof message.payload === 'object' &&
+    'tracks' in message.payload &&
+    Array.isArray((message.payload as { tracks: unknown }).tracks)) {
     console.log('handleSyncAll', message)
-    audioStore.syncTracks(message.payload.tracks)
+    audioStore.syncTracks((message.payload as { tracks: AudioTrack[] }).tracks)
   }
 }
 
-function handleSyncTrack(message: { method: string, payload: Partial<AudioTrack> }) {
-  if (message.method === 'syncTrack' && message.payload.fileID) {
+function handleSyncTrack(message: WebSocketMessage) {
+  if (message.method === 'syncTrack' &&
+    message.payload &&
+    typeof message.payload === 'object' &&
+    'fileID' in message.payload) {
     console.log('handleSyncTrack', message)
-    const { fileID, ...updates } = message.payload
+    const payload = message.payload as Partial<AudioTrack> & { fileID: string }
+    const { fileID, ...updates } = payload
     audioStore.updateTrackState(fileID, updates)
   }
 }

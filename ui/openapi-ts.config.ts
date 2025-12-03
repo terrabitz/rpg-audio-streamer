@@ -5,6 +5,6 @@ export default defineConfig({
   output: 'src/client/apiClient',
   plugins: [{
     name: '@hey-api/client-fetch',
-    runtimeConfigPath: './src/plugins/api.ts',
+    runtimeConfigPath: '../../plugins/api.ts',
   }],
 });

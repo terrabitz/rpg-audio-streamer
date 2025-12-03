@@ -14,7 +14,7 @@
         <div class="play-status mr-2">
           <v-progress-circular v-if="fadeState?.inProgress" width="3" size="20" indeterminate />
           <v-icon v-else size="24">
-            {{ audioState.isPlaying ? '$pause' : '$play' }}
+            {{ audioState?.isPlaying ? '$pause' : '$play' }}
           </v-icon>
         </div>
       </div>
@@ -31,17 +31,18 @@
           <TrackTypeSelector v-model="editTrackType" />
           <div class="d-flex flex-column">
             <div class="d-flex align-center">
-              <VolumeSlider v-model="audioState.volume" @update:model-value="$emit('volume', $event)" />
+              <VolumeSlider v-if="audioState" v-model="audioState.volume"
+                @update:model-value="$emit('volume', $event)" />
             </div>
-            <div class="d-flex align-center">
+            <div v-if="audioState" class="d-flex align-center">
               <v-icon size="small" color="grey-darken-1" class="mx-2">
-                {{ trackType.isRepeating ? '$repeat' : '$repeatOff' }}
+                {{ trackType?.isRepeating ? '$repeat' : '$repeatOff' }}
               </v-icon>
               <v-slider thumb-size="0" :model-value="audioState.currentTime" readonly density="compact" hide-details
                 :max="audioState.duration" min="0" step="0.1" class="ml-3" />
               <span class="text-caption ml-2">{{ formatTime(audioState.currentTime) }} / {{
                 formatTime(audioState.duration)
-              }}</span>
+                }}</span>
             </div>
           </div>
         </v-card-text>
@@ -106,7 +107,10 @@ watchEffect(() => {
 });
 
 async function saveTrackChanges() {
-  if (!track.value) return;
+  if (!track.value) {
+    console.warn('Cannot save track changes: track not found');
+    return;
+  }
 
   try {
     isSaving.value = true;
@@ -169,7 +173,7 @@ const darkerColor = computed(() => {
 
 // Wait for track type data before initializing audio track
 watchEffect(() => {
-  if (trackType.value) {
+  if (trackType.value && audioState.value) {
     audioStore.updateTrackState(props.fileID, {
       name: props.fileName,
       isRepeating: trackType.value.isRepeating,
