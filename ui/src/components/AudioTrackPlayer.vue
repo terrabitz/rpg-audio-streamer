@@ -65,11 +65,11 @@ function startAudioSync(fileID: string, videoElement: HTMLVideoElement) {
   }
 
   // Watch state and sync to video element
-  watch(() => audioStore.tracks[fileID].isPlaying, () => {
+  watch(() => audioStore.tracks[fileID]?.isPlaying, () => {
     syncIsPlaying(fileID, videoElement)
   })
 
-  watch(() => audioStore.tracks[fileID].volume, () => {
+  watch(() => audioStore.tracks[fileID]?.volume, () => {
     syncVolume(fileID, videoElement)
   })
 
@@ -85,11 +85,11 @@ function startAudioSync(fileID: string, videoElement: HTMLVideoElement) {
     syncVolumeImmediate(fileID)
   }, { deep: true })
 
-  watch(() => audioStore.tracks[fileID].isRepeating, () => {
+  watch(() => audioStore.tracks[fileID]?.isRepeating, () => {
     syncRepeating(fileID, videoElement)
   })
 
-  watch(() => audioStore.tracks[fileID].currentTime, () => {
+  watch(() => audioStore.tracks[fileID]?.currentTime, () => {
     syncCurrentTime(fileID, videoElement)
   })
 }
@@ -97,7 +97,7 @@ function startAudioSync(fileID: string, videoElement: HTMLVideoElement) {
 function syncIsPlaying(fileID: string, videoElement: HTMLVideoElement) {
   const desiredState = audioStore.tracks[fileID]
 
-  if (desiredState.isPlaying && videoElement.paused) {
+  if (desiredState?.isPlaying && videoElement.paused) {
     videoElement.volume = 0
     videoElement.play()
   }
@@ -115,12 +115,21 @@ function getDesiredVolume(desiredState: AudioTrack) {
 }
 
 function getVolumeMultiplier() {
-  const typeVolume = audioStore.getTypeVolume(audioStore.tracks[props.fileID].trackType) ?? 100
+  const track = audioStore.tracks[props.fileID]
+  if (!track) {
+    return 1.0
+  }
+
+  const typeVolume = audioStore.getTypeVolume(track.trackType) ?? 100
   return (audioStore.masterVolume / 100) * (typeVolume / 100)
 }
 
 function syncVolume(fileID: string, videoElement: HTMLVideoElement) {
   const desiredState = audioStore.tracks[fileID]
+  if (!desiredState) {
+    return
+  }
+
   let volumeMultiplier = getVolumeMultiplier()
   if (volumeMultiplier < 0.01) {
     volumeMultiplier = 0.01
@@ -169,17 +178,28 @@ function syncVolume(fileID: string, videoElement: HTMLVideoElement) {
 
 function syncVolumeImmediate(fileID: string) {
   const desiredState = audioStore.tracks[fileID]
+  if (!desiredState) {
+    return
+  }
+
   const desiredVolume = getDesiredVolume(desiredState) * getVolumeMultiplier()
   setVolume(desiredVolume)
 }
 
 function syncRepeating(fileID: string, videoElement: HTMLVideoElement) {
   const state = audioStore.tracks[fileID]
+  if (!state) {
+    return
+  }
+
   videoElement.loop = state.isRepeating
 }
 
 function syncCurrentTime(fileID: string, videoElement: HTMLVideoElement) {
   const state = audioStore.tracks[fileID]
+  if (!state) {
+    return
+  }
 
   // Only seek if difference is significant
   if (Math.abs(videoElement.currentTime - state.currentTime) > MIN_SEEK_SKEW) {

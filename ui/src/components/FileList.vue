@@ -54,7 +54,9 @@ const handlePlay = (fileID: string) => {
   const trackType = trackTypeStore.getTypeById(track.typeID)
   if (!trackType) return
 
-  const state = audioStore.tracks[fileID] || {}
+  const state = audioStore.tracks[fileID]
+  if (!state) return
+
   const newState = {
     isPlaying: !state.isPlaying,
     trackType: trackType.name,
@@ -84,6 +86,7 @@ const handlePlay = (fileID: string) => {
   audioStore.updateTrackState(fileID, newState)
   if (newState.isPlaying) {
     const state = audioStore.tracks[fileID]
+    if (!state) return
     const stateToSend = patchObject(
       state,
       { volume: state.volume * audioStore.masterVolume / 100 },
@@ -96,14 +99,14 @@ const handlePlay = (fileID: string) => {
 
 const handleVolume = (fileID: string, volume: number) => {
   audioStore.updateTrackState(fileID, { volume })
-  if (audioStore.tracks[fileID].isPlaying) {
+  if (audioStore.tracks[fileID]?.isPlaying) {
     debouncedSendMessage('syncTrack', { fileID, volume: volume * audioStore.masterVolume / 100 })
   }
 }
 
 const handleSeek = (fileID: string, time: number) => {
   audioStore.updateTrackState(fileID, { currentTime: time })
-  if (audioStore.tracks[fileID].isPlaying) {
+  if (audioStore.tracks[fileID]?.isPlaying) {
     debouncedSendMessage('syncTrack', { fileID, currentTime: time })
   }
 }
