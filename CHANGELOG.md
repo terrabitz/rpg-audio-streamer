@@ -1,3 +1,11 @@
+## [1.5.3](https://github.com/terrabitz/rpg-audio-streamer/compare/v1.5.2...v1.5.3) (2025-12-03)
+
+
+### Bug Fixes
+
+* Trigger release ([ee77e7a](https://github.com/terrabitz/rpg-audio-streamer/commit/ee77e7a025b71eedbfcb53abfc7ecc825a872dce))
+* Update Go libs ([7cf1133](https://github.com/terrabitz/rpg-audio-streamer/commit/7cf1133dace354dcc4c45cfa17016c5dcbf91171))
+
 ## [1.5.2](https://github.com/terrabitz/rpg-audio-streamer/compare/v1.5.1...v1.5.2) (2025-12-02)
 
 
