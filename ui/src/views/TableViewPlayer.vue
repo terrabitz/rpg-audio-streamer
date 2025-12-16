@@ -33,7 +33,6 @@ function handleSyncAll(message: WebSocketMessage) {
     typeof message.payload === 'object' &&
     'tracks' in message.payload &&
     Array.isArray((message.payload as { tracks: unknown }).tracks)) {
-    console.log('handleSyncAll', message)
     audioStore.syncTracks((message.payload as { tracks: AudioTrack[] }).tracks)
   }
 }
@@ -43,7 +42,6 @@ function handleSyncTrack(message: WebSocketMessage) {
     message.payload &&
     typeof message.payload === 'object' &&
     'fileID' in message.payload) {
-    console.log('handleSyncTrack', message)
     const payload = message.payload as Partial<AudioTrack> & { fileID: string }
     const { fileID, ...updates } = payload
     audioStore.updateTrackState(fileID, updates)
@@ -68,9 +66,9 @@ function handleAudioToggle() {
   }
 }
 
-function connectAudio() {
+async function connectAudio() {
   connecting.value = true
-  wsStore.connect(token)
+  await wsStore.connect(token)
   wsStore.addMessageHandler(handleSyncAll)
   wsStore.addMessageHandler(handleSyncTrack)
 
