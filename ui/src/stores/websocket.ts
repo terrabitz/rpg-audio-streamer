@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
-import { ref, shallowRef } from 'vue'
-import { WSClient } from '../client/wsClient'
+import { ref } from 'vue'
+
+const reconnectIntervalMs = 3000
 
 export interface WebSocketMessage<T = unknown> {
   method: string
@@ -15,64 +16,84 @@ interface StoredMessage<T = unknown> extends WebSocketMessage<T> {
 
 type MessageHandler<T = unknown> = (message: WebSocketMessage<T>) => void
 
+function getWebSocketUrl(): string {
+  const apiBase = import.meta.env.VITE_API_BASE_URL
+  let baseUrl: URL
+
+  try {
+    baseUrl = new URL(apiBase)
+  } catch {
+    baseUrl = new URL(apiBase, window.location.origin)
+  }
+
+  const protocol = baseUrl.protocol === 'https:' ? 'wss:' : 'ws:'
+  return `${protocol}//${baseUrl.host}/api/v1/ws`
+}
+
 export const useWebSocketStore = defineStore('websocket', () => {
   const isConnected = ref(false)
   const messageHandlers = ref<MessageHandler[]>([])
   const messageHistory = ref<StoredMessage[]>([])
-  const client = shallowRef<WSClient>(new WSClient())
+  let socket: WebSocket | null = null
 
-  async function connect(token?: string) {
-    await client.value.connect(
-      // onOpen
-      () => {
-        isConnected.value = true
-        console.log('WebSocket connected')
-      },
-      // onMessage
-      (data) => {
-        try {
-          const message = JSON.parse(data) as WebSocketMessage
-          const storedMessage: StoredMessage = {
-            ...message,
-            timestamp: Date.now(),
-            direction: 'received'
-          }
-          messageHistory.value.push(storedMessage)
-          messageHandlers.value.forEach(handler => handler(message))
-        } catch (error) {
-          console.error(`Failed to parse WebSocket\nmessage:${data}\nerror:${error}`, data)
+  function connect(token?: string) {
+    if (socket?.readyState === WebSocket.OPEN) {
+      return
+    }
+
+    const baseUrl = getWebSocketUrl()
+    const url = token ? `${baseUrl}?token=${encodeURIComponent(token)}` : baseUrl
+    socket = new WebSocket(url)
+
+    socket.onopen = () => {
+      isConnected.value = true
+      console.log('WebSocket connected')
+    }
+
+    socket.onmessage = (event) => {
+      try {
+        const message = JSON.parse(event.data) as WebSocketMessage
+        const storedMessage: StoredMessage = {
+          ...message,
+          timestamp: Date.now(),
+          direction: 'received'
         }
-      },
-      // onClose
-      (event: CloseEvent) => {
-        isConnected.value = false
-        const reason = event.reason || 'No reason provided'
-        const code = event.code
-        console.log(`WebSocket disconnected: [${code}] ${reason}`)
-      },
-      // onError
-      (error) => {
-        console.error('WebSocket error:', error)
-        client.value.disconnect()
-        setTimeout(connect, 5000, token)
-      },
-      token,
-    )
+        messageHistory.value.push(storedMessage)
+        messageHandlers.value.forEach(handler => handler(message))
+      } catch (error) {
+        console.error(`Failed to parse WebSocket\nmessage:${event.data}\nerror:${error}`)
+      }
+    }
+
+    socket.onclose = (event: CloseEvent) => {
+      isConnected.value = false
+      const reason = event.reason || 'No reason provided'
+      const code = event.code
+      console.log(`WebSocket disconnected: [${code}] ${reason}`)
+      setTimeout(() => connect(token), reconnectIntervalMs)
+    }
+
+    socket.onerror = (error) => {
+      console.error('WebSocket error:', error)
+      disconnect()
+      setTimeout(() => connect(token), reconnectIntervalMs)
+    }
   }
 
   function disconnect() {
-    client.value.disconnect()
+    socket?.close()
+    socket = null
     isConnected.value = false
   }
 
   function sendMessage<T>(method: string, payload: T) {
-    if (!isConnected.value) {
+    if (!socket || socket.readyState !== WebSocket.OPEN) {
       console.warn('WebSocket is not connected. Cannot send message:', method)
       return
     }
 
     const msg: WebSocketMessage<T> = { method, payload }
-    client.value.sendMessage(msg)
+    socket.send(JSON.stringify(msg))
 
     messageHistory.value.push({
       ...msg,

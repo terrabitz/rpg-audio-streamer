@@ -60,17 +60,17 @@ onUnmounted(() => {
   disconnectAudio()
 })
 
-async function handleAudioToggle() {
+function handleAudioToggle() {
   if (!audioStore.enabled) {
-    await connectAudio()
+    connectAudio()
   } else {
     disconnectAudio()
   }
 }
 
-async function connectAudio() {
+function connectAudio() {
   connecting.value = true
-  await wsStore.connect(token)
+  wsStore.connect(token)
   wsStore.addMessageHandler(handleSyncAll)
   wsStore.addMessageHandler(handleSyncTrack)
 
