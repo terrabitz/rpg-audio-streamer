@@ -1,3 +1,10 @@
+## [1.5.5](https://github.com/terrabitz/rpg-audio-streamer/compare/v1.5.4...v1.5.5) (2025-12-16)
+
+
+### Bug Fixes
+
+* Refactor WS client and audio track player ([#95](https://github.com/terrabitz/rpg-audio-streamer/issues/95)) ([3feff0b](https://github.com/terrabitz/rpg-audio-streamer/commit/3feff0b76946b785cb509cc5437c765ab5246896))
+
 ## [1.5.4](https://github.com/terrabitz/rpg-audio-streamer/compare/v1.5.3...v1.5.4) (2025-12-16)
 
 
