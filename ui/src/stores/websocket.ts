@@ -48,7 +48,7 @@ export const useWebSocketStore = defineStore('websocket', () => {
     return new Promise((resolve, reject) => {
       const baseUrl = getWebSocketUrl()
       const url = token ? `${baseUrl}?token=${encodeURIComponent(token)}` : baseUrl
-      let s = new WebSocket(url)
+      const s = new WebSocket(url)
 
       s.onopen = () => {
         isConnected.value = true
@@ -78,7 +78,7 @@ export const useWebSocketStore = defineStore('websocket', () => {
 
   function receiveMessage<T>(event: MessageEvent) {
     try {
-      const message = JSON.parse(event.data) as WebSocketMessage
+      const message = JSON.parse(event.data) as WebSocketMessage<T>
       console.log('Received WebSocket message:', message)
       const storedMessage: StoredMessage = {
         ...message,
