@@ -31,7 +31,7 @@ function handleSyncRequest(message: WebSocketMessage<unknown>) {
 }
 
 onMounted(async () => {
-  wsStore.connect()
+  await wsStore.connect()
   wsStore.addMessageHandler(handleSyncRequest)
 
   setTitle('My Table')

@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
-import { ref, shallowRef } from 'vue'
-import { WSClient } from '../client/wsClient'
+import { ref } from 'vue'
+
+const reconnectIntervalMs = 3000
 
 export interface WebSocketMessage<T = unknown> {
   method: string
@@ -15,70 +16,103 @@ interface StoredMessage<T = unknown> extends WebSocketMessage<T> {
 
 type MessageHandler<T = unknown> = (message: WebSocketMessage<T>) => void
 
+function getWebSocketUrl(): string {
+  const apiBase = import.meta.env.VITE_API_BASE_URL
+  let baseUrl: URL
+
+  try {
+    baseUrl = new URL(apiBase)
+  } catch {
+    baseUrl = new URL(apiBase, window.location.origin)
+  }
+
+  const protocol = baseUrl.protocol === 'https:' ? 'wss:' : 'ws:'
+  return `${protocol}//${baseUrl.host}/api/v1/ws`
+}
+
 export const useWebSocketStore = defineStore('websocket', () => {
   const isConnected = ref(false)
   const messageHandlers = ref<MessageHandler[]>([])
   const messageHistory = ref<StoredMessage[]>([])
-  const client = shallowRef<WSClient>(new WSClient())
+  let socket: WebSocket | null = null
 
   async function connect(token?: string) {
-    await client.value.connect(
-      // onOpen
-      () => {
+    if (socket?.readyState === WebSocket.OPEN) {
+      return
+    }
+
+    socket = await newSocket(token)
+  }
+
+  function newSocket(token?: string): Promise<WebSocket> {
+    return new Promise((resolve, reject) => {
+      const baseUrl = getWebSocketUrl()
+      const url = token ? `${baseUrl}?token=${encodeURIComponent(token)}` : baseUrl
+      const s = new WebSocket(url)
+
+      s.onopen = () => {
         isConnected.value = true
+        resolve(s)
         console.log('WebSocket connected')
-      },
-      // onMessage
-      (data) => {
-        try {
-          const message = JSON.parse(data) as WebSocketMessage
-          const storedMessage: StoredMessage = {
-            ...message,
-            timestamp: Date.now(),
-            direction: 'received'
-          }
-          messageHistory.value.push(storedMessage)
-          messageHandlers.value.forEach(handler => handler(message))
-        } catch (error) {
-          console.error(`Failed to parse WebSocket\nmessage:${data}\nerror:${error}`, data)
-        }
-      },
-      // onClose
-      (event: CloseEvent) => {
+      }
+
+      s.onmessage = receiveMessage
+
+      s.onclose = (event: CloseEvent) => {
         isConnected.value = false
         const reason = event.reason || 'No reason provided'
         const code = event.code
         console.log(`WebSocket disconnected: [${code}] ${reason}`)
-      },
-      // onError
-      (error) => {
+        if (!event.wasClean) {
+          setTimeout(() => connect(token), reconnectIntervalMs)
+        }
+      }
+
+      s.onerror = (error) => {
+        isConnected.value = false
         console.error('WebSocket error:', error)
-        client.value.disconnect()
-        setTimeout(connect, 5000, token)
-      },
-      token,
-    )
+        reject(error)
+      }
+    })
   }
 
-  function disconnect() {
-    client.value.disconnect()
-    isConnected.value = false
+  function receiveMessage<T>(event: MessageEvent) {
+    try {
+      const message = JSON.parse(event.data) as WebSocketMessage<T>
+      console.log('Received WebSocket message:', message)
+      const storedMessage: StoredMessage = {
+        ...message,
+        timestamp: Date.now(),
+        direction: 'received'
+      }
+      messageHistory.value.push(storedMessage)
+      messageHandlers.value.forEach(handler => handler(message))
+    } catch (error) {
+      console.error(`Failed to parse WebSocket\nmessage:${event.data}\nerror:${error}`)
+    }
   }
 
   function sendMessage<T>(method: string, payload: T) {
-    if (!isConnected.value) {
-      console.warn('WebSocket is not connected. Cannot send message:', method)
-      return
+    if (!socket || socket.readyState !== WebSocket.OPEN) {
+      throw new Error('WebSocket is not connected')
     }
 
     const msg: WebSocketMessage<T> = { method, payload }
-    client.value.sendMessage(msg)
+    console.log('Sending WebSocket message:', msg)
+    socket.send(JSON.stringify(msg))
 
     messageHistory.value.push({
       ...msg,
       timestamp: Date.now(),
       direction: 'sent'
     })
+  }
+
+  function disconnect() {
+    if (socket) {
+      socket.close(1000, 'Client disconnected')
+      socket = null
+    }
   }
 
   function addMessageHandler(handler: MessageHandler) {

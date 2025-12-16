@@ -5,12 +5,12 @@
 
 <script setup lang="ts">
 import Hls, { type HlsConfig } from 'hls.js';
-import { onBeforeUnmount, ref, watch } from 'vue';
+import { onBeforeUnmount, ref, shallowRef, watch } from 'vue';
 import { useAudioStore, type AudioTrack } from '../stores/audio';
 
 const props = defineProps<{ fileID: string, token?: string }>()
 const audioStore = useAudioStore()
-const videoElement = ref<HTMLVideoElement | null>(null)
+const videoElement = shallowRef<HTMLVideoElement | null>(null)
 
 const MIN_SEEK_SKEW = 0.5
 
@@ -19,12 +19,43 @@ const FADE_DURATION = 2000 // 2 seconds
 const FADE_STEP_DURATION = 16 // 16ms per step
 const FADE_STEPS = Math.ceil(FADE_DURATION / FADE_STEP_DURATION)
 let fadeTimer: number | undefined = undefined
+const hlsReady = ref(false)
 
-watch(videoElement, (el) => {
-  if (el) {
-    console.log("registering video element", props.fileID)
-    startAudioSync(props.fileID, el)
-  }
+watch(videoElement, async (el) => {
+  if (!el) return
+
+  console.log("registering video element", props.fileID)
+  await startAudioSync(props.fileID, el)
+})
+
+watch(() => audioStore.tracks[props.fileID]?.isPlaying, () => {
+  if (!hlsReady.value || !videoElement.value) return
+  syncIsPlaying(props.fileID, videoElement.value)
+})
+
+watch(() => audioStore.tracks[props.fileID]?.volume, () => {
+  if (!hlsReady.value || !videoElement.value) return
+  syncVolume(props.fileID, videoElement.value)
+})
+
+watch(() => audioStore.masterVolume, () => {
+  if (!hlsReady.value || fadeTimer) return
+  syncVolumeImmediate(props.fileID)
+})
+
+watch(() => audioStore.typeVolumes, () => {
+  if (!hlsReady.value || fadeTimer) return
+  syncVolumeImmediate(props.fileID)
+}, { deep: true })
+
+watch(() => audioStore.tracks[props.fileID]?.isRepeating, () => {
+  if (!hlsReady.value || !videoElement.value) return
+  syncRepeating(props.fileID, videoElement.value)
+})
+
+watch(() => audioStore.tracks[props.fileID]?.currentTime, () => {
+  if (!hlsReady.value || !videoElement.value) return
+  syncCurrentTime(props.fileID, videoElement.value)
 })
 
 onBeforeUnmount(() => {
@@ -37,61 +68,41 @@ onBeforeUnmount(() => {
   }
 })
 
-// startAudioSync sets up the HLS.js player and watches state for syncing
-function startAudioSync(fileID: string, videoElement: HTMLVideoElement) {
-  // Set up HLS.js if supported
-  if (Hls.isSupported()) {
-    let options: Partial<HlsConfig> = {}
-    if (props.token) {
-      options = {
-        xhrSetup: function (xhr) {
-          xhr.setRequestHeader('Authorization', `Bearer ${props.token}`)
-        }
-      }
-    }
-    const hls = new Hls(options)
-    hls.loadSource(`/api/v1/stream/${fileID}/index.m3u8`)
-    hls.attachMedia(videoElement)
-    hls.on(Hls.Events.MANIFEST_PARSED, () => {
-      syncAll(videoElement)
-    })
-    hls.on(Hls.Events.LEVEL_LOADED, (_, data) => {
-      // Once we figure out the total duration, update the store
-      audioStore.updateTrackState(fileID, { duration: data.details.totalduration })
-    })
-  } else if (videoElement.canPlayType('application/vnd.apple.mpegurl')) {
-    videoElement.src = `/api/v1/stream/${fileID}/index.m3u8`
-    syncAll(videoElement)
+// startAudioSync sets up the HLS.js player
+async function startAudioSync(fileID: string, videoElement: HTMLVideoElement) {
+  const source = `/api/v1/stream/${fileID}/index.m3u8`
+  if (!Hls.isSupported()) {
+    console.error('HLS.js is not supported in this browser.')
+    return
   }
 
-  // Watch state and sync to video element
-  watch(() => audioStore.tracks[fileID]?.isPlaying, () => {
-    syncIsPlaying(fileID, videoElement)
+  bindHLS(source, props.token, videoElement)
+}
+
+function bindHLS(source: string, token: string | undefined, videoElement: HTMLVideoElement): void {
+  let options: Partial<HlsConfig> = {}
+  if (token) {
+    options = {
+      xhrSetup: function (xhr) {
+        xhr.setRequestHeader('Authorization', `Bearer ${token}`)
+      }
+    }
+  }
+  const hls = new Hls(options)
+  hls.loadSource(source)
+  hls.attachMedia(videoElement)
+  hls.on(Hls.Events.MANIFEST_PARSED, () => {
+    syncAll(videoElement)
+    hlsReady.value = true
   })
-
-  watch(() => audioStore.tracks[fileID]?.volume, () => {
-    syncVolume(fileID, videoElement)
+  hls.on(Hls.Events.LEVEL_LOADED, (_, data) => {
+    // Once we figure out the total duration, update the store
+    updateDuration(data.details.totalduration)
   })
+}
 
-  watch(() => audioStore.masterVolume, () => {
-    if (fadeTimer) return
-
-    syncVolumeImmediate(fileID)
-  })
-
-  watch(() => audioStore.typeVolumes, () => {
-    if (fadeTimer) return
-
-    syncVolumeImmediate(fileID)
-  }, { deep: true })
-
-  watch(() => audioStore.tracks[fileID]?.isRepeating, () => {
-    syncRepeating(fileID, videoElement)
-  })
-
-  watch(() => audioStore.tracks[fileID]?.currentTime, () => {
-    syncCurrentTime(fileID, videoElement)
-  })
+function updateDuration(duration: number) {
+  audioStore.updateTrackState(props.fileID, { duration })
 }
 
 function syncIsPlaying(fileID: string, videoElement: HTMLVideoElement) {
@@ -99,7 +110,9 @@ function syncIsPlaying(fileID: string, videoElement: HTMLVideoElement) {
 
   if (desiredState?.isPlaying && videoElement.paused) {
     videoElement.volume = 0
-    videoElement.play()
+    videoElement.play().catch((err) => {
+      console.error(`Error playing video element ${props.fileID}:`, err)
+    })
   }
 
   // Sync volume, since we may need to update it if we're fading out to a pause
