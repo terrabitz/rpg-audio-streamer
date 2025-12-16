@@ -76,10 +76,10 @@ async function startAudioSync(fileID: string, videoElement: HTMLVideoElement) {
     return
   }
 
-  newHLS(source, props.token, videoElement)
+  bindHLS(source, props.token, videoElement)
 }
 
-function newHLS(source: string, token: string | undefined, videoElement: HTMLVideoElement): Hls {
+function bindHLS(source: string, token: string | undefined, videoElement: HTMLVideoElement): void {
   let options: Partial<HlsConfig> = {}
   if (token) {
     options = {
