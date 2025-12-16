@@ -1,3 +1,10 @@
+## [1.5.4](https://github.com/terrabitz/rpg-audio-streamer/compare/v1.5.3...v1.5.4) (2025-12-16)
+
+
+### Bug Fixes
+
+* Implement Websocket heartbeats ([5dcdba5](https://github.com/terrabitz/rpg-audio-streamer/commit/5dcdba58c95604fa438fb9a39ae5e1191d772702))
+
 ## [1.5.3](https://github.com/terrabitz/rpg-audio-streamer/compare/v1.5.2...v1.5.3) (2025-12-03)
 
 
