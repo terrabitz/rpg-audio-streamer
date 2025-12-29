@@ -10,6 +10,11 @@ const router = createRouter({
       component: HomeView,
     },
     {
+      path: '/tables',
+      name: 'tables',
+      component: () => import('../views/TablesView.vue'),
+    },
+    {
       path: '/table/:token?',
       name: 'table',
       component: () => import('../views/TableView.vue'),

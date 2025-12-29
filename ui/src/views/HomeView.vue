@@ -23,9 +23,8 @@ onMounted(async () => {
       </p>
 
       <div class="d-flex flex-wrap justify-center gap-4">
-        <v-btn :to="'/table/' + tableStore.tables[0]?.inviteCode" color="primary" size="large" variant="elevated"
-          prepend-icon="$headphones">
-          Go to My Table
+        <v-btn :to="'/tables'" color="primary" size="large" variant="elevated" prepend-icon="$headphones">
+          Go to My Tables
         </v-btn>
       </div>
     </div>
