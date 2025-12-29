@@ -4,84 +4,24 @@ import (
 	"context"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 )
 
-type MockTrackStore struct {
+type MockStore struct {
 	tracks     map[uuid.UUID]Track
 	trackTypes map[uuid.UUID]TrackType
+	tables     map[uuid.UUID]Table
 }
 
-func (m *MockTrackStore) SaveTrack(ctx context.Context, track *Track) error {
-	m.tracks[track.ID] = *track
-	return nil
-}
-
-func (m *MockTrackStore) GetTracks(ctx context.Context) ([]Track, error) {
-	var result []Track
-	for _, t := range m.tracks {
-		result = append(result, t)
-	}
-	return result, nil
-}
-
-func (m *MockTrackStore) GetTrackByID(ctx context.Context, trackID uuid.UUID) (Track, error) {
-	track, ok := m.tracks[trackID]
-	if !ok {
-		return Track{}, fmt.Errorf("track not found")
-	}
-	return track, nil
-}
-
-func (m *MockTrackStore) DeleteTrack(ctx context.Context, trackID uuid.UUID) error {
-	if _, ok := m.tracks[trackID]; !ok {
-		return fmt.Errorf("track not found")
-	}
-	delete(m.tracks, trackID)
-	return nil
-}
-
-func (m *MockTrackStore) UpdateTrack(ctx context.Context, trackID uuid.UUID, update UpdateTrackRequest) (Track, error) {
-	track, ok := m.tracks[trackID]
-	if !ok {
-		return Track{}, fmt.Errorf("track not found")
-	}
-
-	if update.Name != nil {
-		track.Name = *update.Name
-	}
-
-	if update.TypeID != nil {
-		track.TypeID = *update.TypeID
-	}
-
-	m.tracks[trackID] = track
-	return track, nil
-}
-
-func (m *MockTrackStore) GetTrackTypes(ctx context.Context) ([]TrackType, error) {
-	var result []TrackType
-	for _, t := range m.trackTypes {
-		result = append(result, t)
-	}
-	return result, nil
-}
-
-func (m *MockTrackStore) GetTrackTypeByID(ctx context.Context, id uuid.UUID) (TrackType, error) {
-	trackType, ok := m.trackTypes[id]
-	if !ok {
-		return TrackType{}, fmt.Errorf("track type not found")
-	}
-	return trackType, nil
-}
-
-func NewMockTrackStore(t *testing.T) *MockTrackStore {
+func NewMockStore(t *testing.T) *MockStore {
 	t.Helper()
 
-	store := &MockTrackStore{
+	store := &MockStore{
 		tracks:     make(map[uuid.UUID]Track),
 		trackTypes: make(map[uuid.UUID]TrackType),
+		tables:     make(map[uuid.UUID]Table),
 	}
 
 	// Add default track types
@@ -108,5 +48,83 @@ func NewMockTrackStore(t *testing.T) *MockTrackStore {
 		AllowSimultaneousPlay: true,
 	}
 
+	store.tables[uuid.MustParse("2EC000A2-A7C9-11EE-A0E5-0242AC120005")] = Table{
+		ID:         uuid.MustParse("2EC000A2-A7C9-11EE-A0E5-0242AC120005"),
+		Name:       "Test Table",
+		InviteCode: "TEST1234",
+		CreatedAt:  time.Now(),
+	}
+
 	return store
+}
+
+func (m *MockStore) SaveTrack(ctx context.Context, track *Track) error {
+	m.tracks[track.ID] = *track
+	return nil
+}
+
+func (m *MockStore) GetTracks(ctx context.Context) ([]Track, error) {
+	var result []Track
+	for _, t := range m.tracks {
+		result = append(result, t)
+	}
+	return result, nil
+}
+
+func (m *MockStore) GetTrackByID(ctx context.Context, trackID uuid.UUID) (Track, error) {
+	track, ok := m.tracks[trackID]
+	if !ok {
+		return Track{}, fmt.Errorf("track not found")
+	}
+	return track, nil
+}
+
+func (m *MockStore) DeleteTrack(ctx context.Context, trackID uuid.UUID) error {
+	if _, ok := m.tracks[trackID]; !ok {
+		return fmt.Errorf("track not found")
+	}
+	delete(m.tracks, trackID)
+	return nil
+}
+
+func (m *MockStore) UpdateTrack(ctx context.Context, trackID uuid.UUID, update UpdateTrackRequest) (Track, error) {
+	track, ok := m.tracks[trackID]
+	if !ok {
+		return Track{}, fmt.Errorf("track not found")
+	}
+
+	if update.Name != nil {
+		track.Name = *update.Name
+	}
+
+	if update.TypeID != nil {
+		track.TypeID = *update.TypeID
+	}
+
+	m.tracks[trackID] = track
+	return track, nil
+}
+
+func (m *MockStore) GetTrackTypes(ctx context.Context) ([]TrackType, error) {
+	var result []TrackType
+	for _, t := range m.trackTypes {
+		result = append(result, t)
+	}
+	return result, nil
+}
+
+func (m *MockStore) GetTrackTypeByID(ctx context.Context, id uuid.UUID) (TrackType, error) {
+	trackType, ok := m.trackTypes[id]
+	if !ok {
+		return TrackType{}, fmt.Errorf("track type not found")
+	}
+	return trackType, nil
+}
+
+func (m *MockStore) GetTables(ctx context.Context) ([]Table, error) {
+	var result []Table
+	for _, t := range m.tables {
+		result = append(result, t)
+	}
+	return result, nil
 }

@@ -49,6 +49,13 @@ export type TrackType = {
     allowSimultaneousPlay: boolean;
 };
 
+export type Table = {
+    id: string;
+    name: string;
+    inviteCode: string;
+    createdAt: string;
+};
+
 export type PostApiV1LoginData = {
     body: LoginRequest;
     path?: never;
@@ -267,6 +274,29 @@ export type GetApiV1StreamByPathResponses = {
 };
 
 export type GetApiV1StreamByPathResponse = GetApiV1StreamByPathResponses[keyof GetApiV1StreamByPathResponses];
+
+export type GetApiV1TablesData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/tables';
+};
+
+export type GetApiV1TablesErrors = {
+    /**
+     * Not authorized
+     */
+    403: unknown;
+};
+
+export type GetApiV1TablesResponses = {
+    /**
+     * List of tables
+     */
+    200: Array<Table>;
+};
+
+export type GetApiV1TablesResponse = GetApiV1TablesResponses[keyof GetApiV1TablesResponses];
 
 export type GetApiV1TrackTypesData = {
     body?: never;

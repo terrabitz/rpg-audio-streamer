@@ -357,3 +357,19 @@ func (s *Server) handleTrackTypes(w http.ResponseWriter, r *http.Request, token 
 
 	respondJSON(w, http.StatusOK, trackTypes)
 }
+
+func (s *Server) handleTables(w http.ResponseWriter, r *http.Request, token *auth.Token) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	tables, err := s.store.GetTables(r.Context())
+	if err != nil {
+		s.logger.Error("failed to get tables", "error", err)
+		http.Error(w, "Failed to retrieve tables", http.StatusInternalServerError)
+		return
+	}
+
+	respondJSON(w, http.StatusOK, tables)
+}

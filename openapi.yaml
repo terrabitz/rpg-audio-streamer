@@ -129,6 +129,25 @@ components:
         allowSimultaneousPlay:
           type: boolean
 
+    Table:
+      type: object
+      required:
+        - id
+        - name
+        - inviteCode
+        - createdAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        inviteCode:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
 paths:
   /api/v1/login:
     post:
@@ -307,6 +326,23 @@ paths:
           description: Not authorized
         "404":
           description: File not found
+
+  /api/v1/tables:
+    get:
+      summary: Get list of tables
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: List of tables
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Table"
+        "403":
+          description: Not authorized
 
   /api/v1/trackTypes:
     get:

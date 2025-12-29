@@ -91,7 +91,7 @@ func setupTestServer(t *testing.T) *testServer {
 		joinToken:     "valid-join-token",
 	}
 
-	mockTrackStore := NewMockTrackStore(t)
+	mockTrackStore := NewMockStore(t)
 	mockWSReg := &mockWSRegisterer{t: t}
 
 	// Create test server
@@ -156,7 +156,7 @@ func TestUploadFile(t *testing.T) {
 		}
 
 		// Verify track metadata was saved
-		mockStore := ts.store.(*MockTrackStore)
+		mockStore := ts.store.(*MockStore)
 		tracks, err := mockStore.GetTracks(context.Background())
 		if err != nil {
 			t.Fatalf("failed to get tracks: %v", err)
@@ -232,7 +232,7 @@ func TestListFiles(t *testing.T) {
 				t.Fatalf("failed to create test file: %v", err)
 			}
 			trackID := uuid.New()
-			ts.store.(*MockTrackStore).tracks[trackID] = Track{
+			ts.store.(*MockStore).tracks[trackID] = Track{
 				ID:     trackID,
 				Name:   tf.name,
 				Path:   hlsDir,
@@ -286,7 +286,7 @@ func TestDeleteFile(t *testing.T) {
 			t.Fatalf("failed to create test folder: %v", err)
 		}
 
-		mockStore := ts.store.(*MockTrackStore)
+		mockStore := ts.store.(*MockStore)
 		mockStore.tracks[trackID] = Track{
 			ID:     trackID,
 			Path:   trackPath,

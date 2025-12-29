@@ -10,6 +10,7 @@ import (
 type Store interface {
 	TrackStore
 	TrackTypeStore
+	TableStore
 }
 
 type Track struct {
@@ -45,4 +46,16 @@ type TrackType struct {
 type TrackTypeStore interface {
 	GetTrackTypes(ctx context.Context) ([]TrackType, error)
 	GetTrackTypeByID(ctx context.Context, id uuid.UUID) (TrackType, error)
+}
+
+
+type Table struct {
+	ID         uuid.UUID `json:"id,omitempty"`
+	Name       string    `json:"name,omitempty"`
+	InviteCode string    `json:"inviteCode,omitempty"`
+	CreatedAt  time.Time `json:"createdAt,omitempty"`
+}
+
+type TableStore interface {
+	GetTables(ctx context.Context) ([]Table, error)
 }
