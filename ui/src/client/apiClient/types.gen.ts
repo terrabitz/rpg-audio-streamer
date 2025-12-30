@@ -58,6 +58,7 @@ export type Table = {
 
 export type InviteDetails = {
     tableName: string;
+    tableID: string;
 };
 
 export type PostApiV1LoginData = {
@@ -337,6 +338,42 @@ export type GetApiV1TablesResponses = {
 };
 
 export type GetApiV1TablesResponse = GetApiV1TablesResponses[keyof GetApiV1TablesResponses];
+
+export type GetApiV1TablesByTableIdTracksData = {
+    body?: never;
+    path: {
+        /**
+         * The UUID of the table
+         */
+        tableID: string;
+    };
+    query?: never;
+    url: '/api/v1/tables/{tableID}/tracks';
+};
+
+export type GetApiV1TablesByTableIdTracksErrors = {
+    /**
+     * Invalid table ID
+     */
+    400: unknown;
+    /**
+     * Not authorized (GM role required)
+     */
+    403: unknown;
+    /**
+     * Internal server error
+     */
+    500: unknown;
+};
+
+export type GetApiV1TablesByTableIdTracksResponses = {
+    /**
+     * List of tracks for the table
+     */
+    200: Array<Track>;
+};
+
+export type GetApiV1TablesByTableIdTracksResponse = GetApiV1TablesByTableIdTracksResponses[keyof GetApiV1TablesByTableIdTracksResponses];
 
 export type GetApiV1TrackTypesData = {
     body?: never;

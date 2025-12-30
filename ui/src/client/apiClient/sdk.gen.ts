@@ -2,7 +2,7 @@
 
 import { type Client, formDataBodySerializer, type Options as Options2, type TDataShape } from './client';
 import { client } from './client.gen';
-import type { DeleteApiV1FilesByTrackIdData, DeleteApiV1FilesByTrackIdErrors, DeleteApiV1FilesByTrackIdResponses, GetApiV1AuthStatusData, GetApiV1AuthStatusResponses, GetApiV1FilesData, GetApiV1FilesErrors, GetApiV1FilesResponses, GetApiV1InviteByInviteCodeData, GetApiV1InviteByInviteCodeErrors, GetApiV1InviteByInviteCodeResponses, GetApiV1JoinTokenData, GetApiV1JoinTokenErrors, GetApiV1JoinTokenResponses, GetApiV1StreamByPathData, GetApiV1StreamByPathErrors, GetApiV1StreamByPathResponses, GetApiV1TablesData, GetApiV1TablesErrors, GetApiV1TablesResponses, GetApiV1TrackTypesData, GetApiV1TrackTypesErrors, GetApiV1TrackTypesResponses, GetApiV1WsData, GetApiV1WsErrors, PostApiV1AuthLogoutData, PostApiV1AuthLogoutResponses, PostApiV1FilesData, PostApiV1FilesErrors, PostApiV1FilesResponses, PostApiV1LoginData, PostApiV1LoginErrors, PostApiV1LoginResponses, PutApiV1FilesByTrackIdData, PutApiV1FilesByTrackIdErrors, PutApiV1FilesByTrackIdResponses } from './types.gen';
+import type { DeleteApiV1FilesByTrackIdData, DeleteApiV1FilesByTrackIdErrors, DeleteApiV1FilesByTrackIdResponses, GetApiV1AuthStatusData, GetApiV1AuthStatusResponses, GetApiV1FilesData, GetApiV1FilesErrors, GetApiV1FilesResponses, GetApiV1InviteByInviteCodeData, GetApiV1InviteByInviteCodeErrors, GetApiV1InviteByInviteCodeResponses, GetApiV1JoinTokenData, GetApiV1JoinTokenErrors, GetApiV1JoinTokenResponses, GetApiV1StreamByPathData, GetApiV1StreamByPathErrors, GetApiV1StreamByPathResponses, GetApiV1TablesByTableIdTracksData, GetApiV1TablesByTableIdTracksErrors, GetApiV1TablesByTableIdTracksResponses, GetApiV1TablesData, GetApiV1TablesErrors, GetApiV1TablesResponses, GetApiV1TrackTypesData, GetApiV1TrackTypesErrors, GetApiV1TrackTypesResponses, GetApiV1WsData, GetApiV1WsErrors, PostApiV1AuthLogoutData, PostApiV1AuthLogoutResponses, PostApiV1FilesData, PostApiV1FilesErrors, PostApiV1FilesResponses, PostApiV1LoginData, PostApiV1LoginErrors, PostApiV1LoginResponses, PutApiV1FilesByTrackIdData, PutApiV1FilesByTrackIdErrors, PutApiV1FilesByTrackIdResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean> = Options2<TData, ThrowOnError> & {
     /**
@@ -158,6 +158,19 @@ export const getApiV1Tables = <ThrowOnError extends boolean = false>(options?: O
             type: 'apiKey'
         }],
     url: '/api/v1/tables',
+    ...options
+});
+
+/**
+ * Get tracks for a specific table
+ */
+export const getApiV1TablesByTableIdTracks = <ThrowOnError extends boolean = false>(options: Options<GetApiV1TablesByTableIdTracksData, ThrowOnError>) => (options.client ?? client).get<GetApiV1TablesByTableIdTracksResponses, GetApiV1TablesByTableIdTracksErrors, ThrowOnError>({
+    security: [{
+            in: 'cookie',
+            name: 'auth_token',
+            type: 'apiKey'
+        }],
+    url: '/api/v1/tables/{tableID}/tracks',
     ...options
 });
 

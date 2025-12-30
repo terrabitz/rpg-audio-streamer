@@ -374,8 +374,32 @@ func (s *Server) handleTables(w http.ResponseWriter, r *http.Request, token *aut
 	respondJSON(w, http.StatusOK, tables)
 }
 
+func (s *Server) handleTableTracks(w http.ResponseWriter, r *http.Request, token *auth.Token) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	tableIDString := r.PathValue("tableID")
+	tableID, err := uuid.Parse(tableIDString)
+	if err != nil {
+		http.Error(w, "Invalid table ID", http.StatusBadRequest)
+		return
+	}
+
+	tracks, err := s.store.GetTracksByTableID(r.Context(), tableID)
+	if err != nil {
+		s.logger.Error("failed to get tracks for table", "error", err)
+		http.Error(w, "Failed to retrieve tracks", http.StatusInternalServerError)
+		return
+	}
+
+	respondJSON(w, http.StatusOK, tracks)
+}
+
 type InviteDetails struct {
-	TableName string `json:"tableName"`
+	TableName string    `json:"tableName"`
+	TableID   uuid.UUID `json:"tableID"`
 }
 
 func (s *Server) handleGetInviteDetails(w http.ResponseWriter, r *http.Request) {
@@ -399,6 +423,7 @@ func (s *Server) handleGetInviteDetails(w http.ResponseWriter, r *http.Request) 
 
 	res := InviteDetails{
 		TableName: table.Name,
+		TableID:   table.ID,
 	}
 
 	respondJSON(w, http.StatusOK, res)

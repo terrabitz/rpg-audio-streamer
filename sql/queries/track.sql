@@ -1,6 +1,12 @@
 -- name: GetTracks :many
 select * from tracks;
 
+-- name: GetTracksByTableID :many
+select t.* from tracks t
+join track_tables tt on tt.track_id = t.id
+where tt.table_id = @table_id
+order by tt.created_at DESC;
+
 -- name: GetTrackByID :one
 select * from tracks where id = @id;
 

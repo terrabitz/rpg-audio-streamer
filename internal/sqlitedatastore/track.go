@@ -43,6 +43,23 @@ func (db *SQLiteDatastore) GetTracks(ctx context.Context) ([]server.Track, error
 	return result, nil
 }
 
+func (db *SQLiteDatastore) GetTracksByTableID(ctx context.Context, tableID uuid.UUID) ([]server.Track, error) {
+	dbTracks, err := sqlitedb.New(db.DB).GetTracksByTableID(ctx, tableID[:])
+	if err != nil {
+		return nil, err
+	}
+
+	var result []server.Track
+	for _, dbTrack := range dbTracks {
+		track, parseErr := convertDBTrack(dbTrack)
+		if parseErr != nil {
+			return nil, parseErr
+		}
+		result = append(result, track)
+	}
+	return result, nil
+}
+
 func (db *SQLiteDatastore) GetTrackByID(ctx context.Context, trackID uuid.UUID) (server.Track, error) {
 	dbTrack, err := sqlitedb.New(db.DB).GetTrackByID(ctx, trackID[:])
 	if err != nil {

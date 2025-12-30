@@ -152,9 +152,13 @@ components:
       type: object
       required:
         - tableName
+        - tableID
       properties:
         tableName:
           type: string
+        tableID:
+          type: string
+          format: uuid
 
 paths:
   /api/v1/login:
@@ -375,6 +379,35 @@ paths:
                   $ref: "#/components/schemas/Table"
         "403":
           description: Not authorized
+
+  /api/v1/tables/{tableID}/tracks:
+    get:
+      summary: Get tracks for a specific table
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: tableID
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: The UUID of the table
+      responses:
+        "200":
+          description: List of tracks for the table
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Track"
+        "400":
+          description: Invalid table ID
+        "403":
+          description: Not authorized (GM role required)
+        "500":
+          description: Internal server error
 
   /api/v1/trackTypes:
     get:

@@ -1,4 +1,4 @@
-import { deleteApiV1FilesByTrackId, getApiV1Files, postApiV1Files, putApiV1FilesByTrackId, type Track, type UpdateTrackRequest } from '@/client/apiClient'
+import { deleteApiV1FilesByTrackId, getApiV1Files, getApiV1TablesByTableIdTracks, postApiV1Files, putApiV1FilesByTrackId, type Track, type UpdateTrackRequest } from '@/client/apiClient'
 import { defineStore } from 'pinia'
 
 export const useFileStore = defineStore('files', {
@@ -12,24 +12,24 @@ export const useFileStore = defineStore('files', {
     }
   },
   actions: {
-    async fetchFiles() {
+    async fetchFiles(tableID: string) {
       try {
-        const { data } = await getApiV1Files<true>()
+        const { data } = await getApiV1TablesByTableIdTracks<true>({ path: { tableID: tableID } })
         this.tracks = data
       } catch (error) {
         console.error('Error fetching files:', error)
       }
     },
-    async deleteFile(trackId: string) {
+    async deleteFile(trackId: string, tableID: string) {
       try {
         await deleteApiV1FilesByTrackId<true>({ path: { trackID: trackId } })
-        await this.fetchFiles()
+        await this.fetchFiles(tableID)
       } catch (error) {
         console.error('Error deleting file:', error)
         throw error
       }
     },
-    async uploadFile(formData: FormData) {
+    async uploadFile(formData: FormData, tableID: string) {
       try {
         const files = formData.get('files') as Blob | null
         const name = formData.get('name') as string | null
@@ -46,7 +46,7 @@ export const useFileStore = defineStore('files', {
             typeID
           }
         })
-        await this.fetchFiles()
+        await this.fetchFiles(tableID)
       } catch (error: unknown) {
         console.error('Error uploading file:', error)
         throw new Error('Failed to upload file')

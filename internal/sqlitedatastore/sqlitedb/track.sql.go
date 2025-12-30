@@ -69,6 +69,42 @@ func (q *Queries) GetTracks(ctx context.Context) ([]Track, error) {
 	return items, nil
 }
 
+const getTracksByTableID = `-- name: GetTracksByTableID :many
+select t.id, t.created_at, t.name, t.path, t.type_id from tracks t
+join track_tables tt on tt.track_id = t.id
+where tt.table_id = ?1
+order by tt.created_at DESC
+`
+
+func (q *Queries) GetTracksByTableID(ctx context.Context, tableID []byte) ([]Track, error) {
+	rows, err := q.db.QueryContext(ctx, getTracksByTableID, tableID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Track
+	for rows.Next() {
+		var i Track
+		if err := rows.Scan(
+			&i.ID,
+			&i.CreatedAt,
+			&i.Name,
+			&i.Path,
+			&i.TypeID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const saveTrack = `-- name: SaveTrack :exec
 insert into tracks (id, created_at, name, path, type_id) values (?1, ?2, ?3, ?4, ?5)
 `

@@ -22,6 +22,10 @@ import { onMounted, watch } from 'vue'
 import { useAudioStore } from '../stores/audio'
 import AudioControls from './AudioControls.vue'
 
+const props = defineProps<{
+  tableID: string
+}>()
+
 const fileStore = useFileStore()
 const audioStore = useAudioStore()
 const wsStore = useWebSocketStore()
@@ -29,14 +33,14 @@ const trackTypeStore = useTrackTypeStore()
 
 onMounted(async () => {
   await trackTypeStore.fetchTrackTypes()
-  await fileStore.fetchFiles()
+  await fileStore.fetchFiles(props.tableID)
 })
 
 async function deleteFile(file: Track) {
   audioStore.removeTrack(file.name)
 
   try {
-    await fileStore.deleteFile(file.id)
+    await fileStore.deleteFile(file.id, props.tableID)
   } catch (error) {
     console.error('Failed to delete file:', error)
   }

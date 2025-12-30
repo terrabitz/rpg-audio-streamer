@@ -31,6 +31,7 @@ type TrackStore interface {
 	SaveTrack(ctx context.Context, track *Track) error
 	GetTracks(ctx context.Context) ([]Track, error)
 	GetTrackByID(ctx context.Context, trackID uuid.UUID) (Track, error)
+	GetTracksByTableID(ctx context.Context, tableID uuid.UUID) ([]Track, error)
 	DeleteTrack(ctx context.Context, trackID uuid.UUID) error
 	UpdateTrack(ctx context.Context, trackID uuid.UUID, update UpdateTrackRequest) (Track, error)
 }
