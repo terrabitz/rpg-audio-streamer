@@ -18,9 +18,9 @@ const isGMView = computed(() => {
 
 
 onMounted(async () => {
-  const token = route.params.token as string | undefined
+  const inviteCode = route.params.inviteCode as string | undefined
 
-  await auth.checkAuthStatus(token)
+  await auth.checkAuthStatus(inviteCode)
 })
 </script>
 
