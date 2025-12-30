@@ -48,7 +48,6 @@ type TrackTypeStore interface {
 	GetTrackTypeByID(ctx context.Context, id uuid.UUID) (TrackType, error)
 }
 
-
 type Table struct {
 	ID         uuid.UUID `json:"id,omitempty"`
 	Name       string    `json:"name,omitempty"`
@@ -58,4 +57,5 @@ type Table struct {
 
 type TableStore interface {
 	GetTables(ctx context.Context) ([]Table, error)
+	GetTableByInviteCode(ctx context.Context, inviteCode string) (Table, error)
 }

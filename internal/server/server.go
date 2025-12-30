@@ -105,6 +105,7 @@ func (s *Server) registerHandlers() *http.ServeMux {
 	mux.HandleFunc("/api/v1/login", s.handleLogin)
 	mux.HandleFunc("/api/v1/auth/status", s.handleAuthStatus)
 	mux.HandleFunc("/api/v1/auth/logout", s.handleLogout)
+	mux.HandleFunc("/api/v1/invite/{inviteCode}", s.handleGetInviteDetails)
 
 	// Protected endpoints with role validation
 	mux.HandleFunc("/api/v1/files", s.gmOnlyMiddleware(s.handleFiles))

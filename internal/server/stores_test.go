@@ -128,3 +128,12 @@ func (m *MockStore) GetTables(ctx context.Context) ([]Table, error) {
 	}
 	return result, nil
 }
+
+func (m *MockStore) GetTableByInviteCode(ctx context.Context, inviteCode string) (Table, error) {
+	for _, table := range m.tables {
+		if table.InviteCode == inviteCode {
+			return table, nil
+		}
+	}
+	return Table{}, fmt.Errorf("table not found")
+}

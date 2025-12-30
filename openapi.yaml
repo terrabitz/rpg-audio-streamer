@@ -148,6 +148,14 @@ components:
           type: string
           format: date-time
 
+    InviteDetails:
+      type: object
+      required:
+        - tableName
+      properties:
+        tableName:
+          type: string
+
 paths:
   /api/v1/login:
     post:
@@ -326,6 +334,30 @@ paths:
           description: Not authorized
         "404":
           description: File not found
+
+  /api/v1/invite/{inviteCode}:
+    get:
+      summary: Get table details by invite code (public endpoint)
+      parameters:
+        - name: inviteCode
+          in: path
+          required: true
+          schema:
+            type: string
+          description: The invite code for the table
+      responses:
+        "200":
+          description: Table details for the invite code
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InviteDetails"
+        "400":
+          description: Missing or invalid invite code
+        "404":
+          description: Table not found
+        "500":
+          description: Internal server error
 
   /api/v1/tables:
     get:

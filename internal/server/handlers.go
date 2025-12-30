@@ -373,3 +373,33 @@ func (s *Server) handleTables(w http.ResponseWriter, r *http.Request, token *aut
 
 	respondJSON(w, http.StatusOK, tables)
 }
+
+type InviteDetails struct {
+	TableName string `json:"tableName"`
+}
+
+func (s *Server) handleGetInviteDetails(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	inviteCode := r.PathValue("inviteCode")
+	if inviteCode == "" {
+		http.Error(w, "Missing invite code", http.StatusBadRequest)
+		return
+	}
+
+	table, err := s.store.GetTableByInviteCode(r.Context(), inviteCode)
+	if err != nil {
+		s.logger.Error("failed to get table by invite code", "error", err)
+		http.Error(w, "Failed to retrieve table", http.StatusInternalServerError)
+		return
+	}
+
+	res := InviteDetails{
+		TableName: table.Name,
+	}
+
+	respondJSON(w, http.StatusOK, res)
+}

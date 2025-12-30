@@ -56,6 +56,10 @@ export type Table = {
     createdAt: string;
 };
 
+export type InviteDetails = {
+    tableName: string;
+};
+
 export type PostApiV1LoginData = {
     body: LoginRequest;
     path?: never;
@@ -274,6 +278,42 @@ export type GetApiV1StreamByPathResponses = {
 };
 
 export type GetApiV1StreamByPathResponse = GetApiV1StreamByPathResponses[keyof GetApiV1StreamByPathResponses];
+
+export type GetApiV1InviteByInviteCodeData = {
+    body?: never;
+    path: {
+        /**
+         * The invite code for the table
+         */
+        inviteCode: string;
+    };
+    query?: never;
+    url: '/api/v1/invite/{inviteCode}';
+};
+
+export type GetApiV1InviteByInviteCodeErrors = {
+    /**
+     * Missing or invalid invite code
+     */
+    400: unknown;
+    /**
+     * Table not found
+     */
+    404: unknown;
+    /**
+     * Internal server error
+     */
+    500: unknown;
+};
+
+export type GetApiV1InviteByInviteCodeResponses = {
+    /**
+     * Table details for the invite code
+     */
+    200: InviteDetails;
+};
+
+export type GetApiV1InviteByInviteCodeResponse = GetApiV1InviteByInviteCodeResponses[keyof GetApiV1InviteByInviteCodeResponses];
 
 export type GetApiV1TablesData = {
     body?: never;

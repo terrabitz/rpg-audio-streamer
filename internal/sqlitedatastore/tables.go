@@ -27,6 +27,15 @@ func (db *SQLiteDatastore) GetTables(ctx context.Context) ([]server.Table, error
 	return result, nil
 }
 
+func (db *SQLiteDatastore) GetTableByInviteCode(ctx context.Context, inviteCode string) (server.Table, error) {
+	dbTable, err := sqlitedb.New(db.DB).GetTableByInviteCode(ctx, inviteCode)
+	if err != nil {
+		return server.Table{}, err
+	}
+
+	return convertDBTable(dbTable)
+}
+
 func convertDBTable(dbTable sqlitedb.Table) (server.Table, error) {
 	id, err := uuid.FromBytes(dbTable.ID)
 	if err != nil {

@@ -15,7 +15,7 @@ const router = createRouter({
       component: () => import('../views/TablesView.vue'),
     },
     {
-      path: '/table/:inviteCode?',
+      path: '/table/:inviteCode',
       name: 'table',
       component: () => import('../views/TableView.vue'),
     },

@@ -4,9 +4,13 @@ import TableViewGM from './TableViewGM.vue'
 import TableViewPlayer from './TableViewPlayer.vue'
 import { useAuthStore } from '../stores/auth'
 import { useRoute } from 'vue-router'
+import { useInviteStore } from '@/stores/invite'
+import { useAppBar } from '@/composables/useAppBar'
 
 const auth = useAuthStore()
+const inviteStore = useInviteStore()
 const route = useRoute()
+const appBar = useAppBar()
 
 const isPlayerView = computed(() => {
   return auth.role === 'player' || !auth.authenticated
@@ -18,9 +22,11 @@ const isGMView = computed(() => {
 
 
 onMounted(async () => {
-  const inviteCode = route.params.inviteCode as string | undefined
+  const inviteCode = route.params.inviteCode as string
 
   await auth.checkAuthStatus(inviteCode)
+  await inviteStore.fetchInviteDetails(inviteCode)
+  appBar.setTitle(inviteStore.inviteDetails?.tableName || 'Table View')
 })
 </script>
 

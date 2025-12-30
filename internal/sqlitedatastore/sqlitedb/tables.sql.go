@@ -9,6 +9,22 @@ import (
 	"context"
 )
 
+const getTableByInviteCode = `-- name: GetTableByInviteCode :one
+SELECT id, name, invite_code, created_at FROM tables WHERE invite_code = ?1
+`
+
+func (q *Queries) GetTableByInviteCode(ctx context.Context, inviteCode string) (Table, error) {
+	row := q.db.QueryRowContext(ctx, getTableByInviteCode, inviteCode)
+	var i Table
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.InviteCode,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const getTables = `-- name: GetTables :many
 SELECT id, name, invite_code, created_at FROM tables ORDER BY created_at DESC
 `
