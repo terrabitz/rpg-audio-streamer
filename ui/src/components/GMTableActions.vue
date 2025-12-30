@@ -29,13 +29,20 @@ async function copyToClipboard(text: string) {
 </script>
 
 <template>
-  <v-btn @click="handleGetInviteLink" :active="isCopied" active-color="green" :prepend-icon="isCopied ? '' : '$copy'"
-    class="mr-2">
-    {{ isCopied ? 'Copied to clipboard' : 'Copy invite link' }}
-  </v-btn>
+  <v-tooltip :text="isCopied ? 'Copied!' : 'Copy Invite Link'" location="bottom">
+    <template #activator="{ props: tooltipProps }">
+      <v-btn v-bind="tooltipProps" @click="handleGetInviteLink" :active="isCopied" active-color="green" icon="$copy"
+        class=" mr-2">
+      </v-btn>
+    </template>
+  </v-tooltip>
   <AudioUploader class="mr-4">
     <template #activator="{ props }">
-      <v-btn v-bind="props" prepend-icon="$upload">Upload Audio Track</v-btn>
+      <v-tooltip text="Upload Track" location="bottom">
+        <template #activator="{ props: tooltipProps }">
+          <v-btn v-bind="{ ...tooltipProps, ...props }" icon="$upload"></v-btn>
+        </template>
+      </v-tooltip>
     </template>
   </AudioUploader>
   <VolumeSlider v-model="audioStore.masterVolume" />
