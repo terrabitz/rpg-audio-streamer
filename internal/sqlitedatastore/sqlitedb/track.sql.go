@@ -10,6 +10,22 @@ import (
 	"database/sql"
 )
 
+const addTrackToTable = `-- name: AddTrackToTable :exec
+insert into track_tables (track_id, table_id, created_at) 
+values (?1, ?2, ?3)
+`
+
+type AddTrackToTableParams struct {
+	TrackID   []byte
+	TableID   []byte
+	CreatedAt int64
+}
+
+func (q *Queries) AddTrackToTable(ctx context.Context, arg AddTrackToTableParams) error {
+	_, err := q.db.ExecContext(ctx, addTrackToTable, arg.TrackID, arg.TableID, arg.CreatedAt)
+	return err
+}
+
 const deleteTrackByID = `-- name: DeleteTrackByID :exec
 delete from tracks where id = ?1
 `

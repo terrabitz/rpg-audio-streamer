@@ -1,5 +1,8 @@
 import { deleteApiV1FilesByTrackId, getApiV1Files, getApiV1TablesByTableIdTracks, postApiV1Files, putApiV1FilesByTrackId, type Track, type UpdateTrackRequest } from '@/client/apiClient'
 import { defineStore } from 'pinia'
+import { useAudioStore } from './audio'
+
+const audioStore = useAudioStore()
 
 export const useFileStore = defineStore('files', {
   state: () => ({
@@ -16,6 +19,10 @@ export const useFileStore = defineStore('files', {
       try {
         const { data } = await getApiV1TablesByTableIdTracks<true>({ path: { tableID: tableID } })
         this.tracks = data
+        // FIXME this is a hack to ensure audio store is in sync
+        for (const track of data) {
+          audioStore.initTrack(track.id, track.name, track.typeID)
+        }
       } catch (error) {
         console.error('Error fetching files:', error)
       }

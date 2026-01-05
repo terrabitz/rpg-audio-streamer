@@ -53,13 +53,19 @@ const debouncedSendMessage = debounce((method: string, payload: unknown) => {
 // Event handlers just update state and send WS payloads
 const handlePlay = (fileID: string) => {
   const track = fileStore.getTrackById(fileID)
-  if (!track) return
+  if (!track) {
+    console.log(`Track with ID ${fileID} not found`)
+    return
+  }
 
   const trackType = trackTypeStore.getTypeById(track.typeID)
   if (!trackType) return
 
   const state = audioStore.tracks[fileID]
-  if (!state) return
+  if (!state) {
+    console.log(`No audio state found for track ID ${fileID}`)
+    return
+  }
 
   const newState = {
     isPlaying: !state.isPlaying,

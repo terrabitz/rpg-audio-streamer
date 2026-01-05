@@ -119,3 +119,28 @@ func convertDBTrack(dbTrack sqlitedb.Track) (server.Track, error) {
 		TypeID:    typeID,
 	}, nil
 }
+
+func (db *SQLiteDatastore) AddTracksToTable(ctx context.Context, trackIDs []uuid.UUID, tableID uuid.UUID) error {
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("couldn't begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	for _, trackID := range trackIDs {
+		params := sqlitedb.AddTrackToTableParams{
+			TrackID:   trackID[:],
+			TableID:   tableID[:],
+			CreatedAt: time.Now().Unix(),
+		}
+
+		if err := sqlitedb.New(tx).AddTrackToTable(ctx, params); err != nil {
+			return fmt.Errorf("couldn't add track to table in SQLite: %w", err)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("couldn't commit transaction adding tracks to table: %w", err)
+	}
+	return nil
+}

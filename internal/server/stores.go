@@ -34,6 +34,7 @@ type TrackStore interface {
 	GetTracksByTableID(ctx context.Context, tableID uuid.UUID) ([]Track, error)
 	DeleteTrack(ctx context.Context, trackID uuid.UUID) error
 	UpdateTrack(ctx context.Context, trackID uuid.UUID, update UpdateTrackRequest) (Track, error)
+	AddTracksToTable(ctx context.Context, trackIDs []uuid.UUID, tableID uuid.UUID) error
 }
 
 type TrackType struct {

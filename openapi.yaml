@@ -160,6 +160,18 @@ components:
           type: string
           format: uuid
 
+    AssignTracksRequest:
+      type: object
+      required:
+        - tracks
+      properties:
+        tracks:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: Array of track IDs to assign to the table
+
 paths:
   /api/v1/login:
     post:
@@ -245,6 +257,10 @@ paths:
       responses:
         "200":
           description: File uploaded successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Track"
         "403":
           description: Not authorized
 
@@ -404,6 +420,33 @@ paths:
                   $ref: "#/components/schemas/Track"
         "400":
           description: Invalid table ID
+        "403":
+          description: Not authorized (GM role required)
+        "500":
+          description: Internal server error
+    post:
+      summary: Assign tracks to a specific table
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: tableID
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: The UUID of the table
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AssignTracksRequest"
+      responses:
+        "200":
+          description: Tracks successfully assigned to table
+        "400":
+          description: Invalid table ID or request body
         "403":
           description: Not authorized (GM role required)
         "500":

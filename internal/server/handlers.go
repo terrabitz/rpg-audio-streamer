@@ -149,8 +149,7 @@ func (s *Server) uploadFile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.logger.Info("file uploaded and converted to HLS", "filename", handler.Filename)
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("File uploaded and converted to HLS successfully"))
+	respondJSON(w, http.StatusOK, track)
 }
 
 func (s *Server) handleFile(w http.ResponseWriter, r *http.Request, token *auth.Token) {
@@ -375,11 +374,17 @@ func (s *Server) handleTables(w http.ResponseWriter, r *http.Request, token *aut
 }
 
 func (s *Server) handleTableTracks(w http.ResponseWriter, r *http.Request, token *auth.Token) {
-	if r.Method != http.MethodGet {
+	switch r.Method {
+	case http.MethodGet:
+		s.handleGetTableTracks(w, r, token)
+	case http.MethodPost:
+		s.handlePostTableTracks(w, r, token)
+	default:
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
 	}
+}
 
+func (s *Server) handleGetTableTracks(w http.ResponseWriter, r *http.Request, token *auth.Token) {
 	tableIDString := r.PathValue("tableID")
 	tableID, err := uuid.Parse(tableIDString)
 	if err != nil {
@@ -395,6 +400,34 @@ func (s *Server) handleTableTracks(w http.ResponseWriter, r *http.Request, token
 	}
 
 	respondJSON(w, http.StatusOK, tracks)
+}
+
+type PostTableTracksRequest struct {
+	Tracks []uuid.UUID `json:"tracks"`
+}
+
+func (s *Server) handlePostTableTracks(w http.ResponseWriter, r *http.Request, token *auth.Token) {
+	tableIDString := r.PathValue("tableID")
+	tableID, err := uuid.Parse(tableIDString)
+	if err != nil {
+		http.Error(w, "Invalid table ID", http.StatusBadRequest)
+		return
+	}
+
+	var req PostTableTracksRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		s.logger.Error("failed to decode post table tracks request", "error", err)
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if err := s.store.AddTracksToTable(r.Context(), req.Tracks, tableID); err != nil {
+		s.logger.Error("failed to add tracks to table", "error", err)
+		http.Error(w, "Failed to add tracks to table", http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
 }
 
 type InviteDetails struct {

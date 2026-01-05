@@ -30,16 +30,19 @@
 </template>
 
 <script setup lang="ts">
-import { postApiV1Files } from '@/client/apiClient'
+import { postApiV1Files, postApiV1TablesByTableIdTracks } from '@/client/apiClient'
 import { useFileStore } from '@/stores/files'
 import { useTrackTypeStore } from '@/stores/trackTypes'
 import debounce from 'lodash/debounce'
 import { onMounted, ref, watch } from 'vue'
 import TrackTypeSelector from './TrackTypeSelector.vue'
+import { useInviteStore } from '@/stores/invite'
+
+const inviteStore = useInviteStore()
+const fileStore = useFileStore()
 
 const isUploading = ref(false)
 const uploadStatus = ref<{ type: 'success' | 'error', message: string } | null>(null)
-const fileStore = useFileStore()
 const trackTypeStore = useTrackTypeStore()
 const isDragging = ref(false)
 const showModal = ref(false)
@@ -76,7 +79,11 @@ const uploadTrack = async () => {
       throw new Error('Missing required fields')
     }
 
-    await postApiV1Files<true>({
+    if (!inviteStore.inviteDetails?.tableID) {
+      throw new Error('No table ID found in invite details')
+    }
+
+    const track = await postApiV1Files<true>({
       body: {
         files,
         name,
@@ -84,11 +91,22 @@ const uploadTrack = async () => {
       }
     })
 
+    console.log(track)
+
+    await postApiV1TablesByTableIdTracks<true>({
+      path: {
+        tableID: inviteStore.inviteDetails.tableID
+      },
+      body: {
+        tracks: [track.data.id]
+      }
+    })
+
     uploadStatus.value = { type: 'success', message: 'File uploaded successfully!' }
     setTimeout(() => {
       uploadStatus.value = null
     }, 5000)
-    await fileStore.fetchFiles()
+    await fileStore.fetchFiles(inviteStore.inviteDetails.tableID)
   } catch (error) {
     uploadStatus.value = { type: 'error', message: 'Failed to upload file' }
     console.error('Upload error:', error)

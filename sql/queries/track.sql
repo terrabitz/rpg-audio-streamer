@@ -22,4 +22,8 @@ set
   name = coalesce(sqlc.narg('name'), name),
   type_id = coalesce(sqlc.narg('type_id'), type_id)
 where id = @id
-returning *
+returning *;
+
+-- name: AddTrackToTable :exec
+insert into track_tables (track_id, table_id, created_at) 
+values (@track_id, @table_id, @created_at);
