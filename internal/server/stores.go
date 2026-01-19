@@ -10,6 +10,7 @@ import (
 type Store interface {
 	TrackStore
 	TrackTypeStore
+	TableStore
 }
 
 type Track struct {
@@ -30,8 +31,10 @@ type TrackStore interface {
 	SaveTrack(ctx context.Context, track *Track) error
 	GetTracks(ctx context.Context) ([]Track, error)
 	GetTrackByID(ctx context.Context, trackID uuid.UUID) (Track, error)
+	GetTracksByTableID(ctx context.Context, tableID uuid.UUID) ([]Track, error)
 	DeleteTrack(ctx context.Context, trackID uuid.UUID) error
 	UpdateTrack(ctx context.Context, trackID uuid.UUID, update UpdateTrackRequest) (Track, error)
+	AddTracksToTable(ctx context.Context, trackIDs []uuid.UUID, tableID uuid.UUID) error
 }
 
 type TrackType struct {
@@ -45,4 +48,16 @@ type TrackType struct {
 type TrackTypeStore interface {
 	GetTrackTypes(ctx context.Context) ([]TrackType, error)
 	GetTrackTypeByID(ctx context.Context, id uuid.UUID) (TrackType, error)
+}
+
+type Table struct {
+	ID         uuid.UUID `json:"id,omitempty"`
+	Name       string    `json:"name,omitempty"`
+	InviteCode string    `json:"inviteCode,omitempty"`
+	CreatedAt  time.Time `json:"createdAt,omitempty"`
+}
+
+type TableStore interface {
+	GetTables(ctx context.Context) ([]Table, error)
+	GetTableByInviteCode(ctx context.Context, inviteCode string) (Table, error)
 }
