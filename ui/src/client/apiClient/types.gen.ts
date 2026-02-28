@@ -49,6 +49,25 @@ export type TrackType = {
     allowSimultaneousPlay: boolean;
 };
 
+export type Table = {
+    id: string;
+    name: string;
+    inviteCode: string;
+    createdAt: string;
+};
+
+export type InviteDetails = {
+    tableName: string;
+    tableID: string;
+};
+
+export type AssignTracksRequest = {
+    /**
+     * Array of track IDs to assign to the table
+     */
+    tracks: Array<string>;
+};
+
 export type PostApiV1LoginData = {
     body: LoginRequest;
     path?: never;
@@ -149,8 +168,10 @@ export type PostApiV1FilesResponses = {
     /**
      * File uploaded successfully
      */
-    200: unknown;
+    200: Track;
 };
+
+export type PostApiV1FilesResponse = PostApiV1FilesResponses[keyof PostApiV1FilesResponses];
 
 export type DeleteApiV1FilesByTrackIdData = {
     body?: never;
@@ -267,6 +288,135 @@ export type GetApiV1StreamByPathResponses = {
 };
 
 export type GetApiV1StreamByPathResponse = GetApiV1StreamByPathResponses[keyof GetApiV1StreamByPathResponses];
+
+export type GetApiV1InviteByInviteCodeData = {
+    body?: never;
+    path: {
+        /**
+         * The invite code for the table
+         */
+        inviteCode: string;
+    };
+    query?: never;
+    url: '/api/v1/invite/{inviteCode}';
+};
+
+export type GetApiV1InviteByInviteCodeErrors = {
+    /**
+     * Missing or invalid invite code
+     */
+    400: unknown;
+    /**
+     * Table not found
+     */
+    404: unknown;
+    /**
+     * Internal server error
+     */
+    500: unknown;
+};
+
+export type GetApiV1InviteByInviteCodeResponses = {
+    /**
+     * Table details for the invite code
+     */
+    200: InviteDetails;
+};
+
+export type GetApiV1InviteByInviteCodeResponse = GetApiV1InviteByInviteCodeResponses[keyof GetApiV1InviteByInviteCodeResponses];
+
+export type GetApiV1TablesData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/tables';
+};
+
+export type GetApiV1TablesErrors = {
+    /**
+     * Not authorized
+     */
+    403: unknown;
+};
+
+export type GetApiV1TablesResponses = {
+    /**
+     * List of tables
+     */
+    200: Array<Table>;
+};
+
+export type GetApiV1TablesResponse = GetApiV1TablesResponses[keyof GetApiV1TablesResponses];
+
+export type GetApiV1TablesByTableIdTracksData = {
+    body?: never;
+    path: {
+        /**
+         * The UUID of the table
+         */
+        tableID: string;
+    };
+    query?: never;
+    url: '/api/v1/tables/{tableID}/tracks';
+};
+
+export type GetApiV1TablesByTableIdTracksErrors = {
+    /**
+     * Invalid table ID
+     */
+    400: unknown;
+    /**
+     * Not authorized (GM role required)
+     */
+    403: unknown;
+    /**
+     * Internal server error
+     */
+    500: unknown;
+};
+
+export type GetApiV1TablesByTableIdTracksResponses = {
+    /**
+     * List of tracks for the table
+     */
+    200: Array<Track>;
+};
+
+export type GetApiV1TablesByTableIdTracksResponse = GetApiV1TablesByTableIdTracksResponses[keyof GetApiV1TablesByTableIdTracksResponses];
+
+export type PostApiV1TablesByTableIdTracksData = {
+    body: AssignTracksRequest;
+    path: {
+        /**
+         * The UUID of the table
+         */
+        tableID: string;
+    };
+    query?: never;
+    url: '/api/v1/tables/{tableID}/tracks';
+};
+
+export type PostApiV1TablesByTableIdTracksErrors = {
+    /**
+     * Invalid table ID or request body
+     */
+    400: unknown;
+    /**
+     * Not authorized (GM role required)
+     */
+    403: unknown;
+    /**
+     * Internal server error
+     */
+    500: unknown;
+};
+
+export type PostApiV1TablesByTableIdTracksResponses = {
+    /**
+     * Tracks successfully assigned to table
+     */
+    200: unknown;
+};
 
 export type GetApiV1TrackTypesData = {
     body?: never;

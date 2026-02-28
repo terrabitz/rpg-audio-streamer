@@ -1,17 +1,20 @@
 <script setup lang="ts">
 import AudioPlayer from '@/components/AudioPlayer.vue';
 import FileList from '@/components/FileList.vue';
-import TableActions from '@/components/TableActions.vue';
+import GMTableActions from '@/components/GMTableActions.vue';
 import { useAppBar } from '@/composables/useAppBar';
 import { useAudioStore } from '@/stores/audio';
+import { useInviteStore } from '@/stores/invite';
 import { useWebSocketStore, type WebSocketMessage } from '@/stores/websocket';
 import { onMounted, onUnmounted } from 'vue';
+import { useRoute } from 'vue-router';
 
 const audioStore = useAudioStore()
 const wsStore = useWebSocketStore()
+const inviteStore = useInviteStore()
 
-const { setTitle, setActions } = useAppBar()
-
+const appBar = useAppBar()
+const route = useRoute()
 
 function handleSyncRequest(message: WebSocketMessage<unknown>) {
   if (message.method === 'syncRequest') {
@@ -31,11 +34,12 @@ function handleSyncRequest(message: WebSocketMessage<unknown>) {
 }
 
 onMounted(async () => {
+  const inviteCode = route.params.inviteCode as string
+  appBar.setActions([{ component: GMTableActions, props: { inviteCode } }])
+
   await wsStore.connect()
   wsStore.addMessageHandler(handleSyncRequest)
 
-  setTitle('My Table')
-  setActions([TableActions])
   audioStore.enabled = true
 })
 
@@ -47,5 +51,5 @@ onUnmounted(() => {
 
 <template>
   <AudioPlayer />
-  <FileList />
+  <FileList v-if="inviteStore.inviteDetails?.tableID" :tableID="inviteStore.inviteDetails?.tableID" />
 </template>
