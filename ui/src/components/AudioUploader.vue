@@ -1,49 +1,48 @@
 <template>
-  <div>
-    <v-dialog persistent v-model="showModal" max-width="600px">
-      <template v-slot:activator="{ props }">
-        <v-btn v-bind="props" prepend-icon="$upload">
-          Upload Track
-        </v-btn>
-      </template>
-      <v-card>
-        <v-card-title>
-          <span class="headline">Upload Track</span>
-        </v-card-title>
-        <v-card-text>
-          <div @dragover="handleDragOver" @dragleave="handleDragLeave" @drop="handleDrop"
-            :class="{ 'dragging': isDragging }" class="drop-area">
-            <v-form v-model="formValid" @submit.prevent>
-              <v-file-input v-model="trackFile" label="Select a file" prepend-icon="$music" accept="audio/mp3"
-                :loading="isUploading" :disabled="isUploading" required></v-file-input>
-              <v-text-field v-model="trackName" label="Track Name" required></v-text-field>
-              <TrackTypeSelector v-model="selectedTypeId" />
-            </v-form>
-            <div v-if="isDragging" class="drop-text">Drop files here</div>
-          </div>
-        </v-card-text>
-        <v-card-actions>
-          <v-spacer></v-spacer>
-          <v-btn color="error" @click="showModal = false">Cancel</v-btn>
-          <v-btn color="success" @click="submitForm" :disabled="!formValid">Upload</v-btn>
-        </v-card-actions>
-      </v-card>
-    </v-dialog>
-    <v-alert v-if="uploadStatus" :type="uploadStatus.type" :text="uploadStatus.message" class="mt-3"></v-alert>
-  </div>
+  <v-dialog persistent v-model="showModal" max-width="600px">
+    <template v-slot:activator="activatorProps">
+      <slot name="activator" v-bind="activatorProps"></slot>
+    </template>
+    <v-card>
+      <v-card-title>
+        <span class="headline">Upload Track</span>
+      </v-card-title>
+      <v-card-text>
+        <div @dragover="handleDragOver" @dragleave="handleDragLeave" @drop="handleDrop"
+          :class="{ 'dragging': isDragging }" class="drop-area">
+          <v-form v-model="formValid" @submit.prevent>
+            <v-file-input v-model="trackFile" label="Select a file" prepend-icon="$music" accept="audio/mp3"
+              :loading="isUploading" :disabled="isUploading" required></v-file-input>
+            <v-text-field v-model="trackName" label="Track Name" required></v-text-field>
+            <TrackTypeSelector v-model="selectedTypeId" />
+          </v-form>
+          <div v-if="isDragging" class="drop-text">Drop files here</div>
+        </div>
+        <v-alert v-if="uploadStatus" :type="uploadStatus.type" :text="uploadStatus.message" class="mt-3"></v-alert>
+      </v-card-text>
+      <v-card-actions>
+        <v-spacer></v-spacer>
+        <v-btn color="error" @click="showModal = false">Cancel</v-btn>
+        <v-btn color="success" @click="submitForm" :disabled="!formValid">Upload</v-btn>
+      </v-card-actions>
+    </v-card>
+  </v-dialog>
 </template>
 
 <script setup lang="ts">
-import { postApiV1Files } from '@/client/apiClient'
+import { postApiV1Files, postApiV1TablesByTableIdTracks } from '@/client/apiClient'
 import { useFileStore } from '@/stores/files'
 import { useTrackTypeStore } from '@/stores/trackTypes'
 import debounce from 'lodash/debounce'
 import { onMounted, ref, watch } from 'vue'
 import TrackTypeSelector from './TrackTypeSelector.vue'
+import { useInviteStore } from '@/stores/invite'
+
+const inviteStore = useInviteStore()
+const fileStore = useFileStore()
 
 const isUploading = ref(false)
 const uploadStatus = ref<{ type: 'success' | 'error', message: string } | null>(null)
-const fileStore = useFileStore()
 const trackTypeStore = useTrackTypeStore()
 const isDragging = ref(false)
 const showModal = ref(false)
@@ -80,7 +79,11 @@ const uploadTrack = async () => {
       throw new Error('Missing required fields')
     }
 
-    await postApiV1Files<true>({
+    if (!inviteStore.inviteDetails?.tableID) {
+      throw new Error('No table ID found in invite details')
+    }
+
+    const track = await postApiV1Files<true>({
       body: {
         files,
         name,
@@ -88,11 +91,22 @@ const uploadTrack = async () => {
       }
     })
 
+    console.log(track)
+
+    await postApiV1TablesByTableIdTracks<true>({
+      path: {
+        tableID: inviteStore.inviteDetails.tableID
+      },
+      body: {
+        tracks: [track.data.id]
+      }
+    })
+
     uploadStatus.value = { type: 'success', message: 'File uploaded successfully!' }
     setTimeout(() => {
       uploadStatus.value = null
     }, 5000)
-    await fileStore.fetchFiles()
+    await fileStore.fetchFiles(inviteStore.inviteDetails.tableID)
   } catch (error) {
     uploadStatus.value = { type: 'error', message: 'Failed to upload file' }
     console.error('Upload error:', error)
