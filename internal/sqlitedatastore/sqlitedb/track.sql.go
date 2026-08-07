@@ -10,6 +10,22 @@ import (
 	"database/sql"
 )
 
+const addTrackToTable = `-- name: AddTrackToTable :exec
+insert into track_tables (track_id, table_id, created_at) 
+values (?1, ?2, ?3)
+`
+
+type AddTrackToTableParams struct {
+	TrackID   []byte
+	TableID   []byte
+	CreatedAt int64
+}
+
+func (q *Queries) AddTrackToTable(ctx context.Context, arg AddTrackToTableParams) error {
+	_, err := q.db.ExecContext(ctx, addTrackToTable, arg.TrackID, arg.TableID, arg.CreatedAt)
+	return err
+}
+
 const deleteTrackByID = `-- name: DeleteTrackByID :exec
 delete from tracks where id = ?1
 `
@@ -42,6 +58,42 @@ select id, created_at, name, path, type_id from tracks
 
 func (q *Queries) GetTracks(ctx context.Context) ([]Track, error) {
 	rows, err := q.db.QueryContext(ctx, getTracks)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Track
+	for rows.Next() {
+		var i Track
+		if err := rows.Scan(
+			&i.ID,
+			&i.CreatedAt,
+			&i.Name,
+			&i.Path,
+			&i.TypeID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getTracksByTableID = `-- name: GetTracksByTableID :many
+select t.id, t.created_at, t.name, t.path, t.type_id from tracks t
+join track_tables tt on tt.track_id = t.id
+where tt.table_id = ?1
+order by tt.created_at DESC
+`
+
+func (q *Queries) GetTracksByTableID(ctx context.Context, tableID []byte) ([]Track, error) {
+	rows, err := q.db.QueryContext(ctx, getTracksByTableID, tableID)
 	if err != nil {
 		return nil, err
 	}

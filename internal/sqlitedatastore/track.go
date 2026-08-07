@@ -43,6 +43,23 @@ func (db *SQLiteDatastore) GetTracks(ctx context.Context) ([]server.Track, error
 	return result, nil
 }
 
+func (db *SQLiteDatastore) GetTracksByTableID(ctx context.Context, tableID uuid.UUID) ([]server.Track, error) {
+	dbTracks, err := sqlitedb.New(db.DB).GetTracksByTableID(ctx, tableID[:])
+	if err != nil {
+		return nil, err
+	}
+
+	var result []server.Track
+	for _, dbTrack := range dbTracks {
+		track, parseErr := convertDBTrack(dbTrack)
+		if parseErr != nil {
+			return nil, parseErr
+		}
+		result = append(result, track)
+	}
+	return result, nil
+}
+
 func (db *SQLiteDatastore) GetTrackByID(ctx context.Context, trackID uuid.UUID) (server.Track, error) {
 	dbTrack, err := sqlitedb.New(db.DB).GetTrackByID(ctx, trackID[:])
 	if err != nil {
@@ -101,4 +118,29 @@ func convertDBTrack(dbTrack sqlitedb.Track) (server.Track, error) {
 		Path:      dbTrack.Path,
 		TypeID:    typeID,
 	}, nil
+}
+
+func (db *SQLiteDatastore) AddTracksToTable(ctx context.Context, trackIDs []uuid.UUID, tableID uuid.UUID) error {
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("couldn't begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	for _, trackID := range trackIDs {
+		params := sqlitedb.AddTrackToTableParams{
+			TrackID:   trackID[:],
+			TableID:   tableID[:],
+			CreatedAt: time.Now().Unix(),
+		}
+
+		if err := sqlitedb.New(tx).AddTrackToTable(ctx, params); err != nil {
+			return fmt.Errorf("couldn't add track to table in SQLite: %w", err)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("couldn't commit transaction adding tracks to table: %w", err)
+	}
+	return nil
 }
