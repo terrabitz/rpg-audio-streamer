@@ -20,24 +20,24 @@
     "@hey-api/client-fetch": "^0.13.1",
     "@mdi/js": "^7.4.47",
     "axios": "^1.19.0",
-    "hls.js": "^1.6.16",
+    "hls.js": "^1.6.17",
     "lodash.debounce": "^4.0.8",
     "pinia": "^4.0.2",
     "pinia-plugin-persistedstate": "^4.7.1",
-    "vue": "^3.5.40",
+    "vue": "^3.5.41",
     "vue-axios": "^3.5.2",
     "vue-router": "^5.2.0",
     "vuetify": "^4.1.7"
   },
   "devDependencies": {
     "@hey-api/openapi-ts": "^0.99.0",
-    "@redocly/cli": "^2.43.1",
+    "@redocly/cli": "^2.45.0",
     "@tsconfig/node22": "^22.0.5",
     "@types/jsdom": "^28.0.3",
     "@types/lodash.debounce": "^4.0.9",
     "@types/node": "^26.1.2",
     "@vitejs/plugin-vue": "^6.0.8",
-    "@vitest/eslint-plugin": "1.6.24",
+    "@vitest/eslint-plugin": "1.6.26",
     "@vue/eslint-config-prettier": "^10.1.0",
     "@vue/eslint-config-typescript": "^14.9.0",
     "@vue/test-utils": "^2.4.11",
@@ -49,10 +49,10 @@
     "npm-run-all2": "^9.0.3",
     "prettier": "^3.9.6",
     "typescript": "~7.0.2",
-    "vite": "^8.2.0",
+    "vite": "^8.2.1",
     "vite-plugin-vue-devtools": "^8.2.1",
     "vite-plugin-vuetify": "^2.1.3",
     "vitest": "^4.1.10",
-    "vue-tsc": "^3.3.8"
+    "vue-tsc": "^3.3.9"
   }
 }
