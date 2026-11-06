@@ -18,8 +18,8 @@ const debugStore = useDebugStore()
 const connecting = ref(false)
 const { setTitle } = useAppBar()
 
-// Check if we have a token in the route params
-const token = route.params.token as string | undefined
+// Check if we have a invite code in the route params
+const inviteCode = route.params.inviteCode as string | undefined
 
 const buttonLabel = computed(() => {
   if (connecting.value) return 'Connecting...'
@@ -49,7 +49,7 @@ function handleSyncTrack(message: WebSocketMessage) {
 }
 
 onMounted(async () => {
-  await auth.checkAuthStatus(token)
+  await auth.checkAuthStatus(inviteCode)
   setTitle('Game Session')
   audioStore.enabled = false
 })
@@ -68,7 +68,7 @@ function handleAudioToggle() {
 
 async function connectAudio() {
   connecting.value = true
-  await wsStore.connect(token)
+  await wsStore.connect(inviteCode)
   wsStore.addMessageHandler(handleSyncAll)
   wsStore.addMessageHandler(handleSyncTrack)
 
@@ -91,7 +91,7 @@ function disconnectAudio() {
 
 <template>
   <v-container>
-    <AudioPlayer v-if="audioStore.enabled" :token="token" />
+    <AudioPlayer v-if="audioStore.enabled" :token="inviteCode" />
 
     <div class="d-flex align-center mb-4">
       <v-btn size="x-large" @click="handleAudioToggle" :loading="connecting"
@@ -103,7 +103,7 @@ function disconnectAudio() {
       </v-chip>
     </div>
 
-    <VolumeMixer class="mt-4" :token="token" />
+    <VolumeMixer class="mt-4" :token="inviteCode" />
 
     <PlayerFileList v-if="debugStore.isDevMode" />
   </v-container>

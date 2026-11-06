@@ -47,7 +47,7 @@ onUnmounted(() => {
         </span>
       </v-app-bar-title>
 
-      <component v-for="(action, index) in actions" :key="index" :is="action" />
+      <component v-for="(action, index) in actions" :key="index" :is="action.component" v-bind="action.props" />
 
       <v-spacer></v-spacer>
       <v-btn v-if="debugStore.isDevMode" icon="$bug" @click="debugStore.togglePanel"></v-btn>

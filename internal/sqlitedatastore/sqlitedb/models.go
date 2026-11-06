@@ -4,12 +4,25 @@
 
 package sqlitedb
 
+type Table struct {
+	ID         []byte
+	Name       string
+	InviteCode string
+	CreatedAt  int64
+}
+
 type Track struct {
 	ID        []byte
 	CreatedAt string
 	Name      string
 	Path      string
 	TypeID    []byte
+}
+
+type TrackTable struct {
+	TrackID   []byte
+	TableID   []byte
+	CreatedAt int64
 }
 
 type TrackType struct {

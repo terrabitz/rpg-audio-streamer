@@ -149,8 +149,7 @@ func (s *Server) uploadFile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.logger.Info("file uploaded and converted to HLS", "filename", handler.Filename)
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("File uploaded and converted to HLS successfully"))
+	respondJSON(w, http.StatusOK, track)
 }
 
 func (s *Server) handleFile(w http.ResponseWriter, r *http.Request, token *auth.Token) {
@@ -356,4 +355,109 @@ func (s *Server) handleTrackTypes(w http.ResponseWriter, r *http.Request, token 
 	}
 
 	respondJSON(w, http.StatusOK, trackTypes)
+}
+
+func (s *Server) handleTables(w http.ResponseWriter, r *http.Request, token *auth.Token) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	tables, err := s.store.GetTables(r.Context())
+	if err != nil {
+		s.logger.Error("failed to get tables", "error", err)
+		http.Error(w, "Failed to retrieve tables", http.StatusInternalServerError)
+		return
+	}
+
+	respondJSON(w, http.StatusOK, tables)
+}
+
+func (s *Server) handleTableTracks(w http.ResponseWriter, r *http.Request, token *auth.Token) {
+	switch r.Method {
+	case http.MethodGet:
+		s.handleGetTableTracks(w, r, token)
+	case http.MethodPost:
+		s.handlePostTableTracks(w, r, token)
+	default:
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+func (s *Server) handleGetTableTracks(w http.ResponseWriter, r *http.Request, token *auth.Token) {
+	tableIDString := r.PathValue("tableID")
+	tableID, err := uuid.Parse(tableIDString)
+	if err != nil {
+		http.Error(w, "Invalid table ID", http.StatusBadRequest)
+		return
+	}
+
+	tracks, err := s.store.GetTracksByTableID(r.Context(), tableID)
+	if err != nil {
+		s.logger.Error("failed to get tracks for table", "error", err)
+		http.Error(w, "Failed to retrieve tracks", http.StatusInternalServerError)
+		return
+	}
+
+	respondJSON(w, http.StatusOK, tracks)
+}
+
+type PostTableTracksRequest struct {
+	Tracks []uuid.UUID `json:"tracks"`
+}
+
+func (s *Server) handlePostTableTracks(w http.ResponseWriter, r *http.Request, token *auth.Token) {
+	tableIDString := r.PathValue("tableID")
+	tableID, err := uuid.Parse(tableIDString)
+	if err != nil {
+		http.Error(w, "Invalid table ID", http.StatusBadRequest)
+		return
+	}
+
+	var req PostTableTracksRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		s.logger.Error("failed to decode post table tracks request", "error", err)
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if err := s.store.AddTracksToTable(r.Context(), req.Tracks, tableID); err != nil {
+		s.logger.Error("failed to add tracks to table", "error", err)
+		http.Error(w, "Failed to add tracks to table", http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+}
+
+type InviteDetails struct {
+	TableName string    `json:"tableName"`
+	TableID   uuid.UUID `json:"tableID"`
+}
+
+func (s *Server) handleGetInviteDetails(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	inviteCode := r.PathValue("inviteCode")
+	if inviteCode == "" {
+		http.Error(w, "Missing invite code", http.StatusBadRequest)
+		return
+	}
+
+	table, err := s.store.GetTableByInviteCode(r.Context(), inviteCode)
+	if err != nil {
+		s.logger.Error("failed to get table by invite code", "error", err)
+		http.Error(w, "Failed to retrieve table", http.StatusInternalServerError)
+		return
+	}
+
+	res := InviteDetails{
+		TableName: table.Name,
+		TableID:   table.ID,
+	}
+
+	respondJSON(w, http.StatusOK, res)
 }
