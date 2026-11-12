@@ -10,7 +10,8 @@ production or the empty-library browser test suite.
 
 ## Start
 
-1. Use the Go version in `go.mod`, Node in `ui/.nvmrc`, and FFmpeg on `PATH`.
+1. Use the Go version in `go.mod`, Node in `ui/.nvmrc` (24.7+ for native Argon2),
+   and FFmpeg on `PATH`.
    Run `make dev` from the worktree root. If Vite is missing, install the
    locked UI dependencies with `cd ui && npm ci`, then retry.
 2. Keep the launcher alive for the entire preview. For an agent-managed preview,
@@ -25,9 +26,11 @@ production or the empty-library browser test suite.
    in a separate browser context to avoid reusing the GM cookie.
 
 Each invocation chooses free loopback ports; do not assume port 5173 or 8080.
-The three sample tracks cover Ambiance, Music, and One-Shot and are generated
-locally by FFmpeg. They are intentionally simple audio fixtures, not assets
-downloaded from another service. Editing code uses the normal Vite HMR flow;
+The nine sample tracks include three each of Ambiance, Music, and One-Shot,
+generated locally by FFmpeg and associated with the default table. They use
+ordinary display names without development prefixes. They are intentionally
+simple audio fixtures, not assets downloaded from another service. Editing
+code uses the normal Vite HMR flow;
 restart the launcher after Go changes to rebuild the API and reseed.
 
 ## Stop and reset
@@ -52,3 +55,5 @@ with multiple instances concurrently.
 
 Run `make test-dev` for real startup, API seeding, HLS fixtures, isolation, and
 shutdown checks. Use the testing skill for app behavior and browser journeys.
+Keep `scripts/dev.mjs` and its tests current when app changes affect upload
+contracts, table associations, track types, or the scenarios a preview needs.

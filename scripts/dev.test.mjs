@@ -36,12 +36,23 @@ test(
     const types = await json(a, '/api/v1/trackTypes', cookie)
     assert.deepEqual(types.map((type) => type.name).sort(), ['Ambiance', 'Music', 'One-Shot'])
     const tracks = await json(a, '/api/v1/files', cookie)
-    assert.equal(tracks.length, 3)
+    assert.equal(tracks.length, 9)
+    assert.equal(new Set(tracks.map((track) => track.name)).size, 9)
+    for (const type of types) {
+      assert.equal(tracks.filter((track) => track.typeID === type.id).length, 3, type.name)
+    }
     assert.deepEqual(
       new Set(tracks.map((track) => track.typeID)),
       new Set(types.map((type) => type.id)),
     )
+    const table = await json(a, '/api/v1/tables/current', cookie)
+    const tableTracks = await json(a, `/api/v1/tables/${table.id}/tracks`, cookie)
+    assert.deepEqual(
+      new Set(tableTracks.map((track) => track.id)),
+      new Set(tracks.map((track) => track.id)),
+    )
     for (const track of tracks) {
+      assert.ok(!track.name.startsWith('Dev -'), track.name)
       assert.ok(track.path.startsWith(join(a.scratch, 'uploads')))
       const playlist = await response(a, `/api/v1/stream/${track.id}/index.m3u8`, cookie)
       const text = await playlist.text()
@@ -51,6 +62,11 @@ test(
       const media = await response(a, `/api/v1/stream/${track.id}/${segment}`, cookie)
       assert.ok((await media.arrayBuffer()).byteLength > 0)
     }
+    const playerPlaylist = await response(
+      a,
+      `/api/v1/stream/${tracks[0].id}/index.m3u8?token=${a.invite}`,
+    )
+    assert.match(await playerPlaylist.text(), /^#EXTM3U/)
     const ui = await fetch(a.url)
     assert.equal(ui.status, 200)
     assert.match(await ui.text(), /src\/main.ts/)
@@ -67,20 +83,21 @@ test(
     assert.equal((await inviteStatus.json()).role, 'player')
     const wrongInvite = await fetch(new URL(`/api/v1/auth/status?token=${b.invite}`, a.url))
     assert.equal((await wrongInvite.json()).authenticated, false)
-    await response(a, `/api/v1/files/${tracks[0].id}`, cookie, {
+    await response(a, `/api/v1/files/${tracks[0].id}?expectedTableCount=1`, cookie, {
       method: 'DELETE',
     })
-    assert.equal((await json(a, '/api/v1/files', cookie)).length, 2)
-    assert.equal((await json(b, '/api/v1/files', otherCookie)).length, 3)
+    assert.equal((await json(a, '/api/v1/files', cookie)).length, 8)
+    assert.equal((await json(a, `/api/v1/tables/${table.id}/tracks`, cookie)).length, 8)
+    assert.equal((await json(b, '/api/v1/files', otherCookie)).length, 9)
     await first.stop('SIGINT')
     await assertCleaned(a)
-    assert.equal((await json(b, '/api/v1/files', otherCookie)).length, 3)
+    assert.equal((await json(b, '/api/v1/files', otherCookie)).length, 9)
     await second.stop('SIGTERM')
     await assertCleaned(b)
     const restarted = launch(t)
     const fresh = await restarted.ready
     const freshTracks = await json(fresh, '/api/v1/files', await login(fresh))
-    assert.equal(freshTracks.length, 3)
+    assert.equal(freshTracks.length, 9)
     assert.ok(freshTracks.every((track) => !tracks.some((old) => old.id === track.id)))
     await restarted.stop()
     await assertCleaned(fresh)

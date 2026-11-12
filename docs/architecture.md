@@ -41,9 +41,10 @@ development launcher (`scripts/dev.mjs`, exposed as `make dev`) binds both
 the API and Vite to loopback on automatically selected ports. Each invocation
 builds the real API into a unique temporary directory and creates a fresh
 SQLite database, upload directory, and Vite cache. It uses public fixture GM
-credentials and per-instance random signing/invite tokens. Generated audio
-for all three default track types is uploaded through authenticated HTTP,
-exercising normal validation, conversion, and persistence rather than writing
+credentials, freshly salted native Argon2id password hashes, and per-instance
+random signing/invite tokens. Nine generated audio fixtures (three per default
+track type) use ordinary display names and are uploaded into the default table
+through authenticated HTTP, exercising normal validation, conversion, and persistence rather than writing
 database fixtures directly. Vite uses the isolated API proxy and ignores
 developer dotenv files; the API runs from the temporary directory with
 explicit configuration. The launcher owns shutdown and removes its temporary

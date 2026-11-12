@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process'
-import { randomBytes } from 'node:crypto'
+import { argon2Sync, randomBytes } from 'node:crypto'
 import { once } from 'node:events'
 import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { createRequire } from 'node:module'
@@ -10,11 +10,9 @@ import { setTimeout as delay } from 'node:timers/promises'
 import { fileURLToPath } from 'node:url'
 
 const root = fileURLToPath(new URL('../', import.meta.url))
+// Public local-development credentials, never production credentials.
 const username = 'gm'
 const password = 'P@ssw0rd'
-// Public development fixture hash, never a real credential.
-const passwordHash =
-  '$argon2id$v=19$m=65536,t=2,p=2$c1Hu2tvvFXYKlU0K9gsGWA$WgAoxMBeiMnaB5A1oIY1vFW9Hz93hCzZnEnM811fFWY'
 const children = new Set()
 const controller = new AbortController()
 let scratch
@@ -67,7 +65,7 @@ async function main() {
       '--root-username',
       username,
       '--root-password-hash',
-      passwordHash,
+      hashPassword(password),
       '--token-secret',
       randomBytes(32).toString('hex'),
       '--join-token',
@@ -126,6 +124,14 @@ async function main() {
   })
 }
 
+function hashPassword(password) {
+  const salt = randomBytes(16)
+  const parameters = { memory: 65536, passes: 2, parallelism: 2, tagLength: 32 }
+  const hash = argon2Sync('argon2id', { ...parameters, message: password, nonce: salt })
+  const base64 = (value) => value.toString('base64').replace(/=+$/, '')
+  return `$argon2id$v=19$m=${parameters.memory},t=${parameters.passes},p=${parameters.parallelism}$${base64(salt)}$${base64(hash)}`
+}
+
 async function seed(apiURL) {
   const login = await request(`${apiURL}/api/v1/login`, {
     method: 'POST',
@@ -134,6 +140,11 @@ async function seed(apiURL) {
   })
   const cookie = login.headers.get('set-cookie')?.split(';')[0]
   if (!cookie) throw new Error('Dev login did not return an authentication cookie')
+  const table = await (
+    await request(`${apiURL}/api/v1/tables/current`, {
+      headers: { Cookie: cookie },
+    })
+  ).json()
   const types = await (
     await request(`${apiURL}/api/v1/trackTypes`, {
       headers: { Cookie: cookie },
@@ -142,21 +153,57 @@ async function seed(apiURL) {
   const samples = [
     {
       type: 'Ambiance',
-      name: 'Dev - Forest breeze',
+      name: 'Forest breeze',
       source: 'anoisesrc=color=pink:amplitude=0.08',
       duration: 12,
     },
     {
+      type: 'Ambiance',
+      name: 'Rainfall',
+      source: 'anoisesrc=color=white:amplitude=0.03',
+      duration: 12,
+    },
+    {
+      type: 'Ambiance',
+      name: 'Distant rumble',
+      source: 'anoisesrc=color=brown:amplitude=0.08',
+      duration: 12,
+    },
+    {
       type: 'Music',
-      name: 'Dev - Gentle melody',
+      name: 'Gentle melody',
       source: 'sine=frequency=220',
       duration: 12,
     },
     {
+      type: 'Music',
+      name: 'Tavern tune',
+      source: 'sine=frequency=330',
+      duration: 12,
+    },
+    {
+      type: 'Music',
+      name: 'Adventure theme',
+      source: 'sine=frequency=440',
+      duration: 12,
+    },
+    {
       type: 'One-Shot',
-      name: 'Dev - Bell',
+      name: 'Bell',
       source: 'sine=frequency=880',
       duration: 2,
+    },
+    {
+      type: 'One-Shot',
+      name: 'Chime',
+      source: 'sine=frequency=1320',
+      duration: 1,
+    },
+    {
+      type: 'One-Shot',
+      name: 'Drumbeat',
+      source: 'sine=frequency=110',
+      duration: 1.5,
     },
   ]
   for (const [index, sample] of samples.entries()) {
@@ -186,6 +233,7 @@ async function seed(apiURL) {
     body.set('files', new Blob([await readFile(file)], { type: 'audio/wav' }), 'sample.wav')
     body.set('name', sample.name)
     body.set('typeID', type.id)
+    body.set('tableID', table.id)
     await request(`${apiURL}/api/v1/files`, {
       method: 'POST',
       headers: { Cookie: cookie },
