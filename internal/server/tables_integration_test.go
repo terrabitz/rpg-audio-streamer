@@ -124,9 +124,43 @@ func TestTableHTTP(t *testing.T) {
 	if err := db.SaveTrack(ctx, &track); err != nil {
 		t.Fatal(err)
 	}
+	usagePath := "/api/v1/files/" + track.ID.String() + "/usage"
+	filePath := "/api/v1/files/" + track.ID.String()
+	assertUsage := func(want int64) {
+		t.Helper()
+		rec := request("GET", usagePath, "", "", true, 200)
+		var usage map[string]int64
+		err := json.Unmarshal(rec.Body.Bytes(), &usage)
+		got, ok := usage["tableCount"]
+		if err != nil || !ok || len(usage) != 1 || got != want {
+			t.Fatalf("track usage = %s, %v; want %d", rec.Body, err, want)
+		}
+	}
+	assertUsage(0)
+	request("GET", usagePath, "", "", false, 401)
+	request("GET", usagePath, "", first.InviteToken, false, 401)
+	request("GET", "/api/v1/files/invalid/usage", "", "", true, 400)
+	request("GET", "/api/v1/files/"+uuid.NewString()+"/usage", "", "", true, 404)
+	request("POST", usagePath, "", "", true, 405)
+	for _, query := range []string{
+		"?expectedTableCount=-1", "?expectedTableCount=", "?expectedTableCount=bad",
+		"?expectedTableCount=0&expectedTableCount=0", "?expectedTableCount=9223372036854775808",
+	} {
+		request("DELETE", filePath+query, "", "", true, 400)
+	}
 	association := firstPath + "/tracks/" + track.ID.String()
 	request("PUT", association, "", "", true, 204)
 	request("PUT", association, "", "", true, 204)
+	assertUsage(1)
+	request("DELETE", filePath+"?expectedTableCount=0", "", "", true, 409)
+	assertUsage(1)
+	secondAssociation := secondPath + "/tracks/" + track.ID.String()
+	request("PUT", secondAssociation, "", "", true, 204)
+	assertUsage(2)
+	request("DELETE", filePath+"?expectedTableCount=1", "", "", true, 409)
+	assertUsage(2)
+	request("DELETE", secondAssociation, "", "", true, 204)
+	assertUsage(1)
 	request("PUT", association, "", second.InviteToken, false, 401)
 	request("PUT", firstPath+"/tracks/"+uuid.NewString(), "", "", true, 404)
 	request("PUT", firstPath+"/tracks/invalid", "", "", true, 400)
@@ -143,6 +177,7 @@ func TestTableHTTP(t *testing.T) {
 	request("GET", stream, "", "invalid-invite", false, 401)
 	request("GET", "/api/v1/stream/invalid/index.m3u8", "", first.InviteToken, false, 400)
 	request("DELETE", association, "", "", true, 204)
+	assertUsage(0)
 	request("GET", stream, "", first.InviteToken, false, 404)
 	request("GET", stream, "", "", true, 200)
 	request("PUT", association, "", "", true, 204)
@@ -150,7 +185,8 @@ func TestTableHTTP(t *testing.T) {
 	request("GET", "/api/v1/tables/current", "", first.InviteToken, false, 401)
 	request("GET", firstPath, "", "", true, 404)
 	request("GET", stream, "", "", true, 200)
-	request("DELETE", "/api/v1/files/"+track.ID.String(), "", "", true, 200)
+	request("DELETE", filePath+"?expectedTableCount=0", "", "", true, 200)
+	request("GET", usagePath, "", "", true, 404)
 	request("DELETE", "/api/v1/tables/"+server.DefaultTableID.String(), "", "", true, 204)
 	request("GET", "/api/v1/tables/current", "", "legacy-invite", false, 401)
 	request("GET", "/api/v1/tables/current", "", "", true, 404)

@@ -130,6 +130,15 @@ components:
           format: uuid
           nullable: true
 
+    TrackUsage:
+      type: object
+      required: [tableCount]
+      properties:
+        tableCount:
+          type: integer
+          format: int64
+          minimum: 0
+
     TrackType:
       type: object
       required:
@@ -417,13 +426,25 @@ paths:
           schema:
             type: string
             format: uuid
+        - name: expectedTableCount
+          in: query
+          description: Delete only if the track still belongs to this many tables.
+          schema:
+            type: integer
+            minimum: 0
       responses:
         "200":
           description: Track deleted successfully
+        "400":
+          description: Invalid track ID or expected table count
         "403":
           description: Not authorized
         "404":
           description: Track not found
+        "409":
+          description: Table usage changed since it was checked
+        "500":
+          description: Failed to delete the track
     put:
       summary: Update audio track information
       security:
@@ -456,6 +477,34 @@ paths:
           description: Track not found
         "500":
           description: Internal server error
+
+  /api/v1/files/{trackID}/usage:
+    get:
+      summary: Count the tables containing a library track
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: trackID
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Current table usage
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrackUsage"
+        "400":
+          description: Invalid track ID
+        "401":
+          description: Not authorized
+        "404":
+          description: Track not found
+        "500":
+          description: Failed to retrieve usage
 
   /api/v1/joinToken:
     get:

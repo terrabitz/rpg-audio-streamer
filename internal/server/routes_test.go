@@ -105,7 +105,7 @@ func TestStoreFailures(t *testing.T) {
 	ts := setupTestServer(t)
 	defer ts.cleanup(t)
 	ts.store = failingStore{Store: ts.store}
-	for _, path := range []string{"/api/v1/files", "/api/v1/trackTypes"} {
+	for _, path := range []string{"/api/v1/files", "/api/v1/trackTypes", "/api/v1/files/" + uuid.NewString() + "/usage"} {
 		rec := routedRequest(ts.Handler(), "GET", path, "", true)
 		if rec.Code != http.StatusInternalServerError {
 			t.Errorf("%s = %d", path, rec.Code)
@@ -114,6 +114,10 @@ func TestStoreFailures(t *testing.T) {
 	rec := routedRequest(ts.Handler(), "DELETE", "/api/v1/files/"+uuid.NewString(), "", true)
 	if rec.Code != http.StatusInternalServerError {
 		t.Fatalf("delete failure = %d", rec.Code)
+	}
+	rec = routedRequest(ts.Handler(), "DELETE", "/api/v1/files/"+uuid.NewString()+"?expectedTableCount=0", "", true)
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("conditional delete failure = %d", rec.Code)
 	}
 }
 
@@ -233,6 +237,14 @@ func (f failingStore) GetTrackByID(context.Context, uuid.UUID) (Track, error) {
 
 func (f failingStore) DeleteTrack(context.Context, uuid.UUID) error {
 	return errors.New("database unavailable")
+}
+
+func (f failingStore) DeleteTrackIfTableCount(context.Context, uuid.UUID, int64) (bool, error) {
+	return false, errors.New("database unavailable")
+}
+
+func (f failingStore) CountTrackTables(context.Context, uuid.UUID) (int64, error) {
+	return 0, errors.New("database unavailable")
 }
 
 type recordingWSRegisterer struct {

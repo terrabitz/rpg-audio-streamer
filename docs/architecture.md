@@ -125,12 +125,17 @@ The table-management list opens a table when its row is clicked; rename and
 delete live in each row's three-dot menu.
 
 The shared library uses a sortable, paginated metadata table showing each
-track's name, type, repeat policy, and creation time. Row clicks (or keyboard
+track's name, type, and creation time. Row clicks (or keyboard
 activation) toggle a local preview, with at most one preview playing at once.
 Library previews reuse the HLS player without opening a WebSocket or sending
 synchronization messages. Preview state is cleared on leaving the library;
 it cannot become a table's playback state. Track editing is shared with the
-table tiles through the audio-controls dialog's activator slot.
+table tiles through the audio-controls dialog's activator slot. Before deleting
+a library track, the GM-only usage endpoint counts its current table
+associations. Deletion requires confirmation when that count is nonzero and is
+blocked if the usage lookup fails. The deletion compares the confirmed count
+atomically with the current associations; if it changed, the GM must check
+usage again before deleting.
 
 The table route resolves authentication before mounting a role-specific view.
 The application shell checks authentication on non-table initial navigation;

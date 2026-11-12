@@ -100,6 +100,10 @@ func (db *SQLiteDatastore) HasTableTrack(ctx context.Context, tableID, trackID u
 	return has != 0, err
 }
 
+func (db *SQLiteDatastore) CountTrackTables(ctx context.Context, trackID uuid.UUID) (int64, error) {
+	return sqlitedb.New(db.DB).CountTrackTables(ctx, trackID[:])
+}
+
 func (db *SQLiteDatastore) SaveTrackToTable(ctx context.Context, track *server.Track, tableID uuid.UUID) error {
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {

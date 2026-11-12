@@ -24,13 +24,18 @@
       </div>
     </slot>
 
-    <v-dialog v-model="showControls" max-width="400px" @click:outside="showControls = false">
+    <v-dialog v-model="showControls" max-width="400px" :persistent="isDeleting">
       <v-card>
         <v-card-title class="text-body-1">
-          <v-btn icon="$close" size="small" variant="text" aria-label="Close track controls" @click="showControls = false" class="float-right" />
+          <v-btn icon="$close" size="small" variant="text" aria-label="Close track controls"
+            :disabled="isDeleting" @click="showControls = false" class="float-right" />
         </v-card-title>
         <v-card-text>
           <v-alert v-if="error" type="error" class="mb-3">{{ error }}</v-alert>
+          <v-alert v-if="deleteTableCount !== null" type="warning" class="mb-3">
+            Deleting this track will remove it from {{ deleteTableCount }}
+            {{ deleteTableCount === 1 ? 'table' : 'tables' }}. This cannot be undone.
+          </v-alert>
           <v-text-field v-model="editName" label="Track Name" variant="underlined" hide-details
             class="pa-0 ma-0"></v-text-field>
           <TrackTypeSelector v-model="editTrackType" />
@@ -53,15 +58,21 @@
         </v-card-text>
         <v-divider></v-divider>
         <v-card-actions>
-          <v-btn color="error" variant="text" prepend-icon="$delete"
-            :aria-label="props.library ? 'Delete track' : 'Remove from table'" @click="$emit('delete')">
-            {{ props.library ? 'Delete track' : 'Remove from table' }}
+          <v-btn v-if="deleteTableCount !== null" :disabled="isDeleting"
+            @click="deleteTableCount = null; error = ''">
+            Cancel
+          </v-btn>
+          <v-btn color="error" variant="text" prepend-icon="$delete" :loading="isDeleting"
+            :disabled="isSaving || isDeleting"
+            :aria-label="deleteTableCount !== null ? 'Confirm delete track' : props.library ? 'Delete track' : 'Remove from table'"
+            @click="deleteTableCount !== null ? confirmDelete(deleteTableCount) : requestDelete()">
+            {{ deleteTableCount !== null ? 'Confirm delete' : props.library ? 'Delete track' : 'Remove from table' }}
           </v-btn>
 
           <v-spacer />
 
           <v-btn color="primary" variant="text" prepend-icon="$save" @click="saveTrackChanges" :loading="isSaving"
-            :disabled="!hasChanges">
+            :disabled="!hasChanges || isDeleting || deleteTableCount !== null">
             Save Changes
           </v-btn>
         </v-card-actions>
@@ -73,7 +84,7 @@
 <script setup lang="ts">
 import { computed, ref, watchEffect } from 'vue';
 import { useAudioStore } from '../stores/audio';
-import { useFileStore } from '../stores/files';
+import { TrackUsageChangedError, useFileStore } from '../stores/files';
 import { useTrackTypeStore } from '../stores/trackTypes';
 import TrackTypeSelector from './TrackTypeSelector.vue';
 import VolumeSlider from './VolumeSlider.vue';
@@ -81,6 +92,7 @@ import VolumeSlider from './VolumeSlider.vue';
 const props = defineProps<{
   fileName: string
   fileID: string
+  deleteTrack: (expectedTableCount: number | null) => Promise<void>
   library?: boolean
 }>();
 
@@ -95,6 +107,8 @@ const fadeState = computed(() => audioStore.fadeStates[props.fileID]);
 
 const showControls = ref(false);
 const isSaving = ref(false);
+const isDeleting = ref(false);
+const deleteTableCount = ref<number | null>(null);
 const error = ref('');
 
 const isActive = computed(() => audioState.value?.isPlaying);
@@ -103,6 +117,8 @@ const editName = ref(props.fileName);
 const editTrackType = ref(trackType.value?.id || '');
 
 function openControls() {
+  error.value = '';
+  deleteTableCount.value = null;
   showControls.value = true;
 }
 
@@ -119,6 +135,49 @@ watchEffect(() => {
     editTrackType.value = track.value.typeID;
   }
 });
+
+async function requestDelete() {
+  error.value = '';
+  if (!props.library) {
+    await confirmDelete(null);
+    return;
+  }
+  isDeleting.value = true;
+  let count: number;
+  try {
+    count = await fileStore.countTrackTables(props.fileID);
+    if (count > 0) {
+      deleteTableCount.value = count;
+      return;
+    }
+  } catch (cause) {
+    console.error('Failed to check track usage:', cause);
+    error.value = 'Unable to check table usage. The track was not deleted.';
+    return;
+  } finally {
+    isDeleting.value = false;
+  }
+  await confirmDelete(count);
+}
+
+async function confirmDelete(expectedTableCount: number | null) {
+  isDeleting.value = true;
+  error.value = '';
+  try {
+    await props.deleteTrack(expectedTableCount);
+    showControls.value = false;
+  } catch (cause) {
+    console.error('Failed to delete track:', cause);
+    if (cause instanceof TrackUsageChangedError) {
+      deleteTableCount.value = null;
+      error.value = 'Table usage changed. Check the current count before deleting the track.';
+    } else {
+      error.value = props.library ? 'Failed to delete track.' : 'Failed to remove track from table.';
+    }
+  } finally {
+    isDeleting.value = false;
+  }
+}
 
 async function saveTrackChanges() {
   error.value = ''
@@ -199,7 +258,6 @@ watchEffect(() => {
 defineEmits<{
   (e: 'volume', volume: number): void
   (e: 'seek', time: number): void
-  (e: 'delete'): void
 }>();
 
 function formatTime(seconds: number): string {

@@ -47,14 +47,37 @@ func TestTableLifecycle(t *testing.T) {
 	}
 	track := server.Track{ID: uuid.New(), Name: "Forest", TypeID: types[0].ID,
 		CreatedAt: time.Now().UTC().Truncate(time.Second), Path: "/uploads/forest"}
+	assertCount := func(want int64) {
+		t.Helper()
+		if got, err := db.CountTrackTables(ctx, track.ID); err != nil || got != want {
+			t.Fatalf("table count = %d, %v; want %d", got, err, want)
+		}
+	}
+	if _, err := db.CountTrackTables(ctx, uuid.New()); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("missing track count = %v", err)
+	}
+	unused := track
+	unused.ID = uuid.New()
+	if err := db.SaveTrack(ctx, &unused); err != nil {
+		t.Fatal(err)
+	}
+	if count, err := db.CountTrackTables(ctx, unused.ID); err != nil || count != 0 {
+		t.Fatalf("unused track count = %d, %v", count, err)
+	}
 	if err := db.SaveTrackToTable(ctx, &track, first.ID); err != nil {
 		t.Fatal(err)
 	}
+	assertCount(1)
 	for range 2 {
 		if err := db.AddTableTrack(ctx, second.ID, track.ID); err != nil {
 			t.Fatal(err)
 		}
 	}
+	assertCount(2)
+	if deleted, err := db.DeleteTrackIfTableCount(ctx, track.ID, 1); err != nil || deleted {
+		t.Fatalf("stale conditional delete = %v, %v", deleted, err)
+	}
+	assertCount(2)
 	for _, id := range []uuid.UUID{first.ID, second.ID} {
 		tracks, err := db.GetTableTracks(ctx, id)
 		if err != nil || len(tracks) != 1 || tracks[0] != track {
@@ -67,6 +90,7 @@ func TestTableLifecycle(t *testing.T) {
 	if err := db.RemoveTableTrack(ctx, first.ID, track.ID); err != nil {
 		t.Fatal(err)
 	}
+	assertCount(1)
 	if has, err := db.HasTableTrack(ctx, first.ID, track.ID); err != nil || has {
 		t.Fatalf("removed membership = %v, %v", has, err)
 	}
@@ -105,6 +129,7 @@ func TestTableLifecycle(t *testing.T) {
 	if err := db.DeleteTable(ctx, second.ID); err != nil {
 		t.Fatal(err)
 	}
+	assertCount(0)
 	if has, err := db.HasTableTrack(ctx, second.ID, track.ID); err != nil || has {
 		t.Fatalf("table deletion did not clean associations = %v, %v", has, err)
 	}
@@ -117,8 +142,14 @@ func TestTableLifecycle(t *testing.T) {
 	if err := db.AddTableTrack(ctx, first.ID, track.ID); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.DeleteTrack(ctx, track.ID); err != nil {
-		t.Fatal(err)
+	if deleted, err := db.DeleteTrackIfTableCount(ctx, track.ID, 1); err != nil || !deleted {
+		t.Fatalf("confirmed conditional delete = %v, %v", deleted, err)
+	}
+	if _, err := db.CountTrackTables(ctx, track.ID); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("deleted track count = %v", err)
+	}
+	if deleted, err := db.DeleteTrackIfTableCount(ctx, track.ID, 0); err != nil || deleted {
+		t.Fatalf("missing conditional delete = %v, %v", deleted, err)
 	}
 	if has, err := db.HasTableTrack(ctx, first.ID, track.ID); err != nil || has {
 		t.Fatalf("library deletion did not clean associations = %v, %v", has, err)
@@ -128,6 +159,11 @@ func TestTableLifecycle(t *testing.T) {
 	}
 	if _, err := db.UpdateTable(ctx, second.ID, "Missing"); !errors.Is(err, sql.ErrNoRows) {
 		t.Fatalf("missing table rename = %v", err)
+	}
+	canceled, cancel := context.WithCancel(ctx)
+	cancel()
+	if _, err := db.CountTrackTables(canceled, unused.ID); !errors.Is(err, context.Canceled) {
+		t.Fatalf("canceled count = %v", err)
 	}
 }
 

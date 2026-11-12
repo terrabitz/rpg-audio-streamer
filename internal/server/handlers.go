@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -35,6 +36,26 @@ func (s *Server) listFiles(w http.ResponseWriter, r *http.Request) {
 	}
 
 	respondJSON(w, http.StatusOK, tracks)
+}
+
+func (s *Server) handleFileUsage(w http.ResponseWriter, r *http.Request, token *auth.Token) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	trackID, err := uuid.Parse(r.PathValue("trackID"))
+	if err != nil {
+		http.Error(w, "Invalid track ID", http.StatusBadRequest)
+		return
+	}
+	count, err := s.store.CountTrackTables(r.Context(), trackID)
+	if err != nil {
+		s.tableError(w, err)
+		return
+	}
+	respondJSON(w, http.StatusOK, struct {
+		TableCount int64 `json:"tableCount"`
+	}{TableCount: count})
 }
 
 func (s *Server) uploadFile(w http.ResponseWriter, r *http.Request) {
@@ -231,6 +252,20 @@ func (s *Server) handleFileDelete(w http.ResponseWriter, r *http.Request, token 
 		return
 	}
 
+	var expectedCount *int64
+	if values, ok := r.URL.Query()["expectedTableCount"]; ok {
+		if len(values) != 1 {
+			http.Error(w, "Invalid expected table count", http.StatusBadRequest)
+			return
+		}
+		count, parseErr := strconv.ParseInt(values[0], 10, 64)
+		if parseErr != nil || count < 0 {
+			http.Error(w, "Invalid expected table count", http.StatusBadRequest)
+			return
+		}
+		expectedCount = &count
+	}
+
 	// Retrieve the track to get its folder path
 	track, err := s.store.GetTrackByID(r.Context(), trackID)
 	if err != nil {
@@ -238,8 +273,22 @@ func (s *Server) handleFileDelete(w http.ResponseWriter, r *http.Request, token 
 		return
 	}
 
-	// Remove the database record
-	if err := s.store.DeleteTrack(r.Context(), trackID); err != nil {
+	if expectedCount == nil {
+		err = s.store.DeleteTrack(r.Context(), trackID)
+	} else {
+		var deleted bool
+		deleted, err = s.store.DeleteTrackIfTableCount(r.Context(), trackID, *expectedCount)
+		if err == nil && !deleted {
+			if _, countErr := s.store.CountTrackTables(r.Context(), trackID); countErr != nil {
+				s.tableError(w, countErr)
+				return
+			}
+			http.Error(w, "Track table usage changed", http.StatusConflict)
+			return
+		}
+	}
+	if err != nil {
+		s.logger.Error("failed to delete track", "error", err)
 		http.Error(w, "Failed to remove track record", http.StatusInternalServerError)
 		return
 	}

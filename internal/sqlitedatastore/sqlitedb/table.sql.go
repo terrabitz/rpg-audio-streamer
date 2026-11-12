@@ -30,6 +30,19 @@ func (q *Queries) AddTableTrack(ctx context.Context, arg AddTableTrackParams) ([
 	return track_id, err
 }
 
+const countTrackTables = `-- name: CountTrackTables :one
+SELECT COUNT(table_tracks.table_id) FROM tracks
+LEFT JOIN table_tracks ON tracks.id = table_tracks.track_id
+WHERE tracks.id = ? GROUP BY tracks.id
+`
+
+func (q *Queries) CountTrackTables(ctx context.Context, id []byte) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countTrackTables, id)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createTable = `-- name: CreateTable :one
 INSERT INTO game_tables (id, name, invite_token) VALUES (?, ?, ?) RETURNING id, name, invite_token
 `

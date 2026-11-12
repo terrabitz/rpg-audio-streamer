@@ -34,3 +34,8 @@ DELETE FROM table_tracks WHERE table_id = ? AND track_id = ?;
 
 -- name: HasTableTrack :one
 SELECT EXISTS (SELECT 1 FROM table_tracks WHERE table_id = ? AND track_id = ?);
+
+-- name: CountTrackTables :one
+SELECT COUNT(table_tracks.table_id) FROM tracks
+LEFT JOIN table_tracks ON tracks.id = table_tracks.track_id
+WHERE tracks.id = ? GROUP BY tracks.id;

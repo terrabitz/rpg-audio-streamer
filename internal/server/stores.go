@@ -32,6 +32,7 @@ type TableStore interface {
 	AddTableTrack(context.Context, uuid.UUID, uuid.UUID) error
 	RemoveTableTrack(context.Context, uuid.UUID, uuid.UUID) error
 	HasTableTrack(context.Context, uuid.UUID, uuid.UUID) (bool, error)
+	CountTrackTables(context.Context, uuid.UUID) (int64, error)
 	SaveTrackToTable(context.Context, *Track, uuid.UUID) error
 }
 
@@ -54,6 +55,7 @@ type TrackStore interface {
 	GetTracks(ctx context.Context) ([]Track, error)
 	GetTrackByID(ctx context.Context, trackID uuid.UUID) (Track, error)
 	DeleteTrack(ctx context.Context, trackID uuid.UUID) error
+	DeleteTrackIfTableCount(ctx context.Context, trackID uuid.UUID, expectedCount int64) (bool, error)
 	UpdateTrack(ctx context.Context, trackID uuid.UUID, update UpdateTrackRequest) (Track, error)
 }
 

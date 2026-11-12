@@ -19,6 +19,26 @@ func (q *Queries) DeleteTrackByID(ctx context.Context, id []byte) error {
 	return err
 }
 
+const deleteTrackByIDIfTableCount = `-- name: DeleteTrackByIDIfTableCount :execrows
+DELETE FROM tracks
+WHERE id = ?1
+AND (SELECT COUNT(*) FROM table_tracks WHERE track_id = ?1) =
+    CAST(?2 AS INTEGER)
+`
+
+type DeleteTrackByIDIfTableCountParams struct {
+	ID                 []byte
+	ExpectedTableCount int64
+}
+
+func (q *Queries) DeleteTrackByIDIfTableCount(ctx context.Context, arg DeleteTrackByIDIfTableCountParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, deleteTrackByIDIfTableCount, arg.ID, arg.ExpectedTableCount)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const getTrackByID = `-- name: GetTrackByID :one
 select id, created_at, name, path, type_id from tracks where id = ?1
 `

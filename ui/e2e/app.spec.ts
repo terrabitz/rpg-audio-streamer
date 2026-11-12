@@ -31,8 +31,11 @@ test('GM uploads, renames, persists, and deletes an audio track', async ({ page 
   await expect(page.getByRole('columnheader', { name: 'Name', exact: true })).toBeVisible()
   await expect(page.getByRole('columnheader', { name: 'Type', exact: true })).toBeVisible()
   await expect(page.getByRole('columnheader', { name: 'Added', exact: true })).toBeVisible()
+  await expect(page.getByRole('columnheader', { name: 'Playback', exact: true })).toHaveCount(0)
+  await expect(page.getByRole('heading', { name: 'Track library', exact: true })).toHaveCount(0)
+  await expect(page.getByText('Tracks can be shared by multiple tables.', { exact: false })).toHaveCount(0)
+  await expect(page.getByText('Click a row to preview a track locally.', { exact: false })).toHaveCount(0)
   await expect(row.getByText('Music', { exact: true })).toBeVisible()
-  await expect(row.getByText('Loop', { exact: true })).toBeVisible()
   await expect(row.locator('time')).toHaveAttribute('datetime', /^\d{4}-\d{2}-\d{2}T/)
   await row.getByRole('button', { name: 'Edit Forest' }).click()
   await expect(page.locator('video')).toHaveCount(0)
@@ -120,8 +123,8 @@ test('library row previews stay local while a table is streaming', async ({ page
     await library.close()
     await playerContext.close()
   }
-  await deleteLibraryTrack(page, 'Private Preview')
-  await deleteLibraryTrack(page, 'Live Music')
+  await deleteLibraryTrack(page, 'Private Preview', 0)
+  await deleteLibraryTrack(page, 'Live Music', 1)
 })
 
 test('failed audio conversion is shown as an upload error', async ({ page }) => {
@@ -192,7 +195,7 @@ test('invited player receives live playback, late-join state, and pause', async 
   } finally {
     await playerContext.close()
   }
-  await deleteLibraryTrack(page, 'Session Music')
+  await deleteLibraryTrack(page, 'Session Music', 1)
 })
 
 test('starting another Music track stops the previous one', async ({ page }) => {
@@ -231,7 +234,7 @@ test('starting another Music track stops the previous one', async ({ page }) => 
     [first, 'First Music'],
     [second, 'Second Music'],
   ] as const) {
-    await deleteLibraryTrack(page, name)
+    await deleteLibraryTrack(page, name, 1)
     await expect(tile).toHaveCount(0)
   }
   await expect(page.locator('video')).toHaveCount(0)
@@ -287,12 +290,31 @@ test('tables share a library but isolate invitations, playback, removal, and del
   const sundayGM = await context.newPage()
   await sundayGM.goto('/tables')
   await sundayGM.getByRole('link', { name: 'Open Sunday', exact: true }).click()
+  const libraryGM = await context.newPage()
+  await libraryGM.goto('/library')
+  const sharedRow = libraryGM.getByRole('row').filter({ hasText: 'Shared Forest' })
+  await sharedRow.getByRole('button', { name: 'Edit Shared Forest', exact: true }).click()
+  await libraryGM.getByRole('button', { name: 'Delete track', exact: true }).click()
+  await expect(libraryGM.getByRole('dialog')).toContainText('remove it from 1 table')
   await addExistingTrack(sundayGM, 'Shared Forest')
   await expect(sundayGM.locator('.file-tile')).toHaveCount(1)
   await sundayGM.getByRole('button', { name: 'Copy invite link', exact: true }).click()
   await expect(sundayGM.getByRole('button', { name: 'Copied to clipboard', exact: true })).toBeVisible()
   const sundayInvite = await sundayGM.evaluate(() => navigator.clipboard.readText())
   expect(sundayInvite).not.toBe(fridayInvite)
+
+  try {
+    await libraryGM.getByRole('button', { name: 'Confirm delete track', exact: true }).click()
+    await expect(libraryGM.getByRole('dialog')).toContainText('Table usage changed.')
+    await expect(sharedRow).toBeVisible()
+    await libraryGM.getByRole('button', { name: 'Delete track', exact: true }).click()
+    await expect(libraryGM.getByRole('dialog')).toContainText('remove it from 2 tables')
+    await libraryGM.getByRole('button', { name: 'Cancel', exact: true }).click()
+    await expect(libraryGM.getByRole('button', { name: 'Confirm delete track', exact: true })).toHaveCount(0)
+    await expect(sharedRow).toBeVisible()
+  } finally {
+    await libraryGM.close()
+  }
 
   const fridayContext = await browser.newContext()
   const sundayContext = await browser.newContext()
@@ -338,7 +360,7 @@ test('tables share a library but isolate invitations, playback, removal, and del
     )).toBe(true)
     await page.getByRole('link', { name: 'Library', exact: true }).click()
     await expect(page.getByRole('row').filter({ hasText: 'Friday Only' })).toBeVisible()
-    await deleteLibraryTrack(page, 'Shared Forest')
+    await deleteLibraryTrack(page, 'Shared Forest', 1)
     await expect(sundayTile).toHaveCount(0)
     await expect(sundayPlayer.locator('video')).toHaveCount(0)
     await page.getByRole('link', { name: 'Tables', exact: true }).click()
@@ -350,7 +372,7 @@ test('tables share a library but isolate invitations, playback, removal, and del
     )).toBeVisible()
     await deleteTable(page, 'Sunday')
     await expect(sundayPlayer.getByText('This table has been deleted.', { exact: true })).toBeVisible()
-    await deleteLibraryTrack(page, 'Friday Only')
+    await deleteLibraryTrack(page, 'Friday Only', 0)
     await expect(page.getByText('No tracks in the library yet.', { exact: true })).toBeVisible()
   } finally {
     await fridayContext.close()
@@ -395,11 +417,16 @@ async function deleteTable(page: Page, name: string) {
   await expect(page.getByRole('link', { name: `Open ${name}`, exact: true })).toHaveCount(0)
 }
 
-async function deleteLibraryTrack(page: Page, name: string) {
+async function deleteLibraryTrack(page: Page, name: string, tableCount: number) {
   await page.getByRole('link', { name: 'Library', exact: true }).click()
   const row = page.getByRole('row').filter({ hasText: name })
   await row.getByRole('button', { name: `Edit ${name}` }).click()
   await page.getByRole('button', { name: 'Delete track', exact: true }).click()
+  if (tableCount > 0) {
+    const noun = tableCount === 1 ? 'table' : 'tables'
+    await expect(page.getByRole('dialog')).toContainText(`remove it from ${tableCount} ${noun}`)
+    await page.getByRole('button', { name: 'Confirm delete track', exact: true }).click()
+  }
   await expect(row).toHaveCount(0)
 }
 

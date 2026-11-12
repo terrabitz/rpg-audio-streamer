@@ -15,14 +15,11 @@
             {{ trackTypeStore.getTypeById(item.typeID)?.name ?? 'Unknown type' }}
           </v-chip>
         </template>
-        <template #[`item.playback`]="{ item }">
-          {{ trackTypeStore.getTypeById(item.typeID)?.isRepeating ? 'Loop' : 'Once' }}
-        </template>
         <template #[`item.createdAt`]="{ item }">
           <time :datetime="item.createdAt">{{ new Date(item.createdAt).toLocaleString() }}</time>
         </template>
         <template #[`item.actions`]="{ item }">
-          <AudioControls :fileID="item.id" :fileName="item.name" library @delete="deleteFile(item)">
+          <AudioControls :fileID="item.id" :fileName="item.name" :deleteTrack="count => deleteFile(item, count)" library>
             <template #activator="{ open }">
               <v-btn icon="$dotsVertical" variant="text" size="small" :aria-label="`Edit ${item.name}`"
                 @click.stop="open" />
@@ -37,8 +34,8 @@
     <v-row v-if="!props.library" :dense="true">
       <v-col v-for="file in tracks" :key="file.id" cols="6" sm="4" md="3" lg="2">
         <v-card class="file-tile" @click="handlePlay(file.id)">
-          <AudioControls :fileID="file.id" :fileName="file.name" :library="props.library" @volume="vol => handleVolume(file.id, vol)"
-            @seek="time => handleSeek(file.id, time)" @delete="deleteFile(file)" />
+          <AudioControls :fileID="file.id" :fileName="file.name" :deleteTrack="count => deleteFile(file, count)"
+            @volume="vol => handleVolume(file.id, vol)" @seek="time => handleSeek(file.id, time)" />
         </v-card>
       </v-col>
     </v-row>
@@ -70,7 +67,6 @@ const libraryHeaders = [
   { title: '', key: 'preview', sortable: false, width: 56 },
   { title: 'Name', key: 'name' },
   { title: 'Type', key: 'typeID', sortable: false },
-  { title: 'Playback', key: 'playback', sortable: false },
   { title: 'Added', key: 'createdAt' },
   { title: '', key: 'actions', sortable: false, width: 56 },
 ]
@@ -101,16 +97,15 @@ watch(tracks, (tracks) => {
   }
 }, { immediate: true })
 
-async function deleteFile(file: Track) {
-  error.value = ''
-  try {
-    if (props.library) await fileStore.deleteFile(file.id)
-    else if (tables.current) await tables.removeTrack(tables.current.id, file.id)
-    audioStore.removeTrack(file.id)
-  } catch (cause) {
-    console.error('Failed to delete file:', cause)
-    error.value = props.library ? 'Failed to delete track.' : 'Failed to remove track from table.'
+async function deleteFile(file: Track, expectedTableCount: number | null) {
+  if (props.library) {
+    if (expectedTableCount === null) throw new Error('Missing track usage count')
+    await fileStore.deleteFile(file.id, expectedTableCount)
+  } else {
+    if (!tables.current) throw new Error('No current table')
+    await tables.removeTrack(tables.current.id, file.id)
   }
+  audioStore.removeTrack(file.id)
 }
 
 const debouncedSendMessage = debounce((method: string, payload: unknown) => {

@@ -60,6 +60,13 @@ func (db *SQLiteDatastore) DeleteTrack(ctx context.Context, trackID uuid.UUID) e
 	return sqlitedb.New(db.DB).DeleteTrackByID(ctx, trackID[:])
 }
 
+func (db *SQLiteDatastore) DeleteTrackIfTableCount(ctx context.Context, trackID uuid.UUID, expectedCount int64) (bool, error) {
+	affected, err := sqlitedb.New(db.DB).DeleteTrackByIDIfTableCount(ctx, sqlitedb.DeleteTrackByIDIfTableCountParams{
+		ID: trackID[:], ExpectedTableCount: expectedCount,
+	})
+	return affected == 1, err
+}
+
 func (db *SQLiteDatastore) UpdateTrack(ctx context.Context, trackID uuid.UUID, update server.UpdateTrackRequest) (server.Track, error) {
 	params := sqlitedb.UpdateTrackParams{
 		ID: trackID[:],

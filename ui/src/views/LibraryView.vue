@@ -21,9 +21,6 @@ onMounted(async () => {
   <v-container>
     <v-progress-circular v-if="loading" indeterminate aria-label="Loading library" />
     <template v-else-if="auth.role === 'gm'">
-      <h1 class="text-h4 mb-4">Track library</h1>
-      <p class="mb-4">Tracks can be shared by multiple tables. Deleting a library track removes it from every table.</p>
-      <p class="mb-4">Click a row to preview a track locally. Previews are never streamed to players.</p>
       <AudioUploader />
       <FileList library />
     </template>
