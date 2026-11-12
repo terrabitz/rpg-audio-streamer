@@ -9,9 +9,10 @@
     <v-divider></v-divider>
     <div v-if="audioState" class="px-2 pt-1" @click.stop>
       <VolumeSlider :model-value="audioState.volume" :aria-label="`Volume for ${props.fileName}`"
+        thumb-size="8" track-size="2" class="track-volume"
         @update:model-value="$emit('volume', $event)" />
       <div class="d-flex align-start ga-1 pb-1">
-        <v-btn :icon="audioState.isPlaying ? '$pause' : '$play'" size="x-small" variant="text" class="mt-1"
+        <v-btn :icon="audioState.isPlaying ? '$pause' : '$play'" size="x-small" variant="text"
           :aria-label="`${audioState.isPlaying ? 'Pause' : 'Play'} ${props.fileName}`"
           :aria-pressed="audioState.isPlaying" @click.stop="$emit('play')">
           <v-progress-circular v-if="fadeState?.inProgress" width="2" size="18" indeterminate />
@@ -25,7 +26,7 @@
             class="ma-0" @update:model-value="$emit('seek', $event)" />
           <div class="position-time text-center">{{ formatTime(audioState.currentTime) }} / {{ formatTime(audioState.duration) }}</div>
         </div>
-        <v-btn icon="$restart" size="x-small" variant="text" class="mt-1" :aria-label="`Restart ${props.fileName}`"
+        <v-btn icon="$restart" size="x-small" variant="text" :aria-label="`Restart ${props.fileName}`"
           title="Restart track" @click.stop="$emit('seek', 0)" />
       </div>
     </div>
@@ -204,7 +205,24 @@ function formatTime(seconds: number): string {
   min-width: 0;
 }
 
-/* The default 42px thumb hit area would cover most of this compact seek track. */
+.track-volume {
+  padding-inline-end: 36px;
+}
+
+.track-volume :deep(.v-input__prepend) {
+  width: 32px;
+  justify-content: center;
+  margin-inline-end: 4px;
+}
+
+/* Vuetify otherwise makes the filled segment 2px thicker than the track. */
+.track-volume :deep(.v-slider-track__fill),
+.track-position :deep(.v-slider-track__fill) {
+  height: var(--v-slider-track-size);
+}
+
+/* The default 42px thumb hit area would cover most of these compact tracks. */
+.track-volume :deep(.v-slider-thumb__surface::after),
 .track-position :deep(.v-slider-thumb__surface::after) {
   width: var(--v-slider-thumb-size);
 }

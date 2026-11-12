@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { devices, expect, test, type Page } from '@playwright/test'
+import { devices, expect, test, type Locator, type Page } from '@playwright/test'
 
 test('GM can recover from invalid credentials, keep a session, and log out', async ({ page }) => {
   await page.goto('/')
@@ -82,6 +82,7 @@ test.describe('drag-handle reordering', () => {
       'rgb(128, 222, 234)',
     )
     await expect(forest.locator('.v-chip')).toHaveCount(0)
+    await expectAlignedTrackControls(forest)
     await rain.getByRole('button', { name: 'Drag to reorder Rain' }).click()
     await expect(page.locator('[data-dnd-dragging]')).toHaveCount(0)
     for (const video of await page.locator('video').all()) {
@@ -231,6 +232,7 @@ test.describe('drag-handle reordering', () => {
     await expect(forestPosition).toBeVisible()
     await expect(forest.getByRole('button', { name: 'Drag to reorder Forest' })).toBeVisible()
     await expect(forest.getByRole('button', { name: 'Restart Forest' })).toBeVisible()
+    await expectAlignedTrackControls(forest)
     await expect
       .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth))
       .toBe(true)
@@ -542,6 +544,33 @@ test('starting another Music track stops the previous one', async ({ page }) => 
   }
   await expect(page.locator('video')).toHaveCount(0)
 })
+
+async function expectAlignedTrackControls(tile: Locator) {
+  const [volume, position, volumeIcon, playButton] = await Promise.all(
+    [
+      '.track-volume .v-slider-track',
+      '.track-position .v-slider-track',
+      '.track-volume .v-input__prepend .v-icon',
+      '.v-btn[aria-label^="Play "], .v-btn[aria-label^="Pause "]',
+    ].map(selector => tile.locator(selector).boundingBox()),
+  )
+  if (!volume || !position || !volumeIcon || !playButton)
+    throw new Error('Both slider rows must have visible bounds')
+  expect(Math.abs(volume.x - position.x)).toBeLessThan(1)
+  expect(Math.abs(volume.width - position.width)).toBeLessThan(1)
+  expect(volume.height).toBe(position.height)
+  expect(
+    Math.abs(volumeIcon.x + volumeIcon.width / 2 - playButton.x - playButton.width / 2),
+  ).toBeLessThan(1)
+  expect(
+    Math.abs(position.y + position.height / 2 - playButton.y - playButton.height / 2),
+  ).toBeLessThan(1)
+  for (const selector of ['.track-volume', '.track-position']) {
+    await expect(tile.locator(`${selector} .v-slider-thumb__surface`)).toHaveCSS('width', '8px')
+    await expect(tile.locator(`${selector} .v-slider-track__background`)).toHaveCSS('height', '2px')
+    await expect(tile.locator(`${selector} .v-slider-track__fill`)).toHaveCSS('height', '2px')
+  }
+}
 
 async function expectPlaceholderAt(page: Page, target: { x: number; y: number }) {
   await expect
