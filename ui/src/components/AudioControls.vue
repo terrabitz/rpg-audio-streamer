@@ -19,15 +19,11 @@
         </div>
       </div>
     </div>
-    <div v-if="audioState" class="px-2 pt-1" @click.stop>
-      <VolumeSlider :model-value="audioState.volume" :aria-label="`Volume for ${props.fileName}`"
+    <div v-if="audioState" class="d-flex align-center ga-1 px-2 py-1" @click.stop>
+      <VolumeSlider class="flex-grow-1" :model-value="audioState.volume" :aria-label="`Volume for ${props.fileName}`"
         @update:model-value="$emit('volume', $event)" />
-    </div>
-    <div class="d-flex align-center px-1 pb-1" @click.stop>
       <v-btn icon="$restart" size="x-small" variant="text" :aria-label="`Restart ${props.fileName}`"
         title="Restart track" @click.stop="$emit('seek', 0)" />
-      <v-spacer />
-      <slot name="reorder" />
     </div>
 
     <v-dialog v-model="showControls" max-width="400px" @click:outside="showControls = false">
@@ -208,7 +204,6 @@ function formatTime(seconds: number): string {
 }
 
 .audio-control-tile {
-  cursor: pointer;
   height: 100%;
   transition: background-color 0.3s ease;
   user-select: none;

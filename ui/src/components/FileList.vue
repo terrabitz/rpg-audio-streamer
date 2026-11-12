@@ -1,47 +1,55 @@
 <template>
   <v-container>
-    <v-row :dense="true">
-      <v-col v-for="(file, index) in fileStore.tracks" :key="file.id" cols="6" sm="4" md="3" lg="2"
-        @dragover="handleDragOver($event, file.id)" @drop.prevent="handleDrop(file.id)">
-        <v-card class="file-tile" :class="{ 'drop-target': dropTarget === file.id }" @click="handlePlay(file.id)">
-          <AudioControls :fileID="file.id" :fileName="file.name" @volume="vol => handleVolume(file.id, vol)"
-            @seek="time => handleSeek(file.id, time)" @delete="deleteFile(file)">
-            <template #reorder>
-              <v-btn icon="$drag" size="x-small" variant="text" draggable="true"
-                :aria-label="`Drag to reorder ${file.name}`" title="Drag to reorder"
-                class="drag-handle" @click.stop @dragstart="handleDragStart($event, file.id)"
-                @dragend="clearDrag" />
-              <v-btn icon="$arrowLeft" size="x-small" variant="text" :disabled="index === 0"
-                :aria-label="`Move ${file.name} earlier`" title="Move earlier"
-                @click.stop="moveTrack(file.id, index - 1)" />
-              <v-btn icon="$arrowRight" size="x-small" variant="text" :disabled="index === fileStore.tracks.length - 1"
-                :aria-label="`Move ${file.name} later`" title="Move later"
-                @click.stop="moveTrack(file.id, index + 1)" />
-            </template>
-          </AudioControls>
-        </v-card>
-      </v-col>
-    </v-row>
+    <p id="track-reorder-help" class="d-sr-only">
+      Click a track to play or pause. Hold and drag to reorder, or focus a card and press Alt + Left or Right.
+    </p>
+    <div class="d-sr-only" role="status">{{ reorderAnnouncement }}</div>
+    <DragDropProvider :sensors="sensors" :plugins="plugins" @drag-start="dragging = true" @drag-end="finishDrag">
+      <v-row dense class="track-list" :class="{ 'is-dragging': dragging }">
+        <SortableTrack v-for="(file, index) in fileStore.tracks" :key="file.id" :id="file.id" :index="index">
+          <v-card class="file-tile" role="group" tabindex="0" :aria-label="file.name" aria-describedby="track-reorder-help"
+            aria-keyshortcuts="Alt+ArrowLeft Alt+ArrowRight" @keydown="handleKeydown($event, file.id)"
+            @click="handlePlay(file.id)">
+            <AudioControls :fileID="file.id" :fileName="file.name" @volume="vol => handleVolume(file.id, vol)"
+              @seek="time => handleSeek(file.id, time)" @delete="deleteFile(file)" />
+          </v-card>
+        </SortableTrack>
+      </v-row>
+    </DragDropProvider>
   </v-container>
 </template>
 
 <script setup lang="ts">
 import { type Track } from '@/client/apiClient'
+import { defaultPreset, Feedback, PointerActivationConstraints, PointerSensor } from '@dnd-kit/dom'
+import { DragDropProvider, type DragEndEvent } from '@dnd-kit/vue'
+import { isSortable } from '@dnd-kit/vue/sortable'
 import { patchObject } from '@/composables/util'
 import { useFileStore } from '@/stores/files'
 import { useTrackTypeStore } from '@/stores/trackTypes'
 import { useWebSocketStore } from '@/stores/websocket'
 import debounce from 'lodash.debounce'
-import { onMounted, ref, watch } from 'vue'
+import { nextTick, onMounted, ref, watch } from 'vue'
 import { useAudioStore } from '../stores/audio'
 import AudioControls from './AudioControls.vue'
+import SortableTrack from './SortableTrack.vue'
 
 const fileStore = useFileStore()
 const audioStore = useAudioStore()
 const wsStore = useWebSocketStore()
 const trackTypeStore = useTrackTypeStore()
-const draggedTrack = ref<string | null>(null)
-const dropTarget = ref<string | null>(null)
+const dragging = ref(false)
+const reorderAnnouncement = ref('')
+const plugins = defaultPreset.plugins.map(plugin => plugin === Feedback
+  ? Feedback.configure({ feedback: 'clone', dropAnimation: { duration: 180 } })
+  : plugin)
+const sensors = [
+  PointerSensor.configure({
+    activationConstraints: [new PointerActivationConstraints.Delay({ value: 250, tolerance: 5 })],
+    preventActivation: event => event.target instanceof Element &&
+      event.target.closest('button, input, .v-slider, .v-dialog') !== null,
+  }),
+]
 
 onMounted(async () => {
   await trackTypeStore.fetchTrackTypes()
@@ -54,33 +62,44 @@ watch(() => fileStore.tracks, (tracks) => {
   }
 }, { immediate: true })
 
-function handleDragStart(event: DragEvent, fileID: string) {
-  if (!event.dataTransfer) return
-  draggedTrack.value = fileID
-  event.dataTransfer.effectAllowed = 'move'
-  event.dataTransfer.setData('text/plain', fileID)
+function finishDrag(event: DragEndEvent) {
+  const { source } = event.operation
+  if (!event.canceled && isSortable(source) && source.initialIndex !== source.index) {
+    const track = fileStore.tracks[source.initialIndex]
+    const target = fileStore.tracks[source.index]
+    if (track && target) {
+      fileStore.moveTrack(track.id, target.id)
+      announceMove(track.name, source.index)
+    }
+  }
+  // Keep the release click from toggling playback after a long press.
+  requestAnimationFrame(() => { dragging.value = false })
 }
 
-function handleDragOver(event: DragEvent, fileID: string) {
-  if (!draggedTrack.value || draggedTrack.value === fileID) return
+async function handleKeydown(event: KeyboardEvent, fileID: string) {
+  if (event.target !== event.currentTarget || !(event.currentTarget instanceof HTMLElement)) return
+  const card = event.currentTarget
+  if (event.key === 'Enter' || event.key === ' ') {
+    event.preventDefault()
+    handlePlay(fileID)
+    return
+  }
+  if (!event.altKey || !['ArrowLeft', 'ArrowRight'].includes(event.key)) return
+
   event.preventDefault()
-  dropTarget.value = fileID
-  if (event.dataTransfer) event.dataTransfer.dropEffect = 'move'
-}
-
-function handleDrop(fileID: string) {
-  if (draggedTrack.value) fileStore.moveTrack(draggedTrack.value, fileID)
-  clearDrag()
-}
-
-function clearDrag() {
-  draggedTrack.value = null
-  dropTarget.value = null
-}
-
-function moveTrack(fileID: string, targetIndex: number) {
+  const index = fileStore.tracks.findIndex(track => track.id === fileID)
+  const targetIndex = index + (event.key === 'ArrowLeft' ? -1 : 1)
   const target = fileStore.tracks[targetIndex]
-  if (target) fileStore.moveTrack(fileID, target.id)
+  const track = fileStore.getTrackById(fileID)
+  if (!target || !track) return
+  fileStore.moveTrack(fileID, target.id)
+  await nextTick()
+  card.focus()
+  announceMove(track.name, targetIndex)
+}
+
+function announceMove(name: string, index: number) {
+  reorderAnnouncement.value = `Moved ${name} to position ${index + 1} of ${fileStore.tracks.length}.`
 }
 
 async function deleteFile(file: Track) {
@@ -98,6 +117,7 @@ const debouncedSendMessage = debounce((method: string, payload: unknown) => {
 
 // Event handlers just update state and send WS payloads
 const handlePlay = (fileID: string) => {
+  if (dragging.value) return
   const track = fileStore.getTrackById(fileID)
   if (!track) return
 
@@ -179,23 +199,41 @@ watch(() => audioStore.masterVolume, () => {
 
 <style scoped>
 .file-tile {
-  transition: all 0.2s ease;
+  cursor: grab;
+  transition: box-shadow 0.2s ease;
+  -webkit-touch-callout: none;
 }
 
 .file-tile:hover {
-  transform: translateY(-2px);
   box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
 }
 
-.file-tile.drop-target {
+.file-tile:focus-visible {
   outline: 2px solid rgb(var(--v-theme-primary));
 }
 
-.drag-handle {
-  cursor: grab;
+[data-dnd-dragging] .file-tile,
+.is-dragging .file-tile {
+  cursor: grabbing;
 }
 
-.drag-handle:active {
+[data-dnd-placeholder] .file-tile {
+  outline: 2px dashed rgb(var(--v-theme-primary));
+  background: rgba(var(--v-theme-primary), 0.08);
+  box-shadow: none;
+}
+
+[data-dnd-placeholder] :deep(.audio-control-tile) {
+  visibility: hidden;
+}
+
+[data-dnd-dragging] {
+  opacity: 0.95 !important;
+}
+
+[data-dnd-dragging] .file-tile {
   cursor: grabbing;
+  transform: rotate(2deg);
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.3);
 }
 </style>
