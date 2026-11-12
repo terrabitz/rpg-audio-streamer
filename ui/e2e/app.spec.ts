@@ -12,9 +12,9 @@ test('GM can recover from invalid credentials, keep a session, and log out', asy
   await page.getByRole('button', { name: 'Login', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'Tables', exact: true })).toBeVisible()
   await page.getByRole('link', { name: 'Open My Table', exact: true }).click()
-  await expect(page.getByRole('button', { name: 'Upload Track' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Add Track', exact: true })).toBeVisible()
   await page.reload()
-  await expect(page.getByRole('button', { name: 'Upload Track' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Add Track', exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'Logout' }).click()
   await expect(page.getByRole('link', { name: 'GM Login' })).toBeVisible()
   await page.reload()
@@ -44,7 +44,7 @@ test('GM uploads, renames, persists, and deletes an audio track', async ({ page 
 
 test('failed audio conversion is shown as an upload error', async ({ page }) => {
   await login(page)
-  await page.getByRole('button', { name: 'Upload Track' }).click()
+  await openUploadDialog(page)
   await page.getByLabel('Select a file', { exact: true }).setInputFiles({
     name: 'invalid.mp3',
     mimeType: 'audio/mpeg',
@@ -75,7 +75,9 @@ test('invited player receives live playback, late-join state, and pause', async 
     const player = await playerContext.newPage()
     await player.goto('/table/e2e-invite')
     await expect(player.getByText('Volume Mixer', { exact: true })).toBeVisible()
-    await expect(player.getByRole('button', { name: 'Upload Track' })).toHaveCount(0)
+    await expect(player.getByRole('button', { name: 'Add Track', exact: true })).toHaveCount(0)
+    await expect(player.getByRole('banner')).toContainText('My Table')
+    await expect(player.getByRole('heading', { name: 'My Table', exact: true })).toHaveCount(0)
     await player.getByRole('button', { name: 'Connect Audio', exact: true }).click()
     await expect(player.getByText('Connected', { exact: true })).toBeVisible()
     const playerAudio = player.locator('video')
@@ -169,8 +171,21 @@ test('tables share a library but isolate invitations, playback, removal, and del
   await page.getByRole('button', { name: 'Save table', exact: true }).click()
   await page.reload()
   await page.getByRole('link', { name: 'Open Friday group', exact: true }).click()
-  await expect(page.getByRole('heading', { name: 'Friday group', exact: true })).toBeVisible()
+  await expect(page.getByRole('banner')).toContainText('Friday group')
+  await expect(page.getByRole('heading', { name: 'Friday group', exact: true })).toHaveCount(0)
+  await expect(page.getByRole('combobox', { name: 'Library track', exact: true })).toHaveCount(0)
+  await page.getByRole('button', { name: 'Add Track', exact: true }).click()
+  await expect(page.getByRole('tab', { name: 'From library', exact: true })).toBeVisible()
+  await expect(page.getByRole('tab', { name: 'Upload new', exact: true })).toBeVisible()
+  await page.getByRole('combobox', { name: 'Library track', exact: true }).press('ArrowDown')
+  await page.getByRole('option', { name: 'Shared Forest', exact: true }).click()
+  await page.getByRole('button', { name: 'Cancel', exact: true }).click()
+  await expect(page.locator('.file-tile')).toHaveCount(0)
   await addExistingTrack(page, 'Shared Forest')
+  await page.getByRole('button', { name: 'Add Track', exact: true }).click()
+  await expect(page.getByText('No unused tracks in the library. Upload a new track instead.')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Add to table', exact: true })).toBeDisabled()
+  await page.getByRole('button', { name: 'Cancel', exact: true }).click()
   await uploadTrack(page, 'Friday Only')
   await page.getByRole('button', { name: 'Copy invite link', exact: true }).click()
   await expect(page.getByRole('button', { name: 'Copied to clipboard', exact: true })).toBeVisible()
@@ -195,8 +210,8 @@ test('tables share a library but isolate invitations, playback, removal, and del
     const sundayPlayer = await sundayContext.newPage()
     await fridayPlayer.goto(fridayInvite)
     await sundayPlayer.goto(sundayInvite)
-    await expect(fridayPlayer.getByRole('heading', { name: 'Friday group', exact: true })).toBeVisible()
-    await expect(sundayPlayer.getByRole('heading', { name: 'Sunday', exact: true })).toBeVisible()
+    await expect(fridayPlayer.getByRole('banner')).toContainText('Friday group')
+    await expect(sundayPlayer.getByRole('banner')).toContainText('Sunday')
     await expect(fridayPlayer.getByRole('link', { name: 'Library', exact: true })).toHaveCount(0)
     await fridayPlayer.getByRole('button', { name: 'Connect Audio', exact: true }).click()
     await sundayPlayer.getByRole('button', { name: 'Connect Audio', exact: true }).click()
@@ -260,7 +275,7 @@ async function login(page: Page) {
   await page.getByRole('button', { name: 'Login', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'Tables', exact: true })).toBeVisible()
   await page.getByRole('link', { name: 'Open My Table', exact: true }).click()
-  await expect(page.getByRole('button', { name: 'Upload Track' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Add Track', exact: true })).toBeVisible()
 }
 
 async function createTable(page: Page, name: string) {
@@ -271,10 +286,14 @@ async function createTable(page: Page, name: string) {
 }
 
 async function addExistingTrack(page: Page, name: string) {
+  await page.getByRole('button', { name: 'Add Track', exact: true }).click()
+  await page.getByRole('tab', { name: 'From library', exact: true }).click()
   await page.getByRole('combobox', { name: 'Library track', exact: true }).press('ArrowDown')
   await page.getByRole('option', { name, exact: true }).click()
-  await page.getByRole('button', { name: 'Add existing track', exact: true }).click()
+  await page.getByRole('button', { name: 'Add to table', exact: true }).click()
   await expect(page.locator('.file-tile').filter({ hasText: name })).toBeVisible()
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+  await expect(page.getByRole('combobox', { name: 'Library track', exact: true })).toHaveCount(0)
 }
 
 async function deleteTable(page: Page, name: string) {
@@ -303,7 +322,7 @@ async function uploadTrack(page: Page, name: string) {
     'mp3',
     'pipe:1',
   ])
-  await page.getByRole('button', { name: 'Upload Track' }).click()
+  await openUploadDialog(page)
   await page
     .getByLabel('Select a file', { exact: true })
     .setInputFiles({ name: 'sample.mp3', mimeType: 'audio/mpeg', buffer: audio })
@@ -312,4 +331,15 @@ async function uploadTrack(page: Page, name: string) {
   await page.getByRole('option', { name: 'Music', exact: true }).click()
   await page.getByRole('button', { name: 'Upload', exact: true }).click()
   await expect(page.getByText('File uploaded successfully!', { exact: true })).toBeVisible()
+}
+
+async function openUploadDialog(page: Page) {
+  const addTrack = page.getByRole('button', { name: 'Add Track', exact: true })
+  if (await addTrack.count()) {
+    await addTrack.click()
+    await page.getByRole('tab', { name: 'Upload new', exact: true }).click()
+    return
+  }
+  await page.getByRole('button', { name: 'Upload Track', exact: true }).click()
+  await expect(page.getByRole('tab', { name: 'From library', exact: true })).toHaveCount(0)
 }

@@ -118,6 +118,9 @@ metadata management), `/tables/:tableID` (GM table), and `/table/:token?`
 (invited table, or legacy default table for a GM without a token). Login opens
 table management. Table views show associated tracks only; GMs can add an
 existing library track or upload a new one directly into the table.
+To preserve space during play, the table name appears only in the app bar.
+Its **Add Track** action opens a dialog with library selection and new-upload
+tabs; neither workflow adds a permanent control row to the track grid.
 
 The table route resolves authentication before mounting a role-specific view.
 The application shell checks authentication on non-table initial navigation;

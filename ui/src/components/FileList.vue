@@ -1,11 +1,6 @@
 <template>
-  <v-container>
+  <v-container :class="{ 'pa-0': !props.library }">
     <v-alert v-if="error" type="error" class="mb-4">{{ error }}</v-alert>
-    <div v-if="!props.library" class="d-flex align-center mb-4">
-      <v-select v-model="selectedTrack" :items="availableTracks" item-title="name" item-value="id"
-        label="Library track" hide-details class="mr-3" />
-      <v-btn :disabled="!selectedTrack" :loading="adding" @click="addTrack">Add existing track</v-btn>
-    </div>
     <p v-if="!tracks.length" class="mb-4">
       {{ props.library ? 'No tracks in the library yet.' : 'No tracks at this table. Add a library track or upload a new one.' }}
     </p>
@@ -39,13 +34,8 @@ const trackTypeStore = useTrackTypeStore()
 const tables = useTableStore()
 const props = defineProps<{ library?: boolean }>()
 const error = ref('')
-const selectedTrack = ref<string | null>(null)
-const adding = ref(false)
 const tracks = computed(() => props.library ? fileStore.tracks :
   tables.tracks.map(track => fileStore.getTrackById(track.id) ?? track))
-const availableTracks = computed(() => fileStore.tracks.filter(
-  track => !tables.tracks.some(associated => associated.id === track.id),
-))
 
 onMounted(async () => {
   try {
@@ -67,21 +57,6 @@ watch(tracks, (tracks) => {
     audioStore.initTrack(track.id, track.name, track.typeID)
   }
 }, { immediate: true })
-
-async function addTrack() {
-  if (!tables.current || !selectedTrack.value) return
-  adding.value = true
-  error.value = ''
-  try {
-    await tables.addTrack(tables.current.id, selectedTrack.value)
-    selectedTrack.value = null
-  } catch (e) {
-    console.error('Failed to add track:', e)
-    error.value = 'Failed to add track to table.'
-  } finally {
-    adding.value = false
-  }
-}
 
 async function deleteFile(file: Track) {
   error.value = ''

@@ -1,18 +1,29 @@
 <template>
   <div>
     <v-dialog persistent v-model="showModal" max-width="600px">
-      <template v-slot:activator="{ props }">
-        <v-btn v-bind="props" prepend-icon="$upload">
-          Upload Track
+      <template v-slot:activator="{ props: activatorProps }">
+        <v-btn v-bind="activatorProps" :prepend-icon="props.tableID ? '$add' : '$upload'">
+          {{ props.tableID ? 'Add Track' : 'Upload Track' }}
         </v-btn>
       </template>
       <v-card>
         <v-card-title>
-          <span class="headline">Upload Track</span>
+          <span class="headline">{{ props.tableID ? 'Add Track' : 'Upload Track' }}</span>
         </v-card-title>
+        <v-tabs v-if="props.tableID" v-model="source" :disabled="isBusy">
+          <v-tab value="library">From library</v-tab>
+          <v-tab value="upload">Upload new</v-tab>
+        </v-tabs>
         <v-card-text>
           <v-alert v-if="uploadStatus?.type === 'error'" type="error" class="mb-3">{{ uploadStatus.message }}</v-alert>
-          <div @dragover="handleDragOver" @dragleave="handleDragLeave" @drop="handleDrop"
+          <template v-if="source === 'library'">
+            <v-select v-model="selectedTrack" :items="availableTracks" item-title="name" item-value="id"
+              label="Library track" :loading="loadingLibrary" :disabled="isBusy || !libraryReady" hide-details />
+            <p v-if="libraryReady && !availableTracks.length" class="mt-4">
+              No unused tracks in the library. Upload a new track instead.
+            </p>
+          </template>
+          <div v-else @dragover="handleDragOver" @dragleave="handleDragLeave" @drop="handleDrop"
             :class="{ 'dragging': isDragging }" class="drop-area">
             <v-form v-model="formValid" @submit.prevent>
               <v-file-input v-model="trackFile" label="Select a file" prepend-icon="$music" accept="audio/mp3"
@@ -25,23 +36,26 @@
         </v-card-text>
         <v-card-actions>
           <v-spacer></v-spacer>
-          <v-btn color="error" @click="showModal = false" :disabled="isUploading">Cancel</v-btn>
-          <v-btn color="success" @click="submitForm" :disabled="!formValid || !trackFile || !trackName.trim() || !selectedTypeId"
+          <v-btn color="error" @click="showModal = false" :disabled="isBusy">Cancel</v-btn>
+          <v-btn v-if="source === 'library'" color="success" @click="addTrack"
+            :disabled="isBusy || !libraryReady || !selectedTrack" :loading="isAdding">Add to table</v-btn>
+          <v-btn v-else color="success" @click="submitForm"
+            :disabled="isBusy || !formValid || !trackFile || !trackName.trim() || !selectedTypeId"
             :loading="isUploading">Upload</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
-    <v-alert v-if="uploadStatus && !showModal" :type="uploadStatus.type" :text="uploadStatus.message" class="mt-3"></v-alert>
+    <v-snackbar :model-value="!!uploadStatus && !showModal" :color="uploadStatus?.type"
+      @update:model-value="uploadStatus = null">{{ uploadStatus?.message }}</v-snackbar>
   </div>
 </template>
 
 <script setup lang="ts">
 import { postApiV1Files } from '@/client/apiClient'
 import { useFileStore } from '@/stores/files'
-import { useTrackTypeStore } from '@/stores/trackTypes'
 import { useTableStore } from '@/stores/tables'
 import debounce from 'lodash.debounce'
-import { onMounted, ref, watch } from 'vue'
+import { computed, onUnmounted, ref, watch } from 'vue'
 import TrackTypeSelector from './TrackTypeSelector.vue'
 
 const props = defineProps<{ tableID?: string }>()
@@ -49,16 +63,27 @@ const tables = useTableStore()
 const isUploading = ref(false)
 const uploadStatus = ref<{ type: 'success' | 'error', message: string } | null>(null)
 const fileStore = useFileStore()
-const trackTypeStore = useTrackTypeStore()
 const isDragging = ref(false)
 const showModal = ref(false)
 const formValid = ref(false)
 const trackName = ref('')
 const trackFile = ref<File | null>(null)
-const selectedTypeId = ref('')  // Initialize selectedTypeId as empty string
+const selectedTypeId = ref('')
+const source = ref<'library' | 'upload'>(props.tableID ? 'library' : 'upload')
+const selectedTrack = ref<string | null>(null)
+const loadingLibrary = ref(false)
+const libraryReady = ref(false)
+const isAdding = ref(false)
+const isBusy = computed(() => isUploading.value || isAdding.value || loadingLibrary.value)
+const availableTracks = computed(() => fileStore.tracks.filter(
+  track => !tables.tracks.some(associated => associated.id === track.id),
+))
 
-onMounted(async () => {
-  await trackTypeStore.fetchTrackTypes()
+watch([showModal, source], async ([open, selectedSource]) => {
+  if (!open) return
+  uploadStatus.value = null
+  selectedTrack.value = null
+  if (selectedSource === 'library' && props.tableID) await loadLibrary()
 })
 
 watch(trackFile, (file) => {
@@ -67,7 +92,46 @@ watch(trackFile, (file) => {
   }
 })
 
-const uploadTrack = async () => {
+async function loadLibrary() {
+  if (!props.tableID) return
+  loadingLibrary.value = true
+  libraryReady.value = false
+  try {
+    await Promise.all([fileStore.fetchFiles(), tables.fetchTracks(props.tableID)])
+    libraryReady.value = true
+  } catch (error) {
+    console.error('Failed to load library:', error)
+    uploadStatus.value = { type: 'error', message: 'Failed to load library tracks. Reopen the dialog to try again.' }
+  } finally {
+    loadingLibrary.value = false
+  }
+}
+
+async function addTrack() {
+  if (!props.tableID || !selectedTrack.value) return
+  isAdding.value = true
+  uploadStatus.value = null
+  try {
+    await tables.addTrack(props.tableID, selectedTrack.value)
+    showModal.value = false
+    selectedTrack.value = null
+  } catch (error) {
+    console.error('Failed to add track:', error)
+    uploadStatus.value = { type: 'error', message: 'Failed to add track to table.' }
+  } finally {
+    isAdding.value = false
+  }
+}
+
+async function submitForm() {
+  if (!await uploadTrack()) return
+  showModal.value = false
+  trackName.value = ''
+  trackFile.value = null
+  selectedTypeId.value = ''
+}
+
+async function uploadTrack() {
   const files = trackFile.value
   const name = trackName.value.trim()
   const typeID = selectedTypeId.value
@@ -94,9 +158,6 @@ const uploadTrack = async () => {
     await fileStore.fetchFiles()
     if (props.tableID) await tables.fetchTracks(props.tableID)
     uploadStatus.value = { type: 'success', message: 'File uploaded successfully!' }
-    setTimeout(() => {
-      uploadStatus.value = null
-    }, 5000)
     return true
   } catch (error) {
     uploadStatus.value = {
@@ -133,13 +194,7 @@ const handleDrop = (event: DragEvent) => {
   trackFile.value = dataTransfer.files[0]
 }
 
-const submitForm = async () => {
-  if (!await uploadTrack()) return
-  showModal.value = false
-  trackName.value = ''
-  trackFile.value = null
-  selectedTypeId.value = ''  // Reset selectedTypeId instead of trackType
-}
+onUnmounted(() => handleDragLeave.cancel())
 </script>
 
 <style scoped>

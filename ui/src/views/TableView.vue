@@ -74,7 +74,6 @@ onUnmounted(() => {
     <v-progress-circular v-if="loading" indeterminate aria-label="Checking session" />
     <v-alert v-else-if="error" type="error">{{ error }}</v-alert>
     <template v-else-if="tables.current">
-      <h1 class="text-h4 mb-4">{{ tables.current.name }}</h1>
       <TableViewGM v-if="auth.role === 'gm'" />
       <TableViewPlayer v-else />
     </template>
