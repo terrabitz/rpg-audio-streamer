@@ -1,7 +1,7 @@
 <template>
   <v-container>
     <p id="track-reorder-help" class="d-sr-only">
-      Click a track to play or pause. Hold and drag to reorder, or focus a card and press Alt + Left or Right.
+      Click a track to play or pause. Drag its handle to reorder, or focus a card or handle and press Alt + Left or Right.
     </p>
     <div class="d-sr-only" role="status">{{ reorderAnnouncement }}</div>
     <DragDropProvider :sensors="sensors" :plugins="plugins" @drag-start="dragging = true" @drag-end="finishDrag">
@@ -10,8 +10,12 @@
           <v-card class="file-tile" role="group" tabindex="0" :aria-label="file.name" aria-describedby="track-reorder-help"
             aria-keyshortcuts="Alt+ArrowLeft Alt+ArrowRight" @keydown="handleKeydown($event, file.id)"
             @click="handlePlay(file.id)">
+            <v-btn class="track-drag-handle" icon="$drag" size="x-small" variant="text"
+              :aria-label="`Drag to reorder ${file.name}`" title="Drag to reorder"
+              aria-describedby="track-reorder-help" aria-keyshortcuts="Alt+ArrowLeft Alt+ArrowRight"
+              @click.stop @keydown="handleKeydown($event, file.id)" />
             <AudioControls :fileID="file.id" :fileName="file.name" @volume="vol => handleVolume(file.id, vol)"
-              @seek="time => handleSeek(file.id, time)" @delete="deleteFile(file)" />
+              @play="handlePlay(file.id)" @seek="time => handleSeek(file.id, time)" @delete="deleteFile(file)" />
           </v-card>
         </SortableTrack>
       </v-row>
@@ -45,9 +49,7 @@ const plugins = defaultPreset.plugins.map(plugin => plugin === Feedback
   : plugin)
 const sensors = [
   PointerSensor.configure({
-    activationConstraints: [new PointerActivationConstraints.Delay({ value: 250, tolerance: 5 })],
-    preventActivation: event => event.target instanceof Element &&
-      event.target.closest('button, input, .v-slider, .v-dialog') !== null,
+    activationConstraints: [new PointerActivationConstraints.Distance({ value: 4 })],
   }),
 ]
 
@@ -72,14 +74,14 @@ function finishDrag(event: DragEndEvent) {
       announceMove(track.name, source.index)
     }
   }
-  // Keep the release click from toggling playback after a long press.
+  // Keep the release click from toggling playback after dragging.
   requestAnimationFrame(() => { dragging.value = false })
 }
 
 async function handleKeydown(event: KeyboardEvent, fileID: string) {
   if (event.target !== event.currentTarget || !(event.currentTarget instanceof HTMLElement)) return
   const card = event.currentTarget
-  if (event.key === 'Enter' || event.key === ' ') {
+  if ((event.key === 'Enter' || event.key === ' ') && card.classList.contains('file-tile')) {
     event.preventDefault()
     handlePlay(fileID)
     return
@@ -199,8 +201,17 @@ watch(() => audioStore.masterVolume, () => {
 
 <style scoped>
 .file-tile {
-  cursor: grab;
+  cursor: pointer;
   transition: box-shadow 0.2s ease;
+}
+
+.track-drag-handle {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  z-index: 1;
+  cursor: grab;
+  touch-action: none;
   -webkit-touch-callout: none;
 }
 
@@ -213,7 +224,7 @@ watch(() => audioStore.masterVolume, () => {
 }
 
 [data-dnd-dragging] .file-tile,
-.is-dragging .file-tile {
+.is-dragging .track-drag-handle {
   cursor: grabbing;
 }
 
@@ -223,7 +234,8 @@ watch(() => audioStore.masterVolume, () => {
   box-shadow: none;
 }
 
-[data-dnd-placeholder] :deep(.audio-control-tile) {
+[data-dnd-placeholder] :deep(.audio-control-tile),
+[data-dnd-placeholder] .track-drag-handle {
   visibility: hidden;
 }
 

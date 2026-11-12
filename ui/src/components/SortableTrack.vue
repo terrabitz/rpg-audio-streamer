@@ -6,7 +6,7 @@ const props = defineProps<{ id: string; index: number }>()
 const element = ref<ComponentPublicInstance | null>(null)
 const handle = computed(() => {
   const column = element.value?.$el
-  return column instanceof HTMLElement ? column.querySelector<HTMLElement>('.file-tile') : null
+  return column instanceof HTMLElement ? column.querySelector<HTMLElement>('.track-drag-handle') : null
 })
 
 useSortable({

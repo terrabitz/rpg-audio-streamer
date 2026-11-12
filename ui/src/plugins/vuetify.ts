@@ -1,5 +1,5 @@
 import IconLute from '@/components/icons/IconLute.vue';
-import { mdiAccountMusic, mdiBug, mdiCircle, mdiContentCopy, mdiContentSave, mdiDelete, mdiDotsVertical, mdiHeadphones, mdiHome, mdiLoading, mdiLogin, mdiMusic, mdiPause, mdiPlay, mdiRefresh, mdiRepeat, mdiRepeatOff, mdiRestart, mdiUpload, mdiVolumeHigh, mdiVolumeLow, mdiVolumeMedium, mdiVolumeOff } from '@mdi/js';
+import { mdiAccountMusic, mdiBug, mdiCircle, mdiContentCopy, mdiContentSave, mdiDelete, mdiDotsVertical, mdiDrag, mdiHeadphones, mdiHome, mdiLoading, mdiLogin, mdiMusic, mdiPause, mdiPlay, mdiRefresh, mdiRepeat, mdiRepeatOff, mdiRestart, mdiUpload, mdiVolumeHigh, mdiVolumeLow, mdiVolumeMedium, mdiVolumeOff } from '@mdi/js';
 import { h, type Component } from 'vue';
 import { createVuetify, type IconProps, type IconSet } from 'vuetify';
 import { aliases, mdi } from 'vuetify/iconsets/mdi-svg';
@@ -48,6 +48,7 @@ export default createVuetify({
       accountMusic: mdiAccountMusic,
       headphones: mdiHeadphones,
       save: mdiContentSave,
+      drag: mdiDrag,
       restart: mdiRestart
     },
     sets: {

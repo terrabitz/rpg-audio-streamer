@@ -1,29 +1,33 @@
 <template>
   <div v-if="trackType" class="audio-control-tile" :class="{ 'is-active': isActive }">
+    <span class="d-sr-only">Track type: {{ trackType.name }}</span>
     <div class="track-heading pa-2 text-subtitle-1 position-relative">
       <span>{{ props.fileName }}</span>
       <v-btn icon="$dotsVertical" size="small" variant="text" :aria-label="`Edit ${props.fileName}`" @click.stop="showControls = true"
         class="position-absolute top-0 right-0" />
     </div>
     <v-divider></v-divider>
-    <div class="d-flex flex-column pa-1 position-relative">
-      <div class="d-flex justify-space-between align-center mx-2">
-        <v-chip :color="trackType?.color" text-color="white" size="x-small">
-          {{ trackType?.name }}
-        </v-chip>
-        <div class="play-status mr-2">
-          <v-progress-circular v-if="fadeState?.inProgress" width="3" size="20" indeterminate />
-          <v-icon v-else size="24">
-            {{ audioState?.isPlaying ? '$pause' : '$play' }}
-          </v-icon>
-        </div>
-      </div>
-    </div>
-    <div v-if="audioState" class="d-flex align-center ga-1 px-2 py-1" @click.stop>
-      <VolumeSlider class="flex-grow-1" :model-value="audioState.volume" :aria-label="`Volume for ${props.fileName}`"
+    <div v-if="audioState" class="px-2 pt-1" @click.stop>
+      <VolumeSlider :model-value="audioState.volume" :aria-label="`Volume for ${props.fileName}`"
         @update:model-value="$emit('volume', $event)" />
-      <v-btn icon="$restart" size="x-small" variant="text" :aria-label="`Restart ${props.fileName}`"
-        title="Restart track" @click.stop="$emit('seek', 0)" />
+      <div class="d-flex align-start ga-1 pb-1">
+        <v-btn :icon="audioState.isPlaying ? '$pause' : '$play'" size="x-small" variant="text" class="mt-1"
+          :aria-label="`${audioState.isPlaying ? 'Pause' : 'Play'} ${props.fileName}`"
+          :aria-pressed="audioState.isPlaying" @click.stop="$emit('play')">
+          <v-progress-circular v-if="fadeState?.inProgress" width="2" size="18" indeterminate />
+          <v-icon v-else :icon="audioState.isPlaying ? '$pause' : '$play'" />
+        </v-btn>
+        <div class="track-position flex-grow-1">
+          <v-slider :model-value="audioState.currentTime" :max="audioState.duration" min="0" step="1"
+            :disabled="audioState.duration <= 0" thumb-size="8" track-size="2" density="compact" hide-details
+            :aria-label="`Playback position for ${props.fileName}`"
+            :aria-valuetext="`${formatTime(audioState.currentTime)} of ${formatTime(audioState.duration)}`"
+            class="ma-0" @update:model-value="$emit('seek', $event)" />
+          <div class="position-time text-center">{{ formatTime(audioState.currentTime) }} / {{ formatTime(audioState.duration) }}</div>
+        </div>
+        <v-btn icon="$restart" size="x-small" variant="text" class="mt-1" :aria-label="`Restart ${props.fileName}`"
+          title="Restart track" @click.stop="$emit('seek', 0)" />
+      </div>
     </div>
 
     <v-dialog v-model="showControls" max-width="400px" @click:outside="showControls = false">
@@ -153,26 +157,6 @@ async function saveTrackChanges() {
   }
 }
 
-function darkenColor(color: string, amount: number): string {
-  // Convert hex to RGB
-  const r = parseInt(color.slice(1, 3), 16);
-  const g = parseInt(color.slice(3, 5), 16);
-  const b = parseInt(color.slice(5, 7), 16);
-
-  // Darken by amount
-  const darkerR = Math.floor(r * amount);
-  const darkerG = Math.floor(g * amount);
-  const darkerB = Math.floor(b * amount);
-
-  // Convert back to hex
-  return `#${darkerR.toString(16).padStart(2, '0')}${darkerG.toString(16).padStart(2, '0')}${darkerB.toString(16).padStart(2, '0')}`;
-}
-
-const darkerColor = computed(() => {
-  if (!trackType.value?.color) return '';
-  return darkenColor(trackType.value.color, 0.14);
-});
-
 // Wait for track type data before initializing audio track
 watchEffect(() => {
   if (trackType.value && audioState.value) {
@@ -184,6 +168,7 @@ watchEffect(() => {
 });
 
 defineEmits<{
+  (e: 'play'): void
   (e: 'volume', volume: number): void
   (e: 'seek', time: number): void
   (e: 'delete'): void
@@ -205,28 +190,38 @@ function formatTime(seconds: number): string {
 
 .audio-control-tile {
   height: 100%;
+  border: 2px solid v-bind('trackType?.color');
+  border-radius: inherit;
   transition: background-color 0.3s ease;
   user-select: none;
 }
 
 .audio-control-tile.is-active {
-  background-color: v-bind('darkerColor');
+  background-color: rgba(var(--v-theme-on-surface), 0.06);
 }
 
-.play-status {
-  width: 24px;
-  height: 24px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+.track-position {
+  min-width: 0;
 }
 
-.audio-control-tile>div:first-child:hover {
+/* The default 42px thumb hit area would cover most of this compact seek track. */
+.track-position :deep(.v-slider-thumb__surface::after) {
+  width: var(--v-slider-thumb-size);
+}
+
+.position-time {
+  font-size: 0.65rem;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.track-heading:hover {
   background-color: rgba(0, 0, 0, 0.04);
 }
 
 .track-heading {
   min-height: 40px;
+  padding-left: 36px !important;
   padding-right: 36px !important;
   overflow-wrap: anywhere;
 }
