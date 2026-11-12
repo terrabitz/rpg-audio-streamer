@@ -29,7 +29,7 @@
               <v-file-input v-model="trackFile" label="Select a file" prepend-icon="$music" accept="audio/mp3"
                 :loading="isUploading" :disabled="isUploading" required></v-file-input>
               <v-text-field v-model="trackName" label="Track Name" required></v-text-field>
-              <TrackTypeSelector v-model="selectedTypeId" hint="Select a track type before uploading." persistent-hint />
+              <TrackTypeSelector v-model="selectedTypeId" />
             </v-form>
             <div v-if="isDragging" class="drop-text">Drop files here</div>
           </div>
