@@ -1,4 +1,4 @@
-.PHONY: ui go test test-go test-ui test-e2e gen gen-sqlc gen-api-client gen-docs
+.PHONY: ui go test test-go test-ui test-e2e record-e2e gen gen-sqlc gen-api-client gen-docs
 
 
 ui:
@@ -18,6 +18,9 @@ test-ui:
 
 test-e2e:
 	cd ui && npm run test:e2e
+
+record-e2e:
+	cd ui && npm run test:e2e:record -- $(if $(GREP),--grep "$(GREP)")
 
 gen: gen-sqlc gen-api-client gen-docs
 

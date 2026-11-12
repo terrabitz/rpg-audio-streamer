@@ -105,6 +105,14 @@ playback, not just CSS classes or socket receipt. Use accessible names for
 controls, keyboard selection for Vuetify selects, and retrying assertions
 instead of fixed sleeps. Ensure added fixtures are removed through the UI.
 
+Each browser test covers one user-visible flow, because every test doubles as a
+pull request recording (see `.github/skills/pr-recordings/SKILL.md`). Name the
+test after the flow, split a test that demonstrates several unrelated flows,
+and import `test` and `expect` from `ui/e2e/fixtures.ts` rather than
+`@playwright/test` so recording mode captures every page. Use `test.slow()`
+instead of fixed `test.setTimeout()` values so recording mode's longer limits
+still apply.
+
 Failures preserve screenshots and traces in `ui/test-results/` and an HTML
 report in `ui/playwright-report/`; CI uploads both. Inspect traces with
 `cd ui && npx playwright show-trace <trace.zip>`. Diagnose the underlying

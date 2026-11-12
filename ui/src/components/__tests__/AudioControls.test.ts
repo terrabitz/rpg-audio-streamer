@@ -5,21 +5,27 @@ import AudioControls from '../AudioControls.vue'
 import { TrackUsageChangedError, useFileStore } from '@/stores/files'
 import { useTrackTypeStore } from '@/stores/trackTypes'
 
+const EDITOR = '[role="dialog"]:not([aria-label])'
+const CONFIRMATION = '[role="dialog"][aria-label="Delete track?"]'
+
 afterEach(() => vi.restoreAllMocks())
 
 it.each([
   [1, 'table'],
   [2, 'tables'],
-])('confirms deletion from %i %s and allows cancellation', async (count, noun) => {
+])('confirms deletion from %i %s in a follow-up dialog and allows cancellation', async (count, noun) => {
   const { wrapper, countTables, deleteTrack } = mountControls()
   countTables.mockResolvedValue(count)
   await wrapper.get('[aria-label="Edit Forest"]').trigger('click')
   await wrapper.get('[aria-label="Delete track"]').trigger('click')
   await flushPromises()
-  expect(wrapper.get('[role="alert"]').text()).toContain(`remove it from ${count} ${noun}`)
+  const confirmation = wrapper.get(CONFIRMATION)
+  expect(confirmation.get('[role="alert"]').text()).toContain(`Deleting Forest will remove it from ${count} ${noun}`)
+  expect(wrapper.get(EDITOR).find('[role="alert"]').exists()).toBe(false)
   expect(deleteTrack).not.toHaveBeenCalled()
-  await wrapper.get('button:not([aria-label])').trigger('click')
-  expect(wrapper.find('[role="alert"]').exists()).toBe(false)
+  await confirmation.get('button:not([aria-label])').trigger('click')
+  expect(wrapper.find(CONFIRMATION).exists()).toBe(false)
+  expect(wrapper.find(EDITOR).exists()).toBe(true)
   expect(deleteTrack).not.toHaveBeenCalled()
   await wrapper.get('[aria-label="Delete track"]').trigger('click')
   await flushPromises()
@@ -57,7 +63,7 @@ it('blocks repeat clicks while checking usage and keeps the track on lookup fail
   wrapper.unmount()
 })
 
-it('shows deletion failures without dismissing the confirmation', async () => {
+it('returns deletion failures to the track controls', async () => {
   const { wrapper, countTables, deleteTrack } = mountControls()
   vi.spyOn(console, 'error').mockImplementation(() => {})
   countTables.mockResolvedValue(1)
@@ -67,9 +73,8 @@ it('shows deletion failures without dismissing the confirmation', async () => {
   await flushPromises()
   await wrapper.get('[aria-label="Confirm delete track"]').trigger('click')
   await flushPromises()
-  expect(wrapper.text()).toContain('Failed to delete track.')
-  expect(wrapper.text()).toContain('remove it from 1 table')
-  expect(wrapper.find('[role="dialog"]').exists()).toBe(true)
+  expect(wrapper.find(CONFIRMATION).exists()).toBe(false)
+  expect(wrapper.get(EDITOR).get('[role="alert"]').text()).toContain('Failed to delete track.')
   wrapper.unmount()
 })
 
@@ -83,11 +88,11 @@ it('requires a fresh count if usage changes before confirmation', async () => {
   await flushPromises()
   await wrapper.get('[aria-label="Confirm delete track"]').trigger('click')
   await flushPromises()
-  expect(wrapper.text()).toContain('Table usage changed.')
-  expect(wrapper.find('[aria-label="Confirm delete track"]').exists()).toBe(false)
+  expect(wrapper.get(EDITOR).text()).toContain('Table usage changed.')
+  expect(wrapper.find(CONFIRMATION).exists()).toBe(false)
   await wrapper.get('[aria-label="Delete track"]').trigger('click')
   await flushPromises()
-  expect(wrapper.text()).toContain('remove it from 2 tables')
+  expect(wrapper.get(CONFIRMATION).text()).toContain('remove it from 2 tables')
   await wrapper.get('[aria-label="Confirm delete track"]').trigger('click')
   await flushPromises()
   expect(deleteTrack.mock.calls).toEqual([[1], [2]])
@@ -113,7 +118,7 @@ it('shows table-removal failures without closing the controls', async () => {
   await wrapper.get('[aria-label="Remove from table"]').trigger('click')
   await flushPromises()
   expect(wrapper.text()).toContain('Failed to remove track from table.')
-  expect(wrapper.find('[role="dialog"]').exists()).toBe(true)
+  expect(wrapper.find(EDITOR).exists()).toBe(true)
   expect(countTables).not.toHaveBeenCalled()
   wrapper.unmount()
 })

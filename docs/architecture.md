@@ -132,8 +132,9 @@ synchronization messages. Preview state is cleared on leaving the library;
 it cannot become a table's playback state. Track editing is shared with the
 table tiles through the audio-controls dialog's activator slot. Before deleting
 a library track, the GM-only usage endpoint counts its current table
-associations. Deletion requires confirmation when that count is nonzero and is
-blocked if the usage lookup fails. The deletion compares the confirmed count
+associations. When that count is nonzero, a separate follow-up dialog states
+how many tables lose the track and must be confirmed; unused tracks delete
+immediately. Deletion is blocked if the usage lookup fails. The deletion compares the confirmed count
 atomically with the current associations; if it changed, the GM must check
 usage again before deleting.
 
