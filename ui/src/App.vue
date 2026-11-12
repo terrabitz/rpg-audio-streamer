@@ -25,7 +25,10 @@ async function handleLogout() {
 }
 
 onMounted(async () => {
-  await auth.checkAuthStatus()
+  await router.isReady()
+  if (route.name !== 'table') {
+    await auth.checkAuthStatus()
+  }
 })
 
 onUnmounted(() => {

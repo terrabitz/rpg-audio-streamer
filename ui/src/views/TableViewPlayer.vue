@@ -7,10 +7,8 @@ import AudioPlayer from '../components/AudioPlayer.vue'
 import PlayerFileList from '../components/PlayerFileList.vue'
 import VolumeMixer from '../components/VolumeMixer.vue'
 import { useAudioStore, type AudioTrack } from '../stores/audio'
-import { useAuthStore } from '../stores/auth'
 import { useAppBar } from '@/composables/useAppBar'
 
-const auth = useAuthStore()
 const route = useRoute()
 const wsStore = useWebSocketStore()
 const audioStore = useAudioStore()
@@ -48,8 +46,7 @@ function handleSyncTrack(message: WebSocketMessage) {
   }
 }
 
-onMounted(async () => {
-  await auth.checkAuthStatus(token)
+onMounted(() => {
   setTitle('Game Session')
   audioStore.enabled = false
 })

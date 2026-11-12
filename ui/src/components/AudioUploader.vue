@@ -37,7 +37,7 @@
 import { postApiV1Files } from '@/client/apiClient'
 import { useFileStore } from '@/stores/files'
 import { useTrackTypeStore } from '@/stores/trackTypes'
-import debounce from 'lodash/debounce'
+import debounce from 'lodash.debounce'
 import { onMounted, ref, watch } from 'vue'
 import TrackTypeSelector from './TrackTypeSelector.vue'
 

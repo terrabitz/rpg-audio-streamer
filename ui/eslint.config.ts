@@ -16,7 +16,7 @@ export default defineConfigWithVueTs(
 
   {
     name: 'app/files-to-ignore',
-    ignores: ['**/dist/**', '**/dist-ssr/**', '**/coverage/**', '**/src/client/apiClient/**'],
+    ignores: ['**/dist/**', '**/dist-ssr/**', '**/coverage/**', '**/playwright-report/**', '**/test-results/**', '**/src/client/apiClient/**'],
   },
 
   pluginVue.configs['flat/essential'],

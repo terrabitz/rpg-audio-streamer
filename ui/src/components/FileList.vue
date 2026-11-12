@@ -32,11 +32,16 @@ onMounted(async () => {
   await fileStore.fetchFiles()
 })
 
-async function deleteFile(file: Track) {
-  audioStore.removeTrack(file.name)
+watch(() => fileStore.tracks, (tracks) => {
+  for (const track of tracks) {
+    audioStore.initTrack(track.id, track.name, track.typeID)
+  }
+}, { immediate: true })
 
+async function deleteFile(file: Track) {
   try {
     await fileStore.deleteFile(file.id)
+    audioStore.removeTrack(file.id)
   } catch (error) {
     console.error('Failed to delete file:', error)
   }

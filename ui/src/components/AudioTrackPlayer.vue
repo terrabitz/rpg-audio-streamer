@@ -18,7 +18,9 @@ const MIN_VOLUME_SKEW = 0.01
 const FADE_DURATION = 2000 // 2 seconds
 const FADE_STEP_DURATION = 16 // 16ms per step
 const FADE_STEPS = Math.ceil(FADE_DURATION / FADE_STEP_DURATION)
-let fadeTimer: number | undefined = undefined
+let fadeTimer: ReturnType<typeof setInterval> | undefined
+let resetTimer: ReturnType<typeof setTimeout> | undefined
+let hls: Hls | undefined
 const hlsReady = ref(false)
 
 watch(videoElement, async (el) => {
@@ -59,9 +61,11 @@ watch(() => audioStore.tracks[props.fileID]?.currentTime, () => {
 })
 
 onBeforeUnmount(() => {
-  if (fadeTimer !== null) {
+  if (fadeTimer !== undefined) {
     clearInterval(fadeTimer)
   }
+  clearTimeout(resetTimer)
+  hls?.destroy()
   if (videoElement.value) {
     videoElement.value.pause()
     videoElement.value.src = ''
@@ -88,7 +92,7 @@ function bindHLS(source: string, token: string | undefined, videoElement: HTMLVi
       }
     }
   }
-  const hls = new Hls(options)
+  hls = new Hls(options)
   hls.loadSource(source)
   hls.attachMedia(videoElement)
   hls.on(Hls.Events.MANIFEST_PARSED, () => {
@@ -102,7 +106,7 @@ function bindHLS(source: string, token: string | undefined, videoElement: HTMLVi
 }
 
 function updateDuration(duration: number) {
-  audioStore.updateTrackState(props.fileID, { duration })
+  updatePlaybackState({ duration })
 }
 
 function syncIsPlaying(fileID: string, videoElement: HTMLVideoElement) {
@@ -238,22 +242,28 @@ function stopFade() {
 
 function handleEnded(evt: Event) {
   const videoElement = evt.target as HTMLVideoElement
-  audioStore.updateTrackState(props.fileID, { isPlaying: false })
+  updatePlaybackState({ isPlaying: false })
   videoElement.pause()
-  setTimeout(() => {
+  resetTimer = setTimeout(() => {
     videoElement.currentTime = 0
-    audioStore.updateTrackState(props.fileID, { currentTime: 0 })
+    updatePlaybackState({ currentTime: 0 })
   }, 0)
 }
 
 function handleTimeUpdate(evt: Event) {
   const videoElement = evt.target as HTMLVideoElement
-  audioStore.updateTrackState(props.fileID, { currentTime: videoElement.currentTime })
+  updatePlaybackState({ currentTime: videoElement.currentTime })
 }
 
 function handleLoadedMetadata(evt: Event) {
   const videoElement = evt.target as HTMLVideoElement
-  audioStore.updateTrackState(props.fileID, { duration: videoElement.duration })
+  updatePlaybackState({ duration: videoElement.duration })
+}
+
+function updatePlaybackState(updates: Partial<AudioTrack>) {
+  // Queued media events must not recreate a track after deletion.
+  if (!audioStore.tracks[props.fileID]) return
+  audioStore.updateTrackState(props.fileID, updates)
 }
 
 function isFadeable(trackID: string) {

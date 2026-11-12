@@ -5,6 +5,12 @@ on:
   pull_request:
     paths:
       - "ui/**"
+      - "**.go"
+      - "go.mod"
+      - "go.sum"
+      - "sql/**"
+      - "openapi.yaml"
+      - ".github/workflows/test-node.yaml"
 
 jobs:
   lint:
@@ -24,7 +30,7 @@ jobs:
         working-directory: ./ui
 
       - name: Run tests
-        run: npm run lint
+        run: npm run lint:check
         working-directory: ./ui
 
   build:
@@ -46,3 +52,50 @@ jobs:
       - name: Run tests
         run: npm run build
         working-directory: ./ui
+
+  unit:
+    name: Frontend Domain Coverage
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./ui
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: "./ui/.nvmrc"
+          cache: "npm"
+          cache-dependency-path: ui/package-lock.json
+      - run: npm ci
+      - run: npm run test:coverage
+
+  e2e:
+    name: Full App UX
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./ui
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: "./ui/.nvmrc"
+          cache: "npm"
+          cache-dependency-path: ui/package-lock.json
+      - name: Install FFmpeg
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+      - name: Preserve browser failure evidence
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: playwright-results
+          path: |
+            ui/playwright-report/
+            ui/test-results/
+          retention-days: 7
