@@ -231,6 +231,10 @@ release is needed, publication and image building are skipped. After successful
 publication, the Docker job builds Linux amd64/arm64 images and pushes `latest`,
 full-version, major, and major.minor tags to GHCR.
 
+Pull requests that touch any image input build the same multi-arch image and
+check that the Dockerfile's Go and Node base images match `go.mod` and
+`ui/.nvmrc`, since dependency bumps do not update the Dockerfile.
+
 ## Architectural assurance
 
 Domain tests exercise authentication, routing policies, and frontend state

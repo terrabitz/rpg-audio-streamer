@@ -5,12 +5,44 @@ on:
   pull_request:
     paths:
       - 'docker/**'
+      - 'go.mod'
+      - 'go.sum'
+      - 'main.go'
+      - 'internal/**'
+      - 'sql/**'
+      - 'ui/**'
+      - '.github/workflows/test-docker.yaml'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
+  toolchains:
+    name: Check Docker Toolchains
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # Dependabot bumps go.mod and .nvmrc but not the Dockerfile base images.
+      - name: Compare Dockerfile toolchains with project versions
+        run: |
+          go_required=$(awk '$1 == "go" { print $2 }' go.mod | cut -d. -f1,2)
+          go_image=$(sed -nE 's/^FROM golang:([0-9]+\.[0-9]+).*/\1/p' docker/Dockerfile)
+          node_required=$(tr -d 'v[:space:]' < ui/.nvmrc | cut -d. -f1)
+          node_image=$(sed -nE 's/^FROM node:([0-9]+).*/\1/p' docker/Dockerfile)
+
+          status=0
+          if [ "$go_required" != "$go_image" ]; then
+            echo "::error file=docker/Dockerfile::Go image is ${go_image:-missing}, go.mod requires $go_required"
+            status=1
+          fi
+          if [ "$node_required" != "$node_image" ]; then
+            echo "::error file=docker/Dockerfile::Node image is ${node_image:-missing}, ui/.nvmrc requires $node_required"
+            status=1
+          fi
+          exit $status
+
   build:
     name: Build Docker Image
     runs-on: ubuntu-latest
