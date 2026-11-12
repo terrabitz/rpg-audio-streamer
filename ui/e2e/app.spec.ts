@@ -23,6 +23,25 @@ test('GM can recover from invalid credentials, keep a session, and log out', asy
   await expect(page.getByRole('link', { name: 'GM Login' })).toBeVisible()
 })
 
+test('GM selects a required track type and receives a bottom upload toast on mobile', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 })
+  await login(page)
+  await page.getByRole('link', { name: 'Library', exact: true }).click()
+  let uploads = 0
+  page.on('request', request => {
+    if (request.method() === 'POST' && new URL(request.url()).pathname === '/api/v1/files') uploads += 1
+  })
+  await uploadTrack(page, 'Mobile Forest')
+  expect(uploads).toBe(1)
+  await expect(page.getByRole('status').filter({ hasText: 'File uploaded successfully!' })).toBeHidden()
+  await openUploadDialog(page)
+  await expect(page.getByRole('combobox', { name: 'Track Type', exact: true })).toHaveValue('')
+  await expect(page.getByText('Select a track type before uploading.', { exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Upload', exact: true })).toBeDisabled()
+  await page.getByRole('button', { name: 'Cancel', exact: true }).click()
+  await deleteLibraryTrack(page, 'Mobile Forest', 0)
+})
+
 test('GM uploads, renames, persists, and deletes an audio track', async ({ page }) => {
   await login(page)
   await page.getByRole('link', { name: 'Library', exact: true }).click()
@@ -1063,14 +1082,30 @@ async function uploadTrack(page: Page, name: string) {
     'pipe:1',
   ])
   await openUploadDialog(page)
+  const upload = page.getByRole('button', { name: 'Upload', exact: true })
+  await expect(upload).toBeDisabled()
   await page
     .getByLabel('Select a file', { exact: true })
     .setInputFiles({ name: 'sample.mp3', mimeType: 'audio/mpeg', buffer: audio })
   await page.getByLabel('Track Name', { exact: true }).fill(name)
+  await expect(upload).toBeDisabled()
   await page.getByRole('combobox', { name: 'Track Type', exact: true }).press('ArrowDown')
   await page.getByRole('option', { name: 'Music', exact: true }).click()
-  await page.getByRole('button', { name: 'Upload', exact: true }).click()
-  await expect(page.getByText('File uploaded successfully!', { exact: true })).toBeVisible()
+  await expect(upload).toBeEnabled()
+  await upload.click()
+  const toast = page.getByRole('status').filter({ hasText: 'File uploaded successfully!' })
+  await expect(toast).toBeVisible()
+  await expect.poll(async () => {
+    const bounds = await toast.boundingBox()
+    const viewport = page.viewportSize()
+    if (!bounds || !viewport) return false
+    return bounds.y > viewport.height * 0.75
+      && bounds.y + bounds.height <= viewport.height
+      && bounds.x >= 0
+      && bounds.x + bounds.width <= viewport.width
+      && bounds.height <= 80
+      && bounds.width <= 400
+  }).toBe(true)
 }
 
 async function openUploadDialog(page: Page) {

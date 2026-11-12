@@ -1,6 +1,7 @@
 <template>
   <v-select :model-value="props.modelValue" @update:model-value="emit('update:modelValue', $event)"
-    :items="trackTypeStore.trackTypes" item-title="name" item-value="id" label="Track Type" required>
+    :items="trackTypeStore.trackTypes" item-title="name" item-value="id" label="Track Type" required
+    :rules="[validateType]">
     <template v-slot:item="{ props, item }">
       <v-list-item v-bind="props" title="">
         <v-chip :color="item.color" text-color="white">
@@ -29,6 +30,10 @@ const emit = defineEmits<{
 }>();
 
 const trackTypeStore = useTrackTypeStore();
+
+function validateType(value: string) {
+  return !!trackTypeStore.getTypeById(value) || 'Select a track type.';
+}
 
 onMounted(async () => {
   await trackTypeStore.fetchTrackTypes();

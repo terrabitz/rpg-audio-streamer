@@ -29,7 +29,7 @@
               <v-file-input v-model="trackFile" label="Select a file" prepend-icon="$music" accept="audio/mp3"
                 :loading="isUploading" :disabled="isUploading" required></v-file-input>
               <v-text-field v-model="trackName" label="Track Name" required></v-text-field>
-              <TrackTypeSelector v-model="selectedTypeId" />
+              <TrackTypeSelector v-model="selectedTypeId" hint="Select a track type before uploading." persistent-hint />
             </v-form>
             <div v-if="isDragging" class="drop-text">Drop files here</div>
           </div>
@@ -40,12 +40,13 @@
           <v-btn v-if="source === 'library'" color="success" @click="addTrack"
             :disabled="isBusy || !libraryReady || !selectedTrack" :loading="isAdding">Add to table</v-btn>
           <v-btn v-else color="success" @click="submitForm"
-            :disabled="isBusy || !formValid || !trackFile || !trackName.trim() || !selectedTypeId"
+            :disabled="isBusy || !formValid || !trackFile || !trackName.trim() || !selectedType"
             :loading="isUploading">Upload</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
     <v-snackbar :model-value="!!uploadStatus && !showModal" :color="uploadStatus?.type"
+      attach="body" location="bottom center" :timeout="4000" min-width="0" max-width="calc(100vw - 32px)"
       @update:model-value="uploadStatus = null">{{ uploadStatus?.message }}</v-snackbar>
   </div>
 </template>
@@ -54,12 +55,14 @@
 import { postApiV1Files } from '@/client/apiClient'
 import { useFileStore } from '@/stores/files'
 import { useTableStore } from '@/stores/tables'
+import { useTrackTypeStore } from '@/stores/trackTypes'
 import debounce from 'lodash.debounce'
 import { computed, onUnmounted, ref, watch } from 'vue'
 import TrackTypeSelector from './TrackTypeSelector.vue'
 
 const props = defineProps<{ tableID?: string }>()
 const tables = useTableStore()
+const trackTypes = useTrackTypeStore()
 const isUploading = ref(false)
 const uploadStatus = ref<{ type: 'success' | 'error', message: string } | null>(null)
 const fileStore = useFileStore()
@@ -69,6 +72,7 @@ const formValid = ref(false)
 const trackName = ref('')
 const trackFile = ref<File | null>(null)
 const selectedTypeId = ref('')
+const selectedType = computed(() => trackTypes.getTypeById(selectedTypeId.value))
 const source = ref<'library' | 'upload'>(props.tableID ? 'library' : 'upload')
 const selectedTrack = ref<string | null>(null)
 const loadingLibrary = ref(false)
@@ -134,7 +138,7 @@ async function submitForm() {
 async function uploadTrack() {
   const files = trackFile.value
   const name = trackName.value.trim()
-  const typeID = selectedTypeId.value
+  const typeID = selectedType.value?.id
   if (!files || !name || !typeID) {
     uploadStatus.value = { type: 'error', message: 'Select a file, name, and track type.' }
     return false

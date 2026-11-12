@@ -137,6 +137,11 @@ existing library track or upload a new one directly into the table.
 To preserve space during play, the table name appears only in the app bar.
 Its **Add Track** action opens a dialog with library selection and new-upload
 tabs; neither workflow adds a permanent control row to the track grid.
+Uploads require a file, a nonblank name, and a valid library track type before
+the Upload action is enabled. The type selector shows required-field guidance.
+Upload results appear as compact, auto-dismissing bottom-center toasts attached
+to the document body, independent of the uploader's app-bar or library placement;
+upload failures remain inline while the dialog is open.
 The table-management list opens a table when its row is clicked; rename and
 delete live in each row's three-dot menu.
 
