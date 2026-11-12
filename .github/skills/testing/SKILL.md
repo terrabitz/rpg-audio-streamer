@@ -25,6 +25,7 @@ Vue tooling.
 | `make test-go` | All Go tests; enforce 80% internal statement coverage |
 | `make test-ui` | Vitest domain coverage; enforce 80% statements, branches, functions, and lines |
 | `make test-e2e` | Production UI build and real full-app Chromium journeys |
+| `make test-dev` | Seeded local dev startup, isolation, media fixtures, and cleanup |
 | `cd ui && npm run build` | Vue/TypeScript checking, including tests, and production bundle |
 | `cd ui && npm run lint:check` | Read-only frontend lint |
 

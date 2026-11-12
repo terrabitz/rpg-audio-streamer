@@ -9,6 +9,8 @@ on:
       - "go.mod"
       - "go.sum"
       - "sql/**"
+      - "scripts/**"
+      - "Makefile"
       - "openapi.yaml"
       - ".github/workflows/test-node.yaml"
 
@@ -89,6 +91,9 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
       - run: npm ci
       - run: npx playwright install --with-deps chromium
+      - name: Verify seeded dev instances
+        run: make test-dev
+        working-directory: .
       - run: npm run test:e2e
       - name: Preserve browser failure evidence
         if: failure()

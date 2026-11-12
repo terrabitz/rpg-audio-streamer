@@ -1,11 +1,16 @@
-.PHONY: ui go test test-go test-ui test-e2e record-e2e gen gen-sqlc gen-api-client gen-docs
-
+.PHONY: dev test-dev ui go test test-go test-ui test-e2e record-e2e gen gen-sqlc gen-api-client gen-docs
 
 ui:
 	cd ui && npm install && npm run dev
 
 go:
 	air
+
+dev:
+	node scripts/dev.mjs
+
+test-dev:
+	node --test scripts/dev.test.mjs
 
 test: test-go test-ui
 

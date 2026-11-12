@@ -35,6 +35,22 @@ API and WebSocket proxy (by default to `http://localhost:8080`); the proxy targe
 can be supplied through `API_PROXY_TARGET`. The browser SDK base URL comes from
 `VITE_API_BASE_URL`, normally `/`.
 
+The optional API `--host` / `HOST` setting controls the listener interface;
+its empty default preserves listening on all interfaces. The seeded local
+development launcher (`scripts/dev.mjs`, exposed as `make dev`) binds both
+the API and Vite to loopback on automatically selected ports. Each invocation
+builds the real API into a unique temporary directory and creates a fresh
+SQLite database, upload directory, and Vite cache. It uses public fixture GM
+credentials, freshly salted native Argon2id password hashes, and per-instance
+random signing/invite tokens. Nine generated audio fixtures (three per default
+track type) use ordinary display names and are uploaded into the default table
+through authenticated HTTP, exercising normal validation, conversion, and persistence rather than writing
+database fixtures directly. Vite uses the isolated API proxy and ignores
+developer dotenv files; the API runs from the temporary directory with
+explicit configuration. The launcher owns shutdown and removes its temporary
+state on normal termination or startup failure. Uncatchable termination
+cannot guarantee cleanup. Procedures live in the local-dev skill.
+
 ## Backend
 
 | Package | Responsibility |
@@ -224,6 +240,25 @@ Removing a media component destroys its HLS instance and clears playback
 timers; queued media events cannot recreate deleted track state.
 Playback is ephemeral browser state, not persisted in SQLite or recovered by
 the server after every GM disconnect.
+
+## Release pipeline
+
+Pushes to `main` that match the release workflow's path filters run
+semantic-release in dry-run mode to calculate a version and release notes from
+conventional commits and existing tags. Only the commit analyzer and notes
+generator are enabled; the workflow does not commit a changelog or push to
+`main`. `gh release create` creates the version tag at the triggering commit
+and publishes the generated notes on GitHub, respecting branch protection.
+Release notes live in GitHub releases.
+
+Release runs are serialized to avoid competing version calculations. When no
+release is needed, publication and image building are skipped. After successful
+publication, the Docker job builds Linux amd64/arm64 images and pushes `latest`,
+full-version, major, and major.minor tags to GHCR.
+
+Pull requests that touch any image input build the same multi-arch image and
+check that the Dockerfile's Go and Node base images match `go.mod` and
+`ui/.nvmrc`, since dependency bumps do not update the Dockerfile.
 
 ## Architectural assurance
 

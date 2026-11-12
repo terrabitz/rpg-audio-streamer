@@ -56,6 +56,12 @@ func main() {
 				Aliases: []string{"s"},
 				Usage:   "Start the audio streaming server",
 				Flags: []cli.Flag{
+					&cli.StringFlag{
+						Name:        "host",
+						EnvVars:     []string{"HOST"},
+						Usage:       "Host to bind (empty listens on all interfaces)",
+						Destination: &cfg.Server.Host,
+					},
 					&cli.IntFlag{
 						Name:        "port",
 						EnvVars:     []string{"PORT"},
