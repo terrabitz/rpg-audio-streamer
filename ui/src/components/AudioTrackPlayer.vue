@@ -9,6 +9,7 @@ import { onBeforeUnmount, ref, shallowRef, watch } from 'vue';
 import { useAudioStore, type AudioTrack } from '../stores/audio';
 
 const props = defineProps<{ fileID: string, token?: string }>()
+const emit = defineEmits<{ error: [message: string] }>()
 const audioStore = useAudioStore()
 const videoElement = shallowRef<HTMLVideoElement | null>(null)
 
@@ -76,7 +77,7 @@ onBeforeUnmount(() => {
 async function startAudioSync(fileID: string, videoElement: HTMLVideoElement) {
   const source = `/api/v1/stream/${fileID}/index.m3u8`
   if (!Hls.isSupported()) {
-    console.error('HLS.js is not supported in this browser.')
+    reportPlaybackError(new Error('HLS.js is not supported in this browser.'))
     return
   }
 
@@ -103,6 +104,9 @@ function bindHLS(source: string, token: string | undefined, videoElement: HTMLVi
     // Once we figure out the total duration, update the store
     updateDuration(data.details.totalduration)
   })
+  hls.on(Hls.Events.ERROR, (_, data) => {
+    if (data.fatal) reportPlaybackError(data)
+  })
 }
 
 function updateDuration(duration: number) {
@@ -115,7 +119,7 @@ function syncIsPlaying(fileID: string, videoElement: HTMLVideoElement) {
   if (desiredState?.isPlaying && videoElement.paused) {
     videoElement.volume = 0
     videoElement.play().catch((err) => {
-      console.error(`Error playing video element ${props.fileID}:`, err)
+      reportPlaybackError(err)
     })
   }
 
@@ -264,6 +268,12 @@ function updatePlaybackState(updates: Partial<AudioTrack>) {
   // Queued media events must not recreate a track after deletion.
   if (!audioStore.tracks[props.fileID]) return
   audioStore.updateTrackState(props.fileID, updates)
+}
+
+function reportPlaybackError(cause: unknown) {
+  console.error(`Failed to play track ${props.fileID}:`, cause)
+  updatePlaybackState({ isPlaying: false })
+  emit('error', 'Unable to play track. Try again or choose another track.')
 }
 
 function isFadeable(trackID: string) {

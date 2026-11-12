@@ -77,11 +77,22 @@ async function deleteTable() {
       <v-btn color="primary" class="mb-4" @click="editTable(null)">Create table</v-btn>
       <p v-if="!tables.tables.length">No tables yet. Create a table for your group.</p>
       <v-list>
-        <v-list-item v-for="table in tables.tables" :key="table.id" :title="table.name">
+        <v-list-item v-for="table in tables.tables" :key="table.id" :title="table.name"
+          :to="`/tables/${table.id}`" :aria-label="`Open ${table.name}`">
           <template #append>
-            <v-btn :to="`/tables/${table.id}`" :aria-label="`Open ${table.name}`" class="mr-2">Open</v-btn>
-            <v-btn :aria-label="`Rename ${table.name}`" @click="editTable(table)">Rename</v-btn>
-            <v-btn color="error" :aria-label="`Delete ${table.name}`" @click="deleting = table">Delete</v-btn>
+            <v-menu>
+              <template #activator="{ props: menuProps }">
+                <v-btn v-bind="menuProps" icon="$dotsVertical" variant="text"
+                  :aria-label="`Options for ${table.name}`" @click.stop.prevent
+                  @keydown.enter.stop @keydown.space.stop />
+              </template>
+              <v-list>
+                <v-list-item title="Rename" role="menuitem" :aria-label="`Rename ${table.name}`"
+                  @click="editTable(table)" />
+                <v-list-item title="Delete" role="menuitem" :aria-label="`Delete ${table.name}`"
+                  base-color="error" @click="deleting = table" />
+              </v-list>
+            </v-menu>
           </template>
         </v-list-item>
       </v-list>

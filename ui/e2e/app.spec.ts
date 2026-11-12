@@ -11,6 +11,7 @@ test('GM can recover from invalid credentials, keep a session, and log out', asy
   await page.getByLabel('Password', { exact: true }).fill('e2e-password')
   await page.getByRole('button', { name: 'Login', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'Tables', exact: true })).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Open My Table', exact: true })).toHaveText('My Table')
   await page.getByRole('link', { name: 'Open My Table', exact: true }).click()
   await expect(page.getByRole('button', { name: 'Add Track', exact: true })).toBeVisible()
   await page.reload()
@@ -25,21 +26,102 @@ test('GM uploads, renames, persists, and deletes an audio track', async ({ page 
   await login(page)
   await page.getByRole('link', { name: 'Library', exact: true }).click()
   await uploadTrack(page, 'Forest')
-  const tile = page.locator('.file-tile').filter({ hasText: 'Forest' })
-  await expect(tile).toBeVisible()
-  await tile.getByRole('button', { name: 'Edit Forest' }).click()
+  const row = page.getByRole('row').filter({ hasText: 'Forest' })
+  await expect(row).toBeVisible()
+  await expect(page.getByRole('columnheader', { name: 'Name', exact: true })).toBeVisible()
+  await expect(page.getByRole('columnheader', { name: 'Type', exact: true })).toBeVisible()
+  await expect(page.getByRole('columnheader', { name: 'Added', exact: true })).toBeVisible()
+  await expect(row.getByText('Music', { exact: true })).toBeVisible()
+  await expect(row.getByText('Loop', { exact: true })).toBeVisible()
+  await expect(row.locator('time')).toHaveAttribute('datetime', /^\d{4}-\d{2}-\d{2}T/)
+  await row.getByRole('button', { name: 'Edit Forest' }).click()
+  await expect(page.locator('video')).toHaveCount(0)
   await page.getByLabel('Track Name', { exact: true }).fill('Rain')
   await page.getByRole('button', { name: 'Save Changes' }).click()
-  await expect(page.locator('.file-tile').filter({ hasText: 'Rain' })).toBeVisible()
+  await expect(page.getByRole('row').filter({ hasText: 'Rain' })).toBeVisible()
   await page.reload()
-  const renamed = page.locator('.file-tile').filter({ hasText: 'Rain' })
+  const renamed = page.getByRole('row').filter({ hasText: 'Rain' })
   await expect(renamed).toBeVisible()
+  await renamed.click()
+  await expect.poll(() => page.locator('video').evaluate(
+    (el: HTMLVideoElement) => !el.paused && el.currentTime > 0,
+  )).toBe(true)
   await renamed.getByRole('button', { name: 'Edit Rain' }).click()
   await page.getByRole('button', { name: 'Delete track', exact: true }).click()
   await expect(renamed).toHaveCount(0)
   await expect(page.locator('video')).toHaveCount(0)
   await page.reload()
-  await expect(page.locator('.file-tile')).toHaveCount(0)
+  await expect(page.getByText('No tracks in the library yet.', { exact: true })).toBeVisible()
+})
+
+test('library row previews stay local while a table is streaming', async ({ page, context, browser }) => {
+  test.setTimeout(60_000)
+  await login(page)
+  await uploadTrack(page, 'Live Music')
+  await page.locator('.file-tile').filter({ hasText: 'Live Music' }).click()
+  await expect.poll(() => page.locator('video').evaluate(
+    (el: HTMLVideoElement) => !el.paused && el.currentTime > 0,
+  )).toBe(true)
+
+  const playerContext = await browser.newContext()
+  const library = await context.newPage()
+  const previewSockets: string[] = []
+  library.on('websocket', socket => previewSockets.push(socket.url()))
+  try {
+    const player = await playerContext.newPage()
+    await player.goto('/table/e2e-invite')
+    await player.getByRole('button', { name: 'Connect Audio', exact: true }).click()
+    await expect.poll(() => player.locator('video').evaluate(
+      (el: HTMLVideoElement) => !el.paused && el.currentTime > 0,
+    )).toBe(true)
+    const playerSource = await player.locator('video').evaluate((el: HTMLVideoElement) => el.src)
+    await library.goto('/library')
+    await uploadTrack(library, 'Private Preview')
+    const row = library.getByRole('row').filter({ hasText: 'Private Preview' })
+    await row.click()
+    await expect.poll(() => library.locator('video').evaluate(
+      (el: HTMLVideoElement) => !el.paused && el.currentTime > 0,
+    )).toBe(true)
+    await expect(row.getByRole('button', { name: 'Pause preview Private Preview', exact: true })).toBeVisible()
+    await row.getByRole('button', { name: 'Edit Private Preview', exact: true }).click()
+    await expect(library.getByRole('dialog')).toBeVisible()
+    await expect(row.getByRole('button', { name: 'Pause preview Private Preview', exact: true })).toBeVisible()
+    await library.getByRole('button', { name: 'Close track controls', exact: true }).click()
+    await row.focus()
+    await row.press('Enter')
+    await expect.poll(() => library.locator('video').evaluate(
+      (el: HTMLVideoElement) => el.paused,
+    )).toBe(true)
+    await row.press('Space')
+    await expect.poll(() => library.locator('video').evaluate(
+      (el: HTMLVideoElement) => !el.paused && el.currentTime > 0,
+    )).toBe(true)
+    await library.getByRole('row').filter({ hasText: 'Live Music' }).click()
+    await expect(library.locator('video')).toHaveCount(1)
+    await expect(library.getByRole('button', { name: 'Preview Private Preview', exact: true })).toBeVisible()
+    await expect.poll(() => library.locator('video').evaluate(
+      (el: HTMLVideoElement) => !el.paused && el.currentTime > 0,
+    )).toBe(true)
+    expect(previewSockets).toEqual([])
+    await expect(player.locator('video')).toHaveCount(1)
+    await expect(player.locator('video')).toHaveAttribute('src', playerSource)
+    await expect.poll(() => player.locator('video').evaluate(
+      (el: HTMLVideoElement) => !el.paused && el.currentTime > 0,
+    )).toBe(true)
+    await library.getByRole('link', { name: 'Tables', exact: true }).click()
+    await expect(library.locator('video')).toHaveCount(0)
+    await library.getByRole('link', { name: 'Open My Table', exact: true }).click()
+    await expect(library.locator('.file-tile')).toHaveCount(1)
+    await expect(library.getByText('Private Preview', { exact: true })).toHaveCount(0)
+    await expect.poll(() => library.locator('video').evaluate(
+      (el: HTMLVideoElement) => el.paused,
+    )).toBe(true)
+  } finally {
+    await library.close()
+    await playerContext.close()
+  }
+  await deleteLibraryTrack(page, 'Private Preview')
+  await deleteLibraryTrack(page, 'Live Music')
 })
 
 test('failed audio conversion is shown as an upload error', async ({ page }) => {
@@ -166,7 +248,16 @@ test('tables share a library but isolate invitations, playback, removal, and del
   await page.getByRole('link', { name: 'Tables', exact: true }).click()
   await createTable(page, 'Friday')
   await createTable(page, 'Sunday')
-  await page.getByRole('button', { name: 'Rename Friday', exact: true }).click()
+  await page.getByRole('button', { name: 'Options for Friday', exact: true }).focus()
+  await page.getByRole('button', { name: 'Options for Friday', exact: true }).press('Enter')
+  await expect(page.getByRole('menuitem', { name: 'Rename Friday', exact: true })).toBeVisible()
+  await expect(page).toHaveURL(/\/tables$/)
+  await page.keyboard.press('Escape')
+  await expect(page.getByRole('menuitem', { name: 'Rename Friday', exact: true })).toHaveCount(0)
+  await page.getByRole('button', { name: 'Options for Friday', exact: true }).click()
+  await expect(page).toHaveURL(/\/tables$/)
+  await page.getByRole('menuitem', { name: 'Rename Friday', exact: true }).click()
+  await expect(page).toHaveURL(/\/tables$/)
   await page.getByLabel('Table name', { exact: true }).fill('Friday group')
   await page.getByRole('button', { name: 'Save table', exact: true }).click()
   await page.reload()
@@ -246,7 +337,7 @@ test('tables share a library but isolate invitations, playback, removal, and del
       (el: HTMLVideoElement) => !el.paused,
     )).toBe(true)
     await page.getByRole('link', { name: 'Library', exact: true }).click()
-    await expect(page.locator('.file-tile').filter({ hasText: 'Friday Only' })).toBeVisible()
+    await expect(page.getByRole('row').filter({ hasText: 'Friday Only' })).toBeVisible()
     await deleteLibraryTrack(page, 'Shared Forest')
     await expect(sundayTile).toHaveCount(0)
     await expect(sundayPlayer.locator('video')).toHaveCount(0)
@@ -260,7 +351,7 @@ test('tables share a library but isolate invitations, playback, removal, and del
     await deleteTable(page, 'Sunday')
     await expect(sundayPlayer.getByText('This table has been deleted.', { exact: true })).toBeVisible()
     await deleteLibraryTrack(page, 'Friday Only')
-    await expect(page.locator('.file-tile')).toHaveCount(0)
+    await expect(page.getByText('No tracks in the library yet.', { exact: true })).toBeVisible()
   } finally {
     await fridayContext.close()
     await sundayContext.close()
@@ -297,17 +388,19 @@ async function addExistingTrack(page: Page, name: string) {
 }
 
 async function deleteTable(page: Page, name: string) {
-  await page.getByRole('button', { name: `Delete ${name}`, exact: true }).click()
+  await page.getByRole('button', { name: `Options for ${name}`, exact: true }).click()
+  await expect(page).toHaveURL(/\/tables$/)
+  await page.getByRole('menuitem', { name: `Delete ${name}`, exact: true }).click()
   await page.getByRole('button', { name: 'Confirm delete table', exact: true }).click()
   await expect(page.getByRole('link', { name: `Open ${name}`, exact: true })).toHaveCount(0)
 }
 
 async function deleteLibraryTrack(page: Page, name: string) {
   await page.getByRole('link', { name: 'Library', exact: true }).click()
-  const tile = page.locator('.file-tile').filter({ hasText: name })
-  await tile.getByRole('button', { name: `Edit ${name}` }).click()
+  const row = page.getByRole('row').filter({ hasText: name })
+  await row.getByRole('button', { name: `Edit ${name}` }).click()
   await page.getByRole('button', { name: 'Delete track', exact: true }).click()
-  await expect(tile).toHaveCount(0)
+  await expect(row).toHaveCount(0)
 }
 
 async function uploadTrack(page: Page, name: string) {

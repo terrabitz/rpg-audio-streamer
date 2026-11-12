@@ -1,24 +1,28 @@
 <template>
-  <div v-if="trackType" class="audio-control-tile" :class="{ 'is-active': isActive }">
-    <div class="text-center pa-1 text-subtitle-1 position-relative">
-      {{ props.fileName }}
-      <v-btn icon="$dotsVertical" size="small" variant="text" :aria-label="`Edit ${props.fileName}`" @click.stop="showControls = true"
-        class="position-absolute top-0 right-0" />
-    </div>
-    <v-divider></v-divider>
-    <div class="d-flex flex-column pa-1 position-relative">
-      <div class="d-flex justify-space-between align-center mx-2">
-        <v-chip :color="trackType?.color" text-color="white" size="x-small">
-          {{ trackType?.name }}
-        </v-chip>
-        <div v-if="!props.library" class="play-status mr-2">
-          <v-progress-circular v-if="fadeState?.inProgress" width="3" size="20" indeterminate />
-          <v-icon v-else size="24">
-            {{ audioState?.isPlaying ? '$pause' : '$play' }}
-          </v-icon>
+  <template v-if="trackType">
+    <slot name="activator" :open="openControls">
+      <div class="audio-control-tile" :class="{ 'is-active': isActive }">
+        <div class="text-center pa-1 text-subtitle-1 position-relative">
+          {{ props.fileName }}
+          <v-btn icon="$dotsVertical" size="small" variant="text" :aria-label="`Edit ${props.fileName}`"
+            @click.stop="openControls" class="position-absolute top-0 right-0" />
+        </div>
+        <v-divider></v-divider>
+        <div class="d-flex flex-column pa-1 position-relative">
+          <div class="d-flex justify-space-between align-center mx-2">
+            <v-chip :color="trackType?.color" text-color="white" size="x-small">
+              {{ trackType?.name }}
+            </v-chip>
+            <div v-if="!props.library" class="play-status mr-2">
+              <v-progress-circular v-if="fadeState?.inProgress" width="3" size="20" indeterminate />
+              <v-icon v-else size="24">
+                {{ audioState?.isPlaying ? '$pause' : '$play' }}
+              </v-icon>
+            </div>
+          </div>
         </div>
       </div>
-    </div>
+    </slot>
 
     <v-dialog v-model="showControls" max-width="400px" @click:outside="showControls = false">
       <v-card>
@@ -63,7 +67,7 @@
         </v-card-actions>
       </v-card>
     </v-dialog>
-  </div>
+  </template>
 </template>
 
 <script setup lang="ts">
@@ -97,6 +101,10 @@ const isActive = computed(() => audioState.value?.isPlaying);
 
 const editName = ref(props.fileName);
 const editTrackType = ref(trackType.value?.id || '');
+
+function openControls() {
+  showControls.value = true;
+}
 
 // Computed property to check if there are any changes to save
 const hasChanges = computed(() => {

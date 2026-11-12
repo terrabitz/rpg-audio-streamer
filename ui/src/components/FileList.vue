@@ -1,10 +1,40 @@
 <template>
   <v-container :class="{ 'pa-0': !props.library }">
     <v-alert v-if="error" type="error" class="mb-4">{{ error }}</v-alert>
-    <p v-if="!tracks.length" class="mb-4">
-      {{ props.library ? 'No tracks in the library yet.' : 'No tracks at this table. Add a library track or upload a new one.' }}
+    <template v-if="props.library">
+      <AudioPlayer @error="error = $event" />
+      <v-data-table :headers="libraryHeaders" :items="tracks" :loading="loading" density="compact" hover
+        :row-props="libraryRowProps" no-data-text="No tracks in the library yet.">
+        <template #[`item.preview`]="{ item }">
+          <v-btn :icon="audioStore.tracks[item.id]?.isPlaying ? '$pause' : '$play'" variant="text" size="small"
+            :aria-label="`${audioStore.tracks[item.id]?.isPlaying ? 'Pause preview' : 'Preview'} ${item.name}`"
+            :aria-pressed="!!audioStore.tracks[item.id]?.isPlaying" @click.stop="handlePlay(item.id)" />
+        </template>
+        <template #[`item.typeID`]="{ item }">
+          <v-chip :color="trackTypeStore.getTypeById(item.typeID)?.color" size="small">
+            {{ trackTypeStore.getTypeById(item.typeID)?.name ?? 'Unknown type' }}
+          </v-chip>
+        </template>
+        <template #[`item.playback`]="{ item }">
+          {{ trackTypeStore.getTypeById(item.typeID)?.isRepeating ? 'Loop' : 'Once' }}
+        </template>
+        <template #[`item.createdAt`]="{ item }">
+          <time :datetime="item.createdAt">{{ new Date(item.createdAt).toLocaleString() }}</time>
+        </template>
+        <template #[`item.actions`]="{ item }">
+          <AudioControls :fileID="item.id" :fileName="item.name" library @delete="deleteFile(item)">
+            <template #activator="{ open }">
+              <v-btn icon="$dotsVertical" variant="text" size="small" :aria-label="`Edit ${item.name}`"
+                @click.stop="open" />
+            </template>
+          </AudioControls>
+        </template>
+      </v-data-table>
+    </template>
+    <p v-else-if="!tracks.length" class="mb-4">
+      No tracks at this table. Add a library track or upload a new one.
     </p>
-    <v-row :dense="true">
+    <v-row v-if="!props.library" :dense="true">
       <v-col v-for="file in tracks" :key="file.id" cols="6" sm="4" md="3" lg="2">
         <v-card class="file-tile" @click="handlePlay(file.id)">
           <AudioControls :fileID="file.id" :fileName="file.name" :library="props.library" @volume="vol => handleVolume(file.id, vol)"
@@ -26,6 +56,7 @@ import debounce from 'lodash.debounce'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useAudioStore } from '../stores/audio'
 import AudioControls from './AudioControls.vue'
+import AudioPlayer from './AudioPlayer.vue'
 
 const fileStore = useFileStore()
 const audioStore = useAudioStore()
@@ -34,10 +65,20 @@ const trackTypeStore = useTrackTypeStore()
 const tables = useTableStore()
 const props = defineProps<{ library?: boolean }>()
 const error = ref('')
+const loading = ref(true)
+const libraryHeaders = [
+  { title: '', key: 'preview', sortable: false, width: 56 },
+  { title: 'Name', key: 'name' },
+  { title: 'Type', key: 'typeID', sortable: false },
+  { title: 'Playback', key: 'playback', sortable: false },
+  { title: 'Added', key: 'createdAt' },
+  { title: '', key: 'actions', sortable: false, width: 56 },
+]
 const tracks = computed(() => props.library ? fileStore.tracks :
   tables.tracks.map(track => fileStore.getTrackById(track.id) ?? track))
 
 onMounted(async () => {
+  if (props.library) audioStore.clearTracks()
   try {
     await trackTypeStore.fetchTrackTypes()
     await fileStore.fetchFiles()
@@ -45,14 +86,16 @@ onMounted(async () => {
   } catch (e) {
     console.error('Failed to load tracks:', e)
     error.value = 'Failed to load tracks.'
+  } finally {
+    loading.value = false
   }
 })
 
 watch(tracks, (tracks) => {
-  if (props.library) return
   for (const id of Object.keys(audioStore.tracks)) {
     if (!tracks.some(track => track.id === id)) audioStore.removeTrack(id)
   }
+  if (props.library) return
   for (const track of tracks) {
     audioStore.initTrack(track.id, track.name, track.typeID)
   }
@@ -74,9 +117,26 @@ const debouncedSendMessage = debounce((method: string, payload: unknown) => {
   wsStore.sendMessage(method, payload)
 }, 100)
 
+function libraryRowProps({ item }: { item: Track }) {
+  return {
+    tabindex: 0,
+    class: ['library-track-row', { 'bg-grey-darken-3': audioStore.tracks[item.id]?.isPlaying }],
+    onClick: () => handlePlay(item.id),
+    onKeydown(event: KeyboardEvent) {
+      if (event.target !== event.currentTarget || !['Enter', ' '].includes(event.key)) return
+      event.preventDefault()
+      handlePlay(item.id)
+    },
+  }
+}
+
 // Event handlers just update state and send WS payloads
 const handlePlay = (fileID: string) => {
-  if (props.library || !wsStore.isConnected) return
+  if (props.library) {
+    previewTrack(fileID)
+    return
+  }
+  if (!wsStore.isConnected) return
   const track = fileStore.getTrackById(fileID)
   if (!track) return
 
@@ -126,6 +186,24 @@ const handlePlay = (fileID: string) => {
   }
 }
 
+function previewTrack(fileID: string) {
+  error.value = ''
+  const track = fileStore.getTrackById(fileID)
+  const trackType = track ? trackTypeStore.getTypeById(track.typeID) : undefined
+  if (!track || !trackType) {
+    console.error('Cannot preview track: metadata is unavailable', fileID)
+    error.value = 'Track information is unavailable. Reload the library to try again.'
+    return
+  }
+  if (audioStore.tracks[fileID]?.isPlaying) {
+    audioStore.updateTrackState(fileID, { isPlaying: false })
+    return
+  }
+  audioStore.clearTracks()
+  audioStore.initTrack(fileID, track.name, trackType.name)
+  audioStore.updateTrackState(fileID, { isPlaying: true, isRepeating: trackType.isRepeating })
+}
+
 const handleVolume = (fileID: string, volume: number) => {
   audioStore.updateTrackState(fileID, { volume })
   if (audioStore.tracks[fileID]?.isPlaying) {
@@ -156,6 +234,7 @@ watch(() => audioStore.masterVolume, () => {
 })
 
 onUnmounted(() => {
+  if (props.library) audioStore.clearTracks()
   debouncedSendMessage.cancel()
   updateAllTrackVolumes.cancel()
 })
@@ -169,5 +248,9 @@ onUnmounted(() => {
 .file-tile:hover {
   transform: translateY(-2px);
   box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+:deep(.library-track-row) {
+  cursor: pointer;
 }
 </style>
