@@ -38,8 +38,9 @@ gate after focused checks. No documentation-only validation is needed.
 - The Go gate measures **all `internal/...` packages**, including generated
   sqlc code exercised through the real datastore. The CLI entry points in
   `main.go` and `cmd/hashpass` are outside the coverage denominator, but all Go
-  tests still run. Inspect `coverage.out` with `go tool cover -func=coverage.out`
-  or `go tool cover -html=coverage.out`.
+  tests still run. Test-result caching is disabled so the combined profile uses
+  the current run across all instrumented packages. Inspect `coverage.out` with
+  `go tool cover -func=coverage.out` or `go tool cover -html=coverage.out`.
 - The frontend gate includes **every store and composable**, including files
   without tests. Reports are in `ui/coverage/`. Generated SDK code and Vue
   templates are outside this domain metric.

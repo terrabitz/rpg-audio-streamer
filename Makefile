@@ -10,7 +10,7 @@ go:
 test: test-go test-ui
 
 test-go:
-	go test -race -coverpkg=./internal/... -coverprofile=coverage.out ./...
+	go test -count=1 -race -coverpkg=./internal/... -coverprofile=coverage.out ./...
 	@go tool cover -func=coverage.out | awk '/^total:/ { print; found=1; if ($$3+0 < 80) { print "Internal Go coverage must be at least 80%"; exit 1 } } END { if (!found) exit 1 }'
 
 test-ui:
