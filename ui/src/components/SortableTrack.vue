@@ -19,7 +19,7 @@ useSortable({
 </script>
 
 <template>
-  <v-col ref="element" class="track-item" :data-track-id="props.id" cols="6" sm="4" md="3" lg="2">
+  <v-col ref="element" class="track-item" :data-track-id="props.id" cols="6" sm="4" md="4" lg="3" xl="2">
     <slot />
   </v-col>
 </template>

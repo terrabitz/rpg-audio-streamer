@@ -173,7 +173,7 @@ reauthentication.
 | `stores/websocket.ts` | Socket connection/reconnection, message handlers and history |
 | `stores/debug.ts` | Development-only debug panel state |
 | `composables/` | Shared app-bar state, browser origin, immutable partial-object patches |
-| `FileList`, `AudioControls`, `AudioUploader` | Shared-library metadata management and uploads; table associations and playback |
+| `FileList`, `AudioControls`, `PlayingTrackList`, `TrackPlaybackControls`, `AudioUploader` | Shared-library metadata management and uploads; table associations, responsive now-playing surfaces, and shared playback controls |
 | `AudioPlayer`, `AudioTrackPlayer` | Per-track HLS.js media elements and playback synchronization |
 | `VolumeMixer`, `VolumeSlider` | Local master and per-type mixing |
 
@@ -190,17 +190,38 @@ connected table. The SDK's shared runtime configuration throws on HTTP failures
 so store and upload error handlers cannot report false success.
 
 GM track tiles show their track type as a colored border instead of a visible
-badge, with a screen-reader label retaining the type name. Cards remain compact
-until pointer hover or keyboard focus reveals an overlaid controls panel without
-moving the grid. Touch-capable devices provide a toggle in the header; their edit
-button appears in the expanded panel. Opening another touch card or starting a
-drag closes the previous panel. A volume slider sits above an interactive
-playback-position slider and elapsed/total time, flanked by play/pause and
-restart buttons. Both sliders share compact track and thumb sizes and aligned
-endpoints, with the volume icon centered above play/pause. An active slider
-drag keeps the panel open until release. Seeking preserves the playing/paused
-state; playing tracks synchronize the seek to listening players. Restart seeks
-to the beginning. The metadata dialog retains the track-type selector.
+badge, with a screen-reader label retaining the type name. Cards stay compact
+on hover, focus, and touch. Playing tiles have a saturated background mixed from
+their track-type color; paused tiles retain the neutral surface. Tile names stay
+on one line with ellipsis overflow and a full-name hover title.
+A currently-playing sidebar lists active table tracks
+with volume, playback-position, elapsed/total time, pause, and restart controls.
+Compact cards use a single-line name, tightly spaced controls, and a 260 px
+desktop sidebar to preserve grid space. `PlayingTrackList` renders the same
+cards in the sidebar and mobile drawer. The GM table fills the viewport width
+without outer gutters or a centered maximum width. The desktop sidebar sits
+flush against the right edge below the app bar, with a distinct surface,
+left divider, full available viewport height, and independent scrolling.
+The track grid uses the remaining width with 10 px of inner padding and 3 px
+between cards; the sidebar remains flush against the right edge.
+Truncated names retain their full
+accessible label and hover title. On smaller screens, a fixed bottom bar shows
+the playing-track count and opens a scrollable bottom drawer rather than taking
+space above the grid. The drawer is capped at 70% of the viewport height and
+supports closing with its button, Escape, or the backdrop; closing it does not
+affect playback. The grid reserves space for the bar and device safe area.
+Vuetify's `smAndDown` state controls both the sidebar/drawer selection and the
+grid's mobile layout so they switch at the same breakpoint.
+Paused, completed, removed, and type-exclusive displaced tracks leave the sidebar;
+starting a track adds it automatically. Each card's always-visible three-dot
+button opens a track-settings dialog with the same volume, seek, and restart
+controls, but no play/pause button, so paused tracks can be prepared before
+playback. Both surfaces share `TrackPlaybackControls` and the same state and
+synchronization handlers. Seeking preserves the playing/paused state; playing
+tracks synchronize volume and seek changes to listening players. Restart seeks
+to the beginning. In the settings dialog, restart sits to the left of the seek
+slider, aligned beneath the volume icon. The metadata dialog retains the
+track-type selector.
 A small top-left drag handle enables mouse or touch dragging via `@dnd-kit/vue`
 after a 4 px movement. `SortableTrack` registers each grid cell and its handle.
 The lifted card follows the pointer while a dashed insertion placeholder moves
