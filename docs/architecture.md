@@ -286,6 +286,16 @@ Pull requests that touch any image input build the same multi-arch image and
 check that the Dockerfile's Go and Node base images match `go.mod` and
 `ui/.nvmrc`, since dependency bumps do not update the Dockerfile.
 
+All pull requests run the `pr-checks` workflow. `dorny/paths-filter` selects Go
+tests for backend inputs, frontend lint/build/domain checks for UI, development
+scripts, or OpenAPI inputs, full-app browser and seeded development instance
+tests for either, and Docker checks for image inputs.
+Changes to the workflow select every check; manual runs also execute every
+check. The final `PR Checks` job depends on path detection and all check jobs,
+accepts successful or skipped jobs, and fails on failed or cancelled jobs.
+It provides a single required-check target, including for documentation-only
+pull requests.
+
 ## Architectural assurance
 
 Domain tests exercise authentication, routing policies, and frontend state
