@@ -1,0 +1,169 @@
+import { afterEach, expect, it, vi } from 'vitest'
+import { flushPromises, mount } from '@vue/test-utils'
+import { createPinia, setActivePinia } from 'pinia'
+import AudioControls from '../AudioControls.vue'
+import { TrackUsageChangedError, useFileStore } from '@/stores/files'
+import { useTrackTypeStore } from '@/stores/trackTypes'
+
+const EDITOR = '[role="dialog"]:not([aria-label])'
+const CONFIRMATION = '[role="dialog"][aria-label="Delete track?"]'
+
+afterEach(() => vi.restoreAllMocks())
+
+it.each([
+  [1, 'table'],
+  [2, 'tables'],
+])('confirms deletion from %i %s in a follow-up dialog and allows cancellation', async (count, noun) => {
+  const { wrapper, countTables, deleteTrack } = mountControls()
+  countTables.mockResolvedValue(count)
+  await wrapper.get('[aria-label="Edit Forest"]').trigger('click')
+  await wrapper.get('[aria-label="Delete track"]').trigger('click')
+  await flushPromises()
+  const confirmation = wrapper.get(CONFIRMATION)
+  expect(confirmation.get('[role="alert"]').text()).toContain(`Deleting Forest will remove it from ${count} ${noun}`)
+  expect(wrapper.get(EDITOR).find('[role="alert"]').exists()).toBe(false)
+  expect(deleteTrack).not.toHaveBeenCalled()
+  await confirmation.get('button:not([aria-label])').trigger('click')
+  expect(wrapper.find(CONFIRMATION).exists()).toBe(false)
+  expect(wrapper.find(EDITOR).exists()).toBe(true)
+  expect(deleteTrack).not.toHaveBeenCalled()
+  await wrapper.get('[aria-label="Delete track"]').trigger('click')
+  await flushPromises()
+  await wrapper.get('[aria-label="Confirm delete track"]').trigger('click')
+  await flushPromises()
+  expect(deleteTrack).toHaveBeenCalledExactlyOnceWith(count)
+  expect(wrapper.find('[role="dialog"]').exists()).toBe(false)
+  wrapper.unmount()
+})
+
+it('deletes an unused library track without confirmation', async () => {
+  const { wrapper, countTables, deleteTrack } = mountControls()
+  countTables.mockResolvedValue(0)
+  await wrapper.get('[aria-label="Edit Forest"]').trigger('click')
+  await wrapper.get('[aria-label="Delete track"]').trigger('click')
+  await flushPromises()
+  expect(deleteTrack).toHaveBeenCalledExactlyOnceWith(0)
+  expect(wrapper.find('[role="dialog"]').exists()).toBe(false)
+  wrapper.unmount()
+})
+
+it('blocks repeat clicks while checking usage and keeps the track on lookup failure', async () => {
+  const { wrapper, countTables, deleteTrack } = mountControls()
+  vi.spyOn(console, 'error').mockImplementation(() => {})
+  let rejectCount: (error: Error) => void = () => {}
+  countTables.mockReturnValue(new Promise((_, reject) => { rejectCount = reject }))
+  await wrapper.get('[aria-label="Edit Forest"]').trigger('click')
+  await wrapper.get('[aria-label="Delete track"]').trigger('click')
+  expect(wrapper.get('[aria-label="Delete track"]').attributes('disabled')).toBeDefined()
+  expect(wrapper.get('[aria-label="Close track controls"]').attributes('disabled')).toBeDefined()
+  rejectCount(new Error('offline'))
+  await flushPromises()
+  expect(wrapper.get('[role="alert"]').text()).toContain('The track was not deleted.')
+  expect(deleteTrack).not.toHaveBeenCalled()
+  wrapper.unmount()
+})
+
+it('returns deletion failures to the track controls', async () => {
+  const { wrapper, countTables, deleteTrack } = mountControls()
+  vi.spyOn(console, 'error').mockImplementation(() => {})
+  countTables.mockResolvedValue(1)
+  deleteTrack.mockRejectedValue(new Error('offline'))
+  await wrapper.get('[aria-label="Edit Forest"]').trigger('click')
+  await wrapper.get('[aria-label="Delete track"]').trigger('click')
+  await flushPromises()
+  await wrapper.get('[aria-label="Confirm delete track"]').trigger('click')
+  await flushPromises()
+  expect(wrapper.find(CONFIRMATION).exists()).toBe(false)
+  expect(wrapper.get(EDITOR).get('[role="alert"]').text()).toContain('Failed to delete track.')
+  wrapper.unmount()
+})
+
+it('requires a fresh count if usage changes before confirmation', async () => {
+  const { wrapper, countTables, deleteTrack } = mountControls()
+  vi.spyOn(console, 'error').mockImplementation(() => {})
+  countTables.mockResolvedValueOnce(1).mockResolvedValueOnce(2)
+  deleteTrack.mockRejectedValueOnce(new TrackUsageChangedError())
+  await wrapper.get('[aria-label="Edit Forest"]').trigger('click')
+  await wrapper.get('[aria-label="Delete track"]').trigger('click')
+  await flushPromises()
+  await wrapper.get('[aria-label="Confirm delete track"]').trigger('click')
+  await flushPromises()
+  expect(wrapper.get(EDITOR).text()).toContain('Table usage changed.')
+  expect(wrapper.find(CONFIRMATION).exists()).toBe(false)
+  await wrapper.get('[aria-label="Delete track"]').trigger('click')
+  await flushPromises()
+  expect(wrapper.get(CONFIRMATION).text()).toContain('remove it from 2 tables')
+  await wrapper.get('[aria-label="Confirm delete track"]').trigger('click')
+  await flushPromises()
+  expect(deleteTrack.mock.calls).toEqual([[1], [2]])
+  wrapper.unmount()
+})
+
+it('removes a table association without checking library usage', async () => {
+  const { wrapper, countTables, deleteTrack } = mountControls(false)
+  await wrapper.get('[aria-label="Edit Forest"]').trigger('click')
+  await wrapper.get('[aria-label="Remove from table"]').trigger('click')
+  await flushPromises()
+  expect(countTables).not.toHaveBeenCalled()
+  expect(deleteTrack).toHaveBeenCalledExactlyOnceWith(null)
+  expect(wrapper.find('[role="dialog"]').exists()).toBe(false)
+  wrapper.unmount()
+})
+
+it('shows table-removal failures without closing the controls', async () => {
+  const { wrapper, countTables, deleteTrack } = mountControls(false)
+  vi.spyOn(console, 'error').mockImplementation(() => {})
+  deleteTrack.mockRejectedValue(new Error('offline'))
+  await wrapper.get('[aria-label="Edit Forest"]').trigger('click')
+  await wrapper.get('[aria-label="Remove from table"]').trigger('click')
+  await flushPromises()
+  expect(wrapper.text()).toContain('Failed to remove track from table.')
+  expect(wrapper.find(EDITOR).exists()).toBe(true)
+  expect(countTables).not.toHaveBeenCalled()
+  wrapper.unmount()
+})
+
+function mountControls(library = true) {
+  const pinia = createPinia()
+  setActivePinia(pinia)
+  const files = useFileStore()
+  files.tracks = [{
+    id: 'forest', name: 'Forest', typeID: 'music', path: '/uploads/forest', createdAt: '2026-01-01T00:00:00Z',
+  }]
+  useTrackTypeStore().trackTypes = [{
+    id: 'music', name: 'Music', color: '#123456', isRepeating: true, allowSimultaneousPlay: false,
+  }]
+  const countTables = vi.spyOn(files, 'countTrackTables')
+  const deleteTrack = vi.fn().mockResolvedValue(undefined)
+  const passthrough = { template: '<div><slot /></div>' }
+  const wrapper = mount(AudioControls, {
+    props: { fileID: 'forest', fileName: 'Forest', library, deleteTrack },
+    global: {
+      plugins: [pinia],
+      stubs: {
+        VBtn: {
+          props: ['disabled', 'loading'],
+          emits: ['click'],
+          template: '<button :disabled="disabled" @click="$emit(\'click\', $event)"><slot /></button>',
+        },
+        VDialog: {
+          props: ['modelValue', 'persistent'],
+          template: '<div v-if="modelValue" role="dialog"><slot /></div>',
+        },
+        VAlert: { template: '<div role="alert"><slot /></div>' },
+        VCard: passthrough,
+        VCardTitle: passthrough,
+        VCardText: passthrough,
+        VCardActions: passthrough,
+        VChip: passthrough,
+        VDivider: true,
+        VSpacer: true,
+        VTextField: true,
+        VIcon: true,
+        TrackTypeSelector: true,
+        VolumeSlider: true,
+      },
+    },
+  })
+  return { wrapper, countTables, deleteTrack }
+}

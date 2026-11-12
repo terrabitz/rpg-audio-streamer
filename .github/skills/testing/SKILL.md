@@ -38,8 +38,9 @@ gate after focused checks. No documentation-only validation is needed.
 - The Go gate measures **all `internal/...` packages**, including generated
   sqlc code exercised through the real datastore. The CLI entry points in
   `main.go` and `cmd/hashpass` are outside the coverage denominator, but all Go
-  tests still run. Inspect `coverage.out` with `go tool cover -func=coverage.out`
-  or `go tool cover -html=coverage.out`.
+  tests still run. Test-result caching is disabled so the combined profile uses
+  the current run across all instrumented packages. Inspect `coverage.out` with
+  `go tool cover -func=coverage.out` or `go tool cover -html=coverage.out`.
 - The frontend gate includes **every store and composable**, including files
   without tests. Reports are in `ui/coverage/`. Generated SDK code and Vue
   templates are outside this domain metric.
@@ -103,6 +104,14 @@ through the UI. Assert real media `paused` and `currentTime` properties for
 playback, not just CSS classes or socket receipt. Use accessible names for
 controls, keyboard selection for Vuetify selects, and retrying assertions
 instead of fixed sleeps. Ensure added fixtures are removed through the UI.
+
+Each browser test covers one user-visible flow, because every test doubles as a
+pull request recording (see `.github/skills/pr-recordings/SKILL.md`). Name the
+test after the flow, split a test that demonstrates several unrelated flows,
+and import `test` and `expect` from `ui/e2e/fixtures.ts` rather than
+`@playwright/test` so recording mode captures every page. Use `test.slow()`
+instead of fixed `test.setTimeout()` values so recording mode's longer limits
+still apply.
 
 Failures preserve screenshots and traces in `ui/test-results/` and an HTML
 report in `ui/playwright-report/`; CI uploads both. Inspect traces with

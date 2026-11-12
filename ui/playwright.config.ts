@@ -1,4 +1,14 @@
 import { defineConfig, devices } from '@playwright/test'
+import { recording, recordingViewport } from './e2e/fixtures'
+
+// Recording mode slows interactions so per-flow GIFs are watchable.
+const recordingOptions = recording
+  ? {
+      video: { mode: 'on' as const, size: recordingViewport },
+      viewport: recordingViewport,
+      launchOptions: { slowMo: 600 },
+    }
+  : {}
 
 export default defineConfig({
   testDir: './e2e',
@@ -6,15 +16,15 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   retries: 0,
   workers: 1,
-  timeout: 30_000,
-  expect: { timeout: 10_000 },
+  timeout: recording ? 300_000 : 30_000,
+  expect: { timeout: recording ? 30_000 : 10_000 },
   reporter: [['list'], ['html', { open: 'never' }]],
   use: {
     baseURL: 'http://127.0.0.1:15173',
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
   },
-  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
+  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'], ...recordingOptions } }],
   webServer: [
     {
       command: 'node e2e/server.mjs',

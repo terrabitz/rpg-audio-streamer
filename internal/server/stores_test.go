@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"testing"
 
@@ -9,8 +10,27 @@ import (
 )
 
 type MockTrackStore struct {
+	TableStore
 	tracks     map[uuid.UUID]Track
 	trackTypes map[uuid.UUID]TrackType
+}
+
+func (m *MockTrackStore) GetTable(ctx context.Context, id uuid.UUID) (Table, error) {
+	if id != DefaultTableID {
+		return Table{}, sql.ErrNoRows
+	}
+	return Table{ID: id, Name: "My Table"}, nil
+}
+
+func (m *MockTrackStore) GetTableByInvite(ctx context.Context, invite string) (Table, error) {
+	return Table{}, sql.ErrNoRows
+}
+
+func (m *MockTrackStore) CountTrackTables(ctx context.Context, id uuid.UUID) (int64, error) {
+	if _, ok := m.tracks[id]; !ok {
+		return 0, sql.ErrNoRows
+	}
+	return 0, nil
 }
 
 func (m *MockTrackStore) SaveTrack(ctx context.Context, track *Track) error {
@@ -40,6 +60,14 @@ func (m *MockTrackStore) DeleteTrack(ctx context.Context, trackID uuid.UUID) err
 	}
 	delete(m.tracks, trackID)
 	return nil
+}
+
+func (m *MockTrackStore) DeleteTrackIfTableCount(ctx context.Context, trackID uuid.UUID, expectedCount int64) (bool, error) {
+	count, err := m.CountTrackTables(ctx, trackID)
+	if err != nil || count != expectedCount {
+		return false, err
+	}
+	return true, m.DeleteTrack(ctx, trackID)
 }
 
 func (m *MockTrackStore) UpdateTrack(ctx context.Context, trackID uuid.UUID, update UpdateTrackRequest) (Track, error) {

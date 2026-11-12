@@ -35,40 +35,65 @@ export const useWebSocketStore = defineStore('websocket', () => {
   const messageHandlers = ref<MessageHandler[]>([])
   const messageHistory = ref<StoredMessage[]>([])
   let socket: WebSocket | null = null
+  let reconnectTimer: ReturnType<typeof setTimeout> | undefined
+  let generation = 0
+  let scope = ''
 
-  async function connect(token?: string) {
-    if (socket?.readyState === WebSocket.OPEN) {
+  async function connect(token?: string, tableID?: string) {
+    const nextScope = JSON.stringify([token, tableID])
+    if (scope === nextScope && socket?.readyState === WebSocket.OPEN) {
       return
     }
-
-    socket = await newSocket(token)
+    disconnect()
+    scope = nextScope
+    await newSocket(token, tableID, generation)
   }
 
-  function newSocket(token?: string): Promise<WebSocket> {
+  function newSocket(token: string | undefined, tableID: string | undefined, attempt: number): Promise<WebSocket> {
     return new Promise((resolve, reject) => {
       const baseUrl = getWebSocketUrl()
-      const url = token ? `${baseUrl}?token=${encodeURIComponent(token)}` : baseUrl
+      const params = [
+        token ? `token=${encodeURIComponent(token)}` : '',
+        tableID ? `tableID=${encodeURIComponent(tableID)}` : '',
+      ].filter(Boolean).join('&')
+      const url = params ? `${baseUrl}?${params}` : baseUrl
       const s = new WebSocket(url)
+      socket = s
 
       s.onopen = () => {
+        if (attempt !== generation) {
+          s.close(1000, 'Superseded connection')
+          reject(new Error('Connection superseded'))
+          return
+        }
         isConnected.value = true
         resolve(s)
         console.log('WebSocket connected')
       }
 
-      s.onmessage = receiveMessage
+      s.onmessage = (event) => {
+        if (attempt === generation) receiveMessage(event)
+      }
 
       s.onclose = (event: CloseEvent) => {
+        if (attempt !== generation) {
+          reject(new Error('Connection superseded'))
+          return
+        }
         isConnected.value = false
         const reason = event.reason || 'No reason provided'
         const code = event.code
         console.log(`WebSocket disconnected: [${code}] ${reason}`)
         if (!event.wasClean) {
-          setTimeout(() => connect(token), reconnectIntervalMs)
+          reconnectTimer = setTimeout(() => {
+            connect(token, tableID).catch(error => console.error('WebSocket reconnect failed:', error))
+          }, reconnectIntervalMs)
         }
+        reject(new Error(`WebSocket closed: ${reason}`))
       }
 
       s.onerror = (error) => {
+        if (attempt !== generation) return
         isConnected.value = false
         console.error('WebSocket error:', error)
         reject(error)
@@ -109,6 +134,10 @@ export const useWebSocketStore = defineStore('websocket', () => {
   }
 
   function disconnect() {
+    generation++
+    clearTimeout(reconnectTimer)
+    reconnectTimer = undefined
+    isConnected.value = false
     if (socket) {
       socket.close(1000, 'Client disconnected')
       socket = null

@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -37,12 +38,46 @@ func (s *Server) listFiles(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, tracks)
 }
 
+func (s *Server) handleFileUsage(w http.ResponseWriter, r *http.Request, token *auth.Token) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	trackID, err := uuid.Parse(r.PathValue("trackID"))
+	if err != nil {
+		http.Error(w, "Invalid track ID", http.StatusBadRequest)
+		return
+	}
+	count, err := s.store.CountTrackTables(r.Context(), trackID)
+	if err != nil {
+		s.tableError(w, err)
+		return
+	}
+	respondJSON(w, http.StatusOK, struct {
+		TableCount int64 `json:"tableCount"`
+	}{TableCount: count})
+}
+
 func (s *Server) uploadFile(w http.ResponseWriter, r *http.Request) {
 	err := r.ParseMultipartForm(10 << 20) // 10MB max
 	if err != nil {
 		s.logger.Error("failed to parse form", "error", err)
 		http.Error(w, "Failed to parse form", http.StatusBadRequest)
 		return
+	}
+	defer r.MultipartForm.RemoveAll()
+
+	var tableID uuid.UUID
+	if value := r.FormValue("tableID"); value != "" {
+		tableID, err = uuid.Parse(value)
+		if err != nil {
+			http.Error(w, "Invalid table ID", http.StatusBadRequest)
+			return
+		}
+		if _, err := s.store.GetTable(r.Context(), tableID); err != nil {
+			s.tableError(w, err)
+			return
+		}
 	}
 
 	file, handler, err := r.FormFile("files")
@@ -75,6 +110,7 @@ func (s *Server) uploadFile(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.logger.Error("failed to generate UUID", "error", err)
 		http.Error(w, "Failed to save track information", http.StatusInternalServerError)
+		return
 	}
 
 	tempDir := os.TempDir()
@@ -143,8 +179,16 @@ func (s *Server) uploadFile(w http.ResponseWriter, r *http.Request) {
 		TypeID:    typeID,
 	}
 
-	if err := s.store.SaveTrack(r.Context(), &track); err != nil {
+	if tableID == uuid.Nil {
+		err = s.store.SaveTrack(r.Context(), &track)
+	} else {
+		err = s.store.SaveTrackToTable(r.Context(), &track, tableID)
+	}
+	if err != nil {
 		s.logger.Error("failed to save track information", "error", err)
+		if cleanupErr := os.RemoveAll(hlsDir); cleanupErr != nil {
+			s.logger.Error("failed to clean up HLS directory", "error", cleanupErr)
+		}
 		http.Error(w, "Failed to save track information", http.StatusInternalServerError)
 		return
 	}
@@ -208,6 +252,20 @@ func (s *Server) handleFileDelete(w http.ResponseWriter, r *http.Request, token 
 		return
 	}
 
+	var expectedCount *int64
+	if values, ok := r.URL.Query()["expectedTableCount"]; ok {
+		if len(values) != 1 {
+			http.Error(w, "Invalid expected table count", http.StatusBadRequest)
+			return
+		}
+		count, parseErr := strconv.ParseInt(values[0], 10, 64)
+		if parseErr != nil || count < 0 {
+			http.Error(w, "Invalid expected table count", http.StatusBadRequest)
+			return
+		}
+		expectedCount = &count
+	}
+
 	// Retrieve the track to get its folder path
 	track, err := s.store.GetTrackByID(r.Context(), trackID)
 	if err != nil {
@@ -215,11 +273,26 @@ func (s *Server) handleFileDelete(w http.ResponseWriter, r *http.Request, token 
 		return
 	}
 
-	// Remove the database record
-	if err := s.store.DeleteTrack(r.Context(), trackID); err != nil {
+	if expectedCount == nil {
+		err = s.store.DeleteTrack(r.Context(), trackID)
+	} else {
+		var deleted bool
+		deleted, err = s.store.DeleteTrackIfTableCount(r.Context(), trackID, *expectedCount)
+		if err == nil && !deleted {
+			if _, countErr := s.store.CountTrackTables(r.Context(), trackID); countErr != nil {
+				s.tableError(w, countErr)
+				return
+			}
+			http.Error(w, "Track table usage changed", http.StatusConflict)
+			return
+		}
+	}
+	if err != nil {
+		s.logger.Error("failed to delete track", "error", err)
 		http.Error(w, "Failed to remove track record", http.StatusInternalServerError)
 		return
 	}
+	s.hub.RemoveTrack("", trackID.String())
 
 	if err := os.RemoveAll(track.Path); err != nil {
 		http.Error(w, "Failed to delete folder", http.StatusInternalServerError)
@@ -232,18 +305,57 @@ func (s *Server) handleFileDelete(w http.ResponseWriter, r *http.Request, token 
 
 func (s *Server) streamDirectory(w http.ResponseWriter, r *http.Request, token *auth.Token) {
 	relativePath := strings.TrimPrefix(r.URL.Path, "/api/v1/stream/")
+	if token.Role == auth.RolePlayer {
+		tableID, err := uuid.Parse(token.TableID)
+		if err != nil {
+			http.Error(w, "Invalid table session", http.StatusUnauthorized)
+			return
+		}
+		parts := strings.Split(relativePath, "/")
+		trackID, err := uuid.Parse(parts[0])
+		if err != nil {
+			http.Error(w, "Invalid track ID", http.StatusBadRequest)
+			return
+		}
+		allowed, err := s.store.HasTableTrack(r.Context(), tableID, trackID)
+		if err != nil {
+			s.tableError(w, err)
+			return
+		}
+		if !allowed {
+			http.Error(w, "Track not found", http.StatusNotFound)
+			return
+		}
+	}
 	filePath := filepath.Join(s.cfg.UploadDir, relativePath)
 	http.ServeFile(w, r, filePath)
 }
 
 func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request, token *auth.Token) {
+	scoped := *token
+	if token.Role == auth.RoleGM {
+		id := DefaultTableID
+		if value := r.URL.Query().Get("tableID"); value != "" {
+			var err error
+			id, err = uuid.Parse(value)
+			if err != nil {
+				http.Error(w, "Invalid table ID", http.StatusBadRequest)
+				return
+			}
+		}
+		if _, err := s.store.GetTable(r.Context(), id); err != nil {
+			s.tableError(w, err)
+			return
+		}
+		scoped.TableID = id.String()
+	}
 	conn, err := s.upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		s.logger.Error("websocket upgrade failed", "error", err)
 		return
 	}
 
-	s.hub.Register(conn, token)
+	s.hub.Register(conn, &scoped)
 }
 
 type authStatusResponse struct {
@@ -333,6 +445,11 @@ type joinTokenResponse struct {
 func (s *Server) handleGetJoinToken(w http.ResponseWriter, r *http.Request, token *auth.Token) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if _, err := s.store.GetTable(r.Context(), DefaultTableID); err != nil {
+		s.tableError(w, err)
 		return
 	}
 

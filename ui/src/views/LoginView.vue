@@ -2,10 +2,8 @@
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
-import { useJoinStore } from '@/stores/join'
 
 const auth = useAuthStore()
-const join = useJoinStore()
 const router = useRouter()
 
 const username = ref('')
@@ -17,8 +15,7 @@ async function handleSubmit() {
   try {
     await auth.login(username.value, password.value)
     if (auth.authenticated) {
-      await join.fetchToken()
-      router.push('/table/' + join.token)
+      router.push('/tables')
     }
   } catch (e) {
     error.value = 'Invalid credentials'

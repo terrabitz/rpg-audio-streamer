@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { useAuthStore } from '../auth'
-import { useFileStore } from '../files'
+import { TrackUsageChangedError, useFileStore } from '../files'
 import { useJoinStore } from '../join'
 import { useTrackTypeStore } from '../trackTypes'
 
@@ -10,6 +10,7 @@ const api = vi.hoisted(() => ({
   postApiV1Login: vi.fn(),
   postApiV1AuthLogout: vi.fn(),
   getApiV1Files: vi.fn(),
+  getApiV1FilesByTrackIdUsage: vi.fn(),
   postApiV1Files: vi.fn(),
   deleteApiV1FilesByTrackId: vi.fn(),
   putApiV1FilesByTrackId: vi.fn(),
@@ -101,6 +102,19 @@ describe('authentication', () => {
 })
 
 describe('file library', () => {
+  it('fetches a current table count and rejects invalid or failed responses', async () => {
+    const files = useFileStore()
+    api.getApiV1FilesByTrackIdUsage.mockResolvedValue({ data: { tableCount: 2 } })
+    expect(await files.countTrackTables('forest')).toBe(2)
+    expect(api.getApiV1FilesByTrackIdUsage).toHaveBeenCalledWith({ path: { trackID: 'forest' } })
+    for (const tableCount of [-1, 0.5, Number.NaN, Number.MAX_SAFE_INTEGER + 1, undefined]) {
+      api.getApiV1FilesByTrackIdUsage.mockResolvedValueOnce({ data: { tableCount } })
+      await expect(files.countTrackTables('forest')).rejects.toThrow('Invalid track usage count')
+    }
+    api.getApiV1FilesByTrackIdUsage.mockRejectedValue(new Error('offline'))
+    await expect(files.countTrackTables('forest')).rejects.toThrow('offline')
+  })
+
   it('fetches, finds, updates, and deletes tracks', async () => {
     const files = useFileStore()
     api.getApiV1Files.mockResolvedValue({ data: [track] })
@@ -117,11 +131,31 @@ describe('file library', () => {
     expect(files.tracks).toEqual([updated])
     await files.updateTrack('absent', {})
     expect(files.tracks).toEqual([updated])
-    api.deleteApiV1FilesByTrackId.mockResolvedValue({})
+    api.deleteApiV1FilesByTrackId.mockResolvedValue({ response: { ok: true, status: 200 } })
     api.getApiV1Files.mockResolvedValue({ data: [] })
-    await files.deleteFile('forest')
-    expect(api.deleteApiV1FilesByTrackId).toHaveBeenCalledWith({ path: { trackID: 'forest' } })
+    await files.deleteFile('forest', 1)
+    expect(api.deleteApiV1FilesByTrackId).toHaveBeenCalledWith({
+      path: { trackID: 'forest' },
+      query: { expectedTableCount: 1 },
+      throwOnError: false,
+    })
     expect(files.tracks).toEqual([])
+  })
+
+  it('preserves the track if its usage changed or deletion fails', async () => {
+    const files = useFileStore()
+    files.tracks = [track]
+    api.deleteApiV1FilesByTrackId.mockResolvedValueOnce({
+      error: 'usage changed', response: { ok: false, status: 409 },
+    })
+    await expect(files.deleteFile('forest', 0)).rejects.toBeInstanceOf(TrackUsageChangedError)
+    api.deleteApiV1FilesByTrackId.mockResolvedValueOnce({
+      error: 'database failure', response: { ok: false, status: 500 },
+    })
+    await expect(files.deleteFile('forest', 1)).rejects.toBe('database failure')
+    api.deleteApiV1FilesByTrackId.mockResolvedValueOnce({})
+    await expect(files.deleteFile('forest', 1)).rejects.toThrow('Failed to delete track')
+    expect(files.tracks).toEqual([track])
   })
 
   it('uploads metadata and refreshes the library', async () => {
@@ -147,10 +181,10 @@ describe('file library', () => {
     const files = useFileStore()
     files.tracks = [track]
     api.getApiV1Files.mockRejectedValue(new Error('offline'))
-    await files.fetchFiles()
+    await expect(files.fetchFiles()).rejects.toThrow('offline')
     expect(files.tracks).toEqual([track])
     api.deleteApiV1FilesByTrackId.mockRejectedValue(new Error('delete failed'))
-    await expect(files.deleteFile('forest')).rejects.toThrow('delete failed')
+    await expect(files.deleteFile('forest', 1)).rejects.toThrow('delete failed')
     api.putApiV1FilesByTrackId.mockRejectedValue(new Error('update failed'))
     await expect(files.updateTrack('forest', { name: 'Rain' })).rejects.toThrow('update failed')
     api.postApiV1Files.mockRejectedValue(new Error('upload failed'))

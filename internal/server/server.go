@@ -26,6 +26,8 @@ type Authenticator interface {
 
 type WSRegisterer interface {
 	Register(conn *websocket.Conn, token *auth.Token)
+	CloseTable(tableID string)
+	RemoveTrack(tableID, trackID string)
 }
 
 type Server struct {
@@ -114,9 +116,15 @@ func (s *Server) registerHandlers() *http.ServeMux {
 	// Protected endpoints with role validation
 	mux.HandleFunc("/api/v1/files", s.gmOnlyMiddleware(s.handleFiles))
 	mux.HandleFunc("/api/v1/files/{trackID}", s.gmOnlyMiddleware(s.handleFile))
+	mux.HandleFunc("/api/v1/files/{trackID}/usage", s.gmOnlyMiddleware(s.handleFileUsage))
 	mux.HandleFunc("/api/v1/joinToken", s.gmOnlyMiddleware(s.handleGetJoinToken))
 	mux.HandleFunc("/api/v1/stream/", s.authMiddleware(s.streamDirectory))
 	mux.HandleFunc("/api/v1/trackTypes", s.authMiddleware(s.handleTrackTypes))
+	mux.HandleFunc("/api/v1/tables", s.gmOnlyMiddleware(s.handleTables))
+	mux.HandleFunc("/api/v1/tables/current", s.authMiddleware(s.handleSessionTable))
+	mux.HandleFunc("/api/v1/tables/{tableID}", s.authMiddleware(s.handleTable))
+	mux.HandleFunc("/api/v1/tables/{tableID}/tracks", s.gmOnlyMiddleware(s.handleTableTracks))
+	mux.HandleFunc("/api/v1/tables/{tableID}/tracks/{trackID}", s.gmOnlyMiddleware(s.handleTableTrack))
 
 	return mux
 }

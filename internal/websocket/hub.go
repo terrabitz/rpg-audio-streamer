@@ -51,20 +51,22 @@ func (h *Hub) Run() {
 			h.clientsMu.Lock()
 			if _, ok := h.clients[client]; ok {
 				delete(h.clients, client)
+				client.closed = true
 				close(client.send)
 			}
 			h.clientsMu.Unlock()
 		case message := <-h.broadcast:
-			h.clientsMu.RLock()
+			h.clientsMu.Lock()
 			for client := range h.clients {
 				select {
 				case client.send <- message:
 				default:
+					client.closed = true
 					close(client.send)
 					delete(h.clients, client)
 				}
 			}
-			h.clientsMu.RUnlock()
+			h.clientsMu.Unlock()
 		}
 	}
 }
@@ -119,6 +121,36 @@ func ToClientID(clientID string) BroadcastOption {
 	}
 }
 
+func ToTable(tableID string) BroadcastOption {
+	return func(c *Client) bool {
+		return c.Token.TableID == tableID
+	}
+}
+
+func (h *Hub) CloseTable(tableID string) {
+	h.Broadcast(Message{Method: "tableDeleted", Payload: json.RawMessage(`{}`)}, ToTable(tableID))
+	h.clientsMu.Lock()
+	defer h.clientsMu.Unlock()
+	for client := range h.clients {
+		if client.Token.TableID == tableID {
+			client.closed = true
+			close(client.send)
+			delete(h.clients, client)
+		}
+	}
+}
+
+func (h *Hub) RemoveTrack(tableID, trackID string) {
+	payload, _ := json.Marshal(struct {
+		FileID string `json:"fileID"`
+	}{FileID: trackID})
+	opts := []BroadcastOption{}
+	if tableID != "" {
+		opts = append(opts, ToTable(tableID))
+	}
+	h.Broadcast(Message{Method: "removeTrack", Payload: payload}, opts...)
+}
+
 func (h *Hub) Broadcast(msg Message, opts ...BroadcastOption) error {
 	jsonMsg, err := json.Marshal(msg)
 	if err != nil {
@@ -140,18 +172,19 @@ func (h *Hub) Broadcast(msg Message, opts ...BroadcastOption) error {
 		filter = ToAll()
 	}
 
-	h.clientsMu.RLock()
+	h.clientsMu.Lock()
 	for client := range h.clients {
 		if filter(client) {
 			select {
 			case client.send <- jsonMsg:
 			default:
+				client.closed = true
 				close(client.send)
 				delete(h.clients, client)
 			}
 		}
 	}
-	h.clientsMu.RUnlock()
+	h.clientsMu.Unlock()
 
 	return nil
 }
@@ -187,6 +220,12 @@ func (h *Hub) HandleFunc(name string, fn func(payload json.RawMessage, c *Client
 }
 
 func (h *Hub) route(message []byte, c *Client) {
+	h.clientsMu.RLock()
+	closed := c.closed
+	h.clientsMu.RUnlock()
+	if closed {
+		return
+	}
 	var msg Message
 	if err := json.Unmarshal(message, &msg); err != nil {
 		h.logger.Error("Couldn't unmarshal JSON", "err", err)
