@@ -1,7 +1,7 @@
 <template>
   <div v-if="trackType" class="audio-control-tile" :class="{ 'is-active': isActive }">
-    <div class="text-center pa-1 text-subtitle-1 position-relative">
-      {{ props.fileName }}
+    <div class="track-heading pa-2 text-subtitle-1 position-relative">
+      <span>{{ props.fileName }}</span>
       <v-btn icon="$dotsVertical" size="small" variant="text" :aria-label="`Edit ${props.fileName}`" @click.stop="showControls = true"
         class="position-absolute top-0 right-0" />
     </div>
@@ -19,6 +19,16 @@
         </div>
       </div>
     </div>
+    <div v-if="audioState" class="px-2 pt-1" @click.stop>
+      <VolumeSlider :model-value="audioState.volume" :aria-label="`Volume for ${props.fileName}`"
+        @update:model-value="$emit('volume', $event)" />
+    </div>
+    <div class="d-flex align-center px-1 pb-1" @click.stop>
+      <v-btn icon="$restart" size="x-small" variant="text" :aria-label="`Restart ${props.fileName}`"
+        title="Restart track" @click.stop="$emit('seek', 0)" />
+      <v-spacer />
+      <slot name="reorder" />
+    </div>
 
     <v-dialog v-model="showControls" max-width="400px" @click:outside="showControls = false">
       <v-card>
@@ -30,10 +40,6 @@
             class="pa-0 ma-0"></v-text-field>
           <TrackTypeSelector v-model="editTrackType" />
           <div class="d-flex flex-column">
-            <div class="d-flex align-center">
-              <VolumeSlider v-if="audioState" v-model="audioState.volume"
-                @update:model-value="$emit('volume', $event)" />
-            </div>
             <div v-if="audioState" class="d-flex align-center">
               <v-icon size="small" color="grey-darken-1" class="mx-2">
                 {{ trackType?.isRepeating ? '$repeat' : '$repeatOff' }}
@@ -222,6 +228,12 @@ function formatTime(seconds: number): string {
 
 .audio-control-tile>div:first-child:hover {
   background-color: rgba(0, 0, 0, 0.04);
+}
+
+.track-heading {
+  min-height: 40px;
+  padding-right: 36px !important;
+  overflow-wrap: anywhere;
 }
 
 .position-absolute {

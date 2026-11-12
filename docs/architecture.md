@@ -126,6 +126,15 @@ Library entries initialize GM playback state as they load; successful deletion
 also removes that state by UUID. The SDK's shared runtime configuration throws
 on HTTP failures so store and upload error handlers cannot report false success.
 
+GM track tiles expose volume and restart controls without opening the metadata
+dialog. Restart seeks to the beginning while preserving the playing/paused state
+and synchronizes the seek to listening players when playing. Tracks can be
+reordered by dragging a handle or using the earlier/later buttons (including
+keyboard and touch). The file store persists this order in the GM's browser,
+preserves it across metadata refreshes, appends newly discovered tracks, and drops
+deleted tracks. Ordering does not change playback state or player mixes and is
+not stored on the server or shared across devices.
+
 ### Playback synchronization
 
 The server routes messages rather than storing authoritative playback state.

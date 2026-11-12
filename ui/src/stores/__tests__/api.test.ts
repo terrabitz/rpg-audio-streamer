@@ -101,6 +101,35 @@ describe('authentication', () => {
 })
 
 describe('file library', () => {
+  it('moves tracks in either direction without changing their metadata', () => {
+    const files = useFileStore()
+    const rain = { ...track, id: 'rain', name: 'Rain' }
+    const tavern = { ...track, id: 'tavern', name: 'Tavern' }
+    files.tracks = [track, rain, tavern]
+    files.moveTrack('forest', 'tavern')
+    expect(files.tracks).toEqual([rain, tavern, track])
+    files.moveTrack('forest', 'rain')
+    expect(files.tracks).toEqual([track, rain, tavern])
+    files.moveTrack('forest', 'forest')
+    files.moveTrack('missing', 'rain')
+    files.moveTrack('rain', 'missing')
+    expect(files.tracks).toEqual([track, rain, tavern])
+    files.tracks = []
+    files.moveTrack('forest', 'rain')
+    expect(files.tracks).toEqual([])
+  })
+
+  it('preserves local order on refresh, updates metadata, appends new tracks, and drops deleted ones', async () => {
+    const files = useFileStore()
+    const rain = { ...track, id: 'rain', name: 'Rain' }
+    const tavern = { ...track, id: 'tavern', name: 'Tavern' }
+    files.tracks = [rain, track, { ...track, id: 'deleted' }]
+    const renamed = { ...track, name: 'New Forest' }
+    api.getApiV1Files.mockResolvedValue({ data: [renamed, tavern, rain] })
+    await files.fetchFiles()
+    expect(files.tracks).toEqual([rain, renamed, tavern])
+  })
+
   it('fetches, finds, updates, and deletes tracks', async () => {
     const files = useFileStore()
     api.getApiV1Files.mockResolvedValue({ data: [track] })

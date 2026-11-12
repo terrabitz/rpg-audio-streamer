@@ -15,10 +15,21 @@ export const useFileStore = defineStore('files', {
     async fetchFiles() {
       try {
         const { data } = await getApiV1Files<true>()
-        this.tracks = data
+        const positions = new Map(this.tracks.map((track, index) => [track.id, index]))
+        this.tracks = [...data].sort((a, b) =>
+          (positions.get(a.id) ?? data.length) - (positions.get(b.id) ?? data.length)
+        )
       } catch (error) {
         console.error('Error fetching files:', error)
       }
+    },
+    moveTrack(trackId: string, targetId: string) {
+      const sourceIndex = this.tracks.findIndex(track => track.id === trackId)
+      const targetIndex = this.tracks.findIndex(track => track.id === targetId)
+      if (sourceIndex < 0 || targetIndex < 0 || sourceIndex === targetIndex) return
+
+      const [track] = this.tracks.splice(sourceIndex, 1)
+      if (track) this.tracks.splice(targetIndex, 0, track)
     },
     async deleteFile(trackId: string) {
       try {

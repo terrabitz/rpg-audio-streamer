@@ -1,10 +1,24 @@
 <template>
   <v-container>
     <v-row :dense="true">
-      <v-col v-for="file in fileStore.tracks" :key="file.id" cols="6" sm="4" md="3" lg="2">
-        <v-card class="file-tile" @click="handlePlay(file.id)">
+      <v-col v-for="(file, index) in fileStore.tracks" :key="file.id" cols="6" sm="4" md="3" lg="2"
+        @dragover="handleDragOver($event, file.id)" @drop.prevent="handleDrop(file.id)">
+        <v-card class="file-tile" :class="{ 'drop-target': dropTarget === file.id }" @click="handlePlay(file.id)">
           <AudioControls :fileID="file.id" :fileName="file.name" @volume="vol => handleVolume(file.id, vol)"
-            @seek="time => handleSeek(file.id, time)" @delete="deleteFile(file)" />
+            @seek="time => handleSeek(file.id, time)" @delete="deleteFile(file)">
+            <template #reorder>
+              <v-btn icon="$drag" size="x-small" variant="text" draggable="true"
+                :aria-label="`Drag to reorder ${file.name}`" title="Drag to reorder"
+                class="drag-handle" @click.stop @dragstart="handleDragStart($event, file.id)"
+                @dragend="clearDrag" />
+              <v-btn icon="$arrowLeft" size="x-small" variant="text" :disabled="index === 0"
+                :aria-label="`Move ${file.name} earlier`" title="Move earlier"
+                @click.stop="moveTrack(file.id, index - 1)" />
+              <v-btn icon="$arrowRight" size="x-small" variant="text" :disabled="index === fileStore.tracks.length - 1"
+                :aria-label="`Move ${file.name} later`" title="Move later"
+                @click.stop="moveTrack(file.id, index + 1)" />
+            </template>
+          </AudioControls>
         </v-card>
       </v-col>
     </v-row>
@@ -18,7 +32,7 @@ import { useFileStore } from '@/stores/files'
 import { useTrackTypeStore } from '@/stores/trackTypes'
 import { useWebSocketStore } from '@/stores/websocket'
 import debounce from 'lodash.debounce'
-import { onMounted, watch } from 'vue'
+import { onMounted, ref, watch } from 'vue'
 import { useAudioStore } from '../stores/audio'
 import AudioControls from './AudioControls.vue'
 
@@ -26,6 +40,8 @@ const fileStore = useFileStore()
 const audioStore = useAudioStore()
 const wsStore = useWebSocketStore()
 const trackTypeStore = useTrackTypeStore()
+const draggedTrack = ref<string | null>(null)
+const dropTarget = ref<string | null>(null)
 
 onMounted(async () => {
   await trackTypeStore.fetchTrackTypes()
@@ -37,6 +53,35 @@ watch(() => fileStore.tracks, (tracks) => {
     audioStore.initTrack(track.id, track.name, track.typeID)
   }
 }, { immediate: true })
+
+function handleDragStart(event: DragEvent, fileID: string) {
+  if (!event.dataTransfer) return
+  draggedTrack.value = fileID
+  event.dataTransfer.effectAllowed = 'move'
+  event.dataTransfer.setData('text/plain', fileID)
+}
+
+function handleDragOver(event: DragEvent, fileID: string) {
+  if (!draggedTrack.value || draggedTrack.value === fileID) return
+  event.preventDefault()
+  dropTarget.value = fileID
+  if (event.dataTransfer) event.dataTransfer.dropEffect = 'move'
+}
+
+function handleDrop(fileID: string) {
+  if (draggedTrack.value) fileStore.moveTrack(draggedTrack.value, fileID)
+  clearDrag()
+}
+
+function clearDrag() {
+  draggedTrack.value = null
+  dropTarget.value = null
+}
+
+function moveTrack(fileID: string, targetIndex: number) {
+  const target = fileStore.tracks[targetIndex]
+  if (target) fileStore.moveTrack(fileID, target.id)
+}
 
 async function deleteFile(file: Track) {
   try {
@@ -140,5 +185,17 @@ watch(() => audioStore.masterVolume, () => {
 .file-tile:hover {
   transform: translateY(-2px);
   box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+.file-tile.drop-target {
+  outline: 2px solid rgb(var(--v-theme-primary));
+}
+
+.drag-handle {
+  cursor: grab;
+}
+
+.drag-handle:active {
+  cursor: grabbing;
 }
 </style>

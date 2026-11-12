@@ -54,6 +54,70 @@ test('failed audio conversion is shown as an upload error', async ({ page }) => 
   await expect(page.locator('.file-tile')).toHaveCount(0)
 })
 
+test('GM reorders tracks by drag and keyboard, keeps the order, and uses compact controls', async ({ page }, testInfo) => {
+  await login(page)
+  for (const name of ['Forest', 'Rain', 'Tavern']) await uploadTrack(page, name)
+  const tiles = page.locator('.file-tile')
+  const forest = tiles.filter({ hasText: 'Forest' })
+  const rain = tiles.filter({ hasText: 'Rain' })
+  const tavern = tiles.filter({ hasText: 'Tavern' })
+  const names = () => tiles.locator('.track-heading > span')
+  await expect(names()).toHaveText(['Forest', 'Rain', 'Tavern'])
+  await expect(forest.getByRole('button', { name: 'Move Forest earlier' })).toBeDisabled()
+  await expect(tavern.getByRole('button', { name: 'Move Tavern later' })).toBeDisabled()
+  await forest.locator('.track-heading').click()
+  const forestAudio = page.locator('video').first()
+  await expect.poll(() => forestAudio.evaluate((el: HTMLVideoElement) => !el.paused && el.currentTime > 0)).toBe(true)
+  const beforeReorder = await forestAudio.evaluate((el: HTMLVideoElement) => el.currentTime)
+  await tavern.getByRole('button', { name: 'Drag to reorder Tavern' }).dragTo(forest)
+  await expect(names()).toHaveText(['Tavern', 'Forest', 'Rain'])
+  await expect.poll(() => forestAudio.evaluate(
+    (el: HTMLVideoElement, time) => !el.paused && el.currentTime >= time, beforeReorder,
+  )).toBe(true)
+  const moveEarlier = rain.getByRole('button', { name: 'Move Rain earlier' })
+  await moveEarlier.focus()
+  await page.keyboard.press('Enter')
+  await expect(names()).toHaveText(['Tavern', 'Rain', 'Forest'])
+  await rain.getByRole('button', { name: 'Move Rain later' }).click()
+  await expect(names()).toHaveText(['Tavern', 'Forest', 'Rain'])
+  await forest.locator('.track-heading').click()
+  await expect.poll(() => forestAudio.evaluate((el: HTMLVideoElement) => el.paused)).toBe(true)
+  await page.reload()
+  await expect(names()).toHaveText(['Tavern', 'Forest', 'Rain'])
+  await uploadTrack(page, 'New Track')
+  await expect(names()).toHaveText(['Tavern', 'Forest', 'Rain', 'New Track'])
+  await tiles.filter({ hasText: 'New Track' }).getByRole('button', { name: 'Edit New Track' }).click()
+  await page.getByRole('button', { name: 'Delete track', exact: true }).click()
+  await expect(names()).toHaveText(['Tavern', 'Forest', 'Rain'])
+  await page.mouse.click(1000, 500)
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+  await expect(page.getByText('File uploaded successfully!', { exact: true })).not.toBeVisible()
+  for (const tile of [forest, rain, tavern]) {
+    await expect(tile.getByRole('slider')).toBeVisible()
+  }
+  await expect(page.locator('video')).toHaveCount(3)
+  for (const video of await page.locator('video').all()) {
+    await expect.poll(() => video.evaluate((el: HTMLVideoElement) => el.paused)).toBe(true)
+  }
+  await page.screenshot({ path: testInfo.outputPath('gm-table-after.png'), fullPage: true })
+  await page.setViewportSize({ width: 390, height: 844 })
+  await expect(forest.getByRole('slider')).toBeVisible()
+  await expect(forest.getByRole('button', { name: 'Restart Forest' })).toBeVisible()
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+  await page.screenshot({ path: testInfo.outputPath('gm-table-mobile-after.png'), fullPage: true })
+  await forest.getByRole('slider').press('Home')
+  await expect(forest.getByRole('slider')).toHaveAttribute('aria-valuenow', '0')
+  await forest.getByRole('button', { name: 'Restart Forest' }).click()
+  for (const video of await page.locator('video').all()) {
+    await expect.poll(() => video.evaluate((el: HTMLVideoElement) => el.paused)).toBe(true)
+  }
+  for (const name of ['Forest', 'Rain', 'Tavern']) {
+    await tiles.filter({ hasText: name }).getByRole('button', { name: `Edit ${name}` }).click()
+    await page.getByRole('button', { name: 'Delete track', exact: true }).click()
+  }
+  await expect(tiles).toHaveCount(0)
+})
+
 test('invited player receives live playback, late-join state, and pause', async ({
   page,
   browser,
@@ -61,7 +125,7 @@ test('invited player receives live playback, late-join state, and pause', async 
   await login(page)
   await uploadTrack(page, 'Session Music')
   const tile = page.locator('.file-tile').filter({ hasText: 'Session Music' })
-  await tile.click()
+  await tile.locator('.track-heading').click()
   const gmAudio = page.locator('video')
   await expect
     .poll(() => gmAudio.evaluate((el: HTMLVideoElement) => !el.paused && el.currentTime > 0))
@@ -95,9 +159,25 @@ test('invited player receives live playback, late-join state, and pause', async 
     await expect
       .poll(() => playerAudio.evaluate((el: HTMLVideoElement) => el.volume))
       .toBeGreaterThan(0)
-    await tile.click()
+    const trackVolume = tile.getByRole('slider', { name: 'Volume for Session Music' })
+    await trackVolume.press('Home')
+    await expect.poll(() => gmAudio.evaluate((el: HTMLVideoElement) => el.volume)).toBe(0)
+    await expect.poll(() => playerAudio.evaluate((el: HTMLVideoElement) => el.volume)).toBe(0)
+    await expect.poll(() => gmAudio.evaluate((el: HTMLVideoElement) => el.paused)).toBe(false)
+    await trackVolume.press('End')
+    await expect.poll(() => playerAudio.evaluate((el: HTMLVideoElement) => el.volume)).toBeGreaterThan(0)
+    await expect.poll(() => gmAudio.evaluate((el: HTMLVideoElement) => el.currentTime)).toBeGreaterThan(4)
+    await expect.poll(() => playerAudio.evaluate((el: HTMLVideoElement) => el.currentTime)).toBeGreaterThan(4)
+    await tile.getByRole('button', { name: 'Restart Session Music' }).click()
+    await expect.poll(() => gmAudio.evaluate((el: HTMLVideoElement) => el.currentTime)).toBeLessThan(2)
+    await expect.poll(() => playerAudio.evaluate((el: HTMLVideoElement) => el.currentTime)).toBeLessThan(2)
+    await expect.poll(() => playerAudio.evaluate((el: HTMLVideoElement) => el.paused)).toBe(false)
+    await tile.locator('.track-heading').click()
     await expect.poll(() => playerAudio.evaluate((el: HTMLVideoElement) => el.paused)).toBe(true)
-    await tile.click()
+    await tile.getByRole('button', { name: 'Restart Session Music' }).click()
+    await expect.poll(() => gmAudio.evaluate((el: HTMLVideoElement) => el.currentTime)).toBe(0)
+    await expect.poll(() => gmAudio.evaluate((el: HTMLVideoElement) => el.paused)).toBe(true)
+    await tile.locator('.track-heading').click()
     await expect.poll(() => playerAudio.evaluate((el: HTMLVideoElement) => !el.paused)).toBe(true)
     await player.getByRole('button', { name: 'Disconnect Audio', exact: true }).click()
     await expect(player.getByRole('button', { name: 'Connect Audio', exact: true })).toBeVisible()
@@ -116,7 +196,7 @@ test('starting another Music track stops the previous one', async ({ page }) => 
   await uploadTrack(page, 'Second Music')
   const first = page.locator('.file-tile').filter({ hasText: 'First Music' })
   const second = page.locator('.file-tile').filter({ hasText: 'Second Music' })
-  await first.click()
+  await first.locator('.track-heading').click()
   await expect
     .poll(() =>
       page
@@ -125,7 +205,7 @@ test('starting another Music track stops the previous one', async ({ page }) => 
         .evaluate((el: HTMLVideoElement) => !el.paused && el.currentTime > 0),
     )
     .toBe(true)
-  await second.click()
+  await second.locator('.track-heading').click()
   await expect
     .poll(() =>
       page
