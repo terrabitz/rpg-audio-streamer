@@ -147,7 +147,7 @@ describe('file library', () => {
     const files = useFileStore()
     files.tracks = [track]
     api.getApiV1Files.mockRejectedValue(new Error('offline'))
-    await files.fetchFiles()
+    await expect(files.fetchFiles()).rejects.toThrow('offline')
     expect(files.tracks).toEqual([track])
     api.deleteApiV1FilesByTrackId.mockRejectedValue(new Error('delete failed'))
     await expect(files.deleteFile('forest')).rejects.toThrow('delete failed')

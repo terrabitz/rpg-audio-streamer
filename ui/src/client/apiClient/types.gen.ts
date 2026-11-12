@@ -4,6 +4,19 @@ export type ClientOptions = {
     baseUrl: `${string}://${string}` | (string & {});
 };
 
+export type Table = {
+    id: string;
+    name: string;
+    /**
+     * Only returned to GMs.
+     */
+    inviteToken?: string;
+};
+
+export type TableRequest = {
+    name: string;
+};
+
 export type LoginRequest = {
     username: string;
     password: string;
@@ -48,6 +61,228 @@ export type TrackType = {
     isRepeating: boolean;
     allowSimultaneousPlay: boolean;
 };
+
+export type GetApiV1TablesData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/tables';
+};
+
+export type GetApiV1TablesResponses = {
+    /**
+     * Tables
+     */
+    200: Array<Table>;
+};
+
+export type GetApiV1TablesResponse = GetApiV1TablesResponses[keyof GetApiV1TablesResponses];
+
+export type PostApiV1TablesData = {
+    body: TableRequest;
+    path?: never;
+    query?: never;
+    url: '/api/v1/tables';
+};
+
+export type PostApiV1TablesErrors = {
+    /**
+     * Invalid table name
+     */
+    400: unknown;
+};
+
+export type PostApiV1TablesResponses = {
+    /**
+     * Created table
+     */
+    201: Table;
+};
+
+export type PostApiV1TablesResponse = PostApiV1TablesResponses[keyof PostApiV1TablesResponses];
+
+export type GetApiV1TablesCurrentData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/tables/current';
+};
+
+export type GetApiV1TablesCurrentErrors = {
+    /**
+     * Table not found
+     */
+    404: unknown;
+};
+
+export type GetApiV1TablesCurrentResponses = {
+    /**
+     * Current table
+     */
+    200: Table;
+};
+
+export type GetApiV1TablesCurrentResponse = GetApiV1TablesCurrentResponses[keyof GetApiV1TablesCurrentResponses];
+
+export type DeleteApiV1TablesByTableIdData = {
+    body?: never;
+    path: {
+        tableID: string;
+    };
+    query?: never;
+    url: '/api/v1/tables/{tableID}';
+};
+
+export type DeleteApiV1TablesByTableIdErrors = {
+    /**
+     * Table not found
+     */
+    404: unknown;
+};
+
+export type DeleteApiV1TablesByTableIdResponses = {
+    /**
+     * Table deleted
+     */
+    204: void;
+};
+
+export type DeleteApiV1TablesByTableIdResponse = DeleteApiV1TablesByTableIdResponses[keyof DeleteApiV1TablesByTableIdResponses];
+
+export type GetApiV1TablesByTableIdData = {
+    body?: never;
+    path: {
+        tableID: string;
+    };
+    query?: never;
+    url: '/api/v1/tables/{tableID}';
+};
+
+export type GetApiV1TablesByTableIdErrors = {
+    /**
+     * Wrong table
+     */
+    403: unknown;
+    /**
+     * Table not found
+     */
+    404: unknown;
+};
+
+export type GetApiV1TablesByTableIdResponses = {
+    /**
+     * Table
+     */
+    200: Table;
+};
+
+export type GetApiV1TablesByTableIdResponse = GetApiV1TablesByTableIdResponses[keyof GetApiV1TablesByTableIdResponses];
+
+export type PutApiV1TablesByTableIdData = {
+    body: TableRequest;
+    path: {
+        tableID: string;
+    };
+    query?: never;
+    url: '/api/v1/tables/{tableID}';
+};
+
+export type PutApiV1TablesByTableIdErrors = {
+    /**
+     * Invalid table name
+     */
+    400: unknown;
+    /**
+     * Table not found
+     */
+    404: unknown;
+};
+
+export type PutApiV1TablesByTableIdResponses = {
+    /**
+     * Updated table
+     */
+    200: Table;
+};
+
+export type PutApiV1TablesByTableIdResponse = PutApiV1TablesByTableIdResponses[keyof PutApiV1TablesByTableIdResponses];
+
+export type GetApiV1TablesByTableIdTracksData = {
+    body?: never;
+    path: {
+        tableID: string;
+    };
+    query?: never;
+    url: '/api/v1/tables/{tableID}/tracks';
+};
+
+export type GetApiV1TablesByTableIdTracksErrors = {
+    /**
+     * Table not found
+     */
+    404: unknown;
+};
+
+export type GetApiV1TablesByTableIdTracksResponses = {
+    /**
+     * Associated tracks
+     */
+    200: Array<Track>;
+};
+
+export type GetApiV1TablesByTableIdTracksResponse = GetApiV1TablesByTableIdTracksResponses[keyof GetApiV1TablesByTableIdTracksResponses];
+
+export type DeleteApiV1TablesByTableIdTracksByTrackIdData = {
+    body?: never;
+    path: {
+        tableID: string;
+        trackID: string;
+    };
+    query?: never;
+    url: '/api/v1/tables/{tableID}/tracks/{trackID}';
+};
+
+export type DeleteApiV1TablesByTableIdTracksByTrackIdErrors = {
+    /**
+     * Table not found
+     */
+    404: unknown;
+};
+
+export type DeleteApiV1TablesByTableIdTracksByTrackIdResponses = {
+    /**
+     * Track removed
+     */
+    204: void;
+};
+
+export type DeleteApiV1TablesByTableIdTracksByTrackIdResponse = DeleteApiV1TablesByTableIdTracksByTrackIdResponses[keyof DeleteApiV1TablesByTableIdTracksByTrackIdResponses];
+
+export type PutApiV1TablesByTableIdTracksByTrackIdData = {
+    body?: never;
+    path: {
+        tableID: string;
+        trackID: string;
+    };
+    query?: never;
+    url: '/api/v1/tables/{tableID}/tracks/{trackID}';
+};
+
+export type PutApiV1TablesByTableIdTracksByTrackIdErrors = {
+    /**
+     * Table or track not found
+     */
+    404: unknown;
+};
+
+export type PutApiV1TablesByTableIdTracksByTrackIdResponses = {
+    /**
+     * Track associated
+     */
+    204: void;
+};
+
+export type PutApiV1TablesByTableIdTracksByTrackIdResponse = PutApiV1TablesByTableIdTracksByTrackIdResponses[keyof PutApiV1TablesByTableIdTracksByTrackIdResponses];
 
 export type PostApiV1LoginData = {
     body: LoginRequest;
@@ -132,6 +367,10 @@ export type PostApiV1FilesData = {
         files?: Blob | File;
         name?: string;
         typeID?: string;
+        /**
+         * Optionally associate the upload with this table atomically.
+         */
+        tableID?: string;
     };
     path?: never;
     query?: never;
@@ -228,6 +467,10 @@ export type GetApiV1JoinTokenErrors = {
      * Not authorized
      */
     403: unknown;
+    /**
+     * The default table has been deleted
+     */
+    404: unknown;
 };
 
 export type GetApiV1JoinTokenResponses = {
@@ -294,7 +537,12 @@ export type GetApiV1TrackTypesResponse = GetApiV1TrackTypesResponses[keyof GetAp
 export type GetApiV1WsData = {
     body?: never;
     path?: never;
-    query?: never;
+    query?: {
+        /**
+         * GM table scope; defaults to the legacy table. Players are scoped by their invite.
+         */
+        tableID?: string;
+    };
     url: '/api/v1/ws';
 };
 

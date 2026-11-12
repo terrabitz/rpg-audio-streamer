@@ -4,11 +4,14 @@ import FileList from '@/components/FileList.vue';
 import TableActions from '@/components/TableActions.vue';
 import { useAppBar } from '@/composables/useAppBar';
 import { useAudioStore } from '@/stores/audio';
+import { useTableStore } from '@/stores/tables';
 import { useWebSocketStore, type WebSocketMessage } from '@/stores/websocket';
-import { onMounted, onUnmounted } from 'vue';
+import { onMounted, onUnmounted, ref } from 'vue';
 
 const audioStore = useAudioStore()
 const wsStore = useWebSocketStore()
+const tables = useTableStore()
+const error = ref('')
 
 const { setTitle, setActions } = useAppBar()
 
@@ -31,21 +34,28 @@ function handleSyncRequest(message: WebSocketMessage<unknown>) {
 }
 
 onMounted(async () => {
-  await wsStore.connect()
   wsStore.addMessageHandler(handleSyncRequest)
-
-  setTitle('My Table')
+  setTitle(tables.current?.name ?? 'Table')
   setActions([TableActions])
   audioStore.enabled = true
+  try {
+    await wsStore.connect(undefined, tables.current?.id)
+  } catch (e) {
+    console.error('Failed to connect table:', e)
+    error.value = 'Unable to connect to the table. Reload to try again.'
+  }
 })
 
 onUnmounted(() => {
+  if (wsStore.isConnected) wsStore.sendMessage('syncAll', { tracks: [] })
   wsStore.removeMessageHandler(handleSyncRequest)
   wsStore.disconnect()
+  audioStore.clearTracks()
 })
 </script>
 
 <template>
+  <v-alert v-if="error" type="error">{{ error }}</v-alert>
   <AudioPlayer />
-  <FileList />
+  <FileList v-if="wsStore.isConnected" />
 </template>

@@ -1,9 +1,18 @@
 <template>
   <v-container>
+    <v-alert v-if="error" type="error" class="mb-4">{{ error }}</v-alert>
+    <div v-if="!props.library" class="d-flex align-center mb-4">
+      <v-select v-model="selectedTrack" :items="availableTracks" item-title="name" item-value="id"
+        label="Library track" hide-details class="mr-3" />
+      <v-btn :disabled="!selectedTrack" :loading="adding" @click="addTrack">Add existing track</v-btn>
+    </div>
+    <p v-if="!tracks.length" class="mb-4">
+      {{ props.library ? 'No tracks in the library yet.' : 'No tracks at this table. Add a library track or upload a new one.' }}
+    </p>
     <v-row :dense="true">
-      <v-col v-for="file in fileStore.tracks" :key="file.id" cols="6" sm="4" md="3" lg="2">
+      <v-col v-for="file in tracks" :key="file.id" cols="6" sm="4" md="3" lg="2">
         <v-card class="file-tile" @click="handlePlay(file.id)">
-          <AudioControls :fileID="file.id" :fileName="file.name" @volume="vol => handleVolume(file.id, vol)"
+          <AudioControls :fileID="file.id" :fileName="file.name" :library="props.library" @volume="vol => handleVolume(file.id, vol)"
             @seek="time => handleSeek(file.id, time)" @delete="deleteFile(file)" />
         </v-card>
       </v-col>
@@ -16,9 +25,10 @@ import { type Track } from '@/client/apiClient'
 import { patchObject } from '@/composables/util'
 import { useFileStore } from '@/stores/files'
 import { useTrackTypeStore } from '@/stores/trackTypes'
+import { useTableStore } from '@/stores/tables'
 import { useWebSocketStore } from '@/stores/websocket'
 import debounce from 'lodash.debounce'
-import { onMounted, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useAudioStore } from '../stores/audio'
 import AudioControls from './AudioControls.vue'
 
@@ -26,24 +36,62 @@ const fileStore = useFileStore()
 const audioStore = useAudioStore()
 const wsStore = useWebSocketStore()
 const trackTypeStore = useTrackTypeStore()
+const tables = useTableStore()
+const props = defineProps<{ library?: boolean }>()
+const error = ref('')
+const selectedTrack = ref<string | null>(null)
+const adding = ref(false)
+const tracks = computed(() => props.library ? fileStore.tracks :
+  tables.tracks.map(track => fileStore.getTrackById(track.id) ?? track))
+const availableTracks = computed(() => fileStore.tracks.filter(
+  track => !tables.tracks.some(associated => associated.id === track.id),
+))
 
 onMounted(async () => {
-  await trackTypeStore.fetchTrackTypes()
-  await fileStore.fetchFiles()
+  try {
+    await trackTypeStore.fetchTrackTypes()
+    await fileStore.fetchFiles()
+    if (!props.library && tables.current) await tables.fetchTracks(tables.current.id)
+  } catch (e) {
+    console.error('Failed to load tracks:', e)
+    error.value = 'Failed to load tracks.'
+  }
 })
 
-watch(() => fileStore.tracks, (tracks) => {
+watch(tracks, (tracks) => {
+  if (props.library) return
+  for (const id of Object.keys(audioStore.tracks)) {
+    if (!tracks.some(track => track.id === id)) audioStore.removeTrack(id)
+  }
   for (const track of tracks) {
     audioStore.initTrack(track.id, track.name, track.typeID)
   }
 }, { immediate: true })
 
-async function deleteFile(file: Track) {
+async function addTrack() {
+  if (!tables.current || !selectedTrack.value) return
+  adding.value = true
+  error.value = ''
   try {
-    await fileStore.deleteFile(file.id)
+    await tables.addTrack(tables.current.id, selectedTrack.value)
+    selectedTrack.value = null
+  } catch (e) {
+    console.error('Failed to add track:', e)
+    error.value = 'Failed to add track to table.'
+  } finally {
+    adding.value = false
+  }
+}
+
+async function deleteFile(file: Track) {
+  error.value = ''
+  try {
+    if (props.library) await fileStore.deleteFile(file.id)
+    else if (tables.current) await tables.removeTrack(tables.current.id, file.id)
     audioStore.removeTrack(file.id)
-  } catch (error) {
-    console.error('Failed to delete file:', error)
+  } catch (cause) {
+    console.error('Failed to delete file:', cause)
+    error.value = props.library ? 'Failed to delete track.' : 'Failed to remove track from table.'
   }
 }
 
@@ -53,6 +101,7 @@ const debouncedSendMessage = debounce((method: string, payload: unknown) => {
 
 // Event handlers just update state and send WS payloads
 const handlePlay = (fileID: string) => {
+  if (props.library || !wsStore.isConnected) return
   const track = fileStore.getTrackById(fileID)
   if (!track) return
 
@@ -128,7 +177,12 @@ const updateAllTrackVolumes = debounce(() => {
 }, 100)
 
 watch(() => audioStore.masterVolume, () => {
-  updateAllTrackVolumes()
+  if (!props.library) updateAllTrackVolumes()
+})
+
+onUnmounted(() => {
+  debouncedSendMessage.cancel()
+  updateAllTrackVolumes.cancel()
 })
 </script>
 

@@ -19,6 +19,28 @@ components:
       name: token
 
   schemas:
+    Table:
+      type: object
+      required: [id, name]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        inviteToken:
+          type: string
+          description: Only returned to GMs.
+
+    TableRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+
     LoginRequest:
       type: object
       required:
@@ -130,6 +152,168 @@ components:
           type: boolean
 
 paths:
+  /api/v1/tables:
+    get:
+      summary: List GM tables and their invite tokens
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Tables
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Table"
+    post:
+      summary: Create a table
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TableRequest"
+      responses:
+        "201":
+          description: Created table
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Table"
+        "400":
+          description: Invalid table name
+
+  /api/v1/tables/current:
+    get:
+      summary: Resolve the invited player's table or the GM's legacy default table
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Current table
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Table"
+        "404":
+          description: Table not found
+
+  /api/v1/tables/{tableID}:
+    parameters:
+      - name: tableID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      summary: Get a table (players may only access their invited table)
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Table
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Table"
+        "403":
+          description: Wrong table
+        "404":
+          description: Table not found
+    put:
+      summary: Rename a table (GM only)
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TableRequest"
+      responses:
+        "200":
+          description: Updated table
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Table"
+        "400":
+          description: Invalid table name
+        "404":
+          description: Table not found
+    delete:
+      summary: Delete a table without deleting library tracks (GM only)
+      security:
+        - cookieAuth: []
+      responses:
+        "204":
+          description: Table deleted
+        "404":
+          description: Table not found
+
+  /api/v1/tables/{tableID}/tracks:
+    get:
+      summary: List a table's associated library tracks (GM only)
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: tableID
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Associated tracks
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Track"
+        "404":
+          description: Table not found
+
+  /api/v1/tables/{tableID}/tracks/{trackID}:
+    parameters:
+      - name: tableID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: trackID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    put:
+      summary: Associate an existing library track (GM only, idempotent)
+      security:
+        - cookieAuth: []
+      responses:
+        "204":
+          description: Track associated
+        "404":
+          description: Table or track not found
+    delete:
+      summary: Remove a track from a table without deleting it from the library (GM only)
+      security:
+        - cookieAuth: []
+      responses:
+        "204":
+          description: Track removed
+        "404":
+          description: Table not found
+
   /api/v1/login:
     post:
       summary: Authenticate user
@@ -211,6 +395,10 @@ paths:
                 typeID:
                   type: string
                   format: uuid
+                tableID:
+                  type: string
+                  format: uuid
+                  description: Optionally associate the upload with this table atomically.
       responses:
         "200":
           description: File uploaded successfully
@@ -271,7 +459,7 @@ paths:
 
   /api/v1/joinToken:
     get:
-      summary: Get a new join token for players
+      summary: Get the legacy default table's invite token (GM only)
       security:
         - cookieAuth: []
       responses:
@@ -283,6 +471,8 @@ paths:
                 $ref: "#/components/schemas/JoinTokenResponse"
         "403":
           description: Not authorized
+        "404":
+          description: The default table has been deleted
 
   /api/v1/stream/{path}:
     get:
@@ -290,6 +480,7 @@ paths:
       security:
         - cookieAuth: []
         - bearerAuth: []
+        - queryAuth: []
       parameters:
         - name: path
           in: path
@@ -329,6 +520,13 @@ paths:
   /api/v1/ws:
     get:
       summary: WebSocket connection for real-time updates
+      parameters:
+        - name: tableID
+          in: query
+          description: GM table scope; defaults to the legacy table. Players are scoped by their invite.
+          schema:
+            type: string
+            format: uuid
       security:
         - cookieAuth: []
         - queryAuth: []

@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"testing"
 
@@ -9,8 +10,20 @@ import (
 )
 
 type MockTrackStore struct {
+	TableStore
 	tracks     map[uuid.UUID]Track
 	trackTypes map[uuid.UUID]TrackType
+}
+
+func (m *MockTrackStore) GetTable(ctx context.Context, id uuid.UUID) (Table, error) {
+	if id != DefaultTableID {
+		return Table{}, sql.ErrNoRows
+	}
+	return Table{ID: id, Name: "My Table"}, nil
+}
+
+func (m *MockTrackStore) GetTableByInvite(ctx context.Context, invite string) (Table, error) {
+	return Table{}, sql.ErrNoRows
 }
 
 func (m *MockTrackStore) SaveTrack(ctx context.Context, track *Track) error {

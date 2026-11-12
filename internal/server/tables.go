@@ -1,0 +1,218 @@
+package server
+
+import (
+	"database/sql"
+	"encoding/json"
+	"errors"
+	"net/http"
+	"strings"
+	"unicode/utf8"
+
+	"github.com/google/uuid"
+	"github.com/terrabitz/rpg-audio-streamer/internal/auth"
+)
+
+func (s *Server) handleTables(w http.ResponseWriter, r *http.Request, token *auth.Token) {
+	switch r.Method {
+	case http.MethodGet:
+		tables, err := s.store.GetTables(r.Context())
+		if err != nil {
+			s.tableError(w, err)
+			return
+		}
+		for i := range tables {
+			tables[i] = s.tableResponse(tables[i], token)
+		}
+		respondJSON(w, http.StatusOK, tables)
+	case http.MethodPost:
+		name, ok := readTableName(w, r)
+		if !ok {
+			return
+		}
+		table, err := s.store.CreateTable(r.Context(), Table{
+			ID: uuid.New(), Name: name, InviteToken: uuid.NewString(),
+		})
+		if err != nil {
+			s.tableError(w, err)
+			return
+		}
+		respondJSON(w, http.StatusCreated, s.tableResponse(table, token))
+	default:
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+func (s *Server) handleSessionTable(w http.ResponseWriter, r *http.Request, token *auth.Token) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	id := DefaultTableID
+	if token.Role == auth.RoleGM {
+		if invite, err := getAuthorizationBearerToken(r); err == nil {
+			invited, err := s.playerToken(r, invite)
+			if err != nil {
+				http.Error(w, "Invalid table invite", http.StatusNotFound)
+				return
+			}
+			id = uuid.MustParse(invited.TableID)
+		}
+	}
+	if token.Role == auth.RolePlayer {
+		var err error
+		id, err = uuid.Parse(token.TableID)
+		if err != nil {
+			http.Error(w, "Invalid table session", http.StatusUnauthorized)
+			return
+		}
+	}
+	table, err := s.store.GetTable(r.Context(), id)
+	if err != nil {
+		s.tableError(w, err)
+		return
+	}
+	respondJSON(w, http.StatusOK, s.tableResponse(table, token))
+}
+
+func (s *Server) handleTable(w http.ResponseWriter, r *http.Request, token *auth.Token) {
+	id, ok := s.tableID(w, r, token)
+	if !ok {
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		table, err := s.store.GetTable(r.Context(), id)
+		if err != nil {
+			s.tableError(w, err)
+			return
+		}
+		respondJSON(w, http.StatusOK, s.tableResponse(table, token))
+	case http.MethodPut:
+		if token.Role != auth.RoleGM {
+			http.Error(w, "Forbidden", http.StatusForbidden)
+			return
+		}
+		name, ok := readTableName(w, r)
+		if !ok {
+			return
+		}
+		table, err := s.store.UpdateTable(r.Context(), id, name)
+		if err != nil {
+			s.tableError(w, err)
+			return
+		}
+		respondJSON(w, http.StatusOK, s.tableResponse(table, token))
+	case http.MethodDelete:
+		if token.Role != auth.RoleGM {
+			http.Error(w, "Forbidden", http.StatusForbidden)
+			return
+		}
+		if err := s.store.DeleteTable(r.Context(), id); err != nil {
+			s.tableError(w, err)
+			return
+		}
+		s.hub.CloseTable(id.String())
+		w.WriteHeader(http.StatusNoContent)
+	default:
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+func (s *Server) handleTableTracks(w http.ResponseWriter, r *http.Request, token *auth.Token) {
+	id, ok := s.tableID(w, r, token)
+	if !ok {
+		return
+	}
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	tracks, err := s.store.GetTableTracks(r.Context(), id)
+	if err != nil {
+		s.tableError(w, err)
+		return
+	}
+	respondJSON(w, http.StatusOK, tracks)
+}
+
+func (s *Server) handleTableTrack(w http.ResponseWriter, r *http.Request, token *auth.Token) {
+	id, ok := s.tableID(w, r, token)
+	if !ok {
+		return
+	}
+	trackID, err := uuid.Parse(r.PathValue("trackID"))
+	if err != nil {
+		http.Error(w, "Invalid track ID", http.StatusBadRequest)
+		return
+	}
+	switch r.Method {
+	case http.MethodPut:
+		err = s.store.AddTableTrack(r.Context(), id, trackID)
+	case http.MethodDelete:
+		err = s.store.RemoveTableTrack(r.Context(), id, trackID)
+	default:
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err != nil {
+		s.tableError(w, err)
+		return
+	}
+	if r.Method == http.MethodDelete {
+		s.hub.RemoveTrack(id.String(), trackID.String())
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) tableID(w http.ResponseWriter, r *http.Request, token *auth.Token) (uuid.UUID, bool) {
+	id, err := uuid.Parse(r.PathValue("tableID"))
+	if err != nil {
+		http.Error(w, "Invalid table ID", http.StatusBadRequest)
+		return uuid.Nil, false
+	}
+	if token.Role == auth.RolePlayer && token.TableID != id.String() {
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return uuid.Nil, false
+	}
+	if _, err := s.store.GetTable(r.Context(), id); err != nil {
+		s.tableError(w, err)
+		return uuid.Nil, false
+	}
+	return id, true
+}
+
+func (s *Server) tableResponse(table Table, token *auth.Token) Table {
+	if token.Role != auth.RoleGM {
+		table.InviteToken = ""
+		return table
+	}
+	if table.ID == DefaultTableID && table.InviteToken == "" {
+		table.InviteToken = s.auth.GetJoinToken()
+	}
+	return table
+}
+
+func (s *Server) tableError(w http.ResponseWriter, err error) {
+	if errors.Is(err, sql.ErrNoRows) {
+		http.Error(w, "Table or track not found", http.StatusNotFound)
+		return
+	}
+	s.logger.Error("table operation failed", "error", err)
+	http.Error(w, "Table operation failed", http.StatusInternalServerError)
+}
+
+func readTableName(w http.ResponseWriter, r *http.Request) (string, bool) {
+	var body struct {
+		Name string `json:"name"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return "", false
+	}
+	name := strings.TrimSpace(body.Name)
+	if name == "" || utf8.RuneCountInString(name) > 200 {
+		http.Error(w, "Table name must contain 1 to 200 characters", http.StatusBadRequest)
+		return "", false
+	}
+	return name, true
+}

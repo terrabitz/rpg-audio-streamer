@@ -44,6 +44,20 @@ func (s *Server) uploadFile(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to parse form", http.StatusBadRequest)
 		return
 	}
+	defer r.MultipartForm.RemoveAll()
+
+	var tableID uuid.UUID
+	if value := r.FormValue("tableID"); value != "" {
+		tableID, err = uuid.Parse(value)
+		if err != nil {
+			http.Error(w, "Invalid table ID", http.StatusBadRequest)
+			return
+		}
+		if _, err := s.store.GetTable(r.Context(), tableID); err != nil {
+			s.tableError(w, err)
+			return
+		}
+	}
 
 	file, handler, err := r.FormFile("files")
 	if err != nil {
@@ -75,6 +89,7 @@ func (s *Server) uploadFile(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.logger.Error("failed to generate UUID", "error", err)
 		http.Error(w, "Failed to save track information", http.StatusInternalServerError)
+		return
 	}
 
 	tempDir := os.TempDir()
@@ -143,8 +158,16 @@ func (s *Server) uploadFile(w http.ResponseWriter, r *http.Request) {
 		TypeID:    typeID,
 	}
 
-	if err := s.store.SaveTrack(r.Context(), &track); err != nil {
+	if tableID == uuid.Nil {
+		err = s.store.SaveTrack(r.Context(), &track)
+	} else {
+		err = s.store.SaveTrackToTable(r.Context(), &track, tableID)
+	}
+	if err != nil {
 		s.logger.Error("failed to save track information", "error", err)
+		if cleanupErr := os.RemoveAll(hlsDir); cleanupErr != nil {
+			s.logger.Error("failed to clean up HLS directory", "error", cleanupErr)
+		}
 		http.Error(w, "Failed to save track information", http.StatusInternalServerError)
 		return
 	}
@@ -220,6 +243,7 @@ func (s *Server) handleFileDelete(w http.ResponseWriter, r *http.Request, token 
 		http.Error(w, "Failed to remove track record", http.StatusInternalServerError)
 		return
 	}
+	s.hub.RemoveTrack("", trackID.String())
 
 	if err := os.RemoveAll(track.Path); err != nil {
 		http.Error(w, "Failed to delete folder", http.StatusInternalServerError)
@@ -232,18 +256,57 @@ func (s *Server) handleFileDelete(w http.ResponseWriter, r *http.Request, token 
 
 func (s *Server) streamDirectory(w http.ResponseWriter, r *http.Request, token *auth.Token) {
 	relativePath := strings.TrimPrefix(r.URL.Path, "/api/v1/stream/")
+	if token.Role == auth.RolePlayer {
+		tableID, err := uuid.Parse(token.TableID)
+		if err != nil {
+			http.Error(w, "Invalid table session", http.StatusUnauthorized)
+			return
+		}
+		parts := strings.Split(relativePath, "/")
+		trackID, err := uuid.Parse(parts[0])
+		if err != nil {
+			http.Error(w, "Invalid track ID", http.StatusBadRequest)
+			return
+		}
+		allowed, err := s.store.HasTableTrack(r.Context(), tableID, trackID)
+		if err != nil {
+			s.tableError(w, err)
+			return
+		}
+		if !allowed {
+			http.Error(w, "Track not found", http.StatusNotFound)
+			return
+		}
+	}
 	filePath := filepath.Join(s.cfg.UploadDir, relativePath)
 	http.ServeFile(w, r, filePath)
 }
 
 func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request, token *auth.Token) {
+	scoped := *token
+	if token.Role == auth.RoleGM {
+		id := DefaultTableID
+		if value := r.URL.Query().Get("tableID"); value != "" {
+			var err error
+			id, err = uuid.Parse(value)
+			if err != nil {
+				http.Error(w, "Invalid table ID", http.StatusBadRequest)
+				return
+			}
+		}
+		if _, err := s.store.GetTable(r.Context(), id); err != nil {
+			s.tableError(w, err)
+			return
+		}
+		scoped.TableID = id.String()
+	}
 	conn, err := s.upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		s.logger.Error("websocket upgrade failed", "error", err)
 		return
 	}
 
-	s.hub.Register(conn, token)
+	s.hub.Register(conn, &scoped)
 }
 
 type authStatusResponse struct {
@@ -333,6 +396,11 @@ type joinTokenResponse struct {
 func (s *Server) handleGetJoinToken(w http.ResponseWriter, r *http.Request, token *auth.Token) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if _, err := s.store.GetTable(r.Context(), DefaultTableID); err != nil {
+		s.tableError(w, err)
 		return
 	}
 

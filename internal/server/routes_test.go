@@ -175,12 +175,35 @@ func TestWebSocketRoute(t *testing.T) {
 	}
 	defer conn.Close()
 	token := <-reg.tokens
-	if token.Role != auth.RoleGM {
-		t.Fatalf("registered role = %s", token.Role)
+	if token.Role != auth.RoleGM || token.TableID != DefaultTableID.String() {
+		t.Fatalf("registered GM scope = %+v", token)
+	}
+	if ts.auth.(*mockAuth).token.TableID != "" {
+		t.Fatal("websocket scope mutated the shared authentication token")
+	}
+	player, _, err := websocket.DefaultDialer.Dial(
+		"ws"+strings.TrimPrefix(httpServer.URL, "http")+"/api/v1/ws?token=valid-join-token&tableID="+uuid.NewString(), nil,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer player.Close()
+	token = <-reg.tokens
+	if token.Role != auth.RolePlayer || token.TableID != DefaultTableID.String() {
+		t.Fatalf("player overrode invite scope = %+v", token)
 	}
 	rec := routedRequest(ts.Handler(), "GET", "/api/v1/ws", "", true)
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("non-upgrade status = %d", rec.Code)
+	}
+	for _, tc := range []struct {
+		tableID string
+		status  int
+	}{{"invalid", http.StatusBadRequest}, {uuid.NewString(), http.StatusNotFound}} {
+		rec := routedRequest(ts.Handler(), "GET", "/api/v1/ws?tableID="+tc.tableID, "", true)
+		if rec.Code != tc.status {
+			t.Fatalf("GM socket table %s = %d; want %d", tc.tableID, rec.Code, tc.status)
+		}
 	}
 }
 
@@ -215,6 +238,9 @@ func (f failingStore) DeleteTrack(context.Context, uuid.UUID) error {
 type recordingWSRegisterer struct {
 	tokens chan *auth.Token
 }
+
+func (r *recordingWSRegisterer) CloseTable(string)          {}
+func (r *recordingWSRegisterer) RemoveTrack(string, string) {}
 
 func (r *recordingWSRegisterer) Register(conn *websocket.Conn, token *auth.Token) {
 	defer conn.Close()

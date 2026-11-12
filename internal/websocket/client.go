@@ -17,11 +17,12 @@ const (
 )
 
 type Client struct {
-	ID    string
-	hub   *Hub
-	conn  *websocket.Conn
-	send  chan []byte
-	Token *auth.Token
+	ID     string
+	hub    *Hub
+	conn   *websocket.Conn
+	send   chan []byte
+	Token  *auth.Token
+	closed bool
 }
 
 func NewClient(hub *Hub, conn *websocket.Conn, token *auth.Token) *Client {
@@ -40,7 +41,16 @@ func (c *Client) Send(msg Message) error {
 		return fmt.Errorf("couldn't marshal input: %w", err)
 	}
 
-	c.send <- j
+	c.hub.clientsMu.RLock()
+	defer c.hub.clientsMu.RUnlock()
+	if c.closed {
+		return fmt.Errorf("client is disconnected")
+	}
+	select {
+	case c.send <- j:
+	default:
+		return fmt.Errorf("client send buffer is full")
+	}
 
 	return nil
 }

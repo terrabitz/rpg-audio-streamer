@@ -18,12 +18,13 @@ export const useFileStore = defineStore('files', {
         this.tracks = data
       } catch (error) {
         console.error('Error fetching files:', error)
+        throw error
       }
     },
     async deleteFile(trackId: string) {
       try {
         await deleteApiV1FilesByTrackId<true>({ path: { trackID: trackId } })
-        await this.fetchFiles()
+        this.tracks = this.tracks.filter(track => track.id !== trackId)
       } catch (error) {
         console.error('Error deleting file:', error)
         throw error

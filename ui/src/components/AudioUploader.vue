@@ -11,6 +11,7 @@
           <span class="headline">Upload Track</span>
         </v-card-title>
         <v-card-text>
+          <v-alert v-if="uploadStatus?.type === 'error'" type="error" class="mb-3">{{ uploadStatus.message }}</v-alert>
           <div @dragover="handleDragOver" @dragleave="handleDragLeave" @drop="handleDrop"
             :class="{ 'dragging': isDragging }" class="drop-area">
             <v-form v-model="formValid" @submit.prevent>
@@ -24,12 +25,13 @@
         </v-card-text>
         <v-card-actions>
           <v-spacer></v-spacer>
-          <v-btn color="error" @click="showModal = false">Cancel</v-btn>
-          <v-btn color="success" @click="submitForm" :disabled="!formValid">Upload</v-btn>
+          <v-btn color="error" @click="showModal = false" :disabled="isUploading">Cancel</v-btn>
+          <v-btn color="success" @click="submitForm" :disabled="!formValid || !trackFile || !trackName.trim() || !selectedTypeId"
+            :loading="isUploading">Upload</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
-    <v-alert v-if="uploadStatus" :type="uploadStatus.type" :text="uploadStatus.message" class="mt-3"></v-alert>
+    <v-alert v-if="uploadStatus && !showModal" :type="uploadStatus.type" :text="uploadStatus.message" class="mt-3"></v-alert>
   </div>
 </template>
 
@@ -37,10 +39,13 @@
 import { postApiV1Files } from '@/client/apiClient'
 import { useFileStore } from '@/stores/files'
 import { useTrackTypeStore } from '@/stores/trackTypes'
+import { useTableStore } from '@/stores/tables'
 import debounce from 'lodash.debounce'
 import { onMounted, ref, watch } from 'vue'
 import TrackTypeSelector from './TrackTypeSelector.vue'
 
+const props = defineProps<{ tableID?: string }>()
+const tables = useTableStore()
 const isUploading = ref(false)
 const uploadStatus = ref<{ type: 'success' | 'error', message: string } | null>(null)
 const fileStore = useFileStore()
@@ -63,39 +68,43 @@ watch(trackFile, (file) => {
 })
 
 const uploadTrack = async () => {
-  const formData = new FormData()
-  formData.append('files', trackFile.value as File)
-  formData.append('name', trackName.value)
-  formData.append('typeID', selectedTypeId.value)  // Update to use typeID
+  const files = trackFile.value
+  const name = trackName.value.trim()
+  const typeID = selectedTypeId.value
+  if (!files || !name || !typeID) {
+    uploadStatus.value = { type: 'error', message: 'Select a file, name, and track type.' }
+    return false
+  }
 
   isUploading.value = true
   uploadStatus.value = null
+  let uploaded = false
 
   try {
-    const files = formData.get('files') as Blob | null
-    const name = formData.get('name') as string | null
-    const typeID = formData.get('typeID') as string | null
-
-    if (!files || !name || !typeID) {
-      throw new Error('Missing required fields')
-    }
-
     await postApiV1Files<true>({
       body: {
         files,
         name,
-        typeID
+        typeID,
+        tableID: props.tableID,
       }
     })
 
+    uploaded = true
+    await fileStore.fetchFiles()
+    if (props.tableID) await tables.fetchTracks(props.tableID)
     uploadStatus.value = { type: 'success', message: 'File uploaded successfully!' }
     setTimeout(() => {
       uploadStatus.value = null
     }, 5000)
-    await fileStore.fetchFiles()
+    return true
   } catch (error) {
-    uploadStatus.value = { type: 'error', message: 'Failed to upload file' }
+    uploadStatus.value = {
+      type: 'error',
+      message: uploaded ? 'Track uploaded, but failed to refresh tracks. Reload the page before uploading again.' : 'Failed to upload file',
+    }
     console.error('Upload error:', error)
+    return uploaded
   } finally {
     isUploading.value = false
   }
@@ -125,7 +134,7 @@ const handleDrop = (event: DragEvent) => {
 }
 
 const submitForm = async () => {
-  await uploadTrack()
+  if (!await uploadTrack()) return
   showModal.value = false
   trackName.value = ''
   trackFile.value = null

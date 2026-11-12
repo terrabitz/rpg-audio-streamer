@@ -4,6 +4,17 @@
 
 package sqlitedb
 
+type GameTable struct {
+	ID          []byte
+	Name        string
+	InviteToken string
+}
+
+type TableTrack struct {
+	TableID []byte
+	TrackID []byte
+}
+
 type Track struct {
 	ID        []byte
 	CreatedAt string

@@ -11,6 +11,10 @@ import (
 )
 
 func (db *SQLiteDatastore) SaveTrack(ctx context.Context, track *server.Track) error {
+	return saveTrack(ctx, sqlitedb.New(db.DB), track)
+}
+
+func saveTrack(ctx context.Context, queries *sqlitedb.Queries, track *server.Track) error {
 	dbTrack := sqlitedb.SaveTrackParams{
 		ID:        track.ID[:],
 		CreatedAt: track.CreatedAt.Format(time.RFC3339),
@@ -19,7 +23,7 @@ func (db *SQLiteDatastore) SaveTrack(ctx context.Context, track *server.Track) e
 		TypeID:    track.TypeID[:],
 	}
 
-	if err := sqlitedb.New(db.DB).SaveTrack(ctx, dbTrack); err != nil {
+	if err := queries.SaveTrack(ctx, dbTrack); err != nil {
 		return fmt.Errorf("couldn't save track to SQLite: %w", err)
 	}
 

@@ -168,6 +168,84 @@ func TestWebSocketClientPumps(t *testing.T) {
 	}
 }
 
+func TestTableIsolation(t *testing.T) {
+	for _, tc := range []struct {
+		sender, method, payload string
+	}{
+		{"gm", "broadcast", `{}`},
+		{"gm", "syncAll", `{"tracks":[]}`},
+		{"gm", "syncAll", `{"tracks":[],"to":"outsider"}`},
+		{"gm", "syncTrack", `{"fileID":"forest","isPlaying":true}`},
+		{"player", "syncRequest", `{}`},
+	} {
+		t.Run(tc.method+tc.payload, func(t *testing.T) {
+			hub, clients := testHub()
+			for _, client := range clients {
+				client.Token.TableID = "friday"
+			}
+			outsider := NewClient(hub, nil, &auth.Token{Role: auth.RolePlayer, TableID: "sunday"})
+			outsider.ID = "outsider"
+			otherGM := NewClient(hub, nil, &auth.Token{Role: auth.RoleGM, TableID: "sunday"})
+			hub.clients[outsider] = true
+			hub.clients[otherGM] = true
+			input, err := json.Marshal(Message{Method: tc.method, Payload: json.RawMessage(tc.payload)})
+			if err != nil {
+				t.Fatal(err)
+			}
+			hub.route(input, clients[tc.sender])
+			if len(outsider.send) != 0 || len(otherGM.send) != 0 {
+				t.Fatal("message crossed table boundary")
+			}
+			if tc.method == "syncRequest" && len(clients["gm"].send) != 1 {
+				t.Fatal("same-table GM did not receive sync request")
+			}
+		})
+	}
+}
+
+func TestTableDeletionAndTrackRemoval(t *testing.T) {
+	hub, clients := testHub()
+	clients["gm"].Token.TableID = "friday"
+	clients["player"].Token.TableID = "friday"
+	clients["otherGM"].Token.TableID = "sunday"
+	clients["otherPlayer"].Token.TableID = "sunday"
+	hub.RemoveTrack("friday", "forest")
+	for _, id := range []string{"gm", "player"} {
+		var message Message
+		if err := json.Unmarshal(<-clients[id].send, &message); err != nil {
+			t.Fatal(err)
+		}
+		if message.Method != "removeTrack" || string(message.Payload) != `{"fileID":"forest"}` {
+			t.Fatalf("track removal = %+v", message)
+		}
+	}
+	if len(clients["otherPlayer"].send) != 0 {
+		t.Fatal("track removal crossed tables")
+	}
+	hub.CloseTable("friday")
+	for _, id := range []string{"gm", "player"} {
+		client := clients[id]
+		if _, ok := hub.clients[client]; ok {
+			t.Fatal("deleted table client still registered")
+		}
+		var message Message
+		if err := json.Unmarshal(<-client.send, &message); err != nil || message.Method != "tableDeleted" {
+			t.Fatalf("table deletion message = %+v, %v", message, err)
+		}
+		if _, open := <-client.send; open {
+			t.Fatal("deleted table send channel is open")
+		}
+		if err := client.Send(Message{Method: "ping"}); err == nil {
+			t.Fatal("disconnected client accepted direct message")
+		}
+		hub.route([]byte(`{"method":"syncRequest","payload":{}}`), client)
+	}
+	hub.RemoveTrack("", "forest")
+	if len(clients["otherPlayer"].send) != 1 {
+		t.Fatal("library deletion did not reach other table")
+	}
+}
+
 func testHub() (*Hub, map[string]*Client) {
 	hub := NewHub(slog.New(slog.NewTextHandler(io.Discard, nil)))
 	clients := make(map[string]*Client)

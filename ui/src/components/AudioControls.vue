@@ -11,7 +11,7 @@
         <v-chip :color="trackType?.color" text-color="white" size="x-small">
           {{ trackType?.name }}
         </v-chip>
-        <div class="play-status mr-2">
+        <div v-if="!props.library" class="play-status mr-2">
           <v-progress-circular v-if="fadeState?.inProgress" width="3" size="20" indeterminate />
           <v-icon v-else size="24">
             {{ audioState?.isPlaying ? '$pause' : '$play' }}
@@ -26,15 +26,16 @@
           <v-btn icon="$close" size="small" variant="text" aria-label="Close track controls" @click="showControls = false" class="float-right" />
         </v-card-title>
         <v-card-text>
+          <v-alert v-if="error" type="error" class="mb-3">{{ error }}</v-alert>
           <v-text-field v-model="editName" label="Track Name" variant="underlined" hide-details
             class="pa-0 ma-0"></v-text-field>
           <TrackTypeSelector v-model="editTrackType" />
           <div class="d-flex flex-column">
             <div class="d-flex align-center">
-              <VolumeSlider v-if="audioState" v-model="audioState.volume"
+              <VolumeSlider v-if="audioState && !props.library" v-model="audioState.volume"
                 @update:model-value="$emit('volume', $event)" />
             </div>
-            <div v-if="audioState" class="d-flex align-center">
+            <div v-if="audioState && !props.library" class="d-flex align-center">
               <v-icon size="small" color="grey-darken-1" class="mx-2">
                 {{ trackType?.isRepeating ? '$repeat' : '$repeatOff' }}
               </v-icon>
@@ -48,7 +49,10 @@
         </v-card-text>
         <v-divider></v-divider>
         <v-card-actions>
-          <v-btn color="error" variant="text" prepend-icon="$delete" aria-label="Delete track" @click="$emit('delete')" />
+          <v-btn color="error" variant="text" prepend-icon="$delete"
+            :aria-label="props.library ? 'Delete track' : 'Remove from table'" @click="$emit('delete')">
+            {{ props.library ? 'Delete track' : 'Remove from table' }}
+          </v-btn>
 
           <v-spacer />
 
@@ -73,6 +77,7 @@ import VolumeSlider from './VolumeSlider.vue';
 const props = defineProps<{
   fileName: string
   fileID: string
+  library?: boolean
 }>();
 
 const audioStore = useAudioStore();
@@ -86,6 +91,7 @@ const fadeState = computed(() => audioStore.fadeStates[props.fileID]);
 
 const showControls = ref(false);
 const isSaving = ref(false);
+const error = ref('');
 
 const isActive = computed(() => audioState.value?.isPlaying);
 
@@ -107,6 +113,7 @@ watchEffect(() => {
 });
 
 async function saveTrackChanges() {
+  error.value = ''
   if (!track.value) {
     console.warn('Cannot save track changes: track not found');
     return;
@@ -143,9 +150,9 @@ async function saveTrackChanges() {
 
     // Close the dialog after successful save
     showControls.value = false;
-  } catch (error) {
-    console.error('Failed to update track:', error);
-    // You could add error handling UI here
+  } catch (cause) {
+    console.error('Failed to update track:', cause);
+    error.value = 'Failed to update track.'
   } finally {
     isSaving.value = false;
   }

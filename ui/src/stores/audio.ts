@@ -37,11 +37,16 @@ export const useAudioStore = defineStore('audio', {
     fadeStates: {} as Record<string, FadeStatus>,
     typeVolumes: {} as Record<string, number>,
   }),
-  persist: true,
+  persist: { pick: ['masterVolume', 'typeVolumes'] },
   getters: {
     availableTracks: (state) => Object.values(state.tracks)
   },
   actions: {
+    clearTracks() {
+      this.enabled = false
+      this.tracks = {}
+      this.fadeStates = {}
+    },
     initTrack(fileID: string, name: string, typeID: string = "") {
       if (!this.tracks[fileID]) {
         this.tracks[fileID] = newAudioTrack(fileID, name, typeID)

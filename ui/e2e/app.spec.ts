@@ -10,6 +10,8 @@ test('GM can recover from invalid credentials, keep a session, and log out', asy
   await expect(page.getByText('Invalid credentials', { exact: true })).toBeVisible()
   await page.getByLabel('Password', { exact: true }).fill('e2e-password')
   await page.getByRole('button', { name: 'Login', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'Tables', exact: true })).toBeVisible()
+  await page.getByRole('link', { name: 'Open My Table', exact: true }).click()
   await expect(page.getByRole('button', { name: 'Upload Track' })).toBeVisible()
   await page.reload()
   await expect(page.getByRole('button', { name: 'Upload Track' })).toBeVisible()
@@ -21,6 +23,7 @@ test('GM can recover from invalid credentials, keep a session, and log out', asy
 
 test('GM uploads, renames, persists, and deletes an audio track', async ({ page }) => {
   await login(page)
+  await page.getByRole('link', { name: 'Library', exact: true }).click()
   await uploadTrack(page, 'Forest')
   const tile = page.locator('.file-tile').filter({ hasText: 'Forest' })
   await expect(tile).toBeVisible()
@@ -105,9 +108,7 @@ test('invited player receives live playback, late-join state, and pause', async 
   } finally {
     await playerContext.close()
   }
-  await tile.getByRole('button', { name: 'Edit Session Music' }).click()
-  await page.getByRole('button', { name: 'Delete track', exact: true }).click()
-  await expect(tile).toHaveCount(0)
+  await deleteLibraryTrack(page, 'Session Music')
 })
 
 test('starting another Music track stops the previous one', async ({ page }) => {
@@ -146,11 +147,110 @@ test('starting another Music track stops the previous one', async ({ page }) => 
     [first, 'First Music'],
     [second, 'Second Music'],
   ] as const) {
-    await tile.getByRole('button', { name: `Edit ${name}` }).click()
-    await page.getByRole('button', { name: 'Delete track', exact: true }).click()
+    await deleteLibraryTrack(page, name)
     await expect(tile).toHaveCount(0)
   }
   await expect(page.locator('video')).toHaveCount(0)
+})
+
+test('tables share a library but isolate invitations, playback, removal, and deletion', async ({
+  page, browser, context,
+}) => {
+  test.setTimeout(60_000)
+  await context.grantPermissions(['clipboard-read', 'clipboard-write'])
+  await login(page)
+  await page.getByRole('link', { name: 'Library', exact: true }).click()
+  await uploadTrack(page, 'Shared Forest')
+  await page.getByRole('link', { name: 'Tables', exact: true }).click()
+  await createTable(page, 'Friday')
+  await createTable(page, 'Sunday')
+  await page.getByRole('button', { name: 'Rename Friday', exact: true }).click()
+  await page.getByLabel('Table name', { exact: true }).fill('Friday group')
+  await page.getByRole('button', { name: 'Save table', exact: true }).click()
+  await page.reload()
+  await page.getByRole('link', { name: 'Open Friday group', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'Friday group', exact: true })).toBeVisible()
+  await addExistingTrack(page, 'Shared Forest')
+  await uploadTrack(page, 'Friday Only')
+  await page.getByRole('button', { name: 'Copy invite link', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Copied to clipboard', exact: true })).toBeVisible()
+  const fridayInvite = await page.evaluate(() => navigator.clipboard.readText())
+  await page.reload()
+  await expect(page.locator('.file-tile')).toHaveCount(2)
+
+  const sundayGM = await context.newPage()
+  await sundayGM.goto('/tables')
+  await sundayGM.getByRole('link', { name: 'Open Sunday', exact: true }).click()
+  await addExistingTrack(sundayGM, 'Shared Forest')
+  await expect(sundayGM.locator('.file-tile')).toHaveCount(1)
+  await sundayGM.getByRole('button', { name: 'Copy invite link', exact: true }).click()
+  await expect(sundayGM.getByRole('button', { name: 'Copied to clipboard', exact: true })).toBeVisible()
+  const sundayInvite = await sundayGM.evaluate(() => navigator.clipboard.readText())
+  expect(sundayInvite).not.toBe(fridayInvite)
+
+  const fridayContext = await browser.newContext()
+  const sundayContext = await browser.newContext()
+  try {
+    const fridayPlayer = await fridayContext.newPage()
+    const sundayPlayer = await sundayContext.newPage()
+    await fridayPlayer.goto(fridayInvite)
+    await sundayPlayer.goto(sundayInvite)
+    await expect(fridayPlayer.getByRole('heading', { name: 'Friday group', exact: true })).toBeVisible()
+    await expect(sundayPlayer.getByRole('heading', { name: 'Sunday', exact: true })).toBeVisible()
+    await expect(fridayPlayer.getByRole('link', { name: 'Library', exact: true })).toHaveCount(0)
+    await fridayPlayer.getByRole('button', { name: 'Connect Audio', exact: true }).click()
+    await sundayPlayer.getByRole('button', { name: 'Connect Audio', exact: true }).click()
+    await expect(fridayPlayer.getByText('Connected', { exact: true })).toBeVisible()
+    await expect(sundayPlayer.getByText('Connected', { exact: true })).toBeVisible()
+    const fridayTile = page.locator('.file-tile').filter({ hasText: 'Shared Forest' })
+    const sundayTile = sundayGM.locator('.file-tile').filter({ hasText: 'Shared Forest' })
+    await fridayTile.click()
+    await expect(fridayPlayer.locator('video')).toHaveCount(1)
+    await expect.poll(() => fridayPlayer.locator('video').evaluate(
+      (el: HTMLVideoElement) => !el.paused && el.currentTime > 0,
+    )).toBe(true)
+    await expect(sundayPlayer.locator('video')).toHaveCount(0)
+    await sundayTile.click()
+    await expect(sundayPlayer.locator('video')).toHaveCount(1)
+    await expect.poll(() => sundayPlayer.locator('video').evaluate(
+      (el: HTMLVideoElement) => !el.paused && el.currentTime > 0,
+    )).toBe(true)
+    await fridayTile.click()
+    await expect.poll(() => fridayPlayer.locator('video').evaluate(
+      (el: HTMLVideoElement) => el.paused,
+    )).toBe(true)
+    await expect.poll(() => sundayPlayer.locator('video').evaluate(
+      (el: HTMLVideoElement) => !el.paused,
+    )).toBe(true)
+    await fridayTile.getByRole('button', { name: 'Edit Shared Forest', exact: true }).click()
+    await page.getByRole('button', { name: 'Remove from table', exact: true }).click()
+    await expect(fridayTile).toHaveCount(0)
+    await expect(fridayPlayer.locator('video')).toHaveCount(0)
+    await expect(sundayTile).toBeVisible()
+    await expect.poll(() => sundayPlayer.locator('video').evaluate(
+      (el: HTMLVideoElement) => !el.paused,
+    )).toBe(true)
+    await page.getByRole('link', { name: 'Library', exact: true }).click()
+    await expect(page.locator('.file-tile').filter({ hasText: 'Friday Only' })).toBeVisible()
+    await deleteLibraryTrack(page, 'Shared Forest')
+    await expect(sundayTile).toHaveCount(0)
+    await expect(sundayPlayer.locator('video')).toHaveCount(0)
+    await page.getByRole('link', { name: 'Tables', exact: true }).click()
+    await deleteTable(page, 'Friday group')
+    await expect(fridayPlayer.getByText('This table has been deleted.', { exact: true })).toBeVisible()
+    await fridayPlayer.reload()
+    await expect(fridayPlayer.getByText(
+      'This invite link is invalid or the table has been deleted.', { exact: true },
+    )).toBeVisible()
+    await deleteTable(page, 'Sunday')
+    await expect(sundayPlayer.getByText('This table has been deleted.', { exact: true })).toBeVisible()
+    await deleteLibraryTrack(page, 'Friday Only')
+    await expect(page.locator('.file-tile')).toHaveCount(0)
+  } finally {
+    await fridayContext.close()
+    await sundayContext.close()
+    await sundayGM.close()
+  }
 })
 
 async function login(page: Page) {
@@ -158,7 +258,37 @@ async function login(page: Page) {
   await page.getByLabel('Username').fill('e2e-gm')
   await page.getByLabel('Password', { exact: true }).fill('e2e-password')
   await page.getByRole('button', { name: 'Login', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'Tables', exact: true })).toBeVisible()
+  await page.getByRole('link', { name: 'Open My Table', exact: true }).click()
   await expect(page.getByRole('button', { name: 'Upload Track' })).toBeVisible()
+}
+
+async function createTable(page: Page, name: string) {
+  await page.getByRole('button', { name: 'Create table', exact: true }).click()
+  await page.getByLabel('Table name', { exact: true }).fill(name)
+  await page.getByRole('button', { name: 'Save table', exact: true }).click()
+  await expect(page.getByRole('link', { name: `Open ${name}`, exact: true })).toBeVisible()
+}
+
+async function addExistingTrack(page: Page, name: string) {
+  await page.getByRole('combobox', { name: 'Library track', exact: true }).press('ArrowDown')
+  await page.getByRole('option', { name, exact: true }).click()
+  await page.getByRole('button', { name: 'Add existing track', exact: true }).click()
+  await expect(page.locator('.file-tile').filter({ hasText: name })).toBeVisible()
+}
+
+async function deleteTable(page: Page, name: string) {
+  await page.getByRole('button', { name: `Delete ${name}`, exact: true }).click()
+  await page.getByRole('button', { name: 'Confirm delete table', exact: true }).click()
+  await expect(page.getByRole('link', { name: `Open ${name}`, exact: true })).toHaveCount(0)
+}
+
+async function deleteLibraryTrack(page: Page, name: string) {
+  await page.getByRole('link', { name: 'Library', exact: true }).click()
+  const tile = page.locator('.file-tile').filter({ hasText: name })
+  await tile.getByRole('button', { name: `Edit ${name}` }).click()
+  await page.getByRole('button', { name: 'Delete track', exact: true }).click()
+  await expect(tile).toHaveCount(0)
 }
 
 async function uploadTrack(page: Page, name: string) {
