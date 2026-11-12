@@ -4,30 +4,40 @@
     <div class="track-heading pa-2 text-subtitle-1 position-relative">
       <span>{{ props.fileName }}</span>
       <v-btn icon="$dotsVertical" size="small" variant="text" :aria-label="`Edit ${props.fileName}`" @click.stop="showControls = true"
-        class="position-absolute top-0 right-0" />
+        class="track-desktop-edit position-absolute top-0 right-0" />
+      <v-btn :icon="props.controlsVisible ? '$collapse' : '$expand'" size="small" variant="text"
+        class="track-touch-toggle position-absolute top-0 right-0" :aria-label="`Toggle controls for ${props.fileName}`"
+        :aria-expanded="props.controlsVisible" :aria-controls="`track-controls-${props.fileID}`"
+        @click.stop="$emit('toggle-controls')" />
     </div>
-    <v-divider></v-divider>
-    <div v-if="audioState" class="px-2 pt-1" @click.stop>
-      <VolumeSlider :model-value="audioState.volume" :aria-label="`Volume for ${props.fileName}`"
-        thumb-size="8" track-size="2" class="track-volume"
-        @update:model-value="$emit('volume', $event)" />
-      <div class="d-flex align-start ga-1 pb-1">
-        <v-btn :icon="audioState.isPlaying ? '$pause' : '$play'" size="x-small" variant="text"
-          :aria-label="`${audioState.isPlaying ? 'Pause' : 'Play'} ${props.fileName}`"
-          :aria-pressed="audioState.isPlaying" @click.stop="$emit('play')">
-          <v-progress-circular v-if="fadeState?.inProgress" width="2" size="18" indeterminate />
-          <v-icon v-else :icon="audioState.isPlaying ? '$pause' : '$play'" />
-        </v-btn>
-        <div class="track-position flex-grow-1">
-          <v-slider :model-value="audioState.currentTime" :max="audioState.duration" min="0" step="1"
-            :disabled="audioState.duration <= 0" thumb-size="8" track-size="2" density="compact" hide-details
-            :aria-label="`Playback position for ${props.fileName}`"
-            :aria-valuetext="`${formatTime(audioState.currentTime)} of ${formatTime(audioState.duration)}`"
-            class="ma-0" @update:model-value="$emit('seek', $event)" />
-          <div class="position-time text-center">{{ formatTime(audioState.currentTime) }} / {{ formatTime(audioState.duration) }}</div>
+    <div v-if="audioState" v-show="props.controlsVisible" :id="`track-controls-${props.fileID}`" class="track-controls" @click.stop>
+      <v-divider></v-divider>
+      <div class="px-2 pt-1">
+        <div class="position-relative">
+          <VolumeSlider :model-value="audioState.volume" :aria-label="`Volume for ${props.fileName}`"
+            thumb-size="8" track-size="2" class="track-volume"
+            @update:model-value="$emit('volume', $event)" />
+          <v-btn icon="$dotsVertical" size="x-small" variant="text" :aria-label="`Edit ${props.fileName}`"
+            class="track-touch-edit position-absolute top-0 right-0" @click.stop="showControls = true" />
         </div>
-        <v-btn icon="$restart" size="x-small" variant="text" :aria-label="`Restart ${props.fileName}`"
-          title="Restart track" @click.stop="$emit('seek', 0)" />
+        <div class="d-flex align-start ga-1 pb-1">
+          <v-btn :icon="audioState.isPlaying ? '$pause' : '$play'" size="x-small" variant="text"
+            :aria-label="`${audioState.isPlaying ? 'Pause' : 'Play'} ${props.fileName}`"
+            :aria-pressed="audioState.isPlaying" @click.stop="$emit('play')">
+            <v-progress-circular v-if="fadeState?.inProgress" width="2" size="18" indeterminate />
+            <v-icon v-else :icon="audioState.isPlaying ? '$pause' : '$play'" />
+          </v-btn>
+          <div class="track-position flex-grow-1">
+            <v-slider :model-value="audioState.currentTime" :max="audioState.duration" min="0" step="1"
+              :disabled="audioState.duration <= 0" thumb-size="8" track-size="2" density="compact" hide-details
+              :aria-label="`Playback position for ${props.fileName}`"
+              :aria-valuetext="`${formatTime(audioState.currentTime)} of ${formatTime(audioState.duration)}`"
+              class="ma-0" @update:model-value="$emit('seek', $event)" />
+            <div class="position-time text-center">{{ formatTime(audioState.currentTime) }} / {{ formatTime(audioState.duration) }}</div>
+          </div>
+          <v-btn icon="$restart" size="x-small" variant="text" :aria-label="`Restart ${props.fileName}`"
+            title="Restart track" @click.stop="$emit('seek', 0)" />
+        </div>
       </div>
     </div>
 
@@ -80,6 +90,7 @@ import VolumeSlider from './VolumeSlider.vue';
 const props = defineProps<{
   fileName: string
   fileID: string
+  controlsVisible: boolean
 }>();
 
 const audioStore = useAudioStore();
@@ -169,6 +180,7 @@ watchEffect(() => {
 });
 
 defineEmits<{
+  (e: 'toggle-controls'): void
   (e: 'play'): void
   (e: 'volume', volume: number): void
   (e: 'seek', time: number): void
@@ -191,6 +203,7 @@ function formatTime(seconds: number): string {
 
 .audio-control-tile {
   height: 100%;
+  position: relative;
   border: 2px solid v-bind('trackType?.color');
   border-radius: inherit;
   transition: background-color 0.3s ease;
@@ -199,6 +212,35 @@ function formatTime(seconds: number): string {
 
 .audio-control-tile.is-active {
   background-color: rgba(var(--v-theme-on-surface), 0.06);
+}
+
+.track-controls {
+  position: absolute;
+  top: calc(100% - 2px);
+  left: -2px;
+  right: -2px;
+  background-color: rgb(var(--v-theme-surface));
+  border: 2px solid v-bind('trackType?.color');
+  border-top: 0;
+  border-radius: 0 0 4px 4px;
+  box-shadow: 0 8px 12px rgba(0, 0, 0, 0.25);
+  cursor: default;
+}
+
+.track-touch-toggle,
+.track-touch-edit {
+  display: none;
+}
+
+@media (hover: none), (any-pointer: coarse) {
+  .track-desktop-edit {
+    display: none;
+  }
+
+  .track-touch-toggle,
+  .track-touch-edit {
+    display: inline-grid;
+  }
 }
 
 .track-position {
