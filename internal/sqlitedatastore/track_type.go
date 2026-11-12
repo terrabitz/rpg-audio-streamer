@@ -14,7 +14,7 @@ func (db *SQLiteDatastore) GetTrackTypes(ctx context.Context) ([]server.TrackTyp
 		return nil, err
 	}
 
-	var result []server.TrackType
+	result := make([]server.TrackType, 0, len(dbTrackTypes))
 	for _, dbTrackType := range dbTrackTypes {
 		trackType, parseErr := convertDBTrackType(dbTrackType)
 		if parseErr != nil {

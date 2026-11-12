@@ -2,7 +2,7 @@
   <div v-if="trackType" class="audio-control-tile" :class="{ 'is-active': isActive }">
     <div class="text-center pa-1 text-subtitle-1 position-relative">
       {{ props.fileName }}
-      <v-btn icon="$dotsVertical" size="small" variant="text" @click.stop="showControls = true"
+      <v-btn icon="$dotsVertical" size="small" variant="text" :aria-label="`Edit ${props.fileName}`" @click.stop="showControls = true"
         class="position-absolute top-0 right-0" />
     </div>
     <v-divider></v-divider>
@@ -23,7 +23,7 @@
     <v-dialog v-model="showControls" max-width="400px" @click:outside="showControls = false">
       <v-card>
         <v-card-title class="text-body-1">
-          <v-btn icon="$close" size="small" variant="text" @click="showControls = false" class="float-right" />
+          <v-btn icon="$close" size="small" variant="text" aria-label="Close track controls" @click="showControls = false" class="float-right" />
         </v-card-title>
         <v-card-text>
           <v-text-field v-model="editName" label="Track Name" variant="underlined" hide-details
@@ -48,7 +48,7 @@
         </v-card-text>
         <v-divider></v-divider>
         <v-card-actions>
-          <v-btn color="error" variant="text" prepend-icon="$delete" @click="$emit('delete')" />
+          <v-btn color="error" variant="text" prepend-icon="$delete" aria-label="Delete track" @click="$emit('delete')" />
 
           <v-spacer />
 

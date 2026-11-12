@@ -70,6 +70,20 @@ func (s *Server) Start() error {
 		return fmt.Errorf("failed to create upload directory: %w", err)
 	}
 
+	srv := &http.Server{
+		Addr:    fmt.Sprintf(":%d", s.cfg.Port),
+		Handler: s.Handler(),
+	}
+
+	s.logger.Info("starting server",
+		slog.Int("port", s.cfg.Port),
+		slog.Bool("devMode", s.cfg.DevMode),
+	)
+	return srv.ListenAndServe()
+}
+
+// Handler serves the same HTTP and WebSocket routes used by Start.
+func (s *Server) Handler() http.Handler {
 	apiMux := s.registerHandlers()
 
 	// Apply global middleware
@@ -86,16 +100,7 @@ func (s *Server) Start() error {
 	mux.HandleFunc("/api/v1/ws", s.authMiddleware(s.handleWebSocket))
 	mux.Handle("/", apiHandler)
 
-	srv := &http.Server{
-		Addr:    fmt.Sprintf(":%d", s.cfg.Port),
-		Handler: mux,
-	}
-
-	s.logger.Info("starting server",
-		slog.Int("port", s.cfg.Port),
-		slog.Bool("devMode", s.cfg.DevMode),
-	)
-	return srv.ListenAndServe()
+	return mux
 }
 
 func (s *Server) registerHandlers() *http.ServeMux {

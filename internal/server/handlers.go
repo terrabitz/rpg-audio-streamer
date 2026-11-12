@@ -85,6 +85,11 @@ func (s *Server) uploadFile(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to save file", http.StatusInternalServerError)
 		return
 	}
+	defer func() {
+		if err := os.Remove(dstPath); err != nil {
+			s.logger.Warn("failed to remove original file", "error", err, "path", dstPath)
+		}
+	}()
 	defer dstFile.Close()
 
 	if _, err := io.Copy(dstFile, file); err != nil {
@@ -127,10 +132,6 @@ func (s *Server) uploadFile(w http.ResponseWriter, r *http.Request) {
 
 		http.Error(w, "Failed to convert file", http.StatusInternalServerError)
 		return
-	}
-
-	if err := os.Remove(dstPath); err != nil {
-		s.logger.Warn("failed to remove original file", "error", err, "path", dstPath)
 	}
 
 	// Save track information to the datastore

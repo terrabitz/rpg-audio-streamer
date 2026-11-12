@@ -3,14 +3,14 @@
     :items="trackTypeStore.trackTypes" item-title="name" item-value="id" label="Track Type" required>
     <template v-slot:item="{ props, item }">
       <v-list-item v-bind="props" title="">
-        <v-chip :color="item.raw.color" text-color="white">
-          {{ item.raw.name }}
+        <v-chip :color="item.color" text-color="white">
+          {{ item.name }}
         </v-chip>
       </v-list-item>
     </template>
     <template v-slot:selection="{ item }">
-      <v-chip v-if="item.raw.name" :color="item.raw.color" text-color="white">
-        {{ item.raw.name }}
+      <v-chip v-if="item.name" :color="item.color" text-color="white">
+        {{ item.name }}
       </v-chip>
     </template>
   </v-select>

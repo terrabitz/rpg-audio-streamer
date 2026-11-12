@@ -78,10 +78,13 @@ func TestValidateCredentials(t *testing.T) {
 			}
 
 			// Verify token is valid and contains correct claims
-			_, err = auth.ValidateToken(token.String())
+			validatedToken, err := auth.ValidateToken(token.String())
 			if err != nil {
 				t.Errorf("Failed to validate generated token: %v", err)
 				return
+			}
+			if validatedToken.Role != RoleGM {
+				t.Errorf("ValidateCredentials() role = %v, want %v", validatedToken.Role, RoleGM)
 			}
 		})
 	}
@@ -95,6 +98,10 @@ func TestValidateJoinToken(t *testing.T) {
 		TokenAudience: "test-audience",
 		JoinToken:     "test-join-token",
 	}, slog.Default())
+
+	if auth.GetJoinToken() != "test-join-token" {
+		t.Fatal("configured invite token was not preserved")
+	}
 
 	tests := []struct {
 		name    string

@@ -32,7 +32,7 @@ func (db *SQLiteDatastore) GetTracks(ctx context.Context) ([]server.Track, error
 		return nil, err
 	}
 
-	var result []server.Track
+	result := make([]server.Track, 0, len(dbTracks))
 	for _, dbTrack := range dbTracks {
 		track, parseErr := convertDBTrack(dbTrack)
 		if parseErr != nil {

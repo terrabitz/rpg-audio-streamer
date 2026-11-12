@@ -1,0 +1,213 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { createPinia, setActivePinia } from 'pinia'
+import { useAuthStore } from '../auth'
+import { useFileStore } from '../files'
+import { useJoinStore } from '../join'
+import { useTrackTypeStore } from '../trackTypes'
+
+const api = vi.hoisted(() => ({
+  getApiV1AuthStatus: vi.fn(),
+  postApiV1Login: vi.fn(),
+  postApiV1AuthLogout: vi.fn(),
+  getApiV1Files: vi.fn(),
+  postApiV1Files: vi.fn(),
+  deleteApiV1FilesByTrackId: vi.fn(),
+  putApiV1FilesByTrackId: vi.fn(),
+  getApiV1JoinToken: vi.fn(),
+  getApiV1TrackTypes: vi.fn(),
+}))
+vi.mock('@/client/apiClient', () => api)
+
+const track = {
+  id: 'forest',
+  name: 'Forest',
+  typeID: 'ambiance',
+  path: '/uploads/forest',
+  createdAt: '2026-01-01T00:00:00Z',
+}
+const trackType = {
+  id: 'ambiance',
+  name: 'Ambiance',
+  color: '#B39DDB',
+  isRepeating: true,
+  allowSimultaneousPlay: true,
+}
+
+beforeEach(() => {
+  setActivePinia(createPinia())
+  vi.resetAllMocks()
+  vi.spyOn(console, 'error').mockImplementation(() => {})
+})
+afterEach(() => vi.restoreAllMocks())
+
+describe('authentication', () => {
+  it('logs in, checks the cookie session, and logs out', async () => {
+    api.postApiV1Login.mockResolvedValue({ data: { success: true } })
+    api.getApiV1AuthStatus.mockResolvedValue({ data: { authenticated: true, role: 'gm' } })
+    api.postApiV1AuthLogout.mockResolvedValue({})
+    const auth = useAuthStore()
+    const login = auth.login('gm', 'password')
+    expect(auth.loading).toBe(true)
+    await login
+    expect(api.postApiV1Login).toHaveBeenCalledWith({
+      body: { username: 'gm', password: 'password' },
+    })
+    expect(auth.authenticated).toBe(true)
+    expect(auth.role).toBe('gm')
+    expect(auth.loading).toBe(false)
+    await auth.logout()
+    expect(auth.authenticated).toBe(false)
+    expect(auth.role).toBeNull()
+  })
+
+  it('checks invite tokens and clears unauthenticated or failed status', async () => {
+    const auth = useAuthStore()
+    api.getApiV1AuthStatus.mockResolvedValue({ data: { authenticated: true, role: 'player' } })
+    await auth.checkAuthStatus('invite')
+    expect(api.getApiV1AuthStatus).toHaveBeenCalledWith({
+      headers: { Authorization: 'Bearer invite' },
+    })
+    expect(auth.role).toBe('player')
+    api.getApiV1AuthStatus.mockResolvedValue({ data: { authenticated: false } })
+    await auth.checkAuthStatus()
+    expect(auth.authenticated).toBe(false)
+    expect(auth.role).toBeNull()
+    api.getApiV1AuthStatus.mockRejectedValue(new Error('offline'))
+    await auth.checkAuthStatus()
+    expect(auth.authenticated).toBe(false)
+    expect(auth.loading).toBe(false)
+  })
+
+  it.each([undefined, 'Invalid credentials'])('rejects unsuccessful login (%s)', async (error) => {
+    api.postApiV1Login.mockResolvedValue({ data: { success: false, error } })
+    const auth = useAuthStore()
+    await expect(auth.login('gm', 'wrong')).rejects.toThrow(error ?? 'Login failed')
+    expect(auth.loading).toBe(false)
+    expect(auth.authenticated).toBe(false)
+  })
+
+  it('propagates login and logout transport failures without erasing a valid session', async () => {
+    const auth = useAuthStore()
+    api.postApiV1Login.mockRejectedValue(new Error('offline'))
+    await expect(auth.login('gm', 'password')).rejects.toThrow('offline')
+    expect(auth.loading).toBe(false)
+    auth.authenticated = true
+    auth.role = 'gm'
+    api.postApiV1AuthLogout.mockRejectedValue(new Error('offline'))
+    await expect(auth.logout()).rejects.toThrow('offline')
+    expect(auth.authenticated).toBe(true)
+    expect(auth.role).toBe('gm')
+  })
+})
+
+describe('file library', () => {
+  it('fetches, finds, updates, and deletes tracks', async () => {
+    const files = useFileStore()
+    api.getApiV1Files.mockResolvedValue({ data: [track] })
+    await files.fetchFiles()
+    expect(files.getTrackById('forest')).toEqual(track)
+    expect(files.getTrackById('missing')).toBeUndefined()
+    const updated = { ...track, name: 'Rain', typeID: 'music' }
+    api.putApiV1FilesByTrackId.mockResolvedValue({ data: updated })
+    expect(await files.updateTrack('forest', { name: 'Rain', typeID: 'music' })).toEqual(updated)
+    expect(api.putApiV1FilesByTrackId).toHaveBeenCalledWith({
+      path: { trackID: 'forest' },
+      body: { id: 'forest', name: 'Rain', typeID: 'music' },
+    })
+    expect(files.tracks).toEqual([updated])
+    await files.updateTrack('absent', {})
+    expect(files.tracks).toEqual([updated])
+    api.deleteApiV1FilesByTrackId.mockResolvedValue({})
+    api.getApiV1Files.mockResolvedValue({ data: [] })
+    await files.deleteFile('forest')
+    expect(api.deleteApiV1FilesByTrackId).toHaveBeenCalledWith({ path: { trackID: 'forest' } })
+    expect(files.tracks).toEqual([])
+  })
+
+  it('uploads metadata and refreshes the library', async () => {
+    api.postApiV1Files.mockResolvedValue({})
+    api.getApiV1Files.mockResolvedValue({ data: [track] })
+    const files = useFileStore()
+    const form = uploadForm()
+    await files.uploadFile(form)
+    expect(api.postApiV1Files).toHaveBeenCalledWith({
+      body: { files: form.get('files'), name: 'Forest', typeID: 'ambiance' },
+    })
+    expect(files.tracks).toEqual([track])
+  })
+
+  it.each(['files', 'name', 'typeID'])('rejects an upload missing %s', async (field) => {
+    const form = uploadForm()
+    form.delete(field)
+    await expect(useFileStore().uploadFile(form)).rejects.toThrow('Failed to upload file')
+    expect(api.postApiV1Files).not.toHaveBeenCalled()
+  })
+
+  it('preserves cached files on fetch failure and propagates write failures', async () => {
+    const files = useFileStore()
+    files.tracks = [track]
+    api.getApiV1Files.mockRejectedValue(new Error('offline'))
+    await files.fetchFiles()
+    expect(files.tracks).toEqual([track])
+    api.deleteApiV1FilesByTrackId.mockRejectedValue(new Error('delete failed'))
+    await expect(files.deleteFile('forest')).rejects.toThrow('delete failed')
+    api.putApiV1FilesByTrackId.mockRejectedValue(new Error('update failed'))
+    await expect(files.updateTrack('forest', { name: 'Rain' })).rejects.toThrow('update failed')
+    api.postApiV1Files.mockRejectedValue(new Error('upload failed'))
+    await expect(files.uploadFile(uploadForm())).rejects.toThrow('Failed to upload file')
+    expect(files.tracks).toEqual([track])
+  })
+})
+
+describe('invites and track types', () => {
+  it('loads and clears an invite', async () => {
+    const join = useJoinStore()
+    api.getApiV1JoinToken.mockResolvedValue({ data: { token: 'invite' } })
+    const pending = join.fetchToken()
+    expect(join.loading).toBe(true)
+    await pending
+    expect(join.token).toBe('invite')
+    expect(join.loading).toBe(false)
+    join.clearToken()
+    expect(join.token).toBeNull()
+    expect(join.error).toBeNull()
+  })
+
+  it('clears stale invites on failure and recovers on retry', async () => {
+    const join = useJoinStore()
+    join.token = 'stale'
+    api.getApiV1JoinToken.mockRejectedValue(new Error('offline'))
+    await join.fetchToken()
+    expect(join.token).toBeNull()
+    expect(join.error).toBe('Failed to fetch join token')
+    expect(join.loading).toBe(false)
+    api.getApiV1JoinToken.mockResolvedValue({ data: { token: 'new' } })
+    await join.fetchToken()
+    expect(join.token).toBe('new')
+    expect(join.error).toBeNull()
+  })
+
+  it('loads track types using cookie or invite authentication', async () => {
+    const types = useTrackTypeStore()
+    api.getApiV1TrackTypes.mockResolvedValue({ data: [trackType] })
+    await types.fetchTrackTypes()
+    expect(api.getApiV1TrackTypes).toHaveBeenLastCalledWith(undefined)
+    await types.fetchTrackTypes('invite')
+    expect(api.getApiV1TrackTypes).toHaveBeenLastCalledWith({
+      headers: { Authorization: 'Bearer invite' },
+    })
+    expect(types.getTypeById('ambiance')).toEqual(trackType)
+    expect(types.getTypeById('missing')).toBeUndefined()
+    api.getApiV1TrackTypes.mockRejectedValue(new Error('offline'))
+    await expect(types.fetchTrackTypes()).rejects.toThrow('offline')
+    expect(types.trackTypes).toEqual([trackType])
+  })
+})
+
+function uploadForm() {
+  const form = new FormData()
+  form.set('files', new File(['audio'], 'forest.mp3', { type: 'audio/mpeg' }))
+  form.set('name', 'Forest')
+  form.set('typeID', 'ambiance')
+  return form
+}
