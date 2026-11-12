@@ -28,6 +28,56 @@ beforeEach(() => {
 })
 
 describe('tables', () => {
+  it('moves tracks in either direction and keeps ordering scoped to each table', () => {
+    const tables = useTableStore()
+    const rain = { ...track, id: 'rain', name: 'Rain' }
+    const tavern = { ...track, id: 'tavern', name: 'Tavern' }
+    tables.current = friday
+    tables.tracks = [track, rain, tavern]
+    tables.moveTrack('forest', 'tavern')
+    expect(tables.orderedTracks).toEqual([rain, tavern, track])
+    tables.moveTrack('forest', 'rain')
+    expect(tables.orderedTracks).toEqual([track, rain, tavern])
+    tables.moveTrack('forest', 'forest')
+    tables.moveTrack('missing', 'rain')
+    tables.moveTrack('rain', 'missing')
+    expect(tables.orderedTracks).toEqual([track, rain, tavern])
+    tables.moveTrack('forest', 'tavern')
+    tables.current = sunday
+    expect(tables.orderedTracks).toEqual([track, rain, tavern])
+    tables.moveTrack('rain', 'forest')
+    expect(tables.orderedTracks).toEqual([rain, track, tavern])
+    tables.current = friday
+    expect(tables.orderedTracks).toEqual([rain, tavern, track])
+    tables.clearCurrent()
+    tables.moveTrack('forest', 'rain')
+    expect(tables.orderedTracks).toEqual([])
+    expect(tables.trackOrders.friday).toEqual(['rain', 'tavern', 'forest'])
+  })
+
+  it('preserves order on refresh, updates metadata, appends new tracks, and drops removed ones', async () => {
+    const tables = useTableStore()
+    const rain = { ...track, id: 'rain', name: 'Rain' }
+    const tavern = { ...track, id: 'tavern', name: 'Tavern' }
+    tables.current = friday
+    tables.trackOrders.friday = ['rain', 'forest', 'deleted']
+    const renamed = { ...track, name: 'New Forest' }
+    api.getApiV1TablesByTableIdTracks.mockResolvedValue({ data: [renamed, tavern, rain] })
+    await tables.fetchTracks(friday.id)
+    expect(tables.orderedTracks).toEqual([rain, renamed, tavern])
+    expect(tables.trackOrders.friday).toEqual(['rain', 'forest', 'tavern'])
+    api.deleteApiV1TablesByTableIdTracksByTrackId.mockResolvedValue({})
+    await tables.removeTrack(friday.id, 'rain')
+    expect(tables.orderedTracks).toEqual([renamed, tavern])
+    expect(tables.trackOrders.friday).toEqual(['forest', 'tavern'])
+    api.getApiV1TablesByTableIdTracks.mockResolvedValue({ data: [renamed, rain, tavern] })
+    await tables.fetchTracks(friday.id)
+    expect(tables.orderedTracks).toEqual([renamed, tavern, rain])
+    api.deleteApiV1TablesByTableId.mockResolvedValue({})
+    await tables.deleteTable(friday.id)
+    expect(tables.trackOrders.friday).toBeUndefined()
+  })
+
   it('lists, creates, renames, and deletes tables without changing unrelated tables', async () => {
     const tables = useTableStore()
     api.getApiV1Tables.mockResolvedValue({ data: [friday] })

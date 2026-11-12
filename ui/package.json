@@ -21,6 +21,8 @@
     "generate-docs": "redocly build-docs ../openapi.yaml --output public/docs/index.html"
   },
   "dependencies": {
+    "@dnd-kit/dom": "^0.5.3",
+    "@dnd-kit/vue": "^0.5.3",
     "@hey-api/client-fetch": "^0.13.1",
     "@mdi/js": "^7.4.47",
     "axios": "^1.21.0",

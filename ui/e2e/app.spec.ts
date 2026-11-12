@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import type { Page } from '@playwright/test'
+import { devices, type Locator, type Page } from '@playwright/test'
 import { expect, test } from './fixtures'
 
 test('GM can recover from invalid credentials, keep a session, and log out', async ({ page }) => {
@@ -41,11 +41,14 @@ test('GM uploads, renames, persists, and deletes an audio track', async ({ page 
   await row.getByRole('button', { name: 'Edit Forest' }).click()
   await expect(page.locator('video')).toHaveCount(0)
   await page.getByLabel('Track Name', { exact: true }).fill('Rain')
+  await page.getByRole('combobox', { name: 'Track Type', exact: true }).press('ArrowDown')
+  await page.getByRole('option', { name: 'One-Shot', exact: true }).click()
   await page.getByRole('button', { name: 'Save Changes' }).click()
   await expect(page.getByRole('row').filter({ hasText: 'Rain' })).toBeVisible()
   await page.reload()
   const renamed = page.getByRole('row').filter({ hasText: 'Rain' })
   await expect(renamed).toBeVisible()
+  await expect(renamed.getByText('One-Shot', { exact: true })).toBeVisible()
   await renamed.click()
   await expect.poll(() => page.locator('video').evaluate(
     (el: HTMLVideoElement) => !el.paused && el.currentTime > 0,
@@ -85,6 +88,35 @@ test('GM creates, renames, opens, and deletes tables', async ({ page }) => {
   await page.reload()
   await expect(page.getByRole('link', { name: 'Open Friday group', exact: true })).toHaveCount(0)
   await expect(page.getByRole('link', { name: 'Open My Table', exact: true })).toBeVisible()
+})
+
+test('GM keeps track ordering independent for each table', async ({ page }) => {
+  test.slow()
+  await login(page)
+  await page.getByRole('link', { name: 'Library', exact: true }).click()
+  await uploadTrack(page, 'Library only')
+  await page.getByRole('link', { name: 'Tables', exact: true }).click()
+  await page.getByRole('link', { name: 'Open My Table', exact: true }).click()
+  await uploadTrack(page, 'Ordered Forest')
+  await uploadTrack(page, 'Ordered Rain')
+  await page.getByRole('link', { name: 'Tables', exact: true }).click()
+  await createTable(page, 'Ordered table')
+  await page.getByRole('link', { name: 'Open Ordered table', exact: true }).click()
+  await addExistingTrack(page, 'Ordered Forest')
+  await addExistingTrack(page, 'Ordered Rain')
+  const headings = page.locator('.file-tile .track-heading > span')
+  await page.getByRole('button', { name: 'Drag to reorder Ordered Rain', exact: true }).press('Alt+ArrowLeft')
+  await expect(headings).toHaveText(['Ordered Rain', 'Ordered Forest'])
+  await page.reload()
+  await expect(headings).toHaveText(['Ordered Rain', 'Ordered Forest'])
+  await page.getByRole('link', { name: 'Tables', exact: true }).click()
+  await page.getByRole('link', { name: 'Open My Table', exact: true }).click()
+  await expect(headings).toHaveText(['Ordered Forest', 'Ordered Rain'])
+  await deleteLibraryTrack(page, 'Ordered Forest', 2)
+  await deleteLibraryTrack(page, 'Ordered Rain', 2)
+  await deleteLibraryTrack(page, 'Library only', 0)
+  await page.getByRole('link', { name: 'Tables', exact: true }).click()
+  await deleteTable(page, 'Ordered table')
 })
 
 test('GM adds library tracks or new uploads to a table from one dialog', async ({ page }) => {
@@ -258,6 +290,456 @@ test('failed audio conversion is shown as an upload error', async ({ page }) => 
   await expect(page.locator('.file-tile')).toHaveCount(0)
 })
 
+test.describe('drag-handle reordering', () => {
+  test('GM drags handles, keeps the order, and uses inline playback controls', async ({
+    page,
+  }, testInfo) => {
+    await login(page)
+    for (const name of ['Forest', 'Rain', 'Tavern']) await uploadTrack(page, name)
+    const tiles = page.locator('.track-item:not([data-dnd-dragging]) > .file-tile')
+    const forest = tiles.filter({ hasText: 'Forest' })
+    const rain = tiles.filter({ hasText: 'Rain' })
+    const tavern = tiles.filter({ hasText: 'Tavern' })
+    const forestVolume = forest.getByRole('slider', { name: 'Volume for Forest' })
+    const forestPosition = forest.getByRole('slider', { name: 'Playback position for Forest' })
+    const names = () => tiles.locator('.track-heading > span')
+    await expect(names()).toHaveText(['Forest', 'Rain', 'Tavern'])
+    await expect(page.getByRole('button', { name: /^Move .+ (earlier|later)/ })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: /^Drag to reorder/ })).toHaveCount(3)
+    await expect(forest.locator('.audio-control-tile')).toHaveCSS(
+      'border-top-color',
+      'rgb(128, 222, 234)',
+    )
+    await expect(forest.locator('.v-chip')).toHaveCount(0)
+    await page.mouse.move(1000, 600)
+    await expect(forest.locator('.track-controls')).toBeHidden()
+    await expect(rain.locator('.track-controls')).toBeHidden()
+    const collapsedForest = await forest.boundingBox()
+    if (!collapsedForest) throw new Error('The compact card must be visible')
+    expect(collapsedForest.height).toBeLessThan(55)
+    await forest.hover()
+    await expect(forest.locator('.track-controls')).toBeVisible()
+    await expect(rain.locator('.track-controls')).toBeHidden()
+    expect((await forest.boundingBox())?.height).toBe(collapsedForest.height)
+    await expectAlignedTrackControls(forest)
+    await page.mouse.move(1000, 600)
+    await expect(forest.locator('.track-controls')).toBeHidden()
+    await forest.focus()
+    await page.keyboard.press('Tab')
+    await expect(forest.getByRole('button', { name: 'Drag to reorder Forest' })).toBeFocused()
+    await expect(forest.locator('.track-controls')).toBeVisible()
+    await page.keyboard.press('Tab')
+    await expect(forest.getByRole('button', { name: 'Edit Forest' })).toBeFocused()
+    await page.keyboard.press('Tab')
+    await page.keyboard.press('Tab')
+    await expect(forestVolume).toBeFocused()
+    await forestVolume.press('Home')
+    await expect(forestVolume).toHaveAttribute('aria-valuenow', '0')
+    await forestVolume.press('End')
+    await expect(forestVolume).toHaveAttribute('aria-valuenow', '100')
+    await page.mouse.move(1000, 600)
+    await expect(forest.locator('.track-controls')).toBeVisible()
+    await page.getByRole('button', { name: 'Add Track', exact: true }).focus()
+    await expect(forest.locator('.track-controls')).toBeHidden()
+    await rain.getByRole('button', { name: 'Drag to reorder Rain' }).click()
+    await expect(page.locator('[data-dnd-dragging]')).toHaveCount(0)
+    for (const video of await page.locator('video').all()) {
+      await expect.poll(() => video.evaluate((el: HTMLVideoElement) => el.paused)).toBe(true)
+    }
+    await forest.hover()
+    await forest.getByRole('button', { name: 'Play Forest', exact: true }).click()
+    const forestAudio = page.locator('video').first()
+    await expect
+      .poll(() => forestAudio.evaluate((el: HTMLVideoElement) => !el.paused && el.currentTime > 0))
+      .toBe(true)
+    const beforeReorder = await forestAudio.evaluate((el: HTMLVideoElement) => el.currentTime)
+    const source = await tavern
+      .getByRole('button', { name: 'Drag to reorder Tavern' })
+      .boundingBox()
+    const target = await forest.boundingBox()
+    if (!source || !target) throw new Error('Track cards must have visible bounds')
+    await page.mouse.move(source.x + source.width / 2, source.y + source.height / 2)
+    await page.mouse.down()
+    await page.mouse.move(source.x + source.width / 2 - 8, source.y + source.height / 2, {
+      steps: 2,
+    })
+    await expect(page.locator('[data-dnd-dragging]')).toBeVisible()
+    await expect(page.locator('[data-dnd-placeholder] .audio-control-tile')).toBeHidden()
+    await expect(page.locator('[data-dnd-placeholder] .track-drag-handle')).toBeHidden()
+    await expect(page.locator('[data-dnd-placeholder] .file-tile')).toHaveCSS(
+      'outline-style',
+      'dashed',
+    )
+    await expect(
+      page.locator(
+        '.track-item:not([data-dnd-dragging]):not([data-dnd-placeholder]) .track-heading > span',
+      ),
+    ).toHaveText(['Forest', 'Rain'])
+    await page.mouse.move(target.x + target.width / 4, target.y + 20, { steps: 12 })
+    await expect(names()).toHaveText(['Tavern', 'Forest', 'Rain'])
+    await expectPlaceholderAt(page, target)
+    await page.screenshot({ path: testInfo.outputPath('gm-table-dragging.png'), fullPage: true })
+    await page.mouse.up()
+    await expect(page.locator('[data-dnd-dragging], [data-dnd-placeholder]')).toHaveCount(0)
+    await expect(names()).toHaveText(['Tavern', 'Forest', 'Rain'])
+    await expect
+      .poll(() =>
+        forestAudio.evaluate(
+          (el: HTMLVideoElement, time) => !el.paused && el.currentTime >= time,
+          beforeReorder,
+        ),
+      )
+      .toBe(true)
+    const rainHandle = rain.getByRole('button', { name: 'Drag to reorder Rain' })
+    await rainHandle.focus()
+    await page.keyboard.press('Alt+ArrowLeft')
+    await expect(names()).toHaveText(['Tavern', 'Rain', 'Forest'])
+    await expect(rainHandle).toBeFocused()
+    await expect(page.getByText('Moved Rain to position 2 of 3.', { exact: true })).toHaveCount(1)
+    await page.keyboard.press('Alt+ArrowRight')
+    await expect(names()).toHaveText(['Tavern', 'Forest', 'Rain'])
+    await page.keyboard.press('Alt+ArrowRight')
+    await expect(names()).toHaveText(['Tavern', 'Forest', 'Rain'])
+    await forest.hover()
+    const slider = forest.locator('.v-slider-track').first()
+    const volume = await slider.boundingBox()
+    if (!volume) throw new Error('The inline volume slider must be visible')
+    const beforeVolume = await forestAudio.evaluate((el: HTMLVideoElement) => el.currentTime)
+    await page.mouse.move(volume.x + volume.width / 2, volume.y + volume.height / 2)
+    await page.mouse.down()
+    await expect
+      .poll(() => forestAudio.evaluate((el: HTMLVideoElement) => el.currentTime))
+      .toBeGreaterThan(beforeVolume + 0.3)
+    await expect(page.locator('[data-dnd-dragging]')).toHaveCount(0)
+    await page.mouse.move(volume.x + volume.width * 0.7, volume.y + volume.height / 2)
+    await page.mouse.up()
+    await expect
+      .poll(async () => Number(await forestVolume.getAttribute('aria-valuenow')))
+      .toBeGreaterThan(50)
+    await expect
+      .poll(async () => Number(await forestVolume.getAttribute('aria-valuenow')))
+      .toBeLessThan(80)
+    await expect(names()).toHaveText(['Tavern', 'Forest', 'Rain'])
+    const forestBounds = await forest.boundingBox()
+    if (!forestBounds) throw new Error('The active card must have visible bounds')
+    await forestVolume.hover()
+    await page.mouse.down()
+    await page.mouse.move(forestBounds.x - 20, volume.y + volume.height / 2, { steps: 4 })
+    await expect(forest.locator('.track-controls')).toBeVisible()
+    await page.mouse.up()
+    await expect(forest.locator('.track-controls')).toBeHidden()
+    await forest.hover()
+    await forestVolume.press('End')
+    await forest.locator('.track-heading').click()
+    await expect.poll(() => forestAudio.evaluate((el: HTMLVideoElement) => el.paused)).toBe(true)
+    await expect(forestPosition).toBeEnabled()
+    const position = await forest.locator('.track-position .v-slider-track').boundingBox()
+    const playButton = await forest
+      .getByRole('button', { name: 'Play Forest', exact: true })
+      .boundingBox()
+    const restartButton = await forest.getByRole('button', { name: 'Restart Forest' }).boundingBox()
+    if (!position || !playButton || !restartButton)
+      throw new Error('Inline playback controls must be visible')
+    expect(position.y).toBeGreaterThan(volume.y)
+    expect(playButton.x + playButton.width).toBeLessThan(position.x)
+    expect(restartButton.x).toBeGreaterThan(position.x + position.width)
+    await page.mouse.click(position.x + position.width / 2, position.y + position.height / 2)
+    await expect(forestPosition).toHaveAttribute('aria-valuenow', /^(14|15|16)$/)
+    const selectedTime = Number(await forestPosition.getAttribute('aria-valuenow'))
+    await expect
+      .poll(() => forestAudio.evaluate((el: HTMLVideoElement) => el.currentTime))
+      .toBe(selectedTime)
+    await expect.poll(() => forestAudio.evaluate((el: HTMLVideoElement) => el.paused)).toBe(true)
+    await expect(forestPosition).toHaveAttribute('aria-valuetext', `0:${selectedTime} of 0:30`)
+    await forestPosition.hover()
+    await page.mouse.down()
+    await page.mouse.move(position.x + position.width * 0.75, position.y + position.height / 2, {
+      steps: 4,
+    })
+    await page.mouse.up()
+    await expect(forestPosition).toHaveAttribute('aria-valuenow', /^(22|23|24)$/)
+    const draggedTime = Number(await forestPosition.getAttribute('aria-valuenow'))
+    await expect
+      .poll(() => forestAudio.evaluate((el: HTMLVideoElement) => el.currentTime))
+      .toBe(draggedTime)
+    await expect.poll(() => forestAudio.evaluate((el: HTMLVideoElement) => el.paused)).toBe(true)
+    await forestPosition.press('Home')
+    await forestPosition.press('ArrowRight')
+    await expect.poll(() => forestAudio.evaluate((el: HTMLVideoElement) => el.currentTime)).toBe(1)
+    await expect(forest.locator('.position-time')).toHaveText('0:01 / 0:30')
+    await expect(page.locator('[data-dnd-dragging]')).toHaveCount(0)
+    await forest.focus()
+    await page.keyboard.press('Enter')
+    await expect
+      .poll(() => forestAudio.evaluate((el: HTMLVideoElement) => !el.paused && el.volume > 0.3))
+      .toBe(true)
+    await page.keyboard.press('Space')
+    await expect.poll(() => forestAudio.evaluate((el: HTMLVideoElement) => el.paused)).toBe(true)
+    await page.reload()
+    await expect(names()).toHaveText(['Tavern', 'Forest', 'Rain'])
+    await uploadTrack(page, 'New Track')
+    await expect(names()).toHaveText(['Tavern', 'Forest', 'Rain', 'New Track'])
+    await tiles
+      .filter({ hasText: 'New Track' })
+      .getByRole('button', { name: 'Edit New Track' })
+      .click()
+    await page.getByRole('button', { name: 'Remove from table', exact: true }).click()
+    await expect(names()).toHaveText(['Tavern', 'Forest', 'Rain'])
+    await page.mouse.click(1000, 500)
+    await expect(page.getByRole('dialog')).toHaveCount(0)
+    await expect(page.getByText('File uploaded successfully!', { exact: true })).not.toBeVisible()
+    for (const tile of [forest, rain, tavern]) {
+      await expect(tile.locator('.track-controls')).toBeHidden()
+    }
+    await expect(page.locator('video')).toHaveCount(3)
+    for (const video of await page.locator('video').all()) {
+      await expect.poll(() => video.evaluate((el: HTMLVideoElement) => el.paused)).toBe(true)
+    }
+    await page.screenshot({ path: testInfo.outputPath('gm-table-collapsed.png'), fullPage: true })
+    await forest.hover()
+    await expect(forestVolume).toBeVisible()
+    await expect(forestPosition).toBeVisible()
+    await page.screenshot({ path: testInfo.outputPath('gm-table-hover.png'), fullPage: true })
+    await page.setViewportSize({ width: 390, height: 844 })
+    await page.mouse.move(380, 800)
+    await expect(forest.locator('.track-controls')).toBeHidden()
+    const rainBeforeHover = await rain.boundingBox()
+    await page.screenshot({
+      path: testInfo.outputPath('gm-table-mobile-collapsed.png'),
+      fullPage: true,
+    })
+    await forest.hover()
+    await expect(forestVolume).toBeVisible()
+    await expect(forestPosition).toBeVisible()
+    await expect(forest.getByRole('button', { name: 'Drag to reorder Forest' })).toBeVisible()
+    await expect(forest.getByRole('button', { name: 'Restart Forest' })).toBeVisible()
+    await expectAlignedTrackControls(forest)
+    expect((await rain.boundingBox())?.y).toBe(rainBeforeHover?.y)
+    await expect
+      .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth))
+      .toBe(true)
+    await page.screenshot({
+      path: testInfo.outputPath('gm-table-mobile-hover.png'),
+      fullPage: true,
+    })
+    await forestVolume.press('Home')
+    await expect(forestVolume).toHaveAttribute('aria-valuenow', '0')
+    await forest.getByRole('button', { name: 'Restart Forest' }).click()
+    for (const video of await page.locator('video').all()) {
+      await expect.poll(() => video.evaluate((el: HTMLVideoElement) => el.paused)).toBe(true)
+    }
+    for (const name of ['Forest', 'Rain', 'Tavern']) {
+      await tiles
+        .filter({ hasText: name })
+        .getByRole('button', { name: `Edit ${name}` })
+        .click()
+      await page.getByRole('button', { name: 'Remove from table', exact: true }).click()
+    }
+    await expect(tiles).toHaveCount(0)
+    for (const name of ['Forest', 'Rain', 'Tavern', 'New Track']) {
+      await deleteLibraryTrack(page, name, 0)
+    }
+  })
+})
+
+for (const device of ['Pixel 7', 'iPhone 13']) {
+  test(`touch dragging reflows the grid, supports cancellation, and preserves scrolling (${device})`, async ({
+    browser,
+  }, testInfo) => {
+    test.slow()
+    const context = await browser.newContext({
+      ...devices[device],
+      viewport: { width: 390, height: 844 },
+      isMobile: true,
+      hasTouch: true,
+      recordVideo: {
+        dir: testInfo.outputPath('touch-recording'),
+        size: { width: 390, height: 844 },
+      },
+    })
+    const page = await context.newPage()
+    const touch = await context.newCDPSession(page)
+    const names = ['Track 1', 'Track 2', 'Track 3', 'Track 4', 'Track 5', 'Track 6']
+    try {
+      await login(page)
+      for (const name of names) await uploadTrack(page, name)
+      await expect(page.getByText('File uploaded successfully!', { exact: true })).not.toBeVisible()
+      const tiles = page.locator('.track-item:not([data-dnd-dragging]) > .file-tile')
+      const headings = tiles.locator('.track-heading > span')
+      const first = tiles.filter({ hasText: 'Track 1' })
+      const second = tiles.filter({ hasText: 'Track 2' })
+      const firstToggle = first.getByRole('button', { name: 'Toggle controls for Track 1' })
+      const secondToggle = second.getByRole('button', { name: 'Toggle controls for Track 2' })
+      await expect(firstToggle).toHaveAttribute('aria-expanded', 'false')
+      await expect(first.locator('.track-controls')).toBeHidden()
+      await page.setViewportSize({ width: 390, height: 400 })
+      await expect
+        .poll(() => page.evaluate(() => document.documentElement.scrollHeight <= window.innerHeight))
+        .toBe(true)
+      await page.screenshot({ path: testInfo.outputPath('gm-touch-collapsed.png'), fullPage: true })
+      await firstToggle.tap()
+      await expect(firstToggle).toHaveAttribute('aria-expanded', 'true')
+      await expect(first.locator('.track-controls')).toBeVisible()
+      await page.screenshot({ path: testInfo.outputPath('gm-touch-expanded.png'), fullPage: true })
+      await secondToggle.tap()
+      await expect(firstToggle).toHaveAttribute('aria-expanded', 'false')
+      await expect(first.locator('.track-controls')).toBeHidden()
+      await expect(secondToggle).toHaveAttribute('aria-expanded', 'true')
+      await secondToggle.tap()
+      await expect(second.locator('.track-controls')).toBeHidden()
+      for (const video of await page.locator('video').all()) {
+        await expect.poll(() => video.evaluate((el: HTMLVideoElement) => el.paused)).toBe(true)
+      }
+      await page.keyboard.press('Tab')
+      await firstToggle.focus()
+      await expect(firstToggle).toHaveAttribute('aria-expanded', 'true')
+      await page.keyboard.press('Space')
+      await expect(firstToggle).toHaveAttribute('aria-expanded', 'false')
+      await page.keyboard.press('Space')
+      await expect(firstToggle).toHaveAttribute('aria-expanded', 'true')
+      await page.keyboard.press('Space')
+      await expect(firstToggle).toHaveAttribute('aria-expanded', 'false')
+      await first.locator('.track-heading > span').tap()
+      const firstAudio = page.locator('video').first()
+      await expect
+        .poll(() => firstAudio.evaluate((el: HTMLVideoElement) => !el.paused && el.volume > 0.3))
+        .toBe(true)
+      await expect(first.locator('.track-controls')).toBeHidden()
+      await first.locator('.track-heading > span').tap()
+      await expect.poll(() => firstAudio.evaluate((el: HTMLVideoElement) => el.paused)).toBe(true)
+      await page.setViewportSize({ width: 390, height: 844 })
+      const source = await tiles
+        .filter({ hasText: 'Track 3' })
+        .getByRole('button', { name: 'Drag to reorder Track 3' })
+        .boundingBox()
+      const target = await tiles.filter({ hasText: 'Track 2' }).boundingBox()
+      if (!source || !target) throw new Error('Touch drag cards must have visible bounds')
+      const start = { x: source.x + source.width / 2, y: source.y + source.height / 2 }
+      await touch.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [start] })
+      await touch.send('Input.dispatchTouchEvent', {
+        type: 'touchMove',
+        touchPoints: [{ x: start.x + 24, y: start.y }],
+      })
+      await expect(page.locator('[data-dnd-dragging]')).toBeVisible()
+      await touch.send('Input.dispatchTouchEvent', {
+        type: 'touchMove',
+        touchPoints: [{ x: target.x + target.width / 4, y: target.y + 20 }],
+      })
+      await expect(headings).toHaveText([
+        'Track 1',
+        'Track 3',
+        'Track 2',
+        'Track 4',
+        'Track 5',
+        'Track 6',
+      ])
+      await expectPlaceholderAt(page, target)
+      await page.screenshot({ path: testInfo.outputPath('gm-touch-dragging.png'), fullPage: true })
+      await touch.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
+      await expect(page.locator('[data-dnd-dragging], [data-dnd-placeholder]')).toHaveCount(0)
+      for (const video of await page.locator('video').all()) {
+        await expect.poll(() => video.evaluate((el: HTMLVideoElement) => el.paused)).toBe(true)
+      }
+      await page.reload()
+      const reordered = ['Track 1', 'Track 3', 'Track 2', 'Track 4', 'Track 5', 'Track 6']
+      await expect(headings).toHaveText(reordered)
+      const cancel = await tiles
+        .first()
+        .getByRole('button', { name: 'Drag to reorder Track 1' })
+        .boundingBox()
+      const cancelTarget = await tiles.last().boundingBox()
+      if (!cancel || !cancelTarget) throw new Error('Cards must be available to cancel dragging')
+      const cancelPoint = { x: cancel.x + cancel.width / 2, y: cancel.y + cancel.height / 2 }
+      await touch.send('Input.dispatchTouchEvent', {
+        type: 'touchStart',
+        touchPoints: [cancelPoint],
+      })
+      await touch.send('Input.dispatchTouchEvent', {
+        type: 'touchMove',
+        touchPoints: [{ x: cancelPoint.x + 24, y: cancelPoint.y }],
+      })
+      await expect(page.locator('[data-dnd-dragging]')).toBeVisible()
+      await touch.send('Input.dispatchTouchEvent', {
+        type: 'touchMove',
+        touchPoints: [{ x: cancelTarget.x + cancelTarget.width * 0.75, y: cancelTarget.y + 20 }],
+      })
+      await expect(headings).toHaveText([
+        'Track 3',
+        'Track 2',
+        'Track 4',
+        'Track 5',
+        'Track 6',
+        'Track 1',
+      ])
+      await expectPlaceholderAt(page, cancelTarget)
+      await touch.send('Input.dispatchTouchEvent', { type: 'touchCancel', touchPoints: [] })
+      await expect(page.locator('[data-dnd-dragging], [data-dnd-placeholder]')).toHaveCount(0)
+      await expect(headings).toHaveText(reordered)
+      await firstToggle.tap()
+      await expect(firstToggle).toHaveAttribute('aria-expanded', 'true')
+      await tiles.first().getByRole('button', { name: 'Edit Track 1' }).tap()
+      await expect(page.getByRole('dialog')).toBeVisible()
+      await page.getByRole('button', { name: 'Close track controls' }).tap()
+      await expect(page.getByRole('dialog')).toBeHidden()
+      const seek = await tiles.first().locator('.track-position .v-slider-track').boundingBox()
+      if (!seek) throw new Error('The playback slider must be visible on touch devices')
+      await touch.send('Input.dispatchTouchEvent', {
+        type: 'touchStart',
+        touchPoints: [{ x: seek.x + seek.width / 2, y: seek.y + seek.height / 2 }],
+      })
+      await touch.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
+      await expect
+        .poll(() =>
+          page
+            .locator('video')
+            .first()
+            .evaluate((el: HTMLVideoElement) => el.currentTime),
+        )
+        .toBeGreaterThanOrEqual(14)
+      await expect
+        .poll(() =>
+          page
+            .locator('video')
+            .first()
+            .evaluate((el: HTMLVideoElement) => el.paused),
+        )
+        .toBe(true)
+      await expect(page.locator('[data-dnd-dragging]')).toHaveCount(0)
+      await firstToggle.tap()
+      await expect(first.locator('.track-controls')).toBeHidden()
+      await page.setViewportSize({ width: 390, height: 180 })
+      await page.evaluate(() => window.scrollTo(0, 0))
+      const swipe = await tiles.first().locator('.track-heading').boundingBox()
+      if (!swipe) throw new Error('A card must be available for touch scrolling')
+      const swipePoint = { x: swipe.x + swipe.width / 2, y: swipe.y + swipe.height / 2 }
+      await touch.send('Input.dispatchTouchEvent', {
+        type: 'touchStart',
+        touchPoints: [swipePoint],
+      })
+      await touch.send('Input.dispatchTouchEvent', {
+        type: 'touchMove',
+        touchPoints: [{ x: swipePoint.x, y: swipePoint.y - 80 }],
+      })
+      await touch.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
+      await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(0)
+      await expect(page.locator('[data-dnd-dragging]')).toHaveCount(0)
+      await expect(headings).toHaveText(reordered)
+      for (const name of names) {
+        const tile = tiles.filter({ hasText: name })
+        await tile.getByRole('button', { name: `Toggle controls for ${name}` }).tap()
+        await tile.getByRole('button', { name: `Edit ${name}` }).tap()
+        await expect(page.getByRole('dialog')).toBeVisible()
+        await page.getByRole('button', { name: 'Remove from table', exact: true }).tap()
+      }
+      await expect(tiles).toHaveCount(0)
+      await page.setViewportSize({ width: 390, height: 844 })
+      for (const name of names) await deleteLibraryTrack(page, name, 0)
+    } finally {
+      await context.close()
+    }
+  })
+}
+
 test('invited player receives live playback, late-join state, and pause', async ({
   page,
   browser,
@@ -265,7 +747,8 @@ test('invited player receives live playback, late-join state, and pause', async 
   await login(page)
   await uploadTrack(page, 'Session Music')
   const tile = page.locator('.file-tile').filter({ hasText: 'Session Music' })
-  await tile.click()
+  await tile.hover()
+  await tile.getByRole('button', { name: 'Play Session Music', exact: true }).click()
   const gmAudio = page.locator('video')
   await expect
     .poll(() => gmAudio.evaluate((el: HTMLVideoElement) => !el.paused && el.currentTime > 0))
@@ -301,9 +784,47 @@ test('invited player receives live playback, late-join state, and pause', async 
     await expect
       .poll(() => playerAudio.evaluate((el: HTMLVideoElement) => el.volume))
       .toBeGreaterThan(0)
-    await tile.click()
+    const trackVolume = tile.getByRole('slider', { name: 'Volume for Session Music' })
+    await trackVolume.press('Home')
+    await expect.poll(() => gmAudio.evaluate((el: HTMLVideoElement) => el.volume)).toBe(0)
+    await expect.poll(() => playerAudio.evaluate((el: HTMLVideoElement) => el.volume)).toBe(0)
+    await expect.poll(() => gmAudio.evaluate((el: HTMLVideoElement) => el.paused)).toBe(false)
+    await trackVolume.press('End')
+    await expect
+      .poll(() => playerAudio.evaluate((el: HTMLVideoElement) => el.volume))
+      .toBeGreaterThan(0)
+    await expect
+      .poll(() => gmAudio.evaluate((el: HTMLVideoElement) => el.currentTime))
+      .toBeGreaterThan(4)
+    await expect
+      .poll(() => playerAudio.evaluate((el: HTMLVideoElement) => el.currentTime))
+      .toBeGreaterThan(4)
+    const seek = await tile.locator('.track-position .v-slider-track').boundingBox()
+    if (!seek) throw new Error('The playing track must expose a seek slider')
+    await page.mouse.click(seek.x + seek.width / 2, seek.y + seek.height / 2)
+    for (const media of [gmAudio, playerAudio]) {
+      await expect
+        .poll(() => media.evaluate((el: HTMLVideoElement) => el.currentTime))
+        .toBeGreaterThanOrEqual(14)
+      await expect
+        .poll(() => media.evaluate((el: HTMLVideoElement) => el.currentTime))
+        .toBeLessThan(18)
+      await expect.poll(() => media.evaluate((el: HTMLVideoElement) => el.paused)).toBe(false)
+    }
+    await tile.getByRole('button', { name: 'Restart Session Music' }).click()
+    await expect
+      .poll(() => gmAudio.evaluate((el: HTMLVideoElement) => el.currentTime))
+      .toBeLessThan(2)
+    await expect
+      .poll(() => playerAudio.evaluate((el: HTMLVideoElement) => el.currentTime))
+      .toBeLessThan(2)
+    await expect.poll(() => playerAudio.evaluate((el: HTMLVideoElement) => el.paused)).toBe(false)
+    await tile.getByRole('button', { name: 'Pause Session Music', exact: true }).click()
     await expect.poll(() => playerAudio.evaluate((el: HTMLVideoElement) => el.paused)).toBe(true)
-    await tile.click()
+    await tile.getByRole('button', { name: 'Restart Session Music' }).click()
+    await expect.poll(() => gmAudio.evaluate((el: HTMLVideoElement) => el.currentTime)).toBe(0)
+    await expect.poll(() => gmAudio.evaluate((el: HTMLVideoElement) => el.paused)).toBe(true)
+    await tile.getByRole('button', { name: 'Play Session Music', exact: true }).click()
     await expect.poll(() => playerAudio.evaluate((el: HTMLVideoElement) => !el.paused)).toBe(true)
     await player.getByRole('button', { name: 'Disconnect Audio', exact: true }).click()
     await expect(player.getByRole('button', { name: 'Connect Audio', exact: true })).toBeVisible()
@@ -320,7 +841,7 @@ test('starting another Music track stops the previous one', async ({ page }) => 
   await uploadTrack(page, 'Second Music')
   const first = page.locator('.file-tile').filter({ hasText: 'First Music' })
   const second = page.locator('.file-tile').filter({ hasText: 'Second Music' })
-  await first.click()
+  await first.locator('.track-heading').click()
   await expect
     .poll(() =>
       page
@@ -329,7 +850,7 @@ test('starting another Music track stops the previous one', async ({ page }) => 
         .evaluate((el: HTMLVideoElement) => !el.paused && el.currentTime > 0),
     )
     .toBe(true)
-  await second.click()
+  await second.locator('.track-heading').click()
   await expect
     .poll(() =>
       page
@@ -356,6 +877,41 @@ test('starting another Music track stops the previous one', async ({ page }) => 
   await expect(page.locator('video')).toHaveCount(0)
 })
 
+async function expectAlignedTrackControls(tile: Locator) {
+  const [volume, position, volumeIcon, playButton] = await Promise.all(
+    [
+      '.track-volume .v-slider-track',
+      '.track-position .v-slider-track',
+      '.track-volume .v-input__prepend .v-icon',
+      '.v-btn[aria-label^="Play "], .v-btn[aria-label^="Pause "]',
+    ].map(selector => tile.locator(selector).boundingBox()),
+  )
+  if (!volume || !position || !volumeIcon || !playButton)
+    throw new Error('Both slider rows must have visible bounds')
+  expect(Math.abs(volume.x - position.x)).toBeLessThan(1)
+  expect(Math.abs(volume.width - position.width)).toBeLessThan(1)
+  expect(volume.height).toBe(position.height)
+  expect(
+    Math.abs(volumeIcon.x + volumeIcon.width / 2 - playButton.x - playButton.width / 2),
+  ).toBeLessThan(1)
+  expect(
+    Math.abs(position.y + position.height / 2 - playButton.y - playButton.height / 2),
+  ).toBeLessThan(1)
+  for (const selector of ['.track-volume', '.track-position']) {
+    await expect(tile.locator(`${selector} .v-slider-thumb__surface`)).toHaveCSS('width', '8px')
+    await expect(tile.locator(`${selector} .v-slider-track__background`)).toHaveCSS('height', '2px')
+    await expect(tile.locator(`${selector} .v-slider-track__fill`)).toHaveCSS('height', '2px')
+  }
+}
+
+async function expectPlaceholderAt(page: Page, target: { x: number; y: number }) {
+  await expect
+    .poll(async () => {
+      const placeholder = await page.locator('[data-dnd-placeholder] .file-tile').boundingBox()
+      return placeholder ? Math.hypot(placeholder.x - target.x, placeholder.y - target.y) : Infinity
+    })
+    .toBeLessThan(2)
+}
 test('tables share a library but isolate invitations, playback, removal, and deletion', async ({
   page, browser, context,
 }) => {

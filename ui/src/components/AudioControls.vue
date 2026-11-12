@@ -2,22 +2,43 @@
   <template v-if="trackType">
     <slot name="activator" :open="openControls">
       <div class="audio-control-tile" :class="{ 'is-active': isActive }">
-        <div class="text-center pa-1 text-subtitle-1 position-relative">
-          {{ props.fileName }}
-          <v-btn icon="$dotsVertical" size="small" variant="text" :aria-label="`Edit ${props.fileName}`"
-            @click.stop="openControls" class="position-absolute top-0 right-0" />
+        <span class="d-sr-only">Track type: {{ trackType.name }}</span>
+        <div class="track-heading pa-2 text-subtitle-1 position-relative">
+          <span>{{ props.fileName }}</span>
+          <v-btn icon="$dotsVertical" size="small" variant="text" :aria-label="`Edit ${props.fileName}`" @click.stop="openControls"
+            class="track-desktop-edit position-absolute top-0 right-0" />
+          <v-btn :icon="props.controlsVisible ? '$collapse' : '$expand'" size="small" variant="text"
+            class="track-touch-toggle position-absolute top-0 right-0" :aria-label="`Toggle controls for ${props.fileName}`"
+            :aria-expanded="props.controlsVisible" :aria-controls="`track-controls-${props.fileID}`"
+            @click.stop="$emit('toggle-controls')" />
         </div>
-        <v-divider></v-divider>
-        <div class="d-flex flex-column pa-1 position-relative">
-          <div class="d-flex justify-space-between align-center mx-2">
-            <v-chip :color="trackType?.color" text-color="white" size="x-small">
-              {{ trackType?.name }}
-            </v-chip>
-            <div v-if="!props.library" class="play-status mr-2">
-              <v-progress-circular v-if="fadeState?.inProgress" width="3" size="20" indeterminate />
-              <v-icon v-else size="24">
-                {{ audioState?.isPlaying ? '$pause' : '$play' }}
-              </v-icon>
+        <div v-if="audioState" v-show="props.controlsVisible" :id="`track-controls-${props.fileID}`" class="track-controls" @click.stop>
+          <v-divider></v-divider>
+          <div class="px-2 pt-1">
+            <div class="position-relative">
+              <VolumeSlider :model-value="audioState.volume" :aria-label="`Volume for ${props.fileName}`"
+                thumb-size="8" track-size="2" class="track-volume"
+                @update:model-value="$emit('volume', $event)" />
+              <v-btn icon="$dotsVertical" size="x-small" variant="text" :aria-label="`Edit ${props.fileName}`"
+                class="track-touch-edit position-absolute top-0 right-0" @click.stop="openControls" />
+            </div>
+            <div class="d-flex align-start ga-1 pb-1">
+              <v-btn :icon="audioState.isPlaying ? '$pause' : '$play'" size="x-small" variant="text"
+                :aria-label="`${audioState.isPlaying ? 'Pause' : 'Play'} ${props.fileName}`"
+                :aria-pressed="audioState.isPlaying" @click.stop="$emit('play')">
+                <v-progress-circular v-if="fadeState?.inProgress" width="2" size="18" indeterminate />
+                <v-icon v-else :icon="audioState.isPlaying ? '$pause' : '$play'" />
+              </v-btn>
+              <div class="track-position flex-grow-1">
+                <v-slider :model-value="audioState.currentTime" :max="audioState.duration" min="0" step="1"
+                  :disabled="audioState.duration <= 0" thumb-size="8" track-size="2" density="compact" hide-details
+                  :aria-label="`Playback position for ${props.fileName}`"
+                  :aria-valuetext="`${formatTime(audioState.currentTime)} of ${formatTime(audioState.duration)}`"
+                  class="ma-0" @update:model-value="$emit('seek', $event)" />
+                <div class="position-time text-center">{{ formatTime(audioState.currentTime) }} / {{ formatTime(audioState.duration) }}</div>
+              </div>
+              <v-btn icon="$restart" size="x-small" variant="text" :aria-label="`Restart ${props.fileName}`"
+                title="Restart track" @click.stop="$emit('seek', 0)" />
             </div>
           </div>
         </div>
@@ -36,10 +57,6 @@
             class="pa-0 ma-0"></v-text-field>
           <TrackTypeSelector v-model="editTrackType" />
           <div class="d-flex flex-column">
-            <div class="d-flex align-center">
-              <VolumeSlider v-if="audioState && !props.library" v-model="audioState.volume"
-                @update:model-value="$emit('volume', $event)" />
-            </div>
             <div v-if="audioState && !props.library" class="d-flex align-center">
               <v-icon size="small" color="grey-darken-1" class="mx-2">
                 {{ trackType?.isRepeating ? '$repeat' : '$repeatOff' }}
@@ -103,6 +120,7 @@ import VolumeSlider from './VolumeSlider.vue';
 const props = defineProps<{
   fileName: string
   fileID: string
+  controlsVisible?: boolean
   deleteTrack: (expectedTableCount: number | null) => Promise<void>
   library?: boolean
 }>();
@@ -238,26 +256,6 @@ async function saveTrackChanges() {
   }
 }
 
-function darkenColor(color: string, amount: number): string {
-  // Convert hex to RGB
-  const r = parseInt(color.slice(1, 3), 16);
-  const g = parseInt(color.slice(3, 5), 16);
-  const b = parseInt(color.slice(5, 7), 16);
-
-  // Darken by amount
-  const darkerR = Math.floor(r * amount);
-  const darkerG = Math.floor(g * amount);
-  const darkerB = Math.floor(b * amount);
-
-  // Convert back to hex
-  return `#${darkerR.toString(16).padStart(2, '0')}${darkerG.toString(16).padStart(2, '0')}${darkerB.toString(16).padStart(2, '0')}`;
-}
-
-const darkerColor = computed(() => {
-  if (!trackType.value?.color) return '';
-  return darkenColor(trackType.value.color, 0.14);
-});
-
 // Wait for track type data before initializing audio track
 watchEffect(() => {
   if (trackType.value && audioState.value) {
@@ -269,6 +267,8 @@ watchEffect(() => {
 });
 
 defineEmits<{
+  (e: 'toggle-controls'): void
+  (e: 'play'): void
   (e: 'volume', volume: number): void
   (e: 'seek', time: number): void
 }>();
@@ -288,26 +288,88 @@ function formatTime(seconds: number): string {
 }
 
 .audio-control-tile {
-  cursor: pointer;
   height: 100%;
+  position: relative;
+  border: 2px solid v-bind('trackType?.color');
+  border-radius: inherit;
   transition: background-color 0.3s ease;
   user-select: none;
 }
 
 .audio-control-tile.is-active {
-  background-color: v-bind('darkerColor');
+  background-color: rgba(var(--v-theme-on-surface), 0.06);
 }
 
-.play-status {
-  width: 24px;
-  height: 24px;
-  display: flex;
-  align-items: center;
+.track-controls {
+  position: absolute;
+  top: calc(100% - 2px);
+  left: -2px;
+  right: -2px;
+  background-color: rgb(var(--v-theme-surface));
+  border: 2px solid v-bind('trackType?.color');
+  border-top: 0;
+  border-radius: 0 0 4px 4px;
+  box-shadow: 0 8px 12px rgba(0, 0, 0, 0.25);
+  cursor: default;
+}
+
+.track-touch-toggle,
+.track-touch-edit {
+  display: none;
+}
+
+@media (hover: none), (any-pointer: coarse) {
+  .track-desktop-edit {
+    display: none;
+  }
+
+  .track-touch-toggle,
+  .track-touch-edit {
+    display: inline-grid;
+  }
+}
+
+.track-position {
+  min-width: 0;
+}
+
+.track-volume {
+  padding-inline-end: 36px;
+}
+
+.track-volume :deep(.v-input__prepend) {
+  width: 32px;
   justify-content: center;
+  margin-inline-end: 4px;
 }
 
-.audio-control-tile>div:first-child:hover {
+/* Vuetify otherwise makes the filled segment 2px thicker than the track. */
+.track-volume :deep(.v-slider-track__fill),
+.track-position :deep(.v-slider-track__fill) {
+  height: var(--v-slider-track-size);
+}
+
+/* The default 42px thumb hit area would cover most of these compact tracks. */
+.track-volume :deep(.v-slider-thumb__surface::after),
+.track-position :deep(.v-slider-thumb__surface::after) {
+  width: var(--v-slider-thumb-size);
+}
+
+.position-time {
+  font-size: 0.65rem;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.track-heading:hover {
   background-color: rgba(0, 0, 0, 0.04);
+}
+
+.track-heading {
+  min-height: 40px;
+  padding-left: 36px !important;
+  padding-right: 36px !important;
+  overflow-wrap: anywhere;
 }
 
 .position-absolute {

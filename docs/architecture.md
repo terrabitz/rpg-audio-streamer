@@ -184,6 +184,31 @@ association stops that track for the table; library deletion stops it in every
 connected table. The SDK's shared runtime configuration throws on HTTP failures
 so store and upload error handlers cannot report false success.
 
+GM track tiles show their track type as a colored border instead of a visible
+badge, with a screen-reader label retaining the type name. Cards remain compact
+until pointer hover or keyboard focus reveals an overlaid controls panel without
+moving the grid. Touch-capable devices provide a toggle in the header; their edit
+button appears in the expanded panel. Opening another touch card or starting a
+drag closes the previous panel. A volume slider sits above an interactive
+playback-position slider and elapsed/total time, flanked by play/pause and
+restart buttons. Both sliders share compact track and thumb sizes and aligned
+endpoints, with the volume icon centered above play/pause. An active slider
+drag keeps the panel open until release. Seeking preserves the playing/paused
+state; playing tracks synchronize the seek to listening players. Restart seeks
+to the beginning. The metadata dialog retains the track-type selector.
+A small top-left drag handle enables mouse or touch dragging via `@dnd-kit/vue`
+after a 4 px movement. `SortableTrack` registers each grid cell and its handle.
+The lifted card follows the pointer while a dashed insertion placeholder moves
+between the other cards, which animate aside. Only the handle initiates dragging;
+other card areas retain normal touch scrolling. Card clicks or Enter/Space toggle
+playback, while the inline controls do not trigger card clicks. Focused cards or
+handles can be reordered with Alt + Left/Right, with screen-reader announcements.
+Cancelled drags restore the original layout without changing the saved order.
+The table store persists only track-order preferences, scoped by table ID, in the GM's browser,
+preserves it across metadata refreshes, appends newly discovered tracks, and drops
+deleted tracks. Ordering does not change playback state or player mixes and is
+not stored on the server or shared across devices.
+
 ### Playback synchronization
 
 The server routes messages rather than storing authoritative playback state.
