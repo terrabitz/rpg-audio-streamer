@@ -4,8 +4,10 @@ import (
 	"fmt"
 	"io/fs"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
+	"strconv"
 
 	"github.com/gorilla/websocket"
 	"github.com/terrabitz/rpg-audio-streamer/internal/auth"
@@ -41,6 +43,7 @@ type Server struct {
 }
 
 type Config struct {
+	Host      string
 	Port      int
 	UploadDir string
 	DevMode   bool
@@ -73,11 +76,12 @@ func (s *Server) Start() error {
 	}
 
 	srv := &http.Server{
-		Addr:    fmt.Sprintf(":%d", s.cfg.Port),
+		Addr:    net.JoinHostPort(s.cfg.Host, strconv.Itoa(s.cfg.Port)),
 		Handler: s.Handler(),
 	}
 
 	s.logger.Info("starting server",
+		slog.String("host", s.cfg.Host),
 		slog.Int("port", s.cfg.Port),
 		slog.Bool("devMode", s.cfg.DevMode),
 	)

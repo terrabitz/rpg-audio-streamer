@@ -35,6 +35,22 @@ API and WebSocket proxy (by default to `http://localhost:8080`); the proxy targe
 can be supplied through `API_PROXY_TARGET`. The browser SDK base URL comes from
 `VITE_API_BASE_URL`, normally `/`.
 
+The optional API `--host` / `HOST` setting controls the listener interface;
+its empty default preserves listening on all interfaces. The seeded local
+development launcher (`scripts/dev.mjs`, exposed as `make dev`) binds both
+the API and Vite to loopback on automatically selected ports. Each invocation
+builds the real API into a unique temporary directory and creates a fresh
+SQLite database, upload directory, and Vite cache. It uses public fixture GM
+credentials, freshly salted native Argon2id password hashes, and per-instance
+random signing/invite tokens. Nine generated audio fixtures (three per default
+track type) use ordinary display names and are uploaded into the default table
+through authenticated HTTP, exercising normal validation, conversion, and persistence rather than writing
+database fixtures directly. Vite uses the isolated API proxy and ignores
+developer dotenv files; the API runs from the temporary directory with
+explicit configuration. The launcher owns shutdown and removes its temporary
+state on normal termination or startup failure. Uncatchable termination
+cannot guarantee cleanup. Procedures live in the local-dev skill.
+
 ## Backend
 
 | Package | Responsibility |
@@ -121,6 +137,11 @@ existing library track or upload a new one directly into the table.
 To preserve space during play, the table name appears only in the app bar.
 Its **Add Track** action opens a dialog with library selection and new-upload
 tabs; neither workflow adds a permanent control row to the track grid.
+Uploads require a file, a nonblank name, and a valid library track type before
+the Upload action is enabled.
+Upload results appear as compact, auto-dismissing bottom-center toasts attached
+to the document body, independent of the uploader's app-bar or library placement;
+upload failures remain inline while the dialog is open.
 The table-management list opens a table when its row is clicked; rename and
 delete live in each row's three-dot menu.
 
@@ -167,6 +188,31 @@ Associated entries initialize GM playback state as they load. Removing a table
 association stops that track for the table; library deletion stops it in every
 connected table. The SDK's shared runtime configuration throws on HTTP failures
 so store and upload error handlers cannot report false success.
+
+GM track tiles show their track type as a colored border instead of a visible
+badge, with a screen-reader label retaining the type name. Cards remain compact
+until pointer hover or keyboard focus reveals an overlaid controls panel without
+moving the grid. Touch-capable devices provide a toggle in the header; their edit
+button appears in the expanded panel. Opening another touch card or starting a
+drag closes the previous panel. A volume slider sits above an interactive
+playback-position slider and elapsed/total time, flanked by play/pause and
+restart buttons. Both sliders share compact track and thumb sizes and aligned
+endpoints, with the volume icon centered above play/pause. An active slider
+drag keeps the panel open until release. Seeking preserves the playing/paused
+state; playing tracks synchronize the seek to listening players. Restart seeks
+to the beginning. The metadata dialog retains the track-type selector.
+A small top-left drag handle enables mouse or touch dragging via `@dnd-kit/vue`
+after a 4 px movement. `SortableTrack` registers each grid cell and its handle.
+The lifted card follows the pointer while a dashed insertion placeholder moves
+between the other cards, which animate aside. Only the handle initiates dragging;
+other card areas retain normal touch scrolling. Card clicks or Enter/Space toggle
+playback, while the inline controls do not trigger card clicks. Focused cards or
+handles can be reordered with Alt + Left/Right, with screen-reader announcements.
+Cancelled drags restore the original layout without changing the saved order.
+The table store persists only track-order preferences, scoped by table ID, in the GM's browser,
+preserves it across metadata refreshes, appends newly discovered tracks, and drops
+deleted tracks. Ordering does not change playback state or player mixes and is
+not stored on the server or shared across devices.
 
 ### Playback synchronization
 
@@ -220,8 +266,9 @@ check that the Dockerfile's Go and Node base images match `go.mod` and
 `ui/.nvmrc`, since dependency bumps do not update the Dockerfile.
 
 All pull requests run the `pr-checks` workflow. `dorny/paths-filter` selects Go
-tests for backend inputs, frontend lint/build/domain checks for UI or OpenAPI
-inputs, full-app browser tests for either, and Docker checks for image inputs.
+tests for backend inputs, frontend lint/build/domain checks for UI, development
+scripts, or OpenAPI inputs, full-app browser and seeded development instance
+tests for either, and Docker checks for image inputs.
 Changes to the workflow select every check; manual runs also execute every
 check. The final `PR Checks` job depends on path detection and all check jobs,
 accepts successful or skipped jobs, and fails on failed or cancelled jobs.
