@@ -1,13 +1,14 @@
 <script setup lang="ts">
 import { useAuthStore } from '../stores/auth';
-import { useJoinStore } from '@/stores/join';
+import { useAppBar } from '@/composables/useAppBar';
 import { onMounted } from 'vue';
 
 const auth = useAuthStore();
-const joinStore = useJoinStore();
+const { setTitle, setActions } = useAppBar()
 
-onMounted(async () => {
-  await joinStore.fetchToken();
+onMounted(() => {
+  setTitle('RPG Audio Streamer')
+  setActions([])
 });
 
 </script>
@@ -22,9 +23,9 @@ onMounted(async () => {
       </p>
 
       <div class="d-flex flex-wrap justify-center gap-4">
-        <v-btn :to="'/table/' + joinStore.token" color="primary" size="large" variant="elevated"
+        <v-btn v-if="auth.role === 'gm'" to="/tables" color="primary" size="large" variant="elevated"
           prepend-icon="$headphones">
-          Go to My Table
+          Manage tables
         </v-btn>
       </div>
     </div>

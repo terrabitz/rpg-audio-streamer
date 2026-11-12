@@ -5,6 +5,22 @@ import { useAudioStore } from '../audio'
 describe('audio session state', () => {
   beforeEach(() => setActivePinia(createPinia()))
 
+  it('clears table playback and fades while preserving local mix preferences', () => {
+    const audio = useAudioStore()
+    audio.enabled = true
+    audio.masterVolume = 45
+    audio.setTypeVolume('Music', 25)
+    audio.initTrack('forest', 'Forest')
+    audio.updateTrackState('forest', { isPlaying: true })
+    audio.setFading('forest', true)
+    audio.clearTracks()
+    expect(audio.enabled).toBe(false)
+    expect(audio.tracks).toEqual({})
+    expect(audio.fadeStates).toEqual({})
+    expect(audio.masterVolume).toBe(45)
+    expect(audio.getTypeVolume('Music')).toBe(25)
+  })
+
   it('initializes stopped tracks without overwriting existing state', () => {
     const audio = useAudioStore()
     audio.initTrack('forest', 'Forest', 'ambiance')

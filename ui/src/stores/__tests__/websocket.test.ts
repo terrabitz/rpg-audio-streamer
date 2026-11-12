@@ -109,6 +109,49 @@ describe('WebSocket transport', () => {
     await vi.advanceTimersByTimeAsync(3000)
     expect(TestSocket.instances).toHaveLength(2)
   })
+
+  it('changes table scope and ignores stale sockets and pending reconnects', async () => {
+    const ws = useWebSocketStore()
+    const first = ws.connect(undefined, 'friday')
+    const previous = latestSocket()
+    previous.open()
+    await first
+    expect(previous.url).toContain('?tableID=friday')
+    previous.onclose?.(new CloseEvent('close', { code: 1006, wasClean: false }))
+    const next = ws.connect(undefined, 'sunday')
+    latestSocket().open()
+    await next
+    expect(latestSocket().url).toContain('?tableID=sunday')
+    const handler = vi.fn()
+    ws.addMessageHandler(handler)
+    previous.onmessage?.(new MessageEvent('message', { data: '{"method":"syncTrack","payload":{}}' }))
+    previous.onerror?.(new Event('error'))
+    previous.onclose?.(new CloseEvent('close', { code: 1006, wasClean: false }))
+    expect(handler).not.toHaveBeenCalled()
+    expect(ws.isConnected).toBe(true)
+    await vi.advanceTimersByTimeAsync(3000)
+    expect(TestSocket.instances).toHaveLength(2)
+    ws.disconnect()
+  })
+
+  it('cancels a scheduled reconnect when leaving the table', async () => {
+    const ws = useWebSocketStore()
+    await openSocket(ws, 'friday-invite')
+    latestSocket().onclose?.(new CloseEvent('close', { code: 1006, wasClean: false }))
+    ws.disconnect()
+    await vi.advanceTimersByTimeAsync(5000)
+    expect(TestSocket.instances).toHaveLength(1)
+  })
+
+  it('settles an unfinished connection when navigation disconnects it', async () => {
+    const ws = useWebSocketStore()
+    const pending = ws.connect(undefined, 'friday')
+    ws.disconnect()
+    await expect(pending).rejects.toThrow('Connection superseded')
+    expect(ws.isConnected).toBe(false)
+    await vi.advanceTimersByTimeAsync(5000)
+    expect(TestSocket.instances).toHaveLength(1)
+  })
 })
 
 async function openSocket(ws: ReturnType<typeof useWebSocketStore>, token?: string) {

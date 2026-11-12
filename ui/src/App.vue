@@ -26,7 +26,7 @@ async function handleLogout() {
 
 onMounted(async () => {
   await router.isReady()
-  if (route.name !== 'table') {
+  if (route.name !== 'table' && route.name !== 'gm-table') {
     await auth.checkAuthStatus()
   }
 })
@@ -55,6 +55,10 @@ onUnmounted(() => {
       <v-spacer></v-spacer>
       <v-btn v-if="debugStore.isDevMode" icon="$bug" @click="debugStore.togglePanel"></v-btn>
       <template v-if="!isPlayerView">
+        <template v-if="auth.authenticated && auth.role === 'gm'">
+          <v-btn to="/tables">Tables</v-btn>
+          <v-btn to="/library">Library</v-btn>
+        </template>
         <v-btn v-if="auth.authenticated" @click="handleLogout" color="error">
           Logout
         </v-btn>
@@ -64,7 +68,7 @@ onUnmounted(() => {
       </template>
     </v-app-bar>
     <v-main>
-      <RouterView />
+      <RouterView :key="route.fullPath" />
     </v-main>
     <v-navigation-drawer location="right" v-if="debugStore.isDevMode" v-model="debugStore.showDebugPanel"
       :permanent="debugStore.showDebugPanel" width="400">

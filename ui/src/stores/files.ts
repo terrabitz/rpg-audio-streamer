@@ -1,5 +1,12 @@
-import { deleteApiV1FilesByTrackId, getApiV1Files, postApiV1Files, putApiV1FilesByTrackId, type Track, type UpdateTrackRequest } from '@/client/apiClient'
+import { deleteApiV1FilesByTrackId, getApiV1Files, getApiV1FilesByTrackIdUsage, postApiV1Files, putApiV1FilesByTrackId, type Track, type UpdateTrackRequest } from '@/client/apiClient'
 import { defineStore } from 'pinia'
+
+export class TrackUsageChangedError extends Error {
+  constructor() {
+    super('Track table usage changed')
+    this.name = 'TrackUsageChangedError'
+  }
+}
 
 export const useFileStore = defineStore('files', {
   state: () => ({
@@ -15,26 +22,30 @@ export const useFileStore = defineStore('files', {
     async fetchFiles() {
       try {
         const { data } = await getApiV1Files<true>()
-        const positions = new Map(this.tracks.map((track, index) => [track.id, index]))
-        this.tracks = [...data].sort((a, b) =>
-          (positions.get(a.id) ?? data.length) - (positions.get(b.id) ?? data.length)
-        )
+        this.tracks = data
       } catch (error) {
         console.error('Error fetching files:', error)
+        throw error
       }
     },
-    moveTrack(trackId: string, targetId: string) {
-      const sourceIndex = this.tracks.findIndex(track => track.id === trackId)
-      const targetIndex = this.tracks.findIndex(track => track.id === targetId)
-      if (sourceIndex < 0 || targetIndex < 0 || sourceIndex === targetIndex) return
-
-      const [track] = this.tracks.splice(sourceIndex, 1)
-      if (track) this.tracks.splice(targetIndex, 0, track)
+    async countTrackTables(trackID: string) {
+      const { data } = await getApiV1FilesByTrackIdUsage<true>({ path: { trackID } })
+      if (!Number.isSafeInteger(data.tableCount) || data.tableCount < 0) {
+        throw new Error('Invalid track usage count')
+      }
+      return data.tableCount
     },
-    async deleteFile(trackId: string) {
+    async deleteFile(trackId: string, expectedTableCount: number) {
       try {
-        await deleteApiV1FilesByTrackId<true>({ path: { trackID: trackId } })
-        await this.fetchFiles()
+        const result = await deleteApiV1FilesByTrackId<false>({
+          path: { trackID: trackId },
+          query: { expectedTableCount },
+          throwOnError: false,
+        })
+        if (result.response?.status === 409) throw new TrackUsageChangedError()
+        if (result.error !== undefined) throw result.error
+        if (!result.response?.ok) throw new Error('Failed to delete track')
+        this.tracks = this.tracks.filter(track => track.id !== trackId)
       } catch (error) {
         console.error('Error deleting file:', error)
         throw error

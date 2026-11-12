@@ -1,20 +1,19 @@
 <script setup lang="ts">
 import { useDebugStore } from '@/stores/debug'
 import { useWebSocketStore, type WebSocketMessage } from '@/stores/websocket'
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import AudioPlayer from '../components/AudioPlayer.vue'
 import PlayerFileList from '../components/PlayerFileList.vue'
 import VolumeMixer from '../components/VolumeMixer.vue'
 import { useAudioStore, type AudioTrack } from '../stores/audio'
-import { useAppBar } from '@/composables/useAppBar'
 
 const route = useRoute()
 const wsStore = useWebSocketStore()
 const audioStore = useAudioStore()
 const debugStore = useDebugStore()
 const connecting = ref(false)
-const { setTitle } = useAppBar()
+const error = ref('')
 
 // Check if we have a token in the route params
 const token = route.params.token as string | undefined
@@ -47,12 +46,19 @@ function handleSyncTrack(message: WebSocketMessage) {
 }
 
 onMounted(() => {
-  setTitle('Game Session')
   audioStore.enabled = false
+  wsStore.addMessageHandler(handleSyncAll)
+  wsStore.addMessageHandler(handleSyncTrack)
 })
 
 onUnmounted(() => {
   disconnectAudio()
+  wsStore.removeMessageHandler(handleSyncAll)
+  wsStore.removeMessageHandler(handleSyncTrack)
+})
+
+watch(() => wsStore.isConnected, (connected) => {
+  if (connected && audioStore.enabled) wsStore.sendMessage('syncRequest', {})
 })
 
 function handleAudioToggle() {
@@ -65,22 +71,21 @@ function handleAudioToggle() {
 
 async function connectAudio() {
   connecting.value = true
-  await wsStore.connect(token)
-  wsStore.addMessageHandler(handleSyncAll)
-  wsStore.addMessageHandler(handleSyncTrack)
-
-
-  wsStore.sendMessage('syncRequest', {})
-  setTimeout(() => {
-    connecting.value = false
-  }, 2000)
+  error.value = ''
   audioStore.enabled = true
+  try {
+    await wsStore.connect(token)
+  } catch (e) {
+    console.error('Failed to connect audio:', e)
+    error.value = 'Failed to connect audio. Please try again.'
+    disconnectAudio()
+  } finally {
+    connecting.value = false
+  }
 }
 
 function disconnectAudio() {
-  audioStore.enabled = false
-  wsStore.removeMessageHandler(handleSyncAll)
-  wsStore.removeMessageHandler(handleSyncTrack)
+  audioStore.clearTracks()
   wsStore.disconnect()
 }
 
@@ -88,6 +93,7 @@ function disconnectAudio() {
 
 <template>
   <v-container>
+    <v-alert v-if="error" type="error" class="mb-4">{{ error }}</v-alert>
     <AudioPlayer v-if="audioStore.enabled" :token="token" />
 
     <div class="d-flex align-center mb-4">

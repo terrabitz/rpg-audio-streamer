@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/google/uuid"
 	"github.com/terrabitz/rpg-audio-streamer/internal/auth"
 )
 
@@ -30,15 +31,35 @@ func (s *Server) getToken(r *http.Request) (*auth.Token, error) {
 
 	// This is a hack for the WS endpoint, which can't use an Authorization header.
 	if tokenParam := r.FormValue("token"); tokenParam != "" {
-		return s.auth.ValidateJoinToken(tokenParam)
+		return s.playerToken(r, tokenParam)
 	}
 
 	authHeaderToken, err := getAuthorizationBearerToken(r)
 	if err == nil {
-		return s.auth.ValidateJoinToken(authHeaderToken)
+		return s.playerToken(r, authHeaderToken)
 	}
 
 	return nil, fmt.Errorf("No valid authentication method found")
+}
+
+func (s *Server) playerToken(r *http.Request, invite string) (*auth.Token, error) {
+	if invite == "" {
+		return nil, auth.ErrInvalidJoinToken
+	}
+	var table Table
+	var err error
+	if strings.EqualFold(invite, s.auth.GetJoinToken()) {
+		table, err = s.store.GetTable(r.Context(), DefaultTableID)
+	} else {
+		table, err = s.store.GetTableByInvite(r.Context(), invite)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("invalid table invite: %w", err)
+	}
+	if table.ID == uuid.Nil {
+		return nil, auth.ErrInvalidJoinToken
+	}
+	return &auth.Token{Role: auth.RolePlayer, TableID: table.ID.String()}, nil
 }
 
 func getAuthorizationBearerToken(r *http.Request) (string, error) {

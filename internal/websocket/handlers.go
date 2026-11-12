@@ -31,7 +31,7 @@ func (h *Hub) handleBroadcast(payload json.RawMessage, c *Client) {
 		Method:   "broadcast",
 		SenderID: c.ID,
 		Payload:  payload,
-	}, ExceptClient(c)) // Don't send back to sender
+	}, ExceptClient(c), ToTable(c.Token.TableID))
 }
 
 func (h *Hub) handleSyncRequest(payload json.RawMessage, c *Client) {
@@ -40,7 +40,7 @@ func (h *Hub) handleSyncRequest(payload json.RawMessage, c *Client) {
 		Method:   "syncRequest",
 		SenderID: c.ID,
 		Payload:  payload,
-	}, ToGMOnly())
+	}, ToGMOnly(), ToTable(c.Token.TableID))
 }
 
 func (h *Hub) handleSyncAll(payload json.RawMessage, c *Client) {
@@ -65,14 +65,14 @@ func (h *Hub) handleSyncAll(payload json.RawMessage, c *Client) {
 			Method:   "syncAll",
 			SenderID: c.ID,
 			Payload:  payload,
-		}, ToClientID(syncPayload.To))
+		}, ToClientID(syncPayload.To), ToPlayersOnly(), ToTable(c.Token.TableID))
 	} else {
 		// Otherwise broadcast to all players
 		h.Broadcast(Message{
 			Method:   "syncAll",
 			SenderID: c.ID,
 			Payload:  payload,
-		}, ToPlayersOnly())
+		}, ToPlayersOnly(), ToTable(c.Token.TableID))
 	}
 }
 
@@ -85,5 +85,5 @@ func (h *Hub) handleSyncTrack(payload json.RawMessage, c *Client) {
 		Method:   "syncTrack",
 		SenderID: c.ID,
 		Payload:  payload,
-	}, ToPlayersOnly())
+	}, ToPlayersOnly(), ToTable(c.Token.TableID))
 }

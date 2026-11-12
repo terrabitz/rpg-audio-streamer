@@ -23,6 +23,7 @@ type Token struct {
 	token     string
 	ExpiresAt time.Time
 	Role      Role
+	TableID   string
 }
 
 func (a Token) String() string {

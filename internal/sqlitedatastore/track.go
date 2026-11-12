@@ -11,6 +11,10 @@ import (
 )
 
 func (db *SQLiteDatastore) SaveTrack(ctx context.Context, track *server.Track) error {
+	return saveTrack(ctx, sqlitedb.New(db.DB), track)
+}
+
+func saveTrack(ctx context.Context, queries *sqlitedb.Queries, track *server.Track) error {
 	dbTrack := sqlitedb.SaveTrackParams{
 		ID:        track.ID[:],
 		CreatedAt: track.CreatedAt.Format(time.RFC3339),
@@ -19,7 +23,7 @@ func (db *SQLiteDatastore) SaveTrack(ctx context.Context, track *server.Track) e
 		TypeID:    track.TypeID[:],
 	}
 
-	if err := sqlitedb.New(db.DB).SaveTrack(ctx, dbTrack); err != nil {
+	if err := queries.SaveTrack(ctx, dbTrack); err != nil {
 		return fmt.Errorf("couldn't save track to SQLite: %w", err)
 	}
 
@@ -54,6 +58,13 @@ func (db *SQLiteDatastore) GetTrackByID(ctx context.Context, trackID uuid.UUID) 
 
 func (db *SQLiteDatastore) DeleteTrack(ctx context.Context, trackID uuid.UUID) error {
 	return sqlitedb.New(db.DB).DeleteTrackByID(ctx, trackID[:])
+}
+
+func (db *SQLiteDatastore) DeleteTrackIfTableCount(ctx context.Context, trackID uuid.UUID, expectedCount int64) (bool, error) {
+	affected, err := sqlitedb.New(db.DB).DeleteTrackByIDIfTableCount(ctx, sqlitedb.DeleteTrackByIDIfTableCountParams{
+		ID: trackID[:], ExpectedTableCount: expectedCount,
+	})
+	return affected == 1, err
 }
 
 func (db *SQLiteDatastore) UpdateTrack(ctx context.Context, trackID uuid.UUID, update server.UpdateTrackRequest) (server.Track, error) {
