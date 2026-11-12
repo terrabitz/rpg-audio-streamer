@@ -200,6 +200,21 @@ timers; queued media events cannot recreate deleted track state.
 Playback is ephemeral browser state, not persisted in SQLite or recovered by
 the server after every GM disconnect.
 
+## Release pipeline
+
+Pushes to `main` that match the release workflow's path filters run
+semantic-release in dry-run mode to calculate a version and release notes from
+conventional commits and existing tags. Only the commit analyzer and notes
+generator are enabled; the workflow does not commit a changelog or push to
+`main`. `gh release create` creates the version tag at the triggering commit
+and publishes the generated notes on GitHub, respecting branch protection.
+Release notes live in GitHub releases.
+
+Release runs are serialized to avoid competing version calculations. When no
+release is needed, publication and image building are skipped. After successful
+publication, the Docker job builds Linux amd64/arm64 images and pushes `latest`,
+full-version, major, and major.minor tags to GHCR.
+
 ## Architectural assurance
 
 Domain tests exercise authentication, routing policies, and frontend state
