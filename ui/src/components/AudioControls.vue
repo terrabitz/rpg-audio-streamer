@@ -4,43 +4,9 @@
       <div class="audio-control-tile" :class="{ 'is-active': isActive }">
         <span class="d-sr-only">Track type: {{ trackType.name }}</span>
         <div class="track-heading pa-2 text-subtitle-1 position-relative">
-          <span>{{ props.fileName }}</span>
+          <span :title="props.fileName">{{ props.fileName }}</span>
           <v-btn icon="$dotsVertical" size="small" variant="text" :aria-label="`Edit ${props.fileName}`" @click.stop="openControls"
-            class="track-desktop-edit position-absolute top-0 right-0" />
-          <v-btn :icon="props.controlsVisible ? '$collapse' : '$expand'" size="small" variant="text"
-            class="track-touch-toggle position-absolute top-0 right-0" :aria-label="`Toggle controls for ${props.fileName}`"
-            :aria-expanded="props.controlsVisible" :aria-controls="`track-controls-${props.fileID}`"
-            @click.stop="$emit('toggle-controls')" />
-        </div>
-        <div v-if="audioState" v-show="props.controlsVisible" :id="`track-controls-${props.fileID}`" class="track-controls" @click.stop>
-          <v-divider></v-divider>
-          <div class="px-2 pt-1">
-            <div class="position-relative">
-              <VolumeSlider :model-value="audioState.volume" :aria-label="`Volume for ${props.fileName}`"
-                thumb-size="8" track-size="2" class="track-volume"
-                @update:model-value="$emit('volume', $event)" />
-              <v-btn icon="$dotsVertical" size="x-small" variant="text" :aria-label="`Edit ${props.fileName}`"
-                class="track-touch-edit position-absolute top-0 right-0" @click.stop="openControls" />
-            </div>
-            <div class="d-flex align-start ga-1 pb-1">
-              <v-btn :icon="audioState.isPlaying ? '$pause' : '$play'" size="x-small" variant="text"
-                :aria-label="`${audioState.isPlaying ? 'Pause' : 'Play'} ${props.fileName}`"
-                :aria-pressed="audioState.isPlaying" @click.stop="$emit('play')">
-                <v-progress-circular v-if="fadeState?.inProgress" width="2" size="18" indeterminate />
-                <v-icon v-else :icon="audioState.isPlaying ? '$pause' : '$play'" />
-              </v-btn>
-              <div class="track-position flex-grow-1">
-                <v-slider :model-value="audioState.currentTime" :max="audioState.duration" min="0" step="1"
-                  :disabled="audioState.duration <= 0" thumb-size="8" track-size="2" density="compact" hide-details
-                  :aria-label="`Playback position for ${props.fileName}`"
-                  :aria-valuetext="`${formatTime(audioState.currentTime)} of ${formatTime(audioState.duration)}`"
-                  class="ma-0" @update:model-value="$emit('seek', $event)" />
-                <div class="position-time text-center">{{ formatTime(audioState.currentTime) }} / {{ formatTime(audioState.duration) }}</div>
-              </div>
-              <v-btn icon="$restart" size="x-small" variant="text" :aria-label="`Restart ${props.fileName}`"
-                title="Restart track" @click.stop="$emit('seek', 0)" />
-            </div>
-          </div>
+            class="position-absolute top-0 right-0" />
         </div>
       </div>
     </slot>
@@ -56,18 +22,8 @@
           <v-text-field v-model="editName" label="Track Name" variant="underlined" hide-details
             class="pa-0 ma-0"></v-text-field>
           <TrackTypeSelector v-model="editTrackType" />
-          <div class="d-flex flex-column">
-            <div v-if="audioState && !props.library" class="d-flex align-center">
-              <v-icon size="small" color="grey-darken-1" class="mx-2">
-                {{ trackType?.isRepeating ? '$repeat' : '$repeatOff' }}
-              </v-icon>
-              <v-slider thumb-size="0" :model-value="audioState.currentTime" readonly density="compact" hide-details
-                :max="audioState.duration" min="0" step="0.1" class="ml-3" />
-              <span class="text-caption ml-2">{{ formatTime(audioState.currentTime) }} / {{
-                formatTime(audioState.duration)
-                }}</span>
-            </div>
-          </div>
+          <TrackPlaybackControls v-if="audioState && !props.library" :state="audioState" :name="props.fileName"
+            @volume="$emit('volume', $event)" @seek="$emit('seek', $event)" />
         </v-card-text>
         <v-divider></v-divider>
         <v-card-actions>
@@ -115,12 +71,11 @@ import { useAudioStore } from '../stores/audio';
 import { TrackUsageChangedError, useFileStore } from '../stores/files';
 import { useTrackTypeStore } from '../stores/trackTypes';
 import TrackTypeSelector from './TrackTypeSelector.vue';
-import VolumeSlider from './VolumeSlider.vue';
+import TrackPlaybackControls from './TrackPlaybackControls.vue';
 
 const props = defineProps<{
   fileName: string
   fileID: string
-  controlsVisible?: boolean
   deleteTrack: (expectedTableCount: number | null) => Promise<void>
   library?: boolean
 }>();
@@ -132,7 +87,6 @@ const fileStore = useFileStore();
 const track = computed(() => fileStore.tracks.find(t => t.id === props.fileID));
 const trackType = computed(() => track.value ? trackTypeStore.getTypeById(track.value.typeID) : null);
 const audioState = computed(() => audioStore.tracks[props.fileID]);
-const fadeState = computed(() => audioStore.fadeStates[props.fileID]);
 
 const showControls = ref(false);
 const isSaving = ref(false);
@@ -267,26 +221,13 @@ watchEffect(() => {
 });
 
 defineEmits<{
-  (e: 'toggle-controls'): void
-  (e: 'play'): void
   (e: 'volume', volume: number): void
   (e: 'seek', time: number): void
 }>();
 
-function formatTime(seconds: number): string {
-  const mins = Math.floor(seconds / 60)
-  const secs = Math.floor(seconds % 60)
-  return `${mins}:${secs.toString().padStart(2, '0')}`
-}
 </script>
 
 <style scoped>
-.button-active {
-  background-color: rgb(189, 189, 189) !important;
-  transform: translateY(1px);
-  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.2) !important;
-}
-
 .audio-control-tile {
   height: 100%;
   position: relative;
@@ -297,68 +238,7 @@ function formatTime(seconds: number): string {
 }
 
 .audio-control-tile.is-active {
-  background-color: rgba(var(--v-theme-on-surface), 0.06);
-}
-
-.track-controls {
-  position: absolute;
-  top: calc(100% - 2px);
-  left: -2px;
-  right: -2px;
-  background-color: rgb(var(--v-theme-surface));
-  border: 2px solid v-bind('trackType?.color');
-  border-top: 0;
-  border-radius: 0 0 4px 4px;
-  box-shadow: 0 8px 12px rgba(0, 0, 0, 0.25);
-  cursor: default;
-}
-
-.track-touch-toggle,
-.track-touch-edit {
-  display: none;
-}
-
-@media (hover: none), (any-pointer: coarse) {
-  .track-desktop-edit {
-    display: none;
-  }
-
-  .track-touch-toggle,
-  .track-touch-edit {
-    display: inline-grid;
-  }
-}
-
-.track-position {
-  min-width: 0;
-}
-
-.track-volume {
-  padding-inline-end: 36px;
-}
-
-.track-volume :deep(.v-input__prepend) {
-  width: 32px;
-  justify-content: center;
-  margin-inline-end: 4px;
-}
-
-/* Vuetify otherwise makes the filled segment 2px thicker than the track. */
-.track-volume :deep(.v-slider-track__fill),
-.track-position :deep(.v-slider-track__fill) {
-  height: var(--v-slider-track-size);
-}
-
-/* The default 42px thumb hit area would cover most of these compact tracks. */
-.track-volume :deep(.v-slider-thumb__surface::after),
-.track-position :deep(.v-slider-thumb__surface::after) {
-  width: var(--v-slider-thumb-size);
-}
-
-.position-time {
-  font-size: 0.65rem;
-  line-height: 1;
-  font-variant-numeric: tabular-nums;
+  background-color: color-mix(in srgb, v-bind('trackType?.color') 40%, rgb(var(--v-theme-surface)));
 }
 
 .track-heading:hover {
@@ -369,7 +249,13 @@ function formatTime(seconds: number): string {
   min-height: 40px;
   padding-left: 36px !important;
   padding-right: 36px !important;
-  overflow-wrap: anywhere;
+}
+
+.track-heading > span {
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .position-absolute {

@@ -4,11 +4,26 @@ import { createPinia, setActivePinia } from 'pinia'
 import AudioControls from '../AudioControls.vue'
 import { TrackUsageChangedError, useFileStore } from '@/stores/files'
 import { useTrackTypeStore } from '@/stores/trackTypes'
+import { useAudioStore } from '@/stores/audio'
 
 const EDITOR = '[role="dialog"]:not([aria-label])'
 const CONFIRMATION = '[role="dialog"][aria-label="Delete track?"]'
 
 afterEach(() => vi.restoreAllMocks())
+
+it('wires paused track controls through the three-dot dialog without play or pause', async () => {
+  const { wrapper } = mountControls(false)
+  useAudioStore().initTrack('forest', 'Forest', 'Music')
+  await wrapper.get('[aria-label="Edit Forest"]').trigger('click')
+  const controls = wrapper.getComponent({ name: 'TrackPlaybackControls' })
+  expect(controls.props('state').isPlaying).toBe(false)
+  expect(controls.props('showPlay')).toBe(false)
+  await controls.vm.$emit('volume', 25)
+  await controls.vm.$emit('seek', 12)
+  expect(wrapper.emitted('volume')).toEqual([[25]])
+  expect(wrapper.emitted('seek')).toEqual([[12]])
+  wrapper.unmount()
+})
 
 it.each([
   [1, 'table'],
@@ -162,6 +177,7 @@ function mountControls(library = true) {
         VIcon: true,
         TrackTypeSelector: true,
         VolumeSlider: true,
+        TrackPlaybackControls: true,
       },
     },
   })
