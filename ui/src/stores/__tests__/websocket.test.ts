@@ -47,11 +47,11 @@ describe('WebSocket transport', () => {
     expect(() => ws.sendMessage('ping', {})).toThrow('WebSocket is not connected')
   })
 
-  it('uses secure sockets and encodes invite tokens', async () => {
+  it('uses secure sockets and encodes the public table ID', async () => {
     vi.stubEnv('VITE_API_BASE_URL', 'https://table.example/api/v1')
     const ws = useWebSocketStore()
-    await openSocket(ws, 'invite /?')
-    expect(latestSocket().url).toBe('wss://table.example/api/v1/ws?token=invite%20%2F%3F')
+    await openSocket(ws, 'table /?')
+    expect(latestSocket().url).toBe('wss://table.example/api/v1/ws?tableID=table%20%2F%3F')
     ws.disconnect()
   })
 
@@ -90,9 +90,9 @@ describe('WebSocket transport', () => {
     expect(ws.isConnected).toBe(false)
   })
 
-  it('reconnects abnormal closures after the retry interval with the same invite', async () => {
+  it('reconnects abnormal closures after the retry interval with the same table ID', async () => {
     const ws = useWebSocketStore()
-    await openSocket(ws, 'invite')
+    await openSocket(ws, 'friday')
     latestSocket().readyState = 3
     latestSocket().onclose?.(new CloseEvent('close', { code: 1006, wasClean: false }))
     expect(ws.isConnected).toBe(false)
@@ -100,7 +100,7 @@ describe('WebSocket transport', () => {
     expect(TestSocket.instances).toHaveLength(1)
     vi.advanceTimersByTime(1)
     expect(TestSocket.instances).toHaveLength(2)
-    expect(latestSocket().url).toContain('?token=invite')
+    expect(latestSocket().url).toContain('?tableID=friday')
     latestSocket().open()
     await Promise.resolve()
     await Promise.resolve()
@@ -112,13 +112,13 @@ describe('WebSocket transport', () => {
 
   it('changes table scope and ignores stale sockets and pending reconnects', async () => {
     const ws = useWebSocketStore()
-    const first = ws.connect(undefined, 'friday')
+    const first = ws.connect('friday')
     const previous = latestSocket()
     previous.open()
     await first
     expect(previous.url).toContain('?tableID=friday')
     previous.onclose?.(new CloseEvent('close', { code: 1006, wasClean: false }))
-    const next = ws.connect(undefined, 'sunday')
+    const next = ws.connect('sunday')
     latestSocket().open()
     await next
     expect(latestSocket().url).toContain('?tableID=sunday')
@@ -136,7 +136,7 @@ describe('WebSocket transport', () => {
 
   it('cancels a scheduled reconnect when leaving the table', async () => {
     const ws = useWebSocketStore()
-    await openSocket(ws, 'friday-invite')
+    await openSocket(ws, 'friday')
     latestSocket().onclose?.(new CloseEvent('close', { code: 1006, wasClean: false }))
     ws.disconnect()
     await vi.advanceTimersByTimeAsync(5000)
@@ -145,7 +145,7 @@ describe('WebSocket transport', () => {
 
   it('settles an unfinished connection when navigation disconnects it', async () => {
     const ws = useWebSocketStore()
-    const pending = ws.connect(undefined, 'friday')
+    const pending = ws.connect('friday')
     ws.disconnect()
     await expect(pending).rejects.toThrow('Connection superseded')
     expect(ws.isConnected).toBe(false)
@@ -154,8 +154,8 @@ describe('WebSocket transport', () => {
   })
 })
 
-async function openSocket(ws: ReturnType<typeof useWebSocketStore>, token?: string) {
-  const pending = ws.connect(token)
+async function openSocket(ws: ReturnType<typeof useWebSocketStore>, tableID?: string) {
+  const pending = ws.connect(tableID)
   latestSocket().open()
   await pending
 }

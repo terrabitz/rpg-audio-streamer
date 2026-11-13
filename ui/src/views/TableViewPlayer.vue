@@ -15,8 +15,7 @@ const debugStore = useDebugStore()
 const connecting = ref(false)
 const error = ref('')
 
-// Check if we have a token in the route params
-const token = route.params.token as string | undefined
+const tableID = route.params.tableID as string
 
 const buttonLabel = computed(() => {
   if (connecting.value) return 'Connecting...'
@@ -74,7 +73,7 @@ async function connectAudio() {
   error.value = ''
   audioStore.enabled = true
   try {
-    await wsStore.connect(token)
+    await wsStore.connect(tableID)
   } catch (e) {
     console.error('Failed to connect audio:', e)
     error.value = 'Failed to connect audio. Please try again.'
@@ -94,7 +93,7 @@ function disconnectAudio() {
 <template>
   <v-container>
     <v-alert v-if="error" type="error" class="mb-4">{{ error }}</v-alert>
-    <AudioPlayer v-if="audioStore.enabled" :token="token" />
+    <AudioPlayer v-if="audioStore.enabled" :tableID="tableID" />
 
     <div class="d-flex align-center mb-4">
       <v-btn size="x-large" @click="handleAudioToggle" :loading="connecting"
@@ -106,7 +105,7 @@ function disconnectAudio() {
       </v-chip>
     </div>
 
-    <VolumeMixer class="mt-4" :token="token" />
+    <VolumeMixer class="mt-4" />
 
     <PlayerFileList v-if="debugStore.isDevMode" />
   </v-container>

@@ -11,7 +11,7 @@ const router = createRouter({
     },
     {
       path: '/tables/:tableID',
-      name: 'gm-table',
+      name: 'table',
       component: () => import('../views/TableView.vue'),
     },
     {
@@ -25,19 +25,9 @@ const router = createRouter({
       component: HomeView,
     },
     {
-      path: '/table/:token?',
-      name: 'table',
-      component: () => import('../views/TableView.vue'),
-    },
-    {
       path: '/login',
       name: 'login',
       component: () => import('../views/LoginView.vue'),
-    },
-    {
-      path: '/join',
-      name: 'join',
-      component: () => import('../views/JoinView.vue'),
     },
   ],
 })

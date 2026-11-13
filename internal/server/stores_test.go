@@ -22,10 +22,6 @@ func (m *MockTrackStore) GetTable(ctx context.Context, id uuid.UUID) (Table, err
 	return Table{ID: id, Name: "My Table"}, nil
 }
 
-func (m *MockTrackStore) GetTableByInvite(ctx context.Context, invite string) (Table, error) {
-	return Table{}, sql.ErrNoRows
-}
-
 func (m *MockTrackStore) CountTrackTables(ctx context.Context, id uuid.UUID) (int64, error) {
 	if _, ok := m.tracks[id]; !ok {
 		return 0, sql.ErrNoRows

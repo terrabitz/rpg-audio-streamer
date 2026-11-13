@@ -6,8 +6,8 @@ import { useAuthStore } from '../stores/auth'
 import { useTableStore } from '../stores/tables'
 import AudioUploader from './AudioUploader.vue'
 
-const auth = useAuthStore()
 const tables = useTableStore()
+const auth = useAuthStore()
 const { mobile } = useDisplay()
 
 const { getBaseUrl } = useBaseUrl()
@@ -19,19 +19,19 @@ async function copyToClipboard(text: string) {
   await navigator.clipboard.writeText(text)
 }
 
-async function handleGetJoinToken() {
+async function handleCopyTableLink() {
   error.value = ''
   try {
-    if (!tables.current?.inviteToken) throw new Error('Missing invite token')
-    const url = `${getBaseUrl()}/table/${encodeURIComponent(tables.current.inviteToken)}`
+    if (!tables.current?.id) throw new Error('Missing table ID')
+    const url = `${getBaseUrl()}/tables/${encodeURIComponent(tables.current.id)}`
     await copyToClipboard(url)
     isCopied.value = true
     setTimeout(() => {
       isCopied.value = false
     }, 2000)
   } catch (e) {
-    console.error('Failed to copy invite:', e)
-    error.value = 'Unable to copy invite link.'
+    console.error('Failed to copy table link:', e)
+    error.value = 'Unable to copy table link.'
   }
 }
 </script>
@@ -48,14 +48,14 @@ async function handleGetJoinToken() {
             <v-list>
               <v-list-item v-bind="uploaderProps" title="Add Track" role="menuitem" @click="menuOpen = false" />
               <v-list-item v-if="auth.role === 'gm'" :title="isCopied ? 'Copied to clipboard' : 'Copy invite link'"
-                role="menuitem" @click="handleGetJoinToken" />
+                role="menuitem" @click="handleCopyTableLink" />
             </v-list>
           </v-menu>
         </template>
       </AudioUploader>
     </template>
     <template v-else>
-      <v-btn v-if="auth.role === 'gm'" @click="handleGetJoinToken" :active="isCopied"
+      <v-btn v-if="auth.role === 'gm'" @click="handleCopyTableLink" :active="isCopied"
         active-color="green" :prepend-icon="isCopied ? '' : '$copy'" class="mr-2">
         {{ isCopied ? 'Copied to clipboard' : 'Copy invite link' }}
       </v-btn>

@@ -78,8 +78,8 @@ func TestRoutedValidation(t *testing.T) {
 		status                   int
 	}{
 		{"unauthenticated files", "GET", "/api/v1/files", "", false, 401},
-		{"unauthenticated stream", "GET", "/api/v1/stream/missing/index.m3u8", "", false, 401},
-		{"unauthenticated types", "GET", "/api/v1/trackTypes", "", false, 401},
+		{"unauthenticated library stream", "GET", "/api/v1/stream/missing/index.m3u8", "", false, 401},
+		{"invalid table stream", "GET", "/api/v1/tables/invalid/stream/missing/index.m3u8", "", false, 400},
 		{"unsupported files method", "PATCH", "/api/v1/files", "", true, 405},
 		{"unsupported file method", "GET", "/api/v1/files/" + id, "", true, 405},
 		{"invalid update JSON", "PUT", "/api/v1/files/" + id, "{", true, 400},
@@ -89,8 +89,8 @@ func TestRoutedValidation(t *testing.T) {
 		{"missing delete", "DELETE", "/api/v1/files/" + id, "", true, 404},
 		{"track types", "GET", "/api/v1/trackTypes", "", true, 200},
 		{"unsupported track types method", "POST", "/api/v1/trackTypes", "", true, 405},
-		{"join token", "GET", "/api/v1/joinToken", "", true, 200},
-		{"unauthenticated join token", "GET", "/api/v1/joinToken", "", false, 401},
+		{"public track types", "GET", "/api/v1/trackTypes", "", false, 200},
+		{"removed join token endpoint", "GET", "/api/v1/joinToken", "", false, 404},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			rec := routedRequest(ts.Handler(), tc.method, tc.path, tc.body, tc.authenticated)
@@ -186,7 +186,7 @@ func TestWebSocketRoute(t *testing.T) {
 		t.Fatal("websocket scope mutated the shared authentication token")
 	}
 	player, _, err := websocket.DefaultDialer.Dial(
-		"ws"+strings.TrimPrefix(httpServer.URL, "http")+"/api/v1/ws?token=valid-join-token&tableID="+uuid.NewString(), nil,
+		"ws"+strings.TrimPrefix(httpServer.URL, "http")+"/api/v1/ws?tableID="+DefaultTableID.String(), nil,
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -194,7 +194,7 @@ func TestWebSocketRoute(t *testing.T) {
 	defer player.Close()
 	token = <-reg.tokens
 	if token.Role != auth.RolePlayer || token.TableID != DefaultTableID.String() {
-		t.Fatalf("player overrode invite scope = %+v", token)
+		t.Fatalf("player table scope = %+v", token)
 	}
 	rec := routedRequest(ts.Handler(), "GET", "/api/v1/ws", "", true)
 	if rec.Code != http.StatusBadRequest {

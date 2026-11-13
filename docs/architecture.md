@@ -2,9 +2,9 @@
 
 RPG Audio Streamer (also labeled Skald Bot in the UI) is a multi-table audio
 library and synchronized listening app for tabletop games. One configured Game
-Master account manages named tables and a shared track library. Each table
-has its own track associations and invite URL. Players see their table's name,
-opt in to that table's playback, and adjust their local volume mix.
+Master account manages named tables and a shared track library. Each table has
+its own track associations and public table URL. Players see their table's
+name, opt in to that table's playback, and adjust their local volume mix.
 
 ## Runtime and boundaries
 
@@ -14,7 +14,7 @@ flowchart LR
   Player[Player browser] --> UI
   UI -->|HTTP via generated SDK| API[Go HTTP server]
   UI <-->|WebSocket sync| Hub[Go WebSocket hub]
-  UI -->|Authenticated HLS requests| API
+  UI -->|Table-scoped HLS requests| API
   API --> Auth[Authentication service]
   API --> Store[SQLite datastore adapter]
   Store --> Queries[Generated sqlc queries]
@@ -42,7 +42,7 @@ the API and Vite to loopback on automatically selected ports. Each invocation
 builds the real API into a unique temporary directory and creates a fresh
 SQLite database, upload directory, and Vite cache. It uses public fixture GM
 credentials, freshly salted native Argon2id password hashes, and per-instance
-random signing/invite tokens. Nine generated audio fixtures (three per default
+random signing keys. Nine generated audio fixtures (three per default
 track type) use ordinary display names and are uploaded into the default table
 through authenticated HTTP. Music fixtures use short original note sequences;
 seeded ambiance noise gently swells over time so loop crossfades are audible.
@@ -59,7 +59,7 @@ cannot guarantee cleanup. Procedures live in the local-dev skill.
 | Package | Responsibility |
 | --- | --- |
 | `internal/auth` | Argon2id credential checks, signed JWTs, GM/player roles |
-| `internal/server` | HTTP handlers, cookies/middleware, table invite resolution, track/table contracts, datastore and hub interfaces |
+| `internal/server` | HTTP handlers, cookies/middleware, public table access, track/table contracts, datastore and hub interfaces |
 | `internal/middlewares` | API request logging and CORS |
 | `internal/sqlitedatastore` | Domain-to-SQLite mapping, migrations, context-aware datastore implementation |
 | `internal/sqlitedatastore/sqlitedb` | Generated sqlc models and query implementations |
@@ -78,21 +78,17 @@ GM login compares the configured username and Argon2id password hash, then
 sets an HTTP-only `auth_token` cookie containing a signed JWT. Cookies are
 secure outside development mode. Logout expires the cookie.
 
-Players authenticate with a table-specific, randomly generated invite token,
-not a GM cookie. The configured static invite token remains an alias for the
-migrated default table; deleting that table invalidates the alias.
-HTTP accepts that token as a bearer token; WebSockets use a `token` query
-parameter because browser socket APIs cannot set Authorization headers.
-Authentication resolves a cookie first, then the query token, then the bearer
-token. Player authentication resolves the invite against SQLite on each request
-and carries its table ID into streaming and WebSocket authorization. A GM
-opening an invite URL retains their GM role but opens the invited table.
-The auth-status endpoint returns the authenticated state and role.
+The table UUID is also its public external ID. Anyone with `/tables/<id>` can
+read that table's name and associated tracks, stream those tracks, and connect
+to its WebSocket without signing in or exchanging credentials. API stream URLs
+and WebSocket connections carry the table ID, and the server scopes playback
+and track access to that table. There is no player session, so each tab can
+open a different table independently. A valid GM cookie on the same URL
+selects the GM controls; it does not change the URL.
 
-Only GMs can manage tables, associate tracks, manage the shared library, or
-retrieve invite tokens. Players can fetch their table's name, fetch track types,
-stream HLS files associated with their table, and open authenticated WebSockets.
-They cannot access other tables or list the library.
+Only GMs can create, rename, or delete tables, associate tracks, manage the
+shared library, or change table settings. The auth-status endpoint reports GM
+authentication only.
 
 ### Library and persistence
 
@@ -102,7 +98,8 @@ SQLite stores metadata, not media bytes:
   and shared playback-region points (beginning, optional end, optional loop-back).
 - `track_types`: UUID ID, name, color, repeat policy, simultaneous-play policy,
   and creation timestamp.
-- `game_tables`: UUID ID, name, unique invite token, and JSON GM mixing/ordering settings.
+- `game_tables`: UUID ID, name, and JSON GM mixing/ordering settings. The UUID is
+  the public table identifier used in player URLs.
 - `table_tracks`: many-to-many table/track associations.
 
 UUIDs are stored as BLOBs. Track creation timestamps are serialized as RFC3339
@@ -121,8 +118,8 @@ volume and creation-time track order. Playback position, play/pause state,
 duration, and fades are not part of stored settings.
 
 The table migration seeds "My Table" and associates all pre-existing tracks
-with it, preserving the existing invite URL. New tables start empty. Removing
-a track association or deleting a table never deletes library audio. Deleting
+with it. New tables start empty. Removing a track association or deleting a
+table never deletes library audio. Deleting
 a library track removes its associations everywhere. Cleanup triggers enforce
 association removal even on SQLite connections without foreign keys enabled.
 
@@ -145,11 +142,10 @@ queries and the TypeScript SDK are adapters, not handwritten business logic.
 ## Frontend
 
 The Vue 3 application uses Vue Router, Vuetify, and Pinia. Routes are `/`
-(landing), `/login` (GM credentials), `/join` (invite instructions), `/tables`
-(GM table creation, renaming, and deletion), `/library` (shared uploads and
-metadata management), `/tables/:tableID` (GM table), and `/table/:token?`
-(invited table, or legacy default table for a GM without a token). Login opens
-table management. Table views show associated tracks only; GMs can add an
+(landing), `/login` (GM credentials), `/tables` (GM table creation, renaming,
+and deletion), `/library` (shared uploads and metadata management), and
+`/tables/:tableID` (the shared GM/player table URL). Login opens table
+management. Table views show associated tracks only; GMs can add an
 existing library track or upload a new one directly into the table.
 To preserve space during play, the table name appears only in the app bar.
 Authenticated navigation lives in a left sidebar that is closed by default and
@@ -211,15 +207,14 @@ These settings are stored with the shared library track and apply in every table
 Opening library controls loads audio metadata without starting playback or
 sending synchronization messages.
 
-The table route resolves authentication before mounting a role-specific view.
-The application shell checks authentication on non-table initial navigation;
-table authentication is owned by the table view, not repeated in the player
-view. This prevents competing status requests and logout-triggered player
-reauthentication.
+The table route checks for an optional GM cookie and loads by public table ID.
+It mounts the GM controls for a logged-in GM and the player view otherwise.
+Players need no session, so switching links or opening multiple table tabs
+requires no authentication exchange.
 
 | Surface | Responsibility |
 | --- | --- |
-| `stores/auth.ts`, `stores/join.ts` | Session role, credentials, logout, invite retrieval |
+| `stores/auth.ts` | GM session role, credentials, and logout |
 | `stores/files.ts`, `stores/trackTypes.ts`, `stores/tables.ts` | Library, track-type, table, and association metadata through the generated SDK |
 | `stores/audio.ts` | Per-file playback state, synchronization reconciliation, fades, master/type volumes |
 | `stores/websocket.ts` | Socket connection/reconnection, message handlers and history |
@@ -304,7 +299,7 @@ playback state or player mixes.
 
 The server routes messages rather than storing authoritative playback state.
 Each connection has a server-validated table scope: the GM selects an existing
-table ID, while players inherit the table from their invite. All routing filters,
+table ID, while players supply the public table ID from the URL. All routing filters,
 including targeted full syncs and sync requests, also require a matching table.
 The GM browser owns current track state. On player connection, `syncRequest`
 is forwarded to GM clients; a GM responds with `syncAll`, targeting the

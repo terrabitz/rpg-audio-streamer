@@ -32,7 +32,7 @@ async function handleLogout() {
 
 onMounted(async () => {
   await router.isReady()
-  if (route.name !== 'table' && route.name !== 'gm-table') {
+  if (route.name !== 'table') {
     await auth.checkAuthStatus()
   }
 })

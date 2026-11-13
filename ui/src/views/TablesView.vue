@@ -114,7 +114,7 @@ async function deleteTable() {
         <v-card title="Delete table?">
           <v-card-text>
             <v-alert v-if="error" type="error" class="mb-3">{{ error }}</v-alert>
-            Delete {{ deleting?.name }} and its invite link? Tracks will remain in the library.
+            Delete {{ deleting?.name }} and its table link? Tracks will remain in the library.
           </v-card-text>
           <v-card-actions>
             <v-btn :disabled="saving" @click="deleting = null">Cancel</v-btn>

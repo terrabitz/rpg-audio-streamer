@@ -62,7 +62,7 @@ onMounted(async () => {
     audioStore.enabled = true
     ready.value = true
     setActions([TableActions])
-    await wsStore.connect(undefined, tableID)
+    await wsStore.connect(tableID)
   } catch (e) {
     console.error('Failed to connect table:', e)
     error.value = 'Unable to connect to the table. Reload to try again.'
@@ -105,6 +105,6 @@ function changedVolumes(current: Record<string, number>, previous: Record<string
     {{ tables.settingsError }}
     <v-btn variant="text" @click="tables.saveSettings(tableID, {})">Retry saving</v-btn>
   </v-alert>
-  <AudioPlayer v-if="ready" />
+  <AudioPlayer v-if="ready" :tableID="tableID" />
   <FileList v-if="ready && wsStore.isConnected" />
 </template>

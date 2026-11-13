@@ -138,12 +138,6 @@ func main() {
 						Usage:       "Audience for JWT tokens",
 						Destination: &cfg.Auth.TokenAudience,
 					},
-					&cli.StringFlag{
-						Name:        "join-token",
-						EnvVars:     []string{"JOIN_TOKEN"},
-						Usage:       "The static join token to use",
-						Destination: &cfg.Auth.JoinToken,
-					},
 					&cli.BoolFlag{
 						Name:        "dev-mode",
 						EnvVars:     []string{"DEV_MODE"},

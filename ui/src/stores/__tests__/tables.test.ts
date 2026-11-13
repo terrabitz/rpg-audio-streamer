@@ -10,15 +10,14 @@ const api = vi.hoisted(() => ({
   getApiV1TablesByTableId: vi.fn(),
   getApiV1TablesByTableIdSettings: vi.fn(),
   patchApiV1TablesByTableIdSettings: vi.fn(),
-  getApiV1TablesCurrent: vi.fn(),
   getApiV1TablesByTableIdTracks: vi.fn(),
   putApiV1TablesByTableIdTracksByTrackId: vi.fn(),
   deleteApiV1TablesByTableIdTracksByTrackId: vi.fn(),
 }))
 vi.mock('@/client/apiClient', () => api)
 
-const friday = { id: 'friday', name: 'Friday', inviteToken: 'friday-invite' }
-const sunday = { id: 'sunday', name: 'Sunday', inviteToken: 'sunday-invite' }
+const friday = { id: 'friday', name: 'Friday' }
+const sunday = { id: 'sunday', name: 'Sunday' }
 const track = {
   id: 'forest', name: 'Forest', typeID: 'ambiance',
   path: '/uploads/forest', createdAt: '2026-01-01T00:00:00Z',
@@ -151,7 +150,7 @@ describe('tables', () => {
     expect(tables.tracks).toEqual([])
   })
 
-  it('resolves table IDs and invite links, clearing previous table tracks', async () => {
+  it('loads a table by its public ID and clears previous table tracks', async () => {
     const tables = useTableStore()
     tables.tracks = [track]
     api.getApiV1TablesByTableId.mockResolvedValue({ data: friday })
@@ -159,14 +158,10 @@ describe('tables', () => {
     expect(api.getApiV1TablesByTableId).toHaveBeenCalledWith({ path: { tableID: friday.id } })
     expect(tables.current).toEqual(friday)
     expect(tables.tracks).toEqual([])
-    api.getApiV1TablesCurrent.mockResolvedValue({ data: sunday })
-    await tables.loadTable(undefined, 'sunday-invite')
-    expect(api.getApiV1TablesCurrent).toHaveBeenLastCalledWith({
-      headers: { Authorization: 'Bearer sunday-invite' },
-    })
+    api.getApiV1TablesByTableId.mockResolvedValue({ data: sunday })
+    await tables.loadTable(sunday.id)
+    expect(api.getApiV1TablesByTableId).toHaveBeenLastCalledWith({ path: { tableID: sunday.id } })
     expect(tables.current).toEqual(sunday)
-    await tables.loadTable()
-    expect(api.getApiV1TablesCurrent).toHaveBeenLastCalledWith({ headers: undefined })
   })
 
   it('associates and removes tracks without deleting them from the library', async () => {

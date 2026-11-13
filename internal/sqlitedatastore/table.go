@@ -34,17 +34,9 @@ func (db *SQLiteDatastore) GetTable(ctx context.Context, id uuid.UUID) (server.T
 	return convertDBTable(row)
 }
 
-func (db *SQLiteDatastore) GetTableByInvite(ctx context.Context, invite string) (server.Table, error) {
-	row, err := sqlitedb.New(db.DB).GetTableByInvite(ctx, invite)
-	if err != nil {
-		return server.Table{}, err
-	}
-	return convertDBTable(row)
-}
-
 func (db *SQLiteDatastore) CreateTable(ctx context.Context, table server.Table) (server.Table, error) {
 	row, err := sqlitedb.New(db.DB).CreateTable(ctx, sqlitedb.CreateTableParams{
-		ID: table.ID[:], Name: table.Name, InviteToken: table.InviteToken,
+		ID: table.ID[:], Name: table.Name,
 	})
 	if err != nil {
 		return server.Table{}, err
@@ -152,5 +144,5 @@ func convertDBTable(row sqlitedb.GameTable) (server.Table, error) {
 	if err != nil {
 		return server.Table{}, err
 	}
-	return server.Table{ID: id, Name: row.Name, InviteToken: row.InviteToken}, nil
+	return server.Table{ID: id, Name: row.Name}, nil
 }

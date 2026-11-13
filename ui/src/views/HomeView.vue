@@ -32,17 +32,13 @@ onMounted(() => {
 
     <div v-else class="d-flex flex-column align-center">
       <p class="text-body-1 mb-6">
-        Join a game session or log in as a Game Master to manage audio for your game.
+        Open the table link from your GM, or log in as a Game Master to manage audio for your game.
       </p>
 
       <div class="d-flex flex-wrap justify-center gap-4">
 
         <v-btn to="/login" color="secondary" size="large" variant="elevated" prepend-icon="$login">
           GM Login
-        </v-btn>
-
-        <v-btn class="ml-4" to="/join" color="primary" size="large" variant="elevated" prepend-icon="$accountMusic">
-          Join as Player
         </v-btn>
 
       </div>

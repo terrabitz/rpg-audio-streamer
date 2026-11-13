@@ -6,7 +6,6 @@ import {
   getApiV1TablesByTableIdSettings,
   patchApiV1TablesByTableIdSettings,
   getApiV1TablesByTableIdTracks,
-  getApiV1TablesCurrent,
   postApiV1Tables,
   putApiV1TablesByTableId,
   putApiV1TablesByTableIdTracksByTrackId,
@@ -98,14 +97,10 @@ export const useTableStore = defineStore('tables', {
       delete this.trackOrders[tableID]
       if (this.current?.id === tableID) this.clearCurrent()
     },
-    async loadTable(tableID?: string, token?: string) {
+    async loadTable(tableID: string) {
       this.clearCurrent()
       const revision = this.revision
-      const { data } = tableID
-        ? await getApiV1TablesByTableId<true>({ path: { tableID } })
-        : await getApiV1TablesCurrent<true>({
-          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-        })
+      const { data } = await getApiV1TablesByTableId<true>({ path: { tableID } })
       if (revision === this.revision) this.current = data
     },
     async fetchTracks(tableID: string) {

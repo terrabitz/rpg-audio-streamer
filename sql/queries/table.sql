@@ -4,11 +4,8 @@ SELECT * FROM game_tables ORDER BY name, id;
 -- name: GetTable :one
 SELECT * FROM game_tables WHERE id = ?;
 
--- name: GetTableByInvite :one
-SELECT * FROM game_tables WHERE invite_token = ?;
-
 -- name: CreateTable :one
-INSERT INTO game_tables (id, name, invite_token) VALUES (?, ?, ?) RETURNING *;
+INSERT INTO game_tables (id, name) VALUES (?, ?) RETURNING *;
 
 -- name: UpdateTable :one
 UPDATE game_tables SET name = ? WHERE id = ? RETURNING *;

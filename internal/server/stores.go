@@ -18,15 +18,13 @@ type Store interface {
 var DefaultTableID = uuid.MustParse("00000000-0000-4000-8000-000000000001")
 
 type Table struct {
-	ID          uuid.UUID `json:"id"`
-	Name        string    `json:"name"`
-	InviteToken string    `json:"inviteToken,omitempty"`
+	ID   uuid.UUID `json:"id"`
+	Name string    `json:"name"`
 }
 
 type TableStore interface {
 	GetTables(context.Context) ([]Table, error)
 	GetTable(context.Context, uuid.UUID) (Table, error)
-	GetTableByInvite(context.Context, string) (Table, error)
 	CreateTable(context.Context, Table) (Table, error)
 	UpdateTable(context.Context, uuid.UUID, string) (Table, error)
 	GetTableSettings(context.Context, uuid.UUID) (TableSettings, error)

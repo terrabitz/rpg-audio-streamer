@@ -2,6 +2,8 @@ import { execFileSync } from 'node:child_process'
 import { devices, type Locator, type Page } from '@playwright/test'
 import { expect, test } from './fixtures'
 
+const defaultTableURL = '/tables/00000000-0000-4000-8000-000000000001'
+
 test('GM can recover from invalid credentials, keep a session, and log out', async ({ page }) => {
   await page.goto('/')
   await expect(page.getByRole('banner').getByRole('link', { name: 'Login', exact: true })).toBeVisible()
@@ -1022,7 +1024,7 @@ test('library row previews stay local while a table is streaming', async ({ page
   library.on('websocket', socket => previewSockets.push(socket.url()))
   try {
     const player = await playerContext.newPage()
-    await player.goto('/table/e2e-invite')
+    await player.goto(defaultTableURL)
     await player.getByRole('button', { name: 'Connect Audio', exact: true }).click()
     await expect.poll(() => player.locator('video').evaluate(
       (el: HTMLVideoElement) => !el.paused && el.currentTime > 0,
@@ -1496,7 +1498,7 @@ for (const device of ['Pixel 7', 'iPhone 13']) {
   })
 }
 
-test('invited player receives live playback, late-join state, and pause', async ({
+test('player receives live playback, late-join state, and pause', async ({
   page,
   browser,
 }) => {
@@ -1513,7 +1515,7 @@ test('invited player receives live playback, late-join state, and pause', async 
   const playerContext = await browser.newContext()
   try {
     const player = await playerContext.newPage()
-    await player.goto('/table/e2e-invite')
+    await player.goto(defaultTableURL)
     await expect(player.getByText('Volume Mixer', { exact: true })).toBeVisible()
     await expect(player.getByRole('button', { name: 'Toggle navigation' })).toHaveCount(0)
     await expect(player.getByRole('navigation', { name: 'Navigation' })).toHaveCount(0)
@@ -1920,7 +1922,7 @@ async function expectPlaceholderAt(page: Page, target: { x: number; y: number })
     })
     .toBeLessThan(2)
 }
-test('tables share a library but isolate invitations, playback, removal, and deletion', async ({
+test('table links share a library but isolate playback, removal, and deletion', async ({
   page, browser, context,
 }) => {
   test.slow()
@@ -1933,26 +1935,25 @@ test('tables share a library but isolate invitations, playback, removal, and del
   await createTable(page, 'Sunday')
   await page.getByRole('link', { name: 'Open Friday', exact: true }).click()
   await addExistingTrack(page, 'Shared Forest')
-  await page.getByRole('button', { name: 'Copy invite link', exact: true }).click()
+  await page.getByRole('button', { name: 'Copy table link', exact: true }).click()
   await expect(page.getByRole('button', { name: 'Copied to clipboard', exact: true })).toBeVisible()
-  const fridayInvite = await page.evaluate(() => navigator.clipboard.readText())
+  const fridayLink = await page.evaluate(() => navigator.clipboard.readText())
 
   const sundayGM = await context.newPage()
   await sundayGM.goto('/tables')
   await sundayGM.getByRole('link', { name: 'Open Sunday', exact: true }).click()
   await addExistingTrack(sundayGM, 'Shared Forest')
-  await sundayGM.getByRole('button', { name: 'Copy invite link', exact: true }).click()
+  await sundayGM.getByRole('button', { name: 'Copy table link', exact: true }).click()
   await expect(sundayGM.getByRole('button', { name: 'Copied to clipboard', exact: true })).toBeVisible()
-  const sundayInvite = await sundayGM.evaluate(() => navigator.clipboard.readText())
-  expect(sundayInvite).not.toBe(fridayInvite)
+  const sundayLink = await sundayGM.evaluate(() => navigator.clipboard.readText())
+  expect(sundayLink).not.toBe(fridayLink)
 
-  const fridayContext = await browser.newContext()
-  const sundayContext = await browser.newContext()
+  const playerContext = await browser.newContext()
   try {
-    const fridayPlayer = await fridayContext.newPage()
-    const sundayPlayer = await sundayContext.newPage()
-    await fridayPlayer.goto(fridayInvite)
-    await sundayPlayer.goto(sundayInvite)
+    const fridayPlayer = await playerContext.newPage()
+    const sundayPlayer = await playerContext.newPage()
+    await fridayPlayer.goto(fridayLink)
+    await sundayPlayer.goto(sundayLink)
     await expect(fridayPlayer.getByRole('banner')).toContainText('Friday')
     await expect(sundayPlayer.getByRole('banner')).toContainText('Sunday')
     await expect(fridayPlayer.getByRole('link', { name: 'Library', exact: true })).toHaveCount(0)
@@ -1997,13 +1998,12 @@ test('tables share a library but isolate invitations, playback, removal, and del
     await expect(fridayPlayer.getByText('This table has been deleted.', { exact: true })).toBeVisible()
     await fridayPlayer.reload()
     await expect(fridayPlayer.getByText(
-      'This invite link is invalid or the table has been deleted.', { exact: true },
+      'This table is unavailable or has been deleted.', { exact: true },
     )).toBeVisible()
     await deleteTable(page, 'Sunday')
     await expect(sundayPlayer.getByText('This table has been deleted.', { exact: true })).toBeVisible()
   } finally {
-    await fridayContext.close()
-    await sundayContext.close()
+    await playerContext.close()
     await sundayGM.close()
   }
 })

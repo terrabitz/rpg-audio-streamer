@@ -39,24 +39,20 @@ export const useWebSocketStore = defineStore('websocket', () => {
   let generation = 0
   let scope = ''
 
-  async function connect(token?: string, tableID?: string) {
-    const nextScope = JSON.stringify([token, tableID])
+  async function connect(tableID?: string) {
+    const nextScope = tableID ?? ''
     if (scope === nextScope && socket?.readyState === WebSocket.OPEN) {
       return
     }
     disconnect()
     scope = nextScope
-    await newSocket(token, tableID, generation)
+    await newSocket(tableID, generation)
   }
 
-  function newSocket(token: string | undefined, tableID: string | undefined, attempt: number): Promise<WebSocket> {
+  function newSocket(tableID: string | undefined, attempt: number): Promise<WebSocket> {
     return new Promise((resolve, reject) => {
       const baseUrl = getWebSocketUrl()
-      const params = [
-        token ? `token=${encodeURIComponent(token)}` : '',
-        tableID ? `tableID=${encodeURIComponent(tableID)}` : '',
-      ].filter(Boolean).join('&')
-      const url = params ? `${baseUrl}?${params}` : baseUrl
+      const url = tableID ? `${baseUrl}?tableID=${encodeURIComponent(tableID)}` : baseUrl
       const s = new WebSocket(url)
       socket = s
 
@@ -86,7 +82,7 @@ export const useWebSocketStore = defineStore('websocket', () => {
         console.log(`WebSocket disconnected: [${code}] ${reason}`)
         if (!event.wasClean) {
           reconnectTimer = setTimeout(() => {
-            connect(token, tableID).catch(error => console.error('WebSocket reconnect failed:', error))
+            connect(tableID).catch(error => console.error('WebSocket reconnect failed:', error))
           }, reconnectIntervalMs)
         }
         reject(new Error(`WebSocket closed: ${reason}`))

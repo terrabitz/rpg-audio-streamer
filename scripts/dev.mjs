@@ -52,7 +52,6 @@ async function main() {
   await run('go', ['build', '-o', binary, '.'], root)
   const port = await availablePort()
   const apiURL = `http://127.0.0.1:${port}`
-  const invite = randomBytes(16).toString('hex')
   const api = start(
     binary,
     [
@@ -68,8 +67,6 @@ async function main() {
       hashPassword(password),
       '--token-secret',
       randomBytes(32).toString('hex'),
-      '--join-token',
-      invite,
       '--token-duration',
       '24h',
       '--token-issuer',
@@ -91,7 +88,7 @@ async function main() {
     if (!controller.signal.aborted) fail(new Error('Dev API exited unexpectedly'))
   }, fail)
   await waitForAPI(apiURL)
-  await seed(apiURL)
+  const table = await seed(apiURL)
   controller.signal.throwIfAborted()
   // Keep Vite in a child so its exit handlers and optimizer cannot race cleanup.
   const frontend = start(
@@ -107,14 +104,14 @@ async function main() {
     signal: controller.signal,
   })
   console.log(`\nFresh dev instance: ${url}\nGM login: ${username} / ${password}`)
-  console.log(`Player invite: ${url}table/${invite}\nStop with Ctrl-C to remove this instance.`)
+  console.log(`Table link: ${url}tables/${table.id}\nStop with Ctrl-C to remove this instance.`)
   console.log(
     `DEV_INSTANCE_READY ${JSON.stringify({
       url,
       apiURL,
       username,
       password,
-      invite,
+      tableID: table.id,
       scratch,
     })}`,
   )
@@ -140,11 +137,13 @@ async function seed(apiURL) {
   })
   const cookie = login.headers.get('set-cookie')?.split(';')[0]
   if (!cookie) throw new Error('Dev login did not return an authentication cookie')
-  const table = await (
-    await request(`${apiURL}/api/v1/tables/current`, {
+  const tables = await (
+    await request(`${apiURL}/api/v1/tables`, {
       headers: { Cookie: cookie },
     })
   ).json()
+  const table = tables[0]
+  if (!table) throw new Error('Dev table seed did not create a table')
   const types = await (
     await request(`${apiURL}/api/v1/trackTypes`, {
       headers: { Cookie: cookie },
@@ -241,6 +240,7 @@ async function seed(apiURL) {
     })
     await rm(file)
   }
+  return table
 }
 
 function melodySource(notes) {
@@ -322,7 +322,6 @@ function start(command, args, cwd, ipc = false) {
     'TOKEN_DURATION',
     'TOKEN_ISSUER',
     'TOKEN_AUDIENCE',
-    'JOIN_TOKEN',
     'DEV_MODE',
     'DB_PATH',
     'API_PROXY_TARGET',

@@ -30,7 +30,6 @@ type mockAuth struct {
 	validUser     string
 	validPassword string
 	token         *auth.Token
-	joinToken     string
 }
 
 // Verify mockAuth implements Authenticator interface
@@ -48,17 +47,6 @@ func (m *mockAuth) ValidateToken(tokenStr string) (*auth.Token, error) {
 		return m.token, nil
 	}
 	return nil, jwt.ErrTokenInvalidClaims
-}
-
-func (m *mockAuth) GetJoinToken() string {
-	return m.joinToken
-}
-
-func (m *mockAuth) ValidateJoinToken(joinToken string) (*auth.Token, error) {
-	if joinToken == m.joinToken {
-		return m.token, nil
-	}
-	return nil, auth.ErrInvalidJoinToken
 }
 
 type mockWSRegisterer struct {
@@ -91,7 +79,6 @@ func setupTestServer(t *testing.T) *testServer {
 		validUser:     "testuser",
 		validPassword: "testpass",
 		token:         &auth.Token{Role: auth.RoleGM},
-		joinToken:     "valid-join-token",
 	}
 
 	mockTrackStore := NewMockTrackStore(t)
@@ -532,40 +519,6 @@ func TestHandleLogout(t *testing.T) {
 	rec = httptest.NewRecorder()
 
 	ts.handleLogout(rec, req)
-
-	if rec.Code != http.StatusMethodNotAllowed {
-		t.Errorf("expected status MethodNotAllowed; got %v", rec.Code)
-	}
-}
-
-func TestHandleJoinToken(t *testing.T) {
-	ts := setupTestServer(t)
-	defer ts.cleanup(t)
-
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/joinToken", nil)
-	addAuthCookie(req, ts.auth.(*mockAuth).token.String())
-	rec := httptest.NewRecorder()
-
-	ts.handleGetJoinToken(rec, req, &auth.Token{Role: auth.RoleGM})
-
-	if rec.Code != http.StatusOK {
-		t.Errorf("expected status OK; got %v", rec.Code)
-	}
-
-	var resp joinTokenResponse
-	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
-		t.Fatalf("failed to decode response: %v", err)
-	}
-
-	if resp.Token != ts.auth.(*mockAuth).joinToken {
-		t.Errorf("expected token %q; got %q", ts.auth.(*mockAuth).joinToken, resp.Token)
-	}
-
-	req = httptest.NewRequest(http.MethodPost, "/api/v1/joinToken", nil)
-	addAuthCookie(req, ts.auth.(*mockAuth).token.String())
-	rec = httptest.NewRecorder()
-
-	ts.handleGetJoinToken(rec, req, &auth.Token{Role: auth.RoleGM})
 
 	if rec.Code != http.StatusMethodNotAllowed {
 		t.Errorf("expected status MethodNotAllowed; got %v", rec.Code)

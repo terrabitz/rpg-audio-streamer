@@ -2,7 +2,7 @@
 
 import { type Client, type ClientMeta, formDataBodySerializer, type Options as Options2, type RequestResult, type TDataShape } from './client';
 import { client } from './client.gen';
-import type { DeleteApiV1FilesByTrackIdData, DeleteApiV1FilesByTrackIdErrors, DeleteApiV1FilesByTrackIdResponses, DeleteApiV1TablesByTableIdData, DeleteApiV1TablesByTableIdErrors, DeleteApiV1TablesByTableIdResponses, DeleteApiV1TablesByTableIdTracksByTrackIdData, DeleteApiV1TablesByTableIdTracksByTrackIdErrors, DeleteApiV1TablesByTableIdTracksByTrackIdResponses, GetApiV1AuthStatusData, GetApiV1AuthStatusResponses, GetApiV1FilesByTrackIdUsageData, GetApiV1FilesByTrackIdUsageErrors, GetApiV1FilesByTrackIdUsageResponses, GetApiV1FilesByTrackIdWaveformData, GetApiV1FilesByTrackIdWaveformErrors, GetApiV1FilesByTrackIdWaveformResponses, GetApiV1FilesData, GetApiV1FilesErrors, GetApiV1FilesResponses, GetApiV1JoinTokenData, GetApiV1JoinTokenErrors, GetApiV1JoinTokenResponses, GetApiV1StreamByPathData, GetApiV1StreamByPathErrors, GetApiV1StreamByPathResponses, GetApiV1TablesByTableIdData, GetApiV1TablesByTableIdErrors, GetApiV1TablesByTableIdResponses, GetApiV1TablesByTableIdSettingsData, GetApiV1TablesByTableIdSettingsErrors, GetApiV1TablesByTableIdSettingsResponses, GetApiV1TablesByTableIdTracksData, GetApiV1TablesByTableIdTracksErrors, GetApiV1TablesByTableIdTracksResponses, GetApiV1TablesCurrentData, GetApiV1TablesCurrentErrors, GetApiV1TablesCurrentResponses, GetApiV1TablesData, GetApiV1TablesResponses, GetApiV1TrackTypesData, GetApiV1TrackTypesErrors, GetApiV1TrackTypesResponses, GetApiV1WsData, GetApiV1WsErrors, PatchApiV1TablesByTableIdSettingsData, PatchApiV1TablesByTableIdSettingsErrors, PatchApiV1TablesByTableIdSettingsResponses, PostApiV1AuthLogoutData, PostApiV1AuthLogoutResponses, PostApiV1FilesData, PostApiV1FilesErrors, PostApiV1FilesResponses, PostApiV1LoginData, PostApiV1LoginErrors, PostApiV1LoginResponses, PostApiV1TablesData, PostApiV1TablesErrors, PostApiV1TablesResponses, PutApiV1FilesByTrackIdData, PutApiV1FilesByTrackIdErrors, PutApiV1FilesByTrackIdResponses, PutApiV1TablesByTableIdData, PutApiV1TablesByTableIdErrors, PutApiV1TablesByTableIdResponses, PutApiV1TablesByTableIdTracksByTrackIdData, PutApiV1TablesByTableIdTracksByTrackIdErrors, PutApiV1TablesByTableIdTracksByTrackIdResponses } from './types.gen';
+import type { DeleteApiV1FilesByTrackIdData, DeleteApiV1FilesByTrackIdErrors, DeleteApiV1FilesByTrackIdResponses, DeleteApiV1TablesByTableIdData, DeleteApiV1TablesByTableIdErrors, DeleteApiV1TablesByTableIdResponses, DeleteApiV1TablesByTableIdTracksByTrackIdData, DeleteApiV1TablesByTableIdTracksByTrackIdErrors, DeleteApiV1TablesByTableIdTracksByTrackIdResponses, GetApiV1AuthStatusData, GetApiV1AuthStatusResponses, GetApiV1FilesByTrackIdUsageData, GetApiV1FilesByTrackIdUsageErrors, GetApiV1FilesByTrackIdUsageResponses, GetApiV1FilesByTrackIdWaveformData, GetApiV1FilesByTrackIdWaveformErrors, GetApiV1FilesByTrackIdWaveformResponses, GetApiV1FilesData, GetApiV1FilesErrors, GetApiV1FilesResponses, GetApiV1StreamByPathData, GetApiV1StreamByPathErrors, GetApiV1StreamByPathResponses, GetApiV1TablesByTableIdData, GetApiV1TablesByTableIdErrors, GetApiV1TablesByTableIdResponses, GetApiV1TablesByTableIdSettingsData, GetApiV1TablesByTableIdSettingsErrors, GetApiV1TablesByTableIdSettingsResponses, GetApiV1TablesByTableIdStreamByPathData, GetApiV1TablesByTableIdStreamByPathErrors, GetApiV1TablesByTableIdStreamByPathResponses, GetApiV1TablesByTableIdTracksData, GetApiV1TablesByTableIdTracksErrors, GetApiV1TablesByTableIdTracksResponses, GetApiV1TablesData, GetApiV1TablesResponses, GetApiV1TrackTypesData, GetApiV1TrackTypesResponses, GetApiV1WsData, GetApiV1WsErrors, PatchApiV1TablesByTableIdSettingsData, PatchApiV1TablesByTableIdSettingsErrors, PatchApiV1TablesByTableIdSettingsResponses, PostApiV1AuthLogoutData, PostApiV1AuthLogoutResponses, PostApiV1FilesData, PostApiV1FilesErrors, PostApiV1FilesResponses, PostApiV1LoginData, PostApiV1LoginErrors, PostApiV1LoginResponses, PostApiV1TablesData, PostApiV1TablesErrors, PostApiV1TablesResponses, PutApiV1FilesByTrackIdData, PutApiV1FilesByTrackIdErrors, PutApiV1FilesByTrackIdResponses, PutApiV1TablesByTableIdData, PutApiV1TablesByTableIdErrors, PutApiV1TablesByTableIdResponses, PutApiV1TablesByTableIdTracksByTrackIdData, PutApiV1TablesByTableIdTracksByTrackIdErrors, PutApiV1TablesByTableIdTracksByTrackIdResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -49,7 +49,7 @@ export const patchApiV1TablesByTableIdSettings = <ThrowOnError extends boolean =
 });
 
 /**
- * List GM tables and their invite tokens
+ * List tables (GM only)
  */
 export const getApiV1Tables = <ThrowOnError extends boolean = false>(options?: Options<GetApiV1TablesData, ThrowOnError>): RequestResult<GetApiV1TablesResponses, unknown, ThrowOnError> => (options?.client ?? client).get<GetApiV1TablesResponses, unknown, ThrowOnError>({
     security: [{
@@ -79,19 +79,6 @@ export const postApiV1Tables = <ThrowOnError extends boolean = false>(options: O
 });
 
 /**
- * Resolve the invited player's table or the GM's legacy default table
- */
-export const getApiV1TablesCurrent = <ThrowOnError extends boolean = false>(options?: Options<GetApiV1TablesCurrentData, ThrowOnError>): RequestResult<GetApiV1TablesCurrentResponses, GetApiV1TablesCurrentErrors, ThrowOnError> => (options?.client ?? client).get<GetApiV1TablesCurrentResponses, GetApiV1TablesCurrentErrors, ThrowOnError>({
-    security: [{
-            in: 'cookie',
-            name: 'auth_token',
-            type: 'apiKey'
-        }, { scheme: 'bearer', type: 'http' }],
-    url: '/api/v1/tables/current',
-    ...options
-});
-
-/**
  * Delete a table without deleting library tracks (GM only)
  */
 export const deleteApiV1TablesByTableId = <ThrowOnError extends boolean = false>(options: Options<DeleteApiV1TablesByTableIdData, ThrowOnError>): RequestResult<DeleteApiV1TablesByTableIdResponses, DeleteApiV1TablesByTableIdErrors, ThrowOnError> => (options.client ?? client).delete<DeleteApiV1TablesByTableIdResponses, DeleteApiV1TablesByTableIdErrors, ThrowOnError>({
@@ -105,17 +92,9 @@ export const deleteApiV1TablesByTableId = <ThrowOnError extends boolean = false>
 });
 
 /**
- * Get a table (players may only access their invited table)
+ * Get a table using its public table ID
  */
-export const getApiV1TablesByTableId = <ThrowOnError extends boolean = false>(options: Options<GetApiV1TablesByTableIdData, ThrowOnError>): RequestResult<GetApiV1TablesByTableIdResponses, GetApiV1TablesByTableIdErrors, ThrowOnError> => (options.client ?? client).get<GetApiV1TablesByTableIdResponses, GetApiV1TablesByTableIdErrors, ThrowOnError>({
-    security: [{
-            in: 'cookie',
-            name: 'auth_token',
-            type: 'apiKey'
-        }, { scheme: 'bearer', type: 'http' }],
-    url: '/api/v1/tables/{tableID}',
-    ...options
-});
+export const getApiV1TablesByTableId = <ThrowOnError extends boolean = false>(options: Options<GetApiV1TablesByTableIdData, ThrowOnError>): RequestResult<GetApiV1TablesByTableIdResponses, GetApiV1TablesByTableIdErrors, ThrowOnError> => (options.client ?? client).get<GetApiV1TablesByTableIdResponses, GetApiV1TablesByTableIdErrors, ThrowOnError>({ url: '/api/v1/tables/{tableID}', ...options });
 
 /**
  * Rename a table (GM only)
@@ -135,17 +114,9 @@ export const putApiV1TablesByTableId = <ThrowOnError extends boolean = false>(op
 });
 
 /**
- * List a table's associated library tracks (GM only)
+ * List a table's associated tracks using its public table ID
  */
-export const getApiV1TablesByTableIdTracks = <ThrowOnError extends boolean = false>(options: Options<GetApiV1TablesByTableIdTracksData, ThrowOnError>): RequestResult<GetApiV1TablesByTableIdTracksResponses, GetApiV1TablesByTableIdTracksErrors, ThrowOnError> => (options.client ?? client).get<GetApiV1TablesByTableIdTracksResponses, GetApiV1TablesByTableIdTracksErrors, ThrowOnError>({
-    security: [{
-            in: 'cookie',
-            name: 'auth_token',
-            type: 'apiKey'
-        }],
-    url: '/api/v1/tables/{tableID}/tracks',
-    ...options
-});
+export const getApiV1TablesByTableIdTracks = <ThrowOnError extends boolean = false>(options: Options<GetApiV1TablesByTableIdTracksData, ThrowOnError>): RequestResult<GetApiV1TablesByTableIdTracksResponses, GetApiV1TablesByTableIdTracksErrors, ThrowOnError> => (options.client ?? client).get<GetApiV1TablesByTableIdTracksResponses, GetApiV1TablesByTableIdTracksErrors, ThrowOnError>({ url: '/api/v1/tables/{tableID}/tracks', ...options });
 
 /**
  * Remove a track from a table without deleting it from the library (GM only)
@@ -193,7 +164,7 @@ export const getApiV1AuthStatus = <ThrowOnError extends boolean = false>(options
             in: 'cookie',
             name: 'auth_token',
             type: 'apiKey'
-        }, { scheme: 'bearer', type: 'http' }],
+        }],
     url: '/api/v1/auth/status',
     ...options
 });
@@ -299,65 +270,29 @@ export const getApiV1FilesByTrackIdWaveform = <ThrowOnError extends boolean = fa
 });
 
 /**
- * Get the legacy default table's invite token (GM only)
+ * Stream a library track (GM only)
  */
-export const getApiV1JoinToken = <ThrowOnError extends boolean = false>(options?: Options<GetApiV1JoinTokenData, ThrowOnError>): RequestResult<GetApiV1JoinTokenResponses, GetApiV1JoinTokenErrors, ThrowOnError> => (options?.client ?? client).get<GetApiV1JoinTokenResponses, GetApiV1JoinTokenErrors, ThrowOnError>({
+export const getApiV1StreamByPath = <ThrowOnError extends boolean = false>(options: Options<GetApiV1StreamByPathData, ThrowOnError>): RequestResult<GetApiV1StreamByPathResponses, GetApiV1StreamByPathErrors, ThrowOnError> => (options.client ?? client).get<GetApiV1StreamByPathResponses, GetApiV1StreamByPathErrors, ThrowOnError>({
     security: [{
             in: 'cookie',
             name: 'auth_token',
             type: 'apiKey'
         }],
-    url: '/api/v1/joinToken',
-    ...options
-});
-
-/**
- * Stream audio content
- */
-export const getApiV1StreamByPath = <ThrowOnError extends boolean = false>(options: Options<GetApiV1StreamByPathData, ThrowOnError>): RequestResult<GetApiV1StreamByPathResponses, GetApiV1StreamByPathErrors, ThrowOnError> => (options.client ?? client).get<GetApiV1StreamByPathResponses, GetApiV1StreamByPathErrors, ThrowOnError>({
-    security: [
-        {
-            in: 'cookie',
-            name: 'auth_token',
-            type: 'apiKey'
-        },
-        { scheme: 'bearer', type: 'http' },
-        {
-            in: 'query',
-            name: 'token',
-            type: 'apiKey'
-        }
-    ],
     url: '/api/v1/stream/{path}',
     ...options
 });
 
 /**
+ * Stream a track associated with a public table
+ */
+export const getApiV1TablesByTableIdStreamByPath = <ThrowOnError extends boolean = false>(options: Options<GetApiV1TablesByTableIdStreamByPathData, ThrowOnError>): RequestResult<GetApiV1TablesByTableIdStreamByPathResponses, GetApiV1TablesByTableIdStreamByPathErrors, ThrowOnError> => (options.client ?? client).get<GetApiV1TablesByTableIdStreamByPathResponses, GetApiV1TablesByTableIdStreamByPathErrors, ThrowOnError>({ url: '/api/v1/tables/{tableID}/stream/{path}', ...options });
+
+/**
  * Get available track types
  */
-export const getApiV1TrackTypes = <ThrowOnError extends boolean = false>(options?: Options<GetApiV1TrackTypesData, ThrowOnError>): RequestResult<GetApiV1TrackTypesResponses, GetApiV1TrackTypesErrors, ThrowOnError> => (options?.client ?? client).get<GetApiV1TrackTypesResponses, GetApiV1TrackTypesErrors, ThrowOnError>({
-    security: [{
-            in: 'cookie',
-            name: 'auth_token',
-            type: 'apiKey'
-        }, { scheme: 'bearer', type: 'http' }],
-    url: '/api/v1/trackTypes',
-    ...options
-});
+export const getApiV1TrackTypes = <ThrowOnError extends boolean = false>(options?: Options<GetApiV1TrackTypesData, ThrowOnError>): RequestResult<GetApiV1TrackTypesResponses, unknown, ThrowOnError> => (options?.client ?? client).get<GetApiV1TrackTypesResponses, unknown, ThrowOnError>({ url: '/api/v1/trackTypes', ...options });
 
 /**
  * WebSocket connection for real-time updates
  */
-export const getApiV1Ws = <ThrowOnError extends boolean = false>(options?: Options<GetApiV1WsData, ThrowOnError>): RequestResult<unknown, GetApiV1WsErrors, ThrowOnError> => (options?.client ?? client).get<unknown, GetApiV1WsErrors, ThrowOnError>({
-    security: [{
-            in: 'cookie',
-            name: 'auth_token',
-            type: 'apiKey'
-        }, {
-            in: 'query',
-            name: 'token',
-            type: 'apiKey'
-        }],
-    url: '/api/v1/ws',
-    ...options
-});
+export const getApiV1Ws = <ThrowOnError extends boolean = false>(options?: Options<GetApiV1WsData, ThrowOnError>): RequestResult<unknown, GetApiV1WsErrors, ThrowOnError> => (options?.client ?? client).get<unknown, GetApiV1WsErrors, ThrowOnError>({ url: '/api/v1/ws', ...options });

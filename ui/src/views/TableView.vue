@@ -39,23 +39,17 @@ onMounted(async () => {
   audio.clearTracks()
   ws.disconnect()
   ws.addMessageHandler(handleTableMessage)
-  const token = typeof route.params.token === 'string' ? route.params.token : undefined
-  await auth.checkAuthStatus(token)
+  await auth.checkAuthStatus()
   if (disposed) return
-  if (!auth.authenticated) {
-    error.value = 'This invite link is invalid or the table has been deleted.'
-    loading.value = false
-    return
-  }
   try {
     const tableID = typeof route.params.tableID === 'string' ? route.params.tableID : undefined
-    if (tableID && auth.role !== 'gm') throw new Error('GM login required')
-    await tables.loadTable(tableID, token)
+    if (!tableID) throw new Error('Missing table ID')
+    await tables.loadTable(tableID)
     if (disposed) return
     setTitle(tables.current?.name ?? 'Table')
   } catch (e) {
     console.error('Failed to open table:', e)
-    error.value = 'Unable to open this table. It may have been deleted.'
+    error.value = 'This table is unavailable or has been deleted.'
   } finally {
     if (!disposed) loading.value = false
   }
@@ -71,7 +65,7 @@ onUnmounted(() => {
 
 <template>
   <v-container :fluid="auth.role === 'gm'" :class="auth.role === 'gm' ? 'pa-0' : 'py-2'">
-    <v-progress-circular v-if="loading" indeterminate aria-label="Checking session" />
+    <v-progress-circular v-if="loading" indeterminate aria-label="Loading table" />
     <v-alert v-else-if="error" type="error">{{ error }}</v-alert>
     <template v-else-if="tables.current">
       <TableViewGM v-if="auth.role === 'gm'" />

@@ -20,9 +20,6 @@ func (s *Server) handleTables(w http.ResponseWriter, r *http.Request, token *aut
 			s.tableError(w, err)
 			return
 		}
-		for i := range tables {
-			tables[i] = s.tableResponse(tables[i], token)
-		}
 		respondJSON(w, http.StatusOK, tables)
 	case http.MethodPost:
 		name, ok := readTableName(w, r)
@@ -30,48 +27,16 @@ func (s *Server) handleTables(w http.ResponseWriter, r *http.Request, token *aut
 			return
 		}
 		table, err := s.store.CreateTable(r.Context(), Table{
-			ID: uuid.New(), Name: name, InviteToken: uuid.NewString(),
+			ID: uuid.New(), Name: name,
 		})
 		if err != nil {
 			s.tableError(w, err)
 			return
 		}
-		respondJSON(w, http.StatusCreated, s.tableResponse(table, token))
+		respondJSON(w, http.StatusCreated, table)
 	default:
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 	}
-}
-
-func (s *Server) handleSessionTable(w http.ResponseWriter, r *http.Request, token *auth.Token) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-	id := DefaultTableID
-	if token.Role == auth.RoleGM {
-		if invite, err := getAuthorizationBearerToken(r); err == nil {
-			invited, err := s.playerToken(r, invite)
-			if err != nil {
-				http.Error(w, "Invalid table invite", http.StatusNotFound)
-				return
-			}
-			id = uuid.MustParse(invited.TableID)
-		}
-	}
-	if token.Role == auth.RolePlayer {
-		var err error
-		id, err = uuid.Parse(token.TableID)
-		if err != nil {
-			http.Error(w, "Invalid table session", http.StatusUnauthorized)
-			return
-		}
-	}
-	table, err := s.store.GetTable(r.Context(), id)
-	if err != nil {
-		s.tableError(w, err)
-		return
-	}
-	respondJSON(w, http.StatusOK, s.tableResponse(table, token))
 }
 
 func (s *Server) handleTable(w http.ResponseWriter, r *http.Request, token *auth.Token) {
@@ -86,7 +51,7 @@ func (s *Server) handleTable(w http.ResponseWriter, r *http.Request, token *auth
 			s.tableError(w, err)
 			return
 		}
-		respondJSON(w, http.StatusOK, s.tableResponse(table, token))
+		respondJSON(w, http.StatusOK, table)
 	case http.MethodPut:
 		if token.Role != auth.RoleGM {
 			http.Error(w, "Forbidden", http.StatusForbidden)
@@ -101,7 +66,7 @@ func (s *Server) handleTable(w http.ResponseWriter, r *http.Request, token *auth
 			s.tableError(w, err)
 			return
 		}
-		respondJSON(w, http.StatusOK, s.tableResponse(table, token))
+		respondJSON(w, http.StatusOK, table)
 	case http.MethodDelete:
 		if token.Role != auth.RoleGM {
 			http.Error(w, "Forbidden", http.StatusForbidden)
@@ -179,17 +144,6 @@ func (s *Server) tableID(w http.ResponseWriter, r *http.Request, token *auth.Tok
 		return uuid.Nil, false
 	}
 	return id, true
-}
-
-func (s *Server) tableResponse(table Table, token *auth.Token) Table {
-	if token.Role != auth.RoleGM {
-		table.InviteToken = ""
-		return table
-	}
-	if table.ID == DefaultTableID && table.InviteToken == "" {
-		table.InviteToken = s.auth.GetJoinToken()
-	}
-	return table
 }
 
 func (s *Server) tableError(w http.ResponseWriter, err error) {

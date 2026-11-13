@@ -25,7 +25,7 @@ func TestTableSettingsPersistence(t *testing.T) {
 	if err != nil || !reflect.DeepEqual(settings, defaults) {
 		t.Fatalf("default settings = %+v, %v", settings, err)
 	}
-	other := server.Table{ID: uuid.New(), Name: "Other", InviteToken: uuid.NewString()}
+	other := server.Table{ID: uuid.New(), Name: "Other"}
 	if _, err := db.CreateTable(ctx, other); err != nil {
 		t.Fatal(err)
 	}
@@ -104,8 +104,8 @@ func TestTableLifecycle(t *testing.T) {
 	if err != nil || len(tables) != 1 || tables[0].ID != server.DefaultTableID {
 		t.Fatalf("seeded tables = %v, %v", tables, err)
 	}
-	first := server.Table{ID: uuid.New(), Name: "Friday", InviteToken: uuid.NewString()}
-	second := server.Table{ID: uuid.New(), Name: "Sunday", InviteToken: uuid.NewString()}
+	first := server.Table{ID: uuid.New(), Name: "Friday"}
+	second := server.Table{ID: uuid.New(), Name: "Sunday"}
 	for _, table := range []server.Table{first, second} {
 		if got, err := db.CreateTable(ctx, table); err != nil || got != table {
 			t.Fatalf("create = %v, %v", got, err)
@@ -113,9 +113,6 @@ func TestTableLifecycle(t *testing.T) {
 	}
 	if _, err := db.CreateTable(ctx, first); err == nil {
 		t.Fatal("duplicate table should fail")
-	}
-	if got, err := db.GetTableByInvite(ctx, first.InviteToken); err != nil || got != first {
-		t.Fatalf("invite lookup = %v, %v", got, err)
 	}
 	first.Name = "Friday group"
 	if got, err := db.UpdateTable(ctx, first.ID, first.Name); err != nil || got != first {
@@ -217,9 +214,6 @@ func TestTableLifecycle(t *testing.T) {
 	if has, err := db.HasTableTrack(ctx, second.ID, track.ID); err != nil || has {
 		t.Fatalf("table deletion did not clean associations = %v, %v", has, err)
 	}
-	if _, err := db.GetTableByInvite(ctx, second.InviteToken); !errors.Is(err, sql.ErrNoRows) {
-		t.Fatalf("deleted invite = %v", err)
-	}
 	if _, err := db.GetTrackByID(ctx, track.ID); err != nil {
 		t.Fatalf("table deletion deleted library track: %v", err)
 	}
@@ -274,7 +268,7 @@ func TestExistingLibraryMigratesToDefaultTable(t *testing.T) {
 	if err := db.SaveTrack(ctx, &track); err != nil {
 		t.Fatal(err)
 	}
-	if err := m.Steps(-3); err != nil {
+	if err := m.Steps(-4); err != nil {
 		t.Fatal(err)
 	}
 	if err := m.Up(); err != nil {
@@ -288,7 +282,7 @@ func TestExistingLibraryMigratesToDefaultTable(t *testing.T) {
 	if err != nil || settings.MasterVolume != 100 || len(settings.TrackOrder) != 0 {
 		t.Fatalf("migrated settings = %+v, %v", settings, err)
 	}
-	if err := m.Steps(-3); err != nil {
+	if err := m.Steps(-4); err != nil {
 		t.Fatal(err)
 	}
 	if err := m.Up(); err != nil {
