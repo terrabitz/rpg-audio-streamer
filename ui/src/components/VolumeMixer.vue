@@ -13,11 +13,6 @@ const props = defineProps<{
 
 onMounted(async () => {
   await trackTypeStore.fetchTrackTypes(props.token)
-  for (const type of trackTypeStore.trackTypes) {
-    if (!audioStore.typeVolumes[type.name]) {
-      audioStore.typeVolumes[type.name] = 100
-    }
-  }
 })
 </script>
 
@@ -28,13 +23,14 @@ onMounted(async () => {
       <div class="mixer-controls">
         <div class="mixer-row">
           <span class="mixer-label">Master</span>
-          <VolumeSlider v-model="audioStore.masterVolume" class="mixer-slider" :max="200" />
+          <VolumeSlider :model-value="audioStore.mixMasterVolume" class="mixer-slider" :max="200"
+            @update:model-value="audioStore.setMasterVolume($event)" />
         </div>
         <v-divider class="my-4" />
         <div v-for="type in trackTypeStore.trackTypes" :key="type.id" class="mixer-row">
           <span class="mixer-label">{{ type.name }}</span>
-          <VolumeSlider :model-value="audioStore.typeVolumes[type.name] ?? 100" 
-            @update:model-value="audioStore.typeVolumes[type.name] = $event"
+          <VolumeSlider :model-value="audioStore.getTypeVolume(type.name)"
+            @update:model-value="audioStore.setTypeVolume(type.name, $event)"
             :color="type.color" class="mixer-slider" />
         </div>
       </div>

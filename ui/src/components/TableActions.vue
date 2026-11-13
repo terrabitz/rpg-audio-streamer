@@ -43,7 +43,8 @@ async function handleGetJoinToken() {
       {{ isCopied ? 'Copied to clipboard' : 'Copy invite link' }}
     </v-btn>
     <AudioUploader class="mr-4" :tableID="tables.current?.id" />
-    <VolumeSlider v-model="audioStore.masterVolume" />
+    <VolumeSlider :model-value="audioStore.mixMasterVolume" aria-label="Master volume"
+      @update:model-value="audioStore.setMasterVolume($event)" />
     <v-snackbar :model-value="!!error" @update:model-value="error = ''">{{ error }}</v-snackbar>
   </template>
 </template>

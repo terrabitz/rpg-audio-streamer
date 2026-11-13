@@ -17,6 +17,43 @@ export type TableRequest = {
     name: string;
 };
 
+export type TableSettings = {
+    masterVolume: number;
+    /**
+     * GM volume percentages keyed by track-type name.
+     */
+    typeVolumes: {
+        [key: string]: number;
+    };
+    /**
+     * GM volume percentages keyed by track UUID.
+     */
+    trackVolumes: {
+        [key: string]: number;
+    };
+    trackOrder: Array<string>;
+};
+
+/**
+ * Omitted fields are preserved. Volume maps merge by key; trackOrder replaces the saved order.
+ */
+export type TableSettingsPatch = {
+    masterVolume?: number;
+    /**
+     * GM volume percentages keyed by track-type name.
+     */
+    typeVolumes?: {
+        [key: string]: number;
+    };
+    /**
+     * GM volume percentages keyed by track UUID.
+     */
+    trackVolumes?: {
+        [key: string]: number;
+    };
+    trackOrder?: Array<string>;
+};
+
 export type LoginRequest = {
     username: string;
     password: string;
@@ -65,6 +102,68 @@ export type TrackType = {
     isRepeating: boolean;
     allowSimultaneousPlay: boolean;
 };
+
+export type GetApiV1TablesByTableIdSettingsData = {
+    body?: never;
+    path: {
+        tableID: string;
+    };
+    query?: never;
+    url: '/api/v1/tables/{tableID}/settings';
+};
+
+export type GetApiV1TablesByTableIdSettingsErrors = {
+    /**
+     * GM authentication required
+     */
+    401: unknown;
+    /**
+     * Table not found
+     */
+    404: unknown;
+};
+
+export type GetApiV1TablesByTableIdSettingsResponses = {
+    /**
+     * Table settings
+     */
+    200: TableSettings;
+};
+
+export type GetApiV1TablesByTableIdSettingsResponse = GetApiV1TablesByTableIdSettingsResponses[keyof GetApiV1TablesByTableIdSettingsResponses];
+
+export type PatchApiV1TablesByTableIdSettingsData = {
+    body: TableSettingsPatch;
+    path: {
+        tableID: string;
+    };
+    query?: never;
+    url: '/api/v1/tables/{tableID}/settings';
+};
+
+export type PatchApiV1TablesByTableIdSettingsErrors = {
+    /**
+     * Invalid table settings
+     */
+    400: unknown;
+    /**
+     * GM authentication required
+     */
+    401: unknown;
+    /**
+     * Table not found
+     */
+    404: unknown;
+};
+
+export type PatchApiV1TablesByTableIdSettingsResponses = {
+    /**
+     * Saved table settings
+     */
+    200: TableSettings;
+};
+
+export type PatchApiV1TablesByTableIdSettingsResponse = PatchApiV1TablesByTableIdSettingsResponses[keyof PatchApiV1TablesByTableIdSettingsResponses];
 
 export type GetApiV1TablesData = {
     body?: never;

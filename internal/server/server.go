@@ -127,6 +127,7 @@ func (s *Server) registerHandlers() *http.ServeMux {
 	mux.HandleFunc("/api/v1/tables", s.gmOnlyMiddleware(s.handleTables))
 	mux.HandleFunc("/api/v1/tables/current", s.authMiddleware(s.handleSessionTable))
 	mux.HandleFunc("/api/v1/tables/{tableID}", s.authMiddleware(s.handleTable))
+	mux.HandleFunc("/api/v1/tables/{tableID}/settings", s.gmOnlyMiddleware(s.handleTableSettings))
 	mux.HandleFunc("/api/v1/tables/{tableID}/tracks", s.gmOnlyMiddleware(s.handleTableTracks))
 	mux.HandleFunc("/api/v1/tables/{tableID}/tracks/{trackID}", s.gmOnlyMiddleware(s.handleTableTrack))
 

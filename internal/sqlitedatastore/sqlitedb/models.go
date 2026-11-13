@@ -8,6 +8,7 @@ type GameTable struct {
 	ID          []byte
 	Name        string
 	InviteToken string
+	Settings    string
 }
 
 type TableTrack struct {

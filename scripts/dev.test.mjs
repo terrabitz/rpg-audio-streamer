@@ -46,6 +46,17 @@ test(
       new Set(types.map((type) => type.id)),
     )
     const table = await json(a, '/api/v1/tables/current', cookie)
+    const settingsPath = `/api/v1/tables/${table.id}/settings`
+    const defaults = { masterVolume: 100, typeVolumes: {}, trackVolumes: {}, trackOrder: [] }
+    assert.deepEqual(await json(a, settingsPath, cookie), defaults)
+    await response(a, settingsPath, cookie, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ masterVolume: 0, trackVolumes: { [tracks[0].id]: 35 }, trackOrder: [tracks[0].id] }),
+    })
+    assert.equal((await json(a, settingsPath, cookie)).masterVolume, 0)
+    const otherTable = await json(b, '/api/v1/tables/current', otherCookie)
+    assert.deepEqual(await json(b, `/api/v1/tables/${otherTable.id}/settings`, otherCookie), defaults)
     const tableTracks = await json(a, `/api/v1/tables/${table.id}/tracks`, cookie)
     assert.deepEqual(
       new Set(tableTracks.map((track) => track.id)),
@@ -96,9 +107,11 @@ test(
     await assertCleaned(b)
     const restarted = launch(t)
     const fresh = await restarted.ready
-    const freshTracks = await json(fresh, '/api/v1/files', await login(fresh))
+    const freshCookie = await login(fresh)
+    const freshTracks = await json(fresh, '/api/v1/files', freshCookie)
     assert.equal(freshTracks.length, 9)
     assert.ok(freshTracks.every((track) => !tracks.some((old) => old.id === track.id)))
+    assert.deepEqual(await json(fresh, settingsPath, freshCookie), defaults)
     await restarted.stop()
     await assertCleaned(fresh)
   },

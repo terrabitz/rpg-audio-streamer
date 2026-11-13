@@ -13,6 +13,13 @@ INSERT INTO game_tables (id, name, invite_token) VALUES (?, ?, ?) RETURNING *;
 -- name: UpdateTable :one
 UPDATE game_tables SET name = ? WHERE id = ? RETURNING *;
 
+-- name: GetTableSettings :one
+SELECT settings FROM game_tables WHERE id = ?;
+
+-- name: UpdateTableSettings :one
+UPDATE game_tables SET settings = json_patch(settings, sqlc.arg(patch))
+WHERE id = sqlc.arg(id) RETURNING settings;
+
 -- name: DeleteTable :execrows
 DELETE FROM game_tables WHERE id = ?;
 

@@ -329,7 +329,7 @@ const handlePlay = (fileID: string) => {
     if (!state) return
     const stateToSend = patchObject(
       state,
-      { volume: state.volume * audioStore.masterVolume / 100 },
+      { volume: state.volume * audioStore.mixMasterVolume / 100 },
     )
     debouncedSendMessage('syncTrack', { ...stateToSend })
   } else {
@@ -358,7 +358,7 @@ function previewTrack(fileID: string) {
 const handleVolume = (fileID: string, volume: number) => {
   audioStore.updateTrackState(fileID, { volume })
   if (audioStore.tracks[fileID]?.isPlaying) {
-    debouncedSendMessage('syncTrack', { fileID, volume: volume * audioStore.masterVolume / 100 })
+    debouncedSendMessage('syncTrack', { fileID, volume: volume * audioStore.mixMasterVolume / 100 })
   }
 }
 
@@ -374,13 +374,13 @@ const updateAllTrackVolumes = debounce(() => {
     if (track.isPlaying) {
       wsStore.sendMessage('syncTrack', {
         fileID,
-        volume: track.volume * audioStore.masterVolume / 100
+        volume: track.volume * audioStore.mixMasterVolume / 100
       })
     }
   })
 }, 100)
 
-watch(() => audioStore.masterVolume, () => {
+watch(() => audioStore.mixMasterVolume, () => {
   if (!props.library) updateAllTrackVolumes()
 })
 

@@ -27,6 +27,8 @@ type TableStore interface {
 	GetTableByInvite(context.Context, string) (Table, error)
 	CreateTable(context.Context, Table) (Table, error)
 	UpdateTable(context.Context, uuid.UUID, string) (Table, error)
+	GetTableSettings(context.Context, uuid.UUID) (TableSettings, error)
+	UpdateTableSettings(context.Context, uuid.UUID, TableSettingsPatch) (TableSettings, error)
 	DeleteTable(context.Context, uuid.UUID) error
 	GetTableTracks(context.Context, uuid.UUID) ([]Track, error)
 	AddTableTrack(context.Context, uuid.UUID, uuid.UUID) error
@@ -34,6 +36,20 @@ type TableStore interface {
 	HasTableTrack(context.Context, uuid.UUID, uuid.UUID) (bool, error)
 	CountTrackTables(context.Context, uuid.UUID) (int64, error)
 	SaveTrackToTable(context.Context, *Track, uuid.UUID) error
+}
+
+type TableSettings struct {
+	MasterVolume float64            `json:"masterVolume"`
+	TypeVolumes  map[string]float64 `json:"typeVolumes"`
+	TrackVolumes map[string]float64 `json:"trackVolumes"`
+	TrackOrder   []uuid.UUID        `json:"trackOrder"`
+}
+
+type TableSettingsPatch struct {
+	MasterVolume *float64           `json:"masterVolume,omitempty"`
+	TypeVolumes  map[string]float64 `json:"typeVolumes,omitempty"`
+	TrackVolumes map[string]float64 `json:"trackVolumes,omitempty"`
+	TrackOrder   *[]uuid.UUID       `json:"trackOrder,omitempty"`
 }
 
 type Track struct {

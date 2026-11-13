@@ -109,7 +109,7 @@ test('GM creates, renames, opens, and deletes tables', async ({ page }) => {
   await expect(page.getByRole('link', { name: 'Open My Table', exact: true })).toBeVisible()
 })
 
-test('GM keeps track ordering independent for each table', async ({ page }) => {
+test('GM keeps track ordering independent for each table', async ({ page, browser }) => {
   test.slow()
   await login(page)
   await page.getByRole('link', { name: 'Library', exact: true }).click()
@@ -124,10 +124,23 @@ test('GM keeps track ordering independent for each table', async ({ page }) => {
   await addExistingTrack(page, 'Ordered Forest')
   await addExistingTrack(page, 'Ordered Rain')
   const headings = page.locator('.file-tile .track-heading > span')
+  const savedOrder = page.waitForResponse(response => response.url().endsWith('/settings')
+    && response.request().method() === 'PATCH' && response.ok())
   await page.getByRole('button', { name: 'Drag to reorder Ordered Rain', exact: true }).press('Alt+ArrowLeft')
   await expect(headings).toHaveText(['Ordered Rain', 'Ordered Forest'])
+  await savedOrder
   await page.reload()
   await expect(headings).toHaveText(['Ordered Rain', 'Ordered Forest'])
+  const freshContext = await browser.newContext()
+  const freshGM = await freshContext.newPage()
+  try {
+    await login(freshGM)
+    await freshGM.getByRole('link', { name: 'Tables', exact: true }).click()
+    await freshGM.getByRole('link', { name: 'Open Ordered table', exact: true }).click()
+    await expect(freshGM.locator('.file-tile .track-heading > span')).toHaveText(['Ordered Rain', 'Ordered Forest'])
+  } finally {
+    await freshContext.close()
+  }
   await page.getByRole('link', { name: 'Tables', exact: true }).click()
   await page.getByRole('link', { name: 'Open My Table', exact: true }).click()
   await expect(headings).toHaveText(['Ordered Forest', 'Ordered Rain'])
@@ -136,6 +149,54 @@ test('GM keeps track ordering independent for each table', async ({ page }) => {
   await deleteLibraryTrack(page, 'Library only', 0)
   await page.getByRole('link', { name: 'Tables', exact: true }).click()
   await deleteTable(page, 'Ordered table')
+})
+
+test('GM recovers a table mix in a fresh browser without restoring playback position', async ({ page, browser }) => {
+  test.slow()
+  await login(page)
+  await page.getByRole('link', { name: 'Tables', exact: true }).click()
+  await createTable(page, 'Saved mix')
+  await page.getByRole('link', { name: 'Open Saved mix', exact: true }).click()
+  await uploadTrack(page, 'Mixed Forest')
+  const tile = page.getByRole('group', { name: 'Mixed Forest', exact: true })
+  await tile.click()
+  await expect.poll(() => page.locator('video').evaluate((el: HTMLVideoElement) => !el.paused && el.currentTime > 0)).toBe(true)
+  const trackVolume = tile.getByRole('slider', { name: 'Volume for Mixed Forest', exact: true })
+  await trackVolume.focus()
+  await trackVolume.press('Home')
+  await expect(trackVolume).toHaveAttribute('aria-valuenow', '0')
+  const savedMix = page.waitForResponse(response => response.url().endsWith('/settings')
+    && response.request().method() === 'PATCH' && response.ok()
+    && response.request().postDataJSON().masterVolume === 40)
+  const master = page.getByRole('slider', { name: 'Master volume', exact: true })
+  await master.press('Home')
+  for (let i = 0; i < 4; i++) await master.press('PageUp')
+  await expect(master).toHaveAttribute('aria-valuenow', '40')
+  await savedMix
+  await page.getByRole('link', { name: 'Tables', exact: true }).click()
+  await page.getByRole('link', { name: 'Open My Table', exact: true }).click()
+  await expect(page.getByRole('slider', { name: 'Master volume', exact: true })).toHaveAttribute('aria-valuenow', '100')
+  const freshContext = await browser.newContext()
+  const freshGM = await freshContext.newPage()
+  try {
+    await login(freshGM)
+    await freshGM.getByRole('link', { name: 'Tables', exact: true }).click()
+    await freshGM.getByRole('link', { name: 'Open Saved mix', exact: true }).click()
+    const restored = freshGM.getByRole('group', { name: 'Mixed Forest', exact: true })
+    await restored.hover()
+    await expect(restored.getByRole('slider', { name: 'Volume for Mixed Forest', exact: true })).toHaveAttribute('aria-valuenow', '0')
+    await expect(freshGM.getByRole('slider', { name: 'Master volume', exact: true })).toHaveAttribute('aria-valuenow', '40')
+    await expect.poll(() => freshGM.locator('video').evaluate((el: HTMLVideoElement) => el.paused && el.currentTime === 0)).toBe(true)
+    await restored.click()
+    await expect.poll(() => freshGM.locator('video').evaluate((el: HTMLVideoElement) => !el.paused && el.currentTime > 0 && el.volume === 0)).toBe(true)
+    await restored.getByRole('button', { name: 'Pause Mixed Forest', exact: true }).click()
+    await expect.poll(() => freshGM.locator('video').evaluate((el: HTMLVideoElement) => el.paused)).toBe(true)
+  } finally {
+    await freshContext.close()
+  }
+  await deleteLibraryTrack(page, 'Mixed Forest', 1)
+  await page.getByRole('link', { name: 'Tables', exact: true }).click()
+  await deleteTable(page, 'Saved mix')
 })
 
 test('GM adds library tracks or new uploads to a table from one dialog', async ({ page }) => {

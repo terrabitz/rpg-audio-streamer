@@ -3,6 +3,8 @@ import {
   deleteApiV1TablesByTableIdTracksByTrackId,
   getApiV1Tables,
   getApiV1TablesByTableId,
+  getApiV1TablesByTableIdSettings,
+  patchApiV1TablesByTableIdSettings,
   getApiV1TablesByTableIdTracks,
   getApiV1TablesCurrent,
   postApiV1Tables,
@@ -10,6 +12,7 @@ import {
   putApiV1TablesByTableIdTracksByTrackId,
   type Table,
   type Track,
+  type TableSettingsPatch,
 } from '@/client/apiClient'
 import { defineStore } from 'pinia'
 
@@ -20,8 +23,10 @@ export const useTableStore = defineStore('tables', {
     tracks: [] as Track[],
     revision: 0,
     trackOrders: {} as Record<string, string[]>,
+    settingsError: '',
+    failedSettings: {} as Record<string, TableSettingsPatch>,
+    saveQueue: Promise.resolve(),
   }),
-  persist: { pick: ['trackOrders'] },
   getters: {
     orderedTracks(state): Track[] {
       const order = state.current ? state.trackOrders[state.current.id] ?? [] : []
@@ -32,6 +37,47 @@ export const useTableStore = defineStore('tables', {
     },
   },
   actions: {
+    async loadSettings(tableID: string) {
+      await this.saveQueue
+      const { data } = await getApiV1TablesByTableIdSettings<true>({ path: { tableID } })
+      const failed = this.failedSettings[tableID]
+      const settings = {
+        ...data,
+        ...failed,
+        typeVolumes: { ...data.typeVolumes, ...failed?.typeVolumes },
+        trackVolumes: { ...data.trackVolumes, ...failed?.trackVolumes },
+      }
+      if (this.current?.id === tableID) {
+        this.trackOrders[tableID] = settings.trackOrder
+        if (failed) {
+          this.settingsError = 'Unable to save table settings. Your changes are not saved.'
+        }
+      }
+      return settings
+    },
+    saveSettings(tableID: string, patch: TableSettingsPatch): Promise<void> {
+      // Serialize slider and reorder writes so an older request cannot win.
+      this.saveQueue = this.saveQueue.then(async () => {
+        const failed = this.failedSettings[tableID]
+        const body = {
+          ...failed, ...patch,
+          typeVolumes: { ...failed?.typeVolumes, ...patch.typeVolumes },
+          trackVolumes: { ...failed?.trackVolumes, ...patch.trackVolumes },
+        }
+        try {
+          await patchApiV1TablesByTableIdSettings<true>({ path: { tableID }, body, keepalive: true })
+          delete this.failedSettings[tableID]
+          if (this.current?.id === tableID) this.settingsError = ''
+        } catch (e) {
+          console.error('Failed to save table settings:', e)
+          this.failedSettings[tableID] = body
+          if (this.current?.id === tableID) {
+            this.settingsError = 'Unable to save table settings. Your changes are not saved.'
+          }
+        }
+      })
+      return this.saveQueue
+    },
     async fetchTables() {
       const { data } = await getApiV1Tables<true>()
       this.tables = data
@@ -77,6 +123,7 @@ export const useTableStore = defineStore('tables', {
       const [track] = ordered.splice(sourceIndex, 1)
       if (track) ordered.splice(targetIndex, 0, track)
       this.trackOrders[this.current.id] = ordered.map(track => track.id)
+      void this.saveSettings(this.current.id, { trackOrder: this.trackOrders[this.current.id] })
     },
     async addTrack(tableID: string, trackID: string) {
       await putApiV1TablesByTableIdTracksByTrackId<true>({ path: { tableID, trackID } })
@@ -93,6 +140,7 @@ export const useTableStore = defineStore('tables', {
       this.revision++
       this.current = null
       this.tracks = []
+      this.settingsError = ''
     },
   },
 })

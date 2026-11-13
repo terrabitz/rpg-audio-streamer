@@ -82,6 +82,45 @@ func TestTableHTTP(t *testing.T) {
 	second := decodeTable(request("POST", "/api/v1/tables", `{"name":"Sunday"}`, "", true, 201))
 	firstPath := "/api/v1/tables/" + first.ID.String()
 	secondPath := "/api/v1/tables/" + second.ID.String()
+	settingsPath := firstPath + "/settings"
+	request("GET", settingsPath, "", "", false, 401)
+	request("GET", settingsPath, "", first.InviteToken, false, 401)
+	request("PATCH", settingsPath, `{"masterVolume":0}`, first.InviteToken, false, 401)
+	request("POST", settingsPath, `{}`, "", true, 405)
+	request("GET", "/api/v1/tables/"+uuid.NewString()+"/settings", "", "", true, 404)
+	for _, body := range []string{
+		`{`, `null`, `{"currentTime":12}`, `{"isPlaying":true}`,
+		`{"masterVolume":-1}`, `{"masterVolume":201}`, `{"masterVolume":"50"}`,
+		`{"typeVolumes":{"Music":101}}`, `{"typeVolumes":{"Music":-1}}`,
+		`{"typeVolumes":{" ":30}}`, `{"trackVolumes":{"bad":50}}`,
+		`{"trackVolumes":{"` + uuid.NewString() + `":101}}`,
+		`{"trackOrder":["bad"]}`, `{"trackOrder":["` + uuid.Nil.String() + `"]}`,
+		`{"trackOrder":["` + first.ID.String() + `","` + first.ID.String() + `"]}`,
+		`{} {}`,
+	} {
+		request("PATCH", settingsPath, body, "", true, 400)
+	}
+	readSettings := func(rec *httptest.ResponseRecorder) server.TableSettings {
+		t.Helper()
+		var settings server.TableSettings
+		if err := json.Unmarshal(rec.Body.Bytes(), &settings); err != nil {
+			t.Fatal(err)
+		}
+		return settings
+	}
+	initial := readSettings(request("GET", settingsPath, "", "", true, 200))
+	if initial.MasterVolume != 100 || initial.TrackOrder == nil || initial.TrackVolumes == nil || initial.TypeVolumes == nil {
+		t.Fatalf("default settings = %+v", initial)
+	}
+	readSettings(request("PATCH", settingsPath, `{"masterVolume":0,"typeVolumes":{"Music":0,"Ambiance":60}}`, "", true, 200))
+	readSettings(request("PATCH", settingsPath, `{"typeVolumes":{"Ambiance":40}}`, "", true, 200))
+	saved := readSettings(request("GET", settingsPath, "", "", true, 200))
+	if saved.MasterVolume != 0 || saved.TypeVolumes["Music"] != 0 || saved.TypeVolumes["Ambiance"] != 40 {
+		t.Fatalf("partial settings lost saved mix = %+v", saved)
+	}
+	if other := readSettings(request("GET", secondPath+"/settings", "", "", true, 200)); other.MasterVolume != 100 || len(other.TypeVolumes) != 0 {
+		t.Fatalf("settings leaked to other table = %+v", other)
+	}
 	renamed := decodeTable(request("PUT", firstPath, `{"name":"Friday group"}`, "", true, 200))
 	if renamed.Name != "Friday group" || renamed.InviteToken != first.InviteToken {
 		t.Fatalf("renamed table = %+v", renamed)

@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { patchObject } from '../composables/util'
+import type { TableSettings } from '@/client/apiClient'
 
 export interface AudioTrack {
   fileID: string
@@ -36,12 +37,29 @@ export const useAudioStore = defineStore('audio', {
     masterVolume: 100,
     fadeStates: {} as Record<string, FadeStatus>,
     typeVolumes: {} as Record<string, number>,
+    tableMix: null as Omit<TableSettings, 'trackOrder'> | null,
   }),
   persist: { pick: ['masterVolume', 'typeVolumes'] },
   getters: {
+    mixMasterVolume: (state) => state.tableMix?.masterVolume ?? state.masterVolume,
+    mixTypeVolumes: (state) => state.tableMix?.typeVolumes ?? state.typeVolumes,
     availableTracks: (state) => Object.values(state.tracks)
   },
   actions: {
+    loadTableMix(settings: TableSettings) {
+      this.tableMix = {
+        masterVolume: settings.masterVolume,
+        typeVolumes: { ...settings.typeVolumes },
+        trackVolumes: { ...settings.trackVolumes },
+      }
+    },
+    clearTableMix() {
+      this.tableMix = null
+    },
+    setMasterVolume(volume: number) {
+      if (this.tableMix) this.tableMix.masterVolume = volume
+      else this.masterVolume = volume
+    },
     clearTracks() {
       this.enabled = false
       this.tracks = {}
@@ -50,12 +68,16 @@ export const useAudioStore = defineStore('audio', {
     initTrack(fileID: string, name: string, typeID: string = "") {
       if (!this.tracks[fileID]) {
         this.tracks[fileID] = newAudioTrack(fileID, name, typeID)
+        this.tracks[fileID].volume = this.tableMix?.trackVolumes[fileID] ?? 100
       }
     },
     updateTrackState(fileID: string, updates: Partial<AudioTrack>) {
       const track = this.tracks[fileID] ? this.tracks[fileID] : newAudioTrack(fileID, "")
 
       this.tracks[fileID] = patchObject(track, updates)
+      if (this.tableMix && updates.volume !== undefined) {
+        this.tableMix.trackVolumes[fileID] = updates.volume
+      }
     },
     removeTrack(fildID: string) {
       delete this.tracks[fildID]
@@ -93,11 +115,12 @@ export const useAudioStore = defineStore('audio', {
       this.fadeStates[fileID].inProgress = isFading
     },
     setTypeVolume(typeName: string, volume: number) {
-      this.typeVolumes[typeName] = volume
+      if (this.tableMix) this.tableMix.typeVolumes[typeName] = volume
+      else this.typeVolumes[typeName] = volume
     },
 
     getTypeVolume(typeName: string): number {
-      return this.typeVolumes[typeName] ?? 100
+      return this.mixTypeVolumes[typeName] ?? 100
     }
   },
 })
