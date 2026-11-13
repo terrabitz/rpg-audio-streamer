@@ -44,7 +44,10 @@ SQLite database, upload directory, and Vite cache. It uses public fixture GM
 credentials, freshly salted native Argon2id password hashes, and per-instance
 random signing/invite tokens. Nine generated audio fixtures (three per default
 track type) use ordinary display names and are uploaded into the default table
-through authenticated HTTP, exercising normal validation, conversion, and persistence rather than writing
+through authenticated HTTP. Music fixtures use short original note sequences;
+seeded ambiance noise gently swells over time so loop crossfades are audible.
+Repeating fixtures remain 12 seconds long; one-shot tones retain their short
+durations. This exercises normal validation, conversion, and persistence rather than writing
 database fixtures directly. Vite uses the isolated API proxy and ignores
 developer dotenv files; the API runs from the temporary directory with
 explicit configuration. The launcher owns shutdown and removes its temporary

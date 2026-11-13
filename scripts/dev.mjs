@@ -154,37 +154,37 @@ async function seed(apiURL) {
     {
       type: 'Ambiance',
       name: 'Forest breeze',
-      source: 'anoisesrc=color=pink:amplitude=0.08',
+      source: "anoisesrc=color=pink:amplitude=0.08:seed=1,volume='0.65+0.35*sin(2*PI*t/9)':eval=frame",
       duration: 12,
     },
     {
       type: 'Ambiance',
       name: 'Rainfall',
-      source: 'anoisesrc=color=white:amplitude=0.03',
+      source: "anoisesrc=color=white:amplitude=0.03:seed=2,volume='0.65+0.35*sin(2*PI*t/7+1)':eval=frame",
       duration: 12,
     },
     {
       type: 'Ambiance',
       name: 'Distant rumble',
-      source: 'anoisesrc=color=brown:amplitude=0.08',
+      source: "anoisesrc=color=brown:amplitude=0.08:seed=3,volume='0.65+0.35*sin(2*PI*t/11+2)':eval=frame",
       duration: 12,
     },
     {
       type: 'Music',
       name: 'Gentle melody',
-      source: 'sine=frequency=220',
+      source: melodySource([262, 330, 392, 440, 392, 330, 294, 220]),
       duration: 12,
     },
     {
       type: 'Music',
       name: 'Tavern tune',
-      source: 'sine=frequency=330',
+      source: melodySource([196, 247, 294, 392, 330, 294, 247, 220]),
       duration: 12,
     },
     {
       type: 'Music',
       name: 'Adventure theme',
-      source: 'sine=frequency=440',
+      source: melodySource([262, 294, 330, 392, 440, 392, 330, 294]),
       duration: 12,
     },
     {
@@ -241,6 +241,16 @@ async function seed(apiURL) {
     })
     await rm(file)
   }
+}
+
+function melodySource(notes) {
+  const noteDuration = 1.5
+  const expressions = notes.map((frequency, index) => {
+    const start = index * noteDuration
+    const time = `(t-${start})`
+    return `if(between(t,${start},${start + noteDuration}),0.12*sin(2*PI*${frequency}*${time})*sin(PI*${time}/${noteDuration}),0)`
+  })
+  return `aevalsrc='${expressions.join('+')}':s=44100`
 }
 
 async function waitForAPI(apiURL) {
