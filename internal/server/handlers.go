@@ -229,6 +229,13 @@ func (s *Server) handleFileUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if req.Playback != nil {
+		if err := req.Playback.Validate(); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+	}
+
 	track, err := s.store.UpdateTrack(r.Context(), trackID, req)
 	if err != nil {
 		s.logger.Error("failed to update track", "error", err)

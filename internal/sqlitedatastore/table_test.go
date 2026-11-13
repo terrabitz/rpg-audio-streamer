@@ -261,7 +261,7 @@ func TestExistingLibraryMigratesToDefaultTable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := m.Steps(1); err != nil {
+	if err := m.Up(); err != nil {
 		t.Fatal(err)
 	}
 	ctx := context.Background()
@@ -272,6 +272,9 @@ func TestExistingLibraryMigratesToDefaultTable(t *testing.T) {
 	track := server.Track{ID: uuid.New(), Name: "Legacy", TypeID: types[0].ID,
 		CreatedAt: time.Now().UTC().Truncate(time.Second), Path: "/uploads/legacy"}
 	if err := db.SaveTrack(ctx, &track); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.Steps(-3); err != nil {
 		t.Fatal(err)
 	}
 	if err := m.Up(); err != nil {
@@ -285,14 +288,14 @@ func TestExistingLibraryMigratesToDefaultTable(t *testing.T) {
 	if err != nil || settings.MasterVolume != 100 || len(settings.TrackOrder) != 0 {
 		t.Fatalf("migrated settings = %+v, %v", settings, err)
 	}
-	if err := m.Steps(-2); err != nil {
+	if err := m.Steps(-3); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.Up(); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := db.GetTrackByID(ctx, track.ID); err != nil {
 		t.Fatalf("table migration rollback lost library: %v", err)
-	}
-	if err := m.Up(); err != nil {
-		t.Fatal(err)
 	}
 	if has, err := db.HasTableTrack(ctx, server.DefaultTableID, track.ID); err != nil || !has {
 		t.Fatalf("reapplied membership = %v, %v", has, err)

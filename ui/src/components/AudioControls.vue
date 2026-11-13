@@ -11,7 +11,7 @@
       </div>
     </slot>
 
-    <v-dialog v-model="showControls" max-width="400px" :persistent="isDeleting">
+    <v-dialog v-model="showControls" max-width="480px" :persistent="isDeleting">
       <v-card>
         <v-card-title class="text-body-1">
           <v-btn icon="$close" size="small" variant="text" aria-label="Close track controls"
@@ -22,7 +22,11 @@
           <v-text-field v-model="editName" label="Track Name" variant="underlined" hide-details
             class="pa-0 ma-0"></v-text-field>
           <TrackTypeSelector v-model="editTrackType" />
-          <TrackPlaybackControls v-if="audioState && !props.library" :state="audioState" :name="props.fileName"
+          <v-alert v-if="regionError" type="error" class="mb-3">{{ regionError }}</v-alert>
+          <TrackTimeline v-if="audioState" v-model="editedPlayback" :duration="audioState.duration"
+            :current-time="audioState.currentTime" :name="props.fileName"
+            :is-repeating="trackTypeStore.getTypeById(editTrackType)?.isRepeating"
+            :volume="props.library ? undefined : audioState.volume" :disabled="isSaving || isDeleting" class="mt-3"
             @volume="$emit('volume', $event)" @seek="$emit('seek', $event)" />
         </v-card-text>
         <v-divider></v-divider>
@@ -36,7 +40,7 @@
           <v-spacer />
 
           <v-btn color="primary" variant="text" prepend-icon="$save" @click="saveTrackChanges" :loading="isSaving"
-            :disabled="!hasChanges || isDeleting">
+            :disabled="!hasChanges || !!regionError || isDeleting">
             Save Changes
           </v-btn>
         </v-card-actions>
@@ -66,12 +70,14 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watchEffect } from 'vue';
+import { computed, ref, watch, watchEffect } from 'vue';
+import type { PlaybackSettings, UpdateTrackRequest } from '@/client/apiClient';
+import { defaultPlayback, playbackError } from '@/composables/playback';
 import { useAudioStore } from '../stores/audio';
 import { TrackUsageChangedError, useFileStore } from '../stores/files';
 import { useTrackTypeStore } from '../stores/trackTypes';
 import TrackTypeSelector from './TrackTypeSelector.vue';
-import TrackPlaybackControls from './TrackPlaybackControls.vue';
+import TrackTimeline from './TrackTimeline.vue';
 
 const props = defineProps<{
   fileName: string
@@ -99,23 +105,34 @@ const isActive = computed(() => audioState.value?.isPlaying);
 
 const editName = ref(props.fileName);
 const editTrackType = ref(trackType.value?.id || '');
+const editedPlayback = ref<PlaybackSettings>(defaultPlayback());
+const regionError = computed(() => playbackError(editedPlayback.value, audioState.value?.duration));
 
 function openControls() {
   error.value = '';
+  if (props.library && track.value && !audioState.value) {
+    audioStore.initTrack(props.fileID, props.fileName, trackType.value?.name);
+    audioStore.updateTrackState(props.fileID, {
+      playback: track.value.playback ?? defaultPlayback(),
+      currentTime: track.value.playback?.startTime ?? 0,
+    });
+  }
   showControls.value = true;
 }
 
 // Computed property to check if there are any changes to save
 const hasChanges = computed(() => {
   if (!track.value) return false;
-  return editName.value !== track.value.name || editTrackType.value !== track.value.typeID;
+  return editName.value !== track.value.name || editTrackType.value !== track.value.typeID ||
+    JSON.stringify(editedPlayback.value) !== JSON.stringify(track.value.playback ?? defaultPlayback());
 });
 
 // Reset edit values when dialog opens
-watchEffect(() => {
-  if (showControls.value && track.value) {
+watch(showControls, (open) => {
+  if (open && track.value) {
     editName.value = track.value.name;
     editTrackType.value = track.value.typeID;
+    editedPlayback.value = { ...(track.value.playback ?? defaultPlayback()) };
   }
 });
 
@@ -166,6 +183,10 @@ async function confirmDelete(expectedTableCount: number | null) {
 
 async function saveTrackChanges() {
   error.value = ''
+  if (regionError.value) {
+    error.value = regionError.value;
+    return;
+  }
   if (!track.value) {
     console.warn('Cannot save track changes: track not found');
     return;
@@ -175,7 +196,7 @@ async function saveTrackChanges() {
     isSaving.value = true;
 
     // Only update if values have changed
-    const updates: { name?: string; typeID?: string } = {};
+    const updates: Omit<UpdateTrackRequest, 'id'> = {};
 
     if (editName.value !== track.value.name) {
       updates.name = editName.value;
@@ -184,17 +205,22 @@ async function saveTrackChanges() {
     if (editTrackType.value !== track.value.typeID) {
       updates.typeID = editTrackType.value;
     }
+    if (JSON.stringify(editedPlayback.value) !== JSON.stringify(track.value.playback ?? defaultPlayback())) {
+      updates.playback = editedPlayback.value;
+    }
 
     // Only make API call if something has changed
     if (Object.keys(updates).length > 0) {
       const updatedTrack = await fileStore.updateTrack(track.value.id, updates);
+      if (updatedTrack) emit('settings', updatedTrack.playback ?? defaultPlayback());
 
       // Update audio track state if track type changed (may affect isRepeating)
       if (updates.typeID && updatedTrack) {
         const newTrackType = trackTypeStore.getTypeById(updatedTrack.typeID);
         if (newTrackType) {
           audioStore.updateTrackState(props.fileID, {
-            isRepeating: newTrackType.isRepeating
+            isRepeating: newTrackType.isRepeating,
+            trackType: newTrackType.name,
           });
         }
       }
@@ -220,9 +246,10 @@ watchEffect(() => {
   }
 });
 
-defineEmits<{
+const emit = defineEmits<{
   (e: 'volume', volume: number): void
   (e: 'seek', time: number): void
+  (e: 'settings', playback: PlaybackSettings): void
 }>();
 
 </script>

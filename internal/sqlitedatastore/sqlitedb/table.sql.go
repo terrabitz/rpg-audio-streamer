@@ -121,7 +121,7 @@ func (q *Queries) GetTableSettings(ctx context.Context, id []byte) (string, erro
 }
 
 const getTableTracks = `-- name: GetTableTracks :many
-SELECT tracks.id, tracks.created_at, tracks.name, tracks.path, tracks.type_id FROM tracks
+SELECT tracks.id, tracks.created_at, tracks.name, tracks.path, tracks.type_id, tracks.start_time, tracks.end_time, tracks.loop_back_time FROM tracks
 JOIN table_tracks ON tracks.id = table_tracks.track_id
 WHERE table_tracks.table_id = ? ORDER BY tracks.created_at, tracks.id
 `
@@ -141,6 +141,9 @@ func (q *Queries) GetTableTracks(ctx context.Context, tableID []byte) ([]Track, 
 			&i.Name,
 			&i.Path,
 			&i.TypeID,
+			&i.StartTime,
+			&i.EndTime,
+			&i.LoopBackTime,
 		); err != nil {
 			return nil, err
 		}

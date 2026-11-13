@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { patchObject } from '../composables/util'
-import type { TableSettings } from '@/client/apiClient'
+import type { PlaybackSettings, TableSettings } from '@/client/apiClient'
 
 export interface AudioTrack {
   fileID: string
@@ -11,6 +11,7 @@ export interface AudioTrack {
   currentTime: number
   duration: number
   trackType: string
+  playback?: PlaybackSettings
 }
 
 interface FadeStatus {

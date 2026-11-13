@@ -83,12 +83,23 @@ export type Track = {
     name: string;
     path: string;
     typeID: string;
+    playback?: PlaybackSettings;
+};
+
+/**
+ * Times in seconds, shared across every table using the track. Null clears an optional point.
+ */
+export type PlaybackSettings = {
+    startTime: number;
+    endTime: number | null;
+    loopBackTime: number | null;
 };
 
 export type UpdateTrackRequest = {
     id: string;
     name?: string;
     typeID?: string;
+    playback?: PlaybackSettings;
 };
 
 export type TrackUsage = {

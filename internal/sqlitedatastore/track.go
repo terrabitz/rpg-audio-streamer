@@ -2,6 +2,7 @@ package sqlitedatastore
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"time"
 
@@ -15,12 +16,18 @@ func (db *SQLiteDatastore) SaveTrack(ctx context.Context, track *server.Track) e
 }
 
 func saveTrack(ctx context.Context, queries *sqlitedb.Queries, track *server.Track) error {
+	if err := track.Playback.Validate(); err != nil {
+		return err
+	}
 	dbTrack := sqlitedb.SaveTrackParams{
-		ID:        track.ID[:],
-		CreatedAt: track.CreatedAt.Format(time.RFC3339),
-		Name:      track.Name,
-		Path:      track.Path,
-		TypeID:    track.TypeID[:],
+		ID:           track.ID[:],
+		CreatedAt:    track.CreatedAt.Format(time.RFC3339),
+		Name:         track.Name,
+		Path:         track.Path,
+		TypeID:       track.TypeID[:],
+		StartTime:    track.Playback.StartTime,
+		EndTime:      nullableTime(track.Playback.EndTime),
+		LoopBackTime: nullableTime(track.Playback.LoopBackTime),
 	}
 
 	if err := queries.SaveTrack(ctx, dbTrack); err != nil {
@@ -80,6 +87,15 @@ func (db *SQLiteDatastore) UpdateTrack(ctx context.Context, trackID uuid.UUID, u
 	if update.TypeID != nil {
 		params.TypeID = update.TypeID[:]
 	}
+	if update.Playback != nil {
+		if err := update.Playback.Validate(); err != nil {
+			return server.Track{}, err
+		}
+		params.SetPlayback = 1
+		params.StartTime = update.Playback.StartTime
+		params.EndTime = nullableTime(update.Playback.EndTime)
+		params.LoopBackTime = nullableTime(update.Playback.LoopBackTime)
+	}
 
 	dbTrack, err := sqlitedb.New(db.DB).UpdateTrack(ctx, params)
 	if err != nil {
@@ -111,5 +127,24 @@ func convertDBTrack(dbTrack sqlitedb.Track) (server.Track, error) {
 		Name:      dbTrack.Name,
 		Path:      dbTrack.Path,
 		TypeID:    typeID,
+		Playback: server.PlaybackSettings{
+			StartTime:    dbTrack.StartTime,
+			EndTime:      optionalTime(dbTrack.EndTime),
+			LoopBackTime: optionalTime(dbTrack.LoopBackTime),
+		},
 	}, nil
+}
+
+func nullableTime(value *float64) sql.NullFloat64 {
+	if value == nil {
+		return sql.NullFloat64{}
+	}
+	return sql.NullFloat64{Float64: *value, Valid: true}
+}
+
+func optionalTime(value sql.NullFloat64) *float64 {
+	if !value.Valid {
+		return nil
+	}
+	return &value.Float64
 }
