@@ -827,7 +827,18 @@ test('GM creates, renames, opens, and deletes tables', async ({ page }) => {
   await expect(page.getByRole('link', { name: 'Open My Table', exact: true })).toBeVisible()
 })
 
-test('GM rotates a table link and revokes the previous link', async ({ page, browser }) => {
+test('GM copies an invite code to share a table', async ({ page, context }) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write'])
+  await login(page)
+  await page.getByRole('link', { name: 'Tables', exact: true }).click()
+  await page.getByRole('button', { name: 'Options for My Table', exact: true }).click()
+  await page.getByRole('menuitem', { name: 'Copy invite code for My Table', exact: true }).click()
+  await expect(page.getByText('Invite code copied to clipboard.', { exact: true })).toBeVisible()
+  const inviteURL = await page.evaluate(() => navigator.clipboard.readText())
+  expect(new URL(inviteURL).pathname).toMatch(/^\/tables\/[A-Za-z0-9_-]{43}$/)
+})
+
+test('GM rotates an invite code and revokes the previous code', async ({ page, browser }) => {
   await login(page)
   const oldURL = new URL(page.url()).pathname
   const playerContext = await browser.newContext()
@@ -838,20 +849,26 @@ test('GM rotates a table link and revokes the previous link', async ({ page, bro
     await player.getByRole('button', { name: 'Connect Audio', exact: true }).click()
     await expect(player.getByText('Connected', { exact: true })).toBeVisible()
 
-    await page.getByRole('button', { name: 'Rotate table link', exact: true }).click()
+    await page.getByRole('link', { name: 'Tables', exact: true }).click()
+    await page.getByRole('button', { name: 'Options for My Table', exact: true }).click()
+    await page.getByRole('menuitem', { name: 'Rotate invite code for My Table', exact: true }).click()
     await expect(page.getByText(/connected players will be disconnected/)).toBeVisible()
-    await page.getByRole('button', { name: 'Rotate link', exact: true }).click()
+    await page.getByRole('button', { name: 'Rotate invite code', exact: true }).click()
     await expect(page.getByText(/connected players will be disconnected/)).toHaveCount(0)
-    await expect(page).toHaveURL(/\/tables\/[A-Za-z0-9_-]+$/)
-    const newURL = new URL(page.url()).pathname
+    await expect(page.getByRole('link', { name: 'Open My Table', exact: true })).toHaveAttribute(
+      'href', /^\/tables\/[A-Za-z0-9_-]{43}$/,
+    )
+    const newURL = await page.getByRole('link', { name: 'Open My Table', exact: true }).getAttribute('href')
+    expect(newURL).toBeTruthy()
     expect(newURL).not.toBe(oldURL)
-    await expect(page.getByRole('button', { name: 'Add Track', exact: true })).toBeVisible()
     await expect(player.getByText('Disconnected', { exact: true })).toBeVisible()
 
     await player.goto(oldURL)
     await expect(player.getByText('This table is unavailable or has been deleted.')).toBeVisible()
-    await player.goto(newURL)
+    await player.goto(newURL!)
     await expect(player.getByText('Volume Mixer', { exact: true })).toBeVisible()
+    await page.getByRole('link', { name: 'Open My Table', exact: true }).click()
+    await expect(page.getByRole('button', { name: 'Add Track', exact: true })).toBeVisible()
   } finally {
     await playerContext.close()
   }
@@ -1952,7 +1969,7 @@ async function expectPlaceholderAt(page: Page, target: { x: number; y: number })
     })
     .toBeLessThan(2)
 }
-test('table links share a library but isolate playback, removal, and deletion', async ({
+test('tables share a library but isolate playback, removal, and deletion', async ({
   page, browser, context,
 }) => {
   test.slow()
@@ -1965,18 +1982,24 @@ test('table links share a library but isolate playback, removal, and deletion', 
   await createTable(page, 'Sunday')
   await page.getByRole('link', { name: 'Open Friday', exact: true }).click()
   await addExistingTrack(page, 'Shared Forest')
-  await page.getByRole('button', { name: 'Copy table link', exact: true }).click()
-  await expect(page.getByRole('button', { name: 'Copied to clipboard', exact: true })).toBeVisible()
+  await page.getByRole('link', { name: 'Tables', exact: true }).click()
+  await page.getByRole('button', { name: 'Options for Friday', exact: true }).click()
+  await page.getByRole('menuitem', { name: 'Copy invite code for Friday', exact: true }).click()
+  await expect(page.getByText('Invite code copied to clipboard.', { exact: true })).toBeVisible()
   const fridayLink = await page.evaluate(() => navigator.clipboard.readText())
+  await page.getByRole('link', { name: 'Open Friday', exact: true }).click()
 
   const sundayGM = await context.newPage()
   await sundayGM.goto('/tables')
   await sundayGM.getByRole('link', { name: 'Open Sunday', exact: true }).click()
   await addExistingTrack(sundayGM, 'Shared Forest')
-  await sundayGM.getByRole('button', { name: 'Copy table link', exact: true }).click()
-  await expect(sundayGM.getByRole('button', { name: 'Copied to clipboard', exact: true })).toBeVisible()
+  await sundayGM.getByRole('link', { name: 'Tables', exact: true }).click()
+  await sundayGM.getByRole('button', { name: 'Options for Sunday', exact: true }).click()
+  await sundayGM.getByRole('menuitem', { name: 'Copy invite code for Sunday', exact: true }).click()
+  await expect(sundayGM.getByText('Invite code copied to clipboard.', { exact: true })).toBeVisible()
   const sundayLink = await sundayGM.evaluate(() => navigator.clipboard.readText())
   expect(sundayLink).not.toBe(fridayLink)
+  await sundayGM.getByRole('link', { name: 'Open Sunday', exact: true }).click()
 
   const playerContext = await browser.newContext()
   try {

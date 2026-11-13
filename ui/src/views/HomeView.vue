@@ -32,7 +32,7 @@ onMounted(() => {
 
     <div v-else class="d-flex flex-column align-center">
       <p class="text-body-1 mb-6">
-        Open the table link from your GM, or log in as a Game Master to manage audio for your game.
+        Use the invite code from your GM to open your table, or log in as a Game Master to manage audio for your game.
       </p>
 
       <div class="d-flex flex-wrap justify-center gap-4">

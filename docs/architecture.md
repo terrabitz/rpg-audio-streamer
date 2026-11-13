@@ -164,8 +164,9 @@ the Upload action is enabled.
 Upload results appear as compact, auto-dismissing bottom-center toasts attached
 to the document body, independent of the uploader's app-bar or library placement;
 upload failures remain inline while the dialog is open.
-The table-management list opens a table when its row is clicked; rename and
-delete live in each row's three-dot menu.
+The table-management list opens a table when its row is clicked. Each row's
+three-dot menu copies or rotates the invite code and also contains rename and
+delete actions.
 
 The shared library uses a sortable, paginated metadata table showing each
 track's name, type, and creation time. Row clicks (or keyboard

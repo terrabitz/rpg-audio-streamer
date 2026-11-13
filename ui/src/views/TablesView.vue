@@ -1,19 +1,27 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import type { Table } from '@/client/apiClient'
+import { useBaseUrl } from '@/composables/useBaseUrl'
 import { useAppBar } from '@/composables/useAppBar'
 import { useAuthStore } from '@/stores/auth'
 import { useTableStore } from '@/stores/tables'
 
 const auth = useAuthStore()
 const tables = useTableStore()
+const { getBaseUrl } = useBaseUrl()
 const { setTitle, setActions } = useAppBar()
 const error = ref('')
+const notice = ref('')
+const noticeColor = ref<'success' | 'error'>('success')
 const loading = ref(true)
 const saving = ref(false)
 const showEditor = ref(false)
+const showRotateConfirmation = ref(false)
+const isRotating = ref(false)
 const editing = ref<Table | null>(null)
 const deleting = ref<Table | null>(null)
+const rotating = ref<Table | null>(null)
+const rotateError = ref('')
 const name = ref('')
 
 onMounted(async () => {
@@ -37,6 +45,25 @@ function editTable(table: Table | null) {
   showEditor.value = true
 }
 
+async function copyInviteCode(table: Table) {
+  try {
+    const url = `${getBaseUrl()}/tables/${encodeURIComponent(table.externalID)}`
+    await navigator.clipboard.writeText(url)
+    noticeColor.value = 'success'
+    notice.value = 'Invite code copied to clipboard.'
+  } catch (e) {
+    console.error('Failed to copy invite code:', e)
+    noticeColor.value = 'error'
+    notice.value = 'Unable to copy invite code.'
+  }
+}
+
+function requestInviteCodeRotation(table: Table) {
+  rotating.value = table
+  rotateError.value = ''
+  showRotateConfirmation.value = true
+}
+
 async function save() {
   saving.value = true
   error.value = ''
@@ -49,6 +76,25 @@ async function save() {
     error.value = 'Failed to save table.'
   } finally {
     saving.value = false
+  }
+}
+
+async function rotateInviteCode() {
+  const table = rotating.value
+  if (!table) return
+  isRotating.value = true
+  rotateError.value = ''
+  try {
+    await tables.rotateExternalID(table.externalID)
+    showRotateConfirmation.value = false
+    rotating.value = null
+    noticeColor.value = 'success'
+    notice.value = 'Invite code rotated.'
+  } catch (e) {
+    console.error('Failed to rotate invite code:', e)
+    rotateError.value = 'Unable to rotate invite code.'
+  } finally {
+    isRotating.value = false
   }
 }
 
@@ -87,6 +133,11 @@ async function deleteTable() {
                   @keydown.enter.stop @keydown.space.stop />
               </template>
               <v-list>
+                <v-list-item title="Copy invite code" role="menuitem"
+                  :aria-label="`Copy invite code for ${table.name}`" @click="copyInviteCode(table)" />
+                <v-list-item title="Rotate invite code" role="menuitem"
+                  :aria-label="`Rotate invite code for ${table.name}`"
+                  @click="requestInviteCodeRotation(table)" />
                 <v-list-item title="Rename" role="menuitem" :aria-label="`Rename ${table.name}`"
                   @click="editTable(table)" />
                 <v-list-item title="Delete" role="menuitem" :aria-label="`Delete ${table.name}`"
@@ -96,6 +147,8 @@ async function deleteTable() {
           </template>
         </v-list-item>
       </v-list>
+      <v-snackbar :model-value="!!notice" :color="noticeColor"
+        @update:model-value="notice = ''">{{ notice }}</v-snackbar>
       <v-dialog v-model="showEditor" max-width="450">
         <v-card :title="editing ? 'Rename table' : 'Create table'">
           <v-form @submit.prevent="save">
@@ -110,11 +163,24 @@ async function deleteTable() {
           </v-form>
         </v-card>
       </v-dialog>
+      <v-dialog v-model="showRotateConfirmation" max-width="450">
+        <v-card title="Rotate invite code?">
+          <v-card-text>
+            <v-alert v-if="rotateError" type="error" class="mb-3">{{ rotateError }}</v-alert>
+            The current invite code will stop working and connected players will be disconnected.
+            Anyone who needs access will need the new invite code.
+          </v-card-text>
+          <v-card-actions>
+            <v-btn :disabled="isRotating" @click="showRotateConfirmation = false">Cancel</v-btn>
+            <v-btn color="warning" :loading="isRotating" @click="rotateInviteCode">Rotate invite code</v-btn>
+          </v-card-actions>
+        </v-card>
+      </v-dialog>
       <v-dialog :model-value="!!deleting" max-width="450" @update:model-value="deleting = null">
         <v-card title="Delete table?">
           <v-card-text>
             <v-alert v-if="error" type="error" class="mb-3">{{ error }}</v-alert>
-            Delete {{ deleting?.name }} and its table link? Tracks will remain in the library.
+            Delete {{ deleting?.name }} and its invite code? Tracks will remain in the library.
           </v-card-text>
           <v-card-actions>
             <v-btn :disabled="saving" @click="deleting = null">Cancel</v-btn>
