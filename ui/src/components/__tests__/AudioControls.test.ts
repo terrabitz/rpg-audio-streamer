@@ -11,17 +11,68 @@ const CONFIRMATION = '[role="dialog"][aria-label="Delete track?"]'
 
 afterEach(() => vi.restoreAllMocks())
 
-it('wires paused track controls through the three-dot dialog without play or pause', async () => {
+it('wires paused timeline controls without play, pause, or restart buttons', async () => {
   const { wrapper } = mountControls(false)
   useAudioStore().initTrack('forest', 'Forest', 'Music')
   await wrapper.get('[aria-label="Edit Forest"]').trigger('click')
-  const controls = wrapper.getComponent({ name: 'TrackPlaybackControls' })
-  expect(controls.props('state').isPlaying).toBe(false)
-  expect(controls.props('showPlay')).toBe(false)
+  const controls = wrapper.getComponent({ name: 'TrackTimeline' })
+  expect(controls.props('currentTime')).toBe(0)
+  expect(controls.props('volume')).toBe(100)
+  expect(controls.props('isRepeating')).toBe(true)
+  expect(wrapper.text()).not.toContain('Playback region')
+  expect(wrapper.find('[aria-label="Restart Forest"]').exists()).toBe(false)
+  expect(wrapper.find('[aria-label="Play Forest"]').exists()).toBe(false)
+  expect(wrapper.find('[aria-label="Pause Forest"]').exists()).toBe(false)
   await controls.vm.$emit('volume', 25)
   await controls.vm.$emit('seek', 12)
   expect(wrapper.emitted('volume')).toEqual([[25]])
   expect(wrapper.emitted('seek')).toEqual([[12]])
+  wrapper.unmount()
+})
+
+it('uses the draft track type to show or hide loop-back controls immediately', async () => {
+  const { wrapper } = mountControls()
+  useTrackTypeStore().trackTypes.push({
+    id: 'one-shot', name: 'One-Shot', color: '#123456', isRepeating: false, allowSimultaneousPlay: true,
+  })
+  await wrapper.get('[aria-label="Edit Forest"]').trigger('click')
+  const timeline = wrapper.getComponent({ name: 'TrackTimeline' })
+  await wrapper.getComponent({ name: 'TrackTypeSelector' }).vm.$emit('update:modelValue', 'one-shot')
+  await flushPromises()
+  expect(timeline.props('isRepeating')).toBe(false)
+  expect(wrapper.find('.timeline-handle--loop').exists()).toBe(false)
+  await wrapper.getComponent({ name: 'TrackTypeSelector' }).vm.$emit('update:modelValue', 'music')
+  await flushPromises()
+  expect(timeline.props('isRepeating')).toBe(true)
+  expect(wrapper.find('.timeline-handle--loop').exists()).toBe(true)
+  wrapper.unmount()
+})
+
+it('loads a library timeline without playing and saves only confirmed point edits', async () => {
+  const { wrapper } = mountControls()
+  const audio = useAudioStore()
+  const files = useFileStore()
+  const update = vi.spyOn(files, 'updateTrack').mockImplementation(async (id, settings) => ({
+    ...files.tracks[0]!, ...settings, id,
+  }))
+  await wrapper.get('[aria-label="Edit Forest"]').trigger('click')
+  expect(audio.tracks.forest?.isPlaying).toBe(false)
+  audio.updateTrackState('forest', { duration: 60 })
+  await flushPromises()
+  const timeline = wrapper.getComponent({ name: 'TrackTimeline' })
+  await timeline.vm.$emit('update:modelValue', { startTime: 10, endTime: 50, loopBackTime: 20 })
+  expect(audio.tracks.forest?.playback).toEqual({ startTime: 0, endTime: null, loopBackTime: null })
+  expect(update).not.toHaveBeenCalled()
+  await wrapper.get('[aria-label="Close track controls"]').trigger('click')
+  await wrapper.get('[aria-label="Edit Forest"]').trigger('click')
+  expect(wrapper.getComponent({ name: 'TrackTimeline' }).props('modelValue').startTime).toBe(0)
+  await wrapper.getComponent({ name: 'TrackTimeline' }).vm.$emit('update:modelValue', {
+    startTime: 10, endTime: 50, loopBackTime: 20,
+  })
+  await wrapper.findAll('button').find(button => button.text() === 'Save Changes')!.trigger('click')
+  await flushPromises()
+  expect(update).toHaveBeenCalledWith('forest', { playback: { startTime: 10, endTime: 50, loopBackTime: 20 } })
+  expect(wrapper.emitted('settings')).toEqual([[{ startTime: 10, endTime: 50, loopBackTime: 20 }]])
   wrapper.unmount()
 })
 
@@ -177,7 +228,6 @@ function mountControls(library = true) {
         VIcon: true,
         TrackTypeSelector: true,
         VolumeSlider: true,
-        TrackPlaybackControls: true,
       },
     },
   })

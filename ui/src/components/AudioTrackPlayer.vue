@@ -27,6 +27,8 @@ let disposed = false
 let overlap: { outgoing: number, incoming: number, start: number, end: number } | undefined
 let envelope = 0
 let fade: { from: number, to: number, start: number } | undefined
+let mixedVolume = targetVolume()
+let volumeFade: { from: number, to: number, start: number } | undefined
 
 watch(() => audioStore.tracks[props.fileID]?.isPlaying, syncPlaying)
 watch(() => audioStore.tracks[props.fileID]?.currentTime, () => {
@@ -51,8 +53,11 @@ watch(() => audioStore.tracks[props.fileID]?.isRepeating, (isRepeating) => {
   if (isRepeating && audioStore.tracks[props.fileID]?.isPlaying) bindHLS(1)
   tick()
 })
-watch(() => [audioStore.tracks[props.fileID]?.volume, audioStore.mixMasterVolume, audioStore.mixTypeVolumes],
-  applyVolumes, { deep: true })
+watch(targetVolume, (target) => {
+  const now = performance.now()
+  advanceVolumeFade(now)
+  volumeFade = mixedVolume !== target ? { from: mixedVolume, to: target, start: now } : undefined
+})
 
 onMounted(() => {
   if (!Hls.isSupported()) {
@@ -133,6 +138,7 @@ function tick() {
   const state = audioStore.tracks[props.fileID]
   const media = element(active.value)
   if (disposed || !state || !media || !ready[active.value]) return
+  advanceVolumeFade(performance.now())
   if (fade) {
     const progress = Math.min(1, (performance.now() - fade.start) / 2000)
     envelope = fade.from + (fade.to - fade.from) * progress
@@ -141,7 +147,7 @@ function tick() {
   if (!state.isPlaying) {
     if (!fade) media.pause()
     applyVolumes()
-    audioStore.setFading(props.fileID, !!fade)
+    audioStore.setFading(props.fileID, !!fade || !!volumeFade)
     return
   }
   const region = playbackRegion(state.playback, state.duration)
@@ -158,7 +164,21 @@ function tick() {
   if (overlap && media.currentTime >= overlap.end) finishOverlap()
   else if (!state.isRepeating && media.currentTime >= region.end) finishTrack()
   applyVolumes()
-  if (audioStore.tracks[props.fileID]) audioStore.setFading(props.fileID, !!fade || !!overlap)
+  if (audioStore.tracks[props.fileID]) audioStore.setFading(props.fileID, !!fade || !!overlap || !!volumeFade)
+}
+
+function advanceVolumeFade(now: number) {
+  if (!volumeFade) return
+  const progress = Math.min(1, (now - volumeFade.start) / 2000)
+  mixedVolume = volumeFade.from + (volumeFade.to - volumeFade.from) * progress
+  if (progress === 1) volumeFade = undefined
+}
+
+function targetVolume() {
+  const state = audioStore.tracks[props.fileID]
+  if (!state) return 0
+  return Math.max(0, state.volume / 100 * audioStore.mixMasterVolume / 100 *
+    audioStore.getTypeVolume(state.trackType) / 100)
 }
 
 function startOverlap(loop: number, end: number) {
@@ -192,8 +212,7 @@ function cancelOverlap() {
 function applyVolumes() {
   const state = audioStore.tracks[props.fileID]
   if (!state) return
-  const volume = state.volume / 100 * audioStore.mixMasterVolume / 100 *
-    audioStore.getTypeVolume(state.trackType) / 100 * envelope
+  const volume = mixedVolume * envelope
   const outgoing = overlap ? element(overlap.outgoing) : undefined
   const incoming = overlap ? element(overlap.incoming) : undefined
   const progress = overlap && outgoing && incoming && !incoming.paused && incoming.readyState >= 2

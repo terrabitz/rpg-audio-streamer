@@ -1,7 +1,33 @@
 import type { PlaybackSettings } from '@/client/apiClient'
 
+export type PlaybackPoint = 'start' | 'end' | 'loop'
+
 export function defaultPlayback(): PlaybackSettings {
   return { startTime: 0, endTime: null, loopBackTime: null }
+}
+
+export function movePlaybackPoint(settings: PlaybackSettings, duration: number, point: PlaybackPoint, time: number): PlaybackSettings {
+  if (!Number.isFinite(duration) || duration <= 0 || !Number.isFinite(time)) {
+    throw new RangeError('Playback points require a finite time and a positive track duration.')
+  }
+  const gap = Math.min(0.1, duration)
+  const end = Math.min(settings.endTime ?? duration, duration)
+  const rounded = Math.round(time * 10) / 10
+  const updated = { ...settings }
+  if (point === 'start') {
+    updated.startTime = Math.max(0, Math.min(rounded, end - gap))
+  } else if (point === 'end') {
+    const nextEnd = Math.max(settings.startTime + gap, Math.min(rounded, duration))
+    updated.endTime = time >= duration || nextEnd >= duration ? null : nextEnd
+  } else {
+    updated.loopBackTime = Math.max(settings.startTime, Math.min(rounded, end - gap))
+  }
+  if (updated.loopBackTime !== null) {
+    updated.loopBackTime = Math.max(updated.startTime,
+      Math.min(updated.loopBackTime, (updated.endTime ?? duration) - gap))
+    if (updated.loopBackTime === updated.startTime) updated.loopBackTime = null
+  }
+  return updated
 }
 
 export function playbackError(settings: PlaybackSettings, duration = 0): string {

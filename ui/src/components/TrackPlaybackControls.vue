@@ -1,7 +1,7 @@
 <template>
   <div class="track-playback-controls" :class="{ 'has-play': showPlay }" @click.stop>
     <VolumeSlider :model-value="state.volume" :aria-label="`Volume for ${name}`"
-      thumb-size="8" track-size="2" class="track-volume ma-0" @update:model-value="$emit('volume', $event)" />
+      thumb-size="18" track-size="6" class="track-volume ma-0" @update:model-value="$emit('volume', $event)" />
     <div class="d-flex align-start ga-1">
       <v-btn v-if="showPlay" :icon="state.isPlaying ? '$pause' : '$play'" size="x-small" variant="text"
         :aria-label="`${state.isPlaying ? 'Pause' : 'Play'} ${name}`" :aria-pressed="state.isPlaying"
@@ -14,11 +14,12 @@
       <div class="track-position flex-grow-1">
         <v-slider :model-value="state.currentTime" :max="state.playback?.endTime ?? state.duration"
           :min="state.playback?.startTime ?? 0" step="1"
-          :disabled="state.duration <= 0" thumb-size="8" track-size="2" density="compact" hide-details
+          :ticks="loopTicks" :show-ticks="Object.keys(loopTicks).length ? 'always' : false" tick-size="2"
+          :disabled="state.duration <= 0" thumb-size="18" track-size="6" density="compact" hide-details
           :aria-label="`Playback position for ${name}`"
-          :aria-valuetext="`${formatTime(state.currentTime)} of ${formatTime(state.duration)}`"
+          :aria-valuetext="`${formatTime(elapsedTime)} of ${formatTime(regionDuration)}`"
           class="ma-0" @update:model-value="$emit('seek', $event)" />
-        <div class="position-time text-center">{{ formatTime(state.currentTime) }} / {{ formatTime(state.duration) }}</div>
+        <div class="position-time text-center">{{ formatTime(elapsedTime) }} / {{ formatTime(regionDuration) }}</div>
       </div>
       <v-btn v-if="showPlay" icon="$restart" size="x-small" variant="text" :aria-label="`Restart ${name}`"
         title="Restart track" @click="$emit('seek', state.playback?.startTime ?? 0)" />
@@ -27,10 +28,12 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
 import type { AudioTrack } from '@/stores/audio'
+import { playbackRegion } from '@/composables/playback'
 import VolumeSlider from './VolumeSlider.vue'
 
-defineProps<{
+const props = defineProps<{
   state: AudioTrack
   name: string
   showPlay?: boolean
@@ -43,6 +46,19 @@ defineEmits<{
   seek: [time: number]
 }>()
 
+const region = computed(() => playbackRegion(props.state.playback, props.state.duration))
+const regionDuration = computed(() => Math.max(0, region.value.end - region.value.start))
+const elapsedTime = computed(() => Math.max(0, Math.min(
+  props.state.currentTime - region.value.start, regionDuration.value,
+)))
+
+const loopTicks = computed(() => {
+  const loop = props.state.playback?.loopBackTime
+  const start = props.state.playback?.startTime ?? 0
+  return props.state.isRepeating && props.state.duration > 0 && loop != null && loop > start
+    ? { [loop]: '' } : {}
+})
+
 function formatTime(seconds: number): string {
   const mins = Math.floor(seconds / 60)
   const secs = Math.floor(seconds % 60)
@@ -53,6 +69,25 @@ function formatTime(seconds: number): string {
 <style scoped>
 .track-position {
   min-width: 0;
+}
+
+.track-position :deep(.v-slider-track__tick) {
+  top: 50%;
+  height: 8px;
+  margin-top: 0;
+  margin-inline-start: -1px;
+  transform: translateY(-50%);
+  border-radius: 1px;
+  background-color: rgb(var(--v-theme-warning));
+  pointer-events: none;
+}
+
+.track-position :deep(.v-slider-track__tick--first) {
+  inset-inline-start: 0;
+}
+
+.track-position :deep(.v-slider-track__tick--last) {
+  inset-inline-start: 100%;
 }
 
 .has-play .track-volume {

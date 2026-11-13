@@ -168,10 +168,21 @@ how many tables lose the track and must be confirmed; unused tracks delete
 immediately. Deletion is blocked if the usage lookup fails. The deletion compares the confirmed count
 atomically with the current associations; if it changed, the GM must check
 usage again before deleting.
-The audio-controls dialog edits a track's beginning, optional end, and optional
-loop-back point in seconds. These playback settings are stored with the shared
-library track and apply in every table that uses it; blank optional points use
-the track duration or configured beginning as appropriate.
+The audio-controls dialog combines seeking and playback-region editing on one
+full-duration timeline. Beginning and end handles sit above the bar; repeating
+types also have a loop-back handle below it. The draft type selection controls
+its visibility without discarding saved loop-back points. Areas outside the
+selected region are dimmed and cannot be
+selected for seeking. Handles support mouse/touch dragging and keyboard adjustment.
+The handles display their timestamps directly. Moving a boundary keeps the
+loop-back point inside the region. The end defaults to the track duration;
+moving the loop-back handle to the beginning reanchors it so it follows later
+beginning adjustments. Moving the beginning to zero and the end to the full
+duration restores the full track without separate reset controls. Point edits
+remain local to the dialog until saved; closing without saving discards them.
+These settings are stored with the shared library track and apply in every table.
+Opening library controls loads audio metadata without starting playback or
+sending synchronization messages.
 
 The table route resolves authentication before mounting a role-specific view.
 The application shell checks authentication on non-table initial navigation;
@@ -187,7 +198,7 @@ reauthentication.
 | `stores/websocket.ts` | Socket connection/reconnection, message handlers and history |
 | `stores/debug.ts` | Development-only debug panel state |
 | `composables/` | Shared app-bar state, browser origin, immutable partial-object patches |
-| `FileList`, `AudioControls`, `PlayingTrackList`, `TrackPlaybackControls`, `AudioUploader` | Shared-library metadata management and uploads; table associations, responsive now-playing surfaces, and shared playback controls |
+| `FileList`, `AudioControls`, `PlayingTrackList`, `TrackPlaybackControls`, `TrackTimeline`, `AudioUploader` | Shared-library metadata management and uploads; table associations, responsive now-playing surfaces, and shared playback controls |
 | `AudioPlayer`, `AudioTrackPlayer` | Per-track HLS.js media elements and playback synchronization |
 | `VolumeMixer`, `VolumeSlider` | Active master and per-type mixing; player preferences stay local |
 
@@ -214,6 +225,9 @@ their track-type color; paused tiles retain the neutral surface. Tile names stay
 on one line with ellipsis overflow and a full-name hover title.
 A currently-playing sidebar lists active table tracks
 with volume, playback-position, elapsed/total time, pause, and restart controls.
+The sidebar timer and seek bar's accessible value text measure elapsed time from
+the configured beginning and total time to the configured end. Seeking still
+uses absolute positions within the source audio.
 Compact cards use a single-line name, tightly spaced controls, and a 260 px
 desktop sidebar to preserve grid space. `PlayingTrackList` renders the same
 cards in the sidebar and mobile drawer. The GM table fills the viewport width
@@ -232,14 +246,18 @@ Vuetify's `smAndDown` state controls both the sidebar/drawer selection and the
 grid's mobile layout so they switch at the same breakpoint.
 Paused, completed, removed, and type-exclusive displaced tracks leave the sidebar;
 starting a track adds it automatically. Each card's always-visible three-dot
-button opens a track-settings dialog with the same volume, seek, and restart
-controls, but no play/pause button, so paused tracks can be prepared before
-playback. Both surfaces share `TrackPlaybackControls` and the same state and
-synchronization handlers. Seeking preserves the playing/paused state; playing
-tracks synchronize volume and seek changes to listening players. Restart seeks
-to the beginning. In the settings dialog, restart sits to the left of the seek
-slider, aligned beneath the volume icon. The metadata dialog retains the
-track-type selector.
+button opens a track-settings dialog with a volume slider aligned to the
+timeline, but no play/pause or restart button, so paused tracks can be prepared before playback.
+`TrackPlaybackControls` supplies the compact sidebar controls; `TrackTimeline`
+supplies the editor. Both use the same state and synchronization handlers.
+Seeking preserves the playing/paused state; playing tracks synchronize volume
+and seek changes to listening players. Sidebar restart seeks to the beginning.
+Repeating tracks with a loop-back point distinct from the beginning show a small
+orange tick on the compact seek bar. Anchored loop-back points have no tick.
+Sidebar volume and seek bars use 6 px tracks and 18 px thumbs, matching the editor.
+The editor's volume and seek bars share the same width, thickness, and thumb size, with
+elapsed/total time centered vertically to the right of the seek bar. The metadata
+dialog retains the track-type selector.
 A small top-left drag handle enables mouse or touch dragging via `@dnd-kit/vue`
 after a 4 px movement. `SortableTrack` registers each grid cell and its handle.
 The lifted card follows the pointer while a dashed insertion placeholder moves
@@ -284,7 +302,10 @@ configured beginning and stops or loops at the configured end. Repeating tracks
 use a second HLS media element to crossfade over a global two-second interval
 (shortened for shorter loop regions), starting the incoming source at the
 loop-back point or configured beginning. Significant seek differences are
-reconciled. Removing a media component destroys its HLS instances and clears
+reconciled. Track, master, and type-volume changes ramp the mixed gain over two
+seconds independently of play/pause fades and loop crossfades. A new adjustment
+starts from the current interpolated gain, including mute and non-repeating
+tracks. Removing a media component destroys its HLS instances and clears
 playback timers; queued media events cannot recreate deleted track state.
 Playback is ephemeral browser state, not persisted in SQLite or recovered by
 the server after every GM disconnect. Opening a table restores its saved mix

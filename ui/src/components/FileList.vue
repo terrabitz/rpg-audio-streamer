@@ -20,7 +20,7 @@
         </template>
         <template #[`item.actions`]="{ item }">
           <AudioControls :fileID="item.id" :fileName="item.name" :deleteTrack="count => deleteFile(item, count)" library
-            @settings="settings => handleSettings(item.id, settings)">
+            @settings="settings => handleSettings(item.id, settings)" @seek="time => handleSeek(item.id, time)">
             <template #activator="{ open }">
               <v-btn icon="$dotsVertical" variant="text" size="small" :aria-label="`Edit ${item.name}`"
                 @click.stop="open" />
@@ -330,7 +330,7 @@ function handleSettings(fileID: string, playback: PlaybackSettings) {
   audioStore.updateTrackState(fileID, { playback, currentTime })
   if (!props.library && wsStore.isConnected) {
     wsStore.sendMessage('syncTrack', {
-      ...audioStore.tracks[fileID], volume: state.volume * audioStore.masterVolume / 100,
+      ...audioStore.tracks[fileID], volume: state.volume * audioStore.mixMasterVolume / 100,
     })
   }
 }
@@ -344,7 +344,7 @@ const handleVolume = (fileID: string, volume: number) => {
 
 const handleSeek = (fileID: string, time: number) => {
   audioStore.updateTrackState(fileID, { currentTime: time })
-  if (audioStore.tracks[fileID]?.isPlaying) {
+  if (!props.library && audioStore.tracks[fileID]?.isPlaying) {
     debouncedSendMessage('syncTrack', { fileID, currentTime: time })
   }
 }

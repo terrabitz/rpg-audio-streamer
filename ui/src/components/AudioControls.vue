@@ -11,7 +11,7 @@
       </div>
     </slot>
 
-    <v-dialog v-model="showControls" max-width="400px" :persistent="isDeleting">
+    <v-dialog v-model="showControls" max-width="480px" :persistent="isDeleting">
       <v-card>
         <v-card-title class="text-body-1">
           <v-btn icon="$close" size="small" variant="text" aria-label="Close track controls"
@@ -22,17 +22,11 @@
           <v-text-field v-model="editName" label="Track Name" variant="underlined" hide-details
             class="pa-0 ma-0"></v-text-field>
           <TrackTypeSelector v-model="editTrackType" />
-          <div class="text-subtitle-2 mt-3 mb-2">Playback region</div>
-          <v-text-field v-model="editStart" label="Beginning (seconds)" type="number" min="0" step="0.1"
-            placeholder="0" clearable density="compact" />
-          <v-text-field v-model="editEnd" label="End (seconds)" type="number" min="0" step="0.1"
-            placeholder="Track end" clearable density="compact" />
-          <v-text-field v-model="editLoop" label="Loop-back point (seconds)" type="number" min="0" step="0.1"
-            placeholder="Beginning" clearable density="compact" />
-          <p class="text-caption mb-3">Blank points use the track beginning or end. Repeating tracks overlap by 2 seconds
-            (shorter for small regions). Settings apply in every table.</p>
           <v-alert v-if="regionError" type="error" class="mb-3">{{ regionError }}</v-alert>
-          <TrackPlaybackControls v-if="audioState && !props.library" :state="audioState" :name="props.fileName"
+          <TrackTimeline v-if="audioState" v-model="editedPlayback" :duration="audioState.duration"
+            :current-time="audioState.currentTime" :name="props.fileName"
+            :is-repeating="trackTypeStore.getTypeById(editTrackType)?.isRepeating"
+            :volume="props.library ? undefined : audioState.volume" :disabled="isSaving || isDeleting" class="mt-3"
             @volume="$emit('volume', $event)" @seek="$emit('seek', $event)" />
         </v-card-text>
         <v-divider></v-divider>
@@ -76,14 +70,14 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watchEffect } from 'vue';
+import { computed, ref, watch, watchEffect } from 'vue';
 import type { PlaybackSettings, UpdateTrackRequest } from '@/client/apiClient';
 import { defaultPlayback, playbackError } from '@/composables/playback';
 import { useAudioStore } from '../stores/audio';
 import { TrackUsageChangedError, useFileStore } from '../stores/files';
 import { useTrackTypeStore } from '../stores/trackTypes';
 import TrackTypeSelector from './TrackTypeSelector.vue';
-import TrackPlaybackControls from './TrackPlaybackControls.vue';
+import TrackTimeline from './TrackTimeline.vue';
 
 const props = defineProps<{
   fileName: string
@@ -111,22 +105,18 @@ const isActive = computed(() => audioState.value?.isPlaying);
 
 const editName = ref(props.fileName);
 const editTrackType = ref(trackType.value?.id || '');
-const editStart = ref<string | number | null>(null);
-const editEnd = ref<string | number | null>(null);
-const editLoop = ref<string | number | null>(null);
-const editedPlayback = computed<PlaybackSettings>(() => ({
-  startTime: optionalNumber(editStart.value) ?? 0,
-  endTime: optionalNumber(editEnd.value),
-  loopBackTime: optionalNumber(editLoop.value),
-}));
+const editedPlayback = ref<PlaybackSettings>(defaultPlayback());
 const regionError = computed(() => playbackError(editedPlayback.value, audioState.value?.duration));
-
-function optionalNumber(value: string | number | null): number | null {
-  return value === null || value === '' ? null : Number(value);
-}
 
 function openControls() {
   error.value = '';
+  if (props.library && track.value && !audioState.value) {
+    audioStore.initTrack(props.fileID, props.fileName, trackType.value?.name);
+    audioStore.updateTrackState(props.fileID, {
+      playback: track.value.playback ?? defaultPlayback(),
+      currentTime: track.value.playback?.startTime ?? 0,
+    });
+  }
   showControls.value = true;
 }
 
@@ -138,14 +128,11 @@ const hasChanges = computed(() => {
 });
 
 // Reset edit values when dialog opens
-watchEffect(() => {
-  if (showControls.value && track.value) {
+watch(showControls, (open) => {
+  if (open && track.value) {
     editName.value = track.value.name;
     editTrackType.value = track.value.typeID;
-    const playback = track.value.playback ?? defaultPlayback();
-    editStart.value = playback.startTime || null;
-    editEnd.value = playback.endTime;
-    editLoop.value = playback.loopBackTime;
+    editedPlayback.value = { ...(track.value.playback ?? defaultPlayback()) };
   }
 });
 
