@@ -95,7 +95,8 @@ They cannot access other tables or list the library.
 
 SQLite stores metadata, not media bytes:
 
-- `tracks`: UUID ID, creation timestamp, display name, disk path, track-type ID.
+- `tracks`: UUID ID, creation timestamp, display name, disk path, track-type ID,
+  and shared playback-region points (beginning, optional end, optional loop-back).
 - `track_types`: UUID ID, name, color, repeat policy, simultaneous-play policy,
   and creation timestamp.
 - `game_tables`: UUID ID, name, unique invite token, and JSON GM mixing/ordering settings.
@@ -167,6 +168,10 @@ how many tables lose the track and must be confirmed; unused tracks delete
 immediately. Deletion is blocked if the usage lookup fails. The deletion compares the confirmed count
 atomically with the current associations; if it changed, the GM must check
 usage again before deleting.
+The audio-controls dialog edits a track's beginning, optional end, and optional
+loop-back point in seconds. These playback settings are stored with the shared
+library track and apply in every table that uses it; blank optional points use
+the track duration or configured beginning as appropriate.
 
 The table route resolves authentication before mounting a role-specific view.
 The application shell checks authentication on non-table initial navigation;
@@ -273,11 +278,14 @@ Music tracks, while Ambiance and One-Shot can overlap. GM master volume is
 applied to outgoing synchronization. Each listener applies its own master
 and per-type multipliers to incoming volume.
 
-HLS.js binds authenticated playlists to hidden video elements. Track state
-controls play/pause, seeking, looping, and volume. Repeating tracks fade over
-approximately two seconds; significant seek differences are reconciled.
-Removing a media component destroys its HLS instance and clears playback
-timers; queued media events cannot recreate deleted track state.
+HLS.js binds authenticated playlists to hidden media elements. Track state
+controls play/pause, seeking, looping, and volume. Playback starts at the
+configured beginning and stops or loops at the configured end. Repeating tracks
+use a second HLS media element to crossfade over a global two-second interval
+(shortened for shorter loop regions), starting the incoming source at the
+loop-back point or configured beginning. Significant seek differences are
+reconciled. Removing a media component destroys its HLS instances and clears
+playback timers; queued media events cannot recreate deleted track state.
 Playback is ephemeral browser state, not persisted in SQLite or recovered by
 the server after every GM disconnect. Opening a table restores its saved mix
 and layout with every track stopped at the beginning.

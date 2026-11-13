@@ -22,6 +22,16 @@
           <v-text-field v-model="editName" label="Track Name" variant="underlined" hide-details
             class="pa-0 ma-0"></v-text-field>
           <TrackTypeSelector v-model="editTrackType" />
+          <div class="text-subtitle-2 mt-3 mb-2">Playback region</div>
+          <v-text-field v-model="editStart" label="Beginning (seconds)" type="number" min="0" step="0.1"
+            placeholder="0" clearable density="compact" />
+          <v-text-field v-model="editEnd" label="End (seconds)" type="number" min="0" step="0.1"
+            placeholder="Track end" clearable density="compact" />
+          <v-text-field v-model="editLoop" label="Loop-back point (seconds)" type="number" min="0" step="0.1"
+            placeholder="Beginning" clearable density="compact" />
+          <p class="text-caption mb-3">Blank points use the track beginning or end. Repeating tracks overlap by 2 seconds
+            (shorter for small regions). Settings apply in every table.</p>
+          <v-alert v-if="regionError" type="error" class="mb-3">{{ regionError }}</v-alert>
           <TrackPlaybackControls v-if="audioState && !props.library" :state="audioState" :name="props.fileName"
             @volume="$emit('volume', $event)" @seek="$emit('seek', $event)" />
         </v-card-text>
@@ -36,7 +46,7 @@
           <v-spacer />
 
           <v-btn color="primary" variant="text" prepend-icon="$save" @click="saveTrackChanges" :loading="isSaving"
-            :disabled="!hasChanges || isDeleting">
+            :disabled="!hasChanges || !!regionError || isDeleting">
             Save Changes
           </v-btn>
         </v-card-actions>
@@ -67,6 +77,8 @@
 
 <script setup lang="ts">
 import { computed, ref, watchEffect } from 'vue';
+import type { PlaybackSettings, UpdateTrackRequest } from '@/client/apiClient';
+import { defaultPlayback, playbackError } from '@/composables/playback';
 import { useAudioStore } from '../stores/audio';
 import { TrackUsageChangedError, useFileStore } from '../stores/files';
 import { useTrackTypeStore } from '../stores/trackTypes';
@@ -99,6 +111,19 @@ const isActive = computed(() => audioState.value?.isPlaying);
 
 const editName = ref(props.fileName);
 const editTrackType = ref(trackType.value?.id || '');
+const editStart = ref<string | number | null>(null);
+const editEnd = ref<string | number | null>(null);
+const editLoop = ref<string | number | null>(null);
+const editedPlayback = computed<PlaybackSettings>(() => ({
+  startTime: optionalNumber(editStart.value) ?? 0,
+  endTime: optionalNumber(editEnd.value),
+  loopBackTime: optionalNumber(editLoop.value),
+}));
+const regionError = computed(() => playbackError(editedPlayback.value, audioState.value?.duration));
+
+function optionalNumber(value: string | number | null): number | null {
+  return value === null || value === '' ? null : Number(value);
+}
 
 function openControls() {
   error.value = '';
@@ -108,7 +133,8 @@ function openControls() {
 // Computed property to check if there are any changes to save
 const hasChanges = computed(() => {
   if (!track.value) return false;
-  return editName.value !== track.value.name || editTrackType.value !== track.value.typeID;
+  return editName.value !== track.value.name || editTrackType.value !== track.value.typeID ||
+    JSON.stringify(editedPlayback.value) !== JSON.stringify(track.value.playback ?? defaultPlayback());
 });
 
 // Reset edit values when dialog opens
@@ -116,6 +142,10 @@ watchEffect(() => {
   if (showControls.value && track.value) {
     editName.value = track.value.name;
     editTrackType.value = track.value.typeID;
+    const playback = track.value.playback ?? defaultPlayback();
+    editStart.value = playback.startTime || null;
+    editEnd.value = playback.endTime;
+    editLoop.value = playback.loopBackTime;
   }
 });
 
@@ -166,6 +196,10 @@ async function confirmDelete(expectedTableCount: number | null) {
 
 async function saveTrackChanges() {
   error.value = ''
+  if (regionError.value) {
+    error.value = regionError.value;
+    return;
+  }
   if (!track.value) {
     console.warn('Cannot save track changes: track not found');
     return;
@@ -175,7 +209,7 @@ async function saveTrackChanges() {
     isSaving.value = true;
 
     // Only update if values have changed
-    const updates: { name?: string; typeID?: string } = {};
+    const updates: Omit<UpdateTrackRequest, 'id'> = {};
 
     if (editName.value !== track.value.name) {
       updates.name = editName.value;
@@ -184,17 +218,22 @@ async function saveTrackChanges() {
     if (editTrackType.value !== track.value.typeID) {
       updates.typeID = editTrackType.value;
     }
+    if (JSON.stringify(editedPlayback.value) !== JSON.stringify(track.value.playback ?? defaultPlayback())) {
+      updates.playback = editedPlayback.value;
+    }
 
     // Only make API call if something has changed
     if (Object.keys(updates).length > 0) {
       const updatedTrack = await fileStore.updateTrack(track.value.id, updates);
+      if (updatedTrack) emit('settings', updatedTrack.playback ?? defaultPlayback());
 
       // Update audio track state if track type changed (may affect isRepeating)
       if (updates.typeID && updatedTrack) {
         const newTrackType = trackTypeStore.getTypeById(updatedTrack.typeID);
         if (newTrackType) {
           audioStore.updateTrackState(props.fileID, {
-            isRepeating: newTrackType.isRepeating
+            isRepeating: newTrackType.isRepeating,
+            trackType: newTrackType.name,
           });
         }
       }
@@ -220,9 +259,10 @@ watchEffect(() => {
   }
 });
 
-defineEmits<{
+const emit = defineEmits<{
   (e: 'volume', volume: number): void
   (e: 'seek', time: number): void
+  (e: 'settings', playback: PlaybackSettings): void
 }>();
 
 </script>

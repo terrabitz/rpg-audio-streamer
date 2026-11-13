@@ -10,9 +10,10 @@
         <v-icon v-else :icon="state.isPlaying ? '$pause' : '$play'" />
       </v-btn>
       <v-btn v-else icon="$restart" size="x-small" variant="text" :aria-label="`Restart ${name}`"
-        title="Restart track" @click="$emit('seek', 0)" />
+        title="Restart track" @click="$emit('seek', state.playback?.startTime ?? 0)" />
       <div class="track-position flex-grow-1">
-        <v-slider :model-value="state.currentTime" :max="state.duration" min="0" step="1"
+        <v-slider :model-value="state.currentTime" :max="state.playback?.endTime ?? state.duration"
+          :min="state.playback?.startTime ?? 0" step="0.1"
           :disabled="state.duration <= 0" thumb-size="8" track-size="2" density="compact" hide-details
           :aria-label="`Playback position for ${name}`"
           :aria-valuetext="`${formatTime(state.currentTime)} of ${formatTime(state.duration)}`"
@@ -20,7 +21,7 @@
         <div class="position-time text-center">{{ formatTime(state.currentTime) }} / {{ formatTime(state.duration) }}</div>
       </div>
       <v-btn v-if="showPlay" icon="$restart" size="x-small" variant="text" :aria-label="`Restart ${name}`"
-        title="Restart track" @click="$emit('seek', 0)" />
+        title="Restart track" @click="$emit('seek', state.playback?.startTime ?? 0)" />
     </div>
   </div>
 </template>

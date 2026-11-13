@@ -24,7 +24,7 @@ const server = spawn(
   [
     'serve',
     '--port',
-    '18080',
+    process.env.E2E_API_PORT ?? '18080',
     '--dev-mode',
     '--root-username',
     'e2e-gm',

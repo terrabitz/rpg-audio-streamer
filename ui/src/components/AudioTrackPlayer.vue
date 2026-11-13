@@ -1,306 +1,268 @@
 <template>
-  <video :ref="el => videoElement = el as HTMLVideoElement" style="display: none;" @ended="handleEnded"
-    @timeupdate="handleTimeUpdate" @loadedmetadata="handleLoadedMetadata" />
+  <video ref="primary" :data-active="active === 0 && audioStore.tracks[props.fileID]?.isPlaying"
+    style="display: none;" @ended="handleEnded(0)" @timeupdate="handleTimeUpdate(0)"
+    @loadedmetadata="handleMetadata(0)" />
+  <audio ref="secondary" :data-active="active === 1 && audioStore.tracks[props.fileID]?.isPlaying"
+    style="display: none;" @ended="handleEnded(1)" @timeupdate="handleTimeUpdate(1)"
+    @loadedmetadata="handleMetadata(1)" />
 </template>
 
 <script setup lang="ts">
-import Hls, { type HlsConfig } from 'hls.js';
-import { onBeforeUnmount, ref, shallowRef, watch } from 'vue';
-import { useAudioStore, type AudioTrack } from '../stores/audio';
+import Hls, { type HlsConfig } from 'hls.js'
+import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { defaultPlayback, playbackError, playbackRegion } from '@/composables/playback'
+import { useAudioStore, type AudioTrack } from '../stores/audio'
 
 const props = defineProps<{ fileID: string, token?: string }>()
 const emit = defineEmits<{ error: [message: string] }>()
 const audioStore = useAudioStore()
-const videoElement = shallowRef<HTMLVideoElement | null>(null)
+const primary = ref<HTMLVideoElement | null>(null)
+const secondary = ref<HTMLAudioElement | null>(null)
+const active = ref(0)
+const players: Hls[] = []
+const ready = [false, false]
+const bound = [false, false]
+let timer: ReturnType<typeof setInterval> | undefined
+let disposed = false
+let overlap: { outgoing: number, incoming: number, start: number, end: number } | undefined
+let envelope = 0
+let fade: { from: number, to: number, start: number } | undefined
 
-const MIN_SEEK_SKEW = 0.5
-
-const MIN_VOLUME_SKEW = 0.01
-const FADE_DURATION = 2000 // 2 seconds
-const FADE_STEP_DURATION = 16 // 16ms per step
-const FADE_STEPS = Math.ceil(FADE_DURATION / FADE_STEP_DURATION)
-let fadeTimer: ReturnType<typeof setInterval> | undefined
-let resetTimer: ReturnType<typeof setTimeout> | undefined
-let hls: Hls | undefined
-const hlsReady = ref(false)
-
-watch(videoElement, async (el) => {
-  if (!el) return
-
-  console.log("registering video element", props.fileID)
-  await startAudioSync(props.fileID, el)
-})
-
-watch(() => audioStore.tracks[props.fileID]?.isPlaying, () => {
-  if (!hlsReady.value || !videoElement.value) return
-  syncIsPlaying(props.fileID, videoElement.value)
-})
-
-watch(() => audioStore.tracks[props.fileID]?.volume, () => {
-  if (!hlsReady.value || !videoElement.value) return
-  syncVolume(props.fileID, videoElement.value)
-})
-
-watch(() => audioStore.mixMasterVolume, () => {
-  if (!hlsReady.value || fadeTimer) return
-  syncVolumeImmediate(props.fileID)
-})
-
-watch(() => audioStore.mixTypeVolumes, () => {
-  if (!hlsReady.value || fadeTimer) return
-  syncVolumeImmediate(props.fileID)
-}, { deep: true })
-
-watch(() => audioStore.tracks[props.fileID]?.isRepeating, () => {
-  if (!hlsReady.value || !videoElement.value) return
-  syncRepeating(props.fileID, videoElement.value)
-})
-
+watch(() => audioStore.tracks[props.fileID]?.isPlaying, syncPlaying)
 watch(() => audioStore.tracks[props.fileID]?.currentTime, () => {
-  if (!hlsReady.value || !videoElement.value) return
-  syncCurrentTime(props.fileID, videoElement.value)
-})
-
-onBeforeUnmount(() => {
-  if (fadeTimer !== undefined) {
-    clearInterval(fadeTimer)
-  }
-  clearTimeout(resetTimer)
-  hls?.destroy()
-  if (videoElement.value) {
-    videoElement.value.pause()
-    videoElement.value.src = ''
+  const state = audioStore.tracks[props.fileID]
+  const media = element(active.value)
+  if (!state || !media || !ready[active.value]) return
+  if (Math.abs(media.currentTime - state.currentTime) > 0.5) {
+    cancelOverlap()
+    media.currentTime = state.currentTime
   }
 })
+watch([
+  () => audioStore.tracks[props.fileID]?.playback?.startTime,
+  () => audioStore.tracks[props.fileID]?.playback?.endTime,
+  () => audioStore.tracks[props.fileID]?.playback?.loopBackTime,
+], () => {
+  cancelOverlap()
+  syncPosition()
+})
+watch(() => audioStore.tracks[props.fileID]?.isRepeating, (isRepeating) => {
+  cancelOverlap()
+  if (isRepeating && audioStore.tracks[props.fileID]?.isPlaying) bindHLS(1)
+  tick()
+})
+watch(() => [audioStore.tracks[props.fileID]?.volume, audioStore.mixMasterVolume, audioStore.mixTypeVolumes],
+  applyVolumes, { deep: true })
 
-// startAudioSync sets up the HLS.js player
-async function startAudioSync(fileID: string, videoElement: HTMLVideoElement) {
-  const source = `/api/v1/stream/${fileID}/index.m3u8`
+onMounted(() => {
   if (!Hls.isSupported()) {
     reportPlaybackError(new Error('HLS.js is not supported in this browser.'))
     return
   }
+  bindHLS(0)
+  timer = setInterval(tick, 16)
+})
 
-  bindHLS(source, props.token, videoElement)
-}
-
-function bindHLS(source: string, token: string | undefined, videoElement: HTMLVideoElement): void {
-  let options: Partial<HlsConfig> = {}
-  if (token) {
-    options = {
-      xhrSetup: function (xhr) {
-        xhr.setRequestHeader('Authorization', `Bearer ${token}`)
-      }
-    }
+onBeforeUnmount(() => {
+  disposed = true
+  clearInterval(timer)
+  for (const player of players) player.destroy()
+  for (const media of [primary.value, secondary.value]) {
+    if (!media) continue
+    media.pause()
+    media.src = ''
   }
-  hls = new Hls(options)
-  hls.loadSource(source)
-  hls.attachMedia(videoElement)
-  hls.on(Hls.Events.MANIFEST_PARSED, () => {
-    syncAll(videoElement)
-    hlsReady.value = true
+  if (audioStore.tracks[props.fileID]) audioStore.setFading(props.fileID, false)
+})
+
+function bindHLS(index: number) {
+  if (bound[index]) return
+  const media = element(index)
+  if (!media) return
+  bound[index] = true
+  const options: Partial<HlsConfig> = props.token ? {
+    xhrSetup(xhr) { xhr.setRequestHeader('Authorization', `Bearer ${props.token}`) },
+  } : {}
+  const player = new Hls(options)
+  players.push(player)
+  media.volume = 0
+  player.loadSource(`/api/v1/stream/${props.fileID}/index.m3u8`)
+  player.attachMedia(media)
+  player.on(Hls.Events.MANIFEST_PARSED, () => {
+    if (disposed) return
+    ready[index] = true
+    if (index === active.value) {
+      syncPosition()
+      syncPlaying()
+    }
   })
-  hls.on(Hls.Events.LEVEL_LOADED, (_, data) => {
-    // Once we figure out the total duration, update the store
-    updateDuration(data.details.totalduration)
-  })
-  hls.on(Hls.Events.ERROR, (_, data) => {
+  player.on(Hls.Events.LEVEL_LOADED, (_, data) => updateDuration(data.details.totalduration))
+  player.on(Hls.Events.ERROR, (_, data) => {
     if (data.fatal) reportPlaybackError(data)
   })
 }
 
+function syncPlaying() {
+  const state = audioStore.tracks[props.fileID]
+  const media = element(active.value)
+  if (!state || !media || !ready[active.value] || disposed) return
+  if (state.isPlaying && state.isRepeating) bindHLS(1)
+  if (!state.isPlaying) cancelOverlap()
+  const target = state.isPlaying ? 1 : 0
+  fade = state.isRepeating && envelope !== target
+    ? { from: envelope, to: target, start: performance.now() } : undefined
+  if (!fade) envelope = target
+  if (state.isPlaying && media.paused) {
+    syncPosition()
+    void media.play().catch(reportPlaybackError)
+  }
+  tick()
+}
+
+function syncPosition() {
+  const state = audioStore.tracks[props.fileID]
+  const media = element(active.value)
+  if (!state || !media) return
+  const { start, end } = playbackRegion(state.playback, state.duration)
+  const time = Math.max(start, state.currentTime)
+  media.currentTime = end > start ? Math.min(time, end) : time
+  updatePlaybackState({ currentTime: media.currentTime })
+}
+
+function tick() {
+  const state = audioStore.tracks[props.fileID]
+  const media = element(active.value)
+  if (disposed || !state || !media || !ready[active.value]) return
+  if (fade) {
+    const progress = Math.min(1, (performance.now() - fade.start) / 2000)
+    envelope = fade.from + (fade.to - fade.from) * progress
+    if (progress === 1) fade = undefined
+  }
+  if (!state.isPlaying) {
+    if (!fade) media.pause()
+    applyVolumes()
+    audioStore.setFading(props.fileID, !!fade)
+    return
+  }
+  const region = playbackRegion(state.playback, state.duration)
+  if (region.end <= 0) return
+  const error = playbackError(state.playback ?? defaultPlayback(), state.duration)
+  if (error) {
+    reportPlaybackError(new Error(error))
+    return
+  }
+  if (state.isRepeating && !overlap && ready[1 - active.value] && !media.paused &&
+      media.currentTime >= region.end - region.fade) {
+    startOverlap(region.loop, region.end)
+  }
+  if (overlap && media.currentTime >= overlap.end) finishOverlap()
+  else if (!state.isRepeating && media.currentTime >= region.end) finishTrack()
+  applyVolumes()
+  if (audioStore.tracks[props.fileID]) audioStore.setFading(props.fileID, !!fade || !!overlap)
+}
+
+function startOverlap(loop: number, end: number) {
+  const outgoing = element(active.value)
+  const incoming = element(1 - active.value)
+  if (!outgoing || !incoming) return
+  incoming.currentTime = loop
+  incoming.volume = 0
+  overlap = { outgoing: active.value, incoming: 1 - active.value, start: outgoing.currentTime, end }
+  void incoming.play().catch(reportPlaybackError)
+}
+
+function finishOverlap() {
+  if (!overlap) return
+  const incoming = element(overlap.incoming)
+  // Keep the outgoing element until the replacement has actually started.
+  if (!incoming || incoming.paused || incoming.readyState < 2) return
+  element(overlap.outgoing)?.pause()
+  active.value = overlap.incoming
+  overlap = undefined
+  updatePlaybackState({ currentTime: incoming.currentTime })
+}
+
+function cancelOverlap() {
+  if (!overlap) return
+  element(overlap.incoming)?.pause()
+  overlap = undefined
+  applyVolumes()
+}
+
+function applyVolumes() {
+  const state = audioStore.tracks[props.fileID]
+  if (!state) return
+  const volume = state.volume / 100 * audioStore.mixMasterVolume / 100 *
+    audioStore.getTypeVolume(state.trackType) / 100 * envelope
+  const outgoing = overlap ? element(overlap.outgoing) : undefined
+  const incoming = overlap ? element(overlap.incoming) : undefined
+  const progress = overlap && outgoing && incoming && !incoming.paused && incoming.readyState >= 2
+    ? Math.min(1, Math.max(0, (outgoing.currentTime - overlap.start) / (overlap.end - overlap.start || 1))) : 0
+  for (const index of [0, 1]) {
+    const media = element(index)
+    if (!media) continue
+    const gain = overlap
+      ? index === overlap.outgoing ? 1 - progress : progress
+      : index === active.value ? 1 : 0
+    media.volume = Math.min(1, Math.max(0, volume * gain))
+  }
+}
+
+function handleEnded(index: number) {
+  if (disposed || index !== active.value || !audioStore.tracks[props.fileID]) return
+  if (audioStore.tracks[props.fileID]?.isRepeating) {
+    tick()
+    finishOverlap()
+  } else finishTrack()
+}
+
+function finishTrack() {
+  cancelOverlap()
+  const media = element(active.value)
+  media?.pause()
+  const start = audioStore.tracks[props.fileID]?.playback?.startTime ?? 0
+  if (media) media.currentTime = start
+  envelope = 0
+  fade = undefined
+  updatePlaybackState({ isPlaying: false, currentTime: start })
+}
+
+function handleTimeUpdate(index: number) {
+  if (index !== active.value || disposed) return
+  tick()
+  const media = element(active.value)
+  if (media) updatePlaybackState({ currentTime: media.currentTime })
+}
+
+function handleMetadata(index: number) {
+  const media = element(index)
+  if (media) updateDuration(media.duration)
+}
+
 function updateDuration(duration: number) {
-  updatePlaybackState({ duration })
+  if (Number.isFinite(duration) && duration > 0) updatePlaybackState({ duration })
 }
 
-function syncIsPlaying(fileID: string, videoElement: HTMLVideoElement) {
-  const desiredState = audioStore.tracks[fileID]
-
-  if (desiredState?.isPlaying && videoElement.paused) {
-    videoElement.volume = 0
-    videoElement.play().catch((err) => {
-      reportPlaybackError(err)
-    })
-  }
-
-  // Sync volume, since we may need to update it if we're fading out to a pause
-  syncVolume(props.fileID, videoElement)
-}
-
-function getDesiredVolume(desiredState: AudioTrack) {
-  if (!desiredState.isPlaying) {
-    return 0
-  }
-
-  return desiredState.volume / 100
-}
-
-function getVolumeMultiplier() {
-  const track = audioStore.tracks[props.fileID]
-  if (!track) {
-    return 1.0
-  }
-
-  const typeVolume = audioStore.getTypeVolume(track.trackType) ?? 100
-  return (audioStore.mixMasterVolume / 100) * (typeVolume / 100)
-}
-
-function syncVolume(fileID: string, videoElement: HTMLVideoElement) {
-  const desiredState = audioStore.tracks[fileID]
-  if (!desiredState) {
-    return
-  }
-
-  if (!desiredState.isPlaying &&
-    (videoElement.paused || videoElement.volume <= MIN_VOLUME_SKEW || !isFadeable(fileID))) {
-    stopFade()
-    videoElement.pause()
-    setVolume(0)
-    return
-  }
-
-  const volumeMultiplier = getVolumeMultiplier()
-  const currentVolume = volumeMultiplier > 0 ? videoElement.volume / volumeMultiplier : 0
-  const desiredVolume = getDesiredVolume(desiredState)
-
-  if (videoElement.paused) {
-    // If our video is paused, we don't need to fade anything
-    setVolume(desiredVolume * volumeMultiplier)
-    return
-  }
-
-  if (!isFadeable(fileID)) {
-    // If we're not fadeable, just set the volume directly
-    setVolume(desiredVolume * volumeMultiplier)
-    return
-  }
-
-  if (Math.abs(currentVolume - desiredVolume) > MIN_VOLUME_SKEW) {
-    // Only start a fade if the desired volume is sufficiently different
-
-    // Clear any existing fade timers to start a new one
-    stopFade()
-    audioStore.setFading(props.fileID, true)
-
-    // Start fade if volume is different
-    let currentFadeStep = 0
-    fadeTimer = setInterval(() => {
-      currentFadeStep++
-      if (currentFadeStep >= FADE_STEPS) {
-        // We're done fading; stop the video if desired and clear the timer
-        if (!desiredState.isPlaying) {
-          videoElement.pause()
-        }
-        stopFade()
-      }
-
-      const fadePercent = currentFadeStep / FADE_STEPS
-      const newVolume = (getDesiredVolume(desiredState) * fadePercent + currentVolume * (1 - fadePercent)) * getVolumeMultiplier()
-      setVolume(newVolume)
-    }, FADE_STEP_DURATION)
-  }
-}
-
-function syncVolumeImmediate(fileID: string) {
-  const desiredState = audioStore.tracks[fileID]
-  if (!desiredState) {
-    return
-  }
-
-  const desiredVolume = getDesiredVolume(desiredState) * getVolumeMultiplier()
-  setVolume(desiredVolume)
-}
-
-function syncRepeating(fileID: string, videoElement: HTMLVideoElement) {
-  const state = audioStore.tracks[fileID]
-  if (!state) {
-    return
-  }
-
-  videoElement.loop = state.isRepeating
-}
-
-function syncCurrentTime(fileID: string, videoElement: HTMLVideoElement) {
-  const state = audioStore.tracks[fileID]
-  if (!state) {
-    return
-  }
-
-  // Only seek if difference is significant
-  if (Math.abs(videoElement.currentTime - state.currentTime) > MIN_SEEK_SKEW) {
-    videoElement.currentTime = state.currentTime
-  }
-}
-
-function syncAll(videoElement: HTMLVideoElement) {
-  syncIsPlaying(props.fileID, videoElement)
-  // syncIsPlaying already calls syncVolume, so we don't need to call it again
-  syncRepeating(props.fileID, videoElement)
-  syncCurrentTime(props.fileID, videoElement)
-}
-
-function stopFade() {
-  if (fadeTimer) {
-    clearInterval(fadeTimer)
-    fadeTimer = undefined
-  }
-
-  audioStore.setFading(props.fileID, false)
-}
-
-function handleEnded(evt: Event) {
-  const videoElement = evt.target as HTMLVideoElement
-  updatePlaybackState({ isPlaying: false })
-  videoElement.pause()
-  resetTimer = setTimeout(() => {
-    videoElement.currentTime = 0
-    updatePlaybackState({ currentTime: 0 })
-  }, 0)
-}
-
-function handleTimeUpdate(evt: Event) {
-  const videoElement = evt.target as HTMLVideoElement
-  updatePlaybackState({ currentTime: videoElement.currentTime })
-}
-
-function handleLoadedMetadata(evt: Event) {
-  const videoElement = evt.target as HTMLVideoElement
-  updatePlaybackState({ duration: videoElement.duration })
+function element(index: number): HTMLMediaElement | null {
+  return index === 0 ? primary.value : secondary.value
 }
 
 function updatePlaybackState(updates: Partial<AudioTrack>) {
-  // Queued media events must not recreate a track after deletion.
-  if (!audioStore.tracks[props.fileID]) return
+  if (disposed || !audioStore.tracks[props.fileID]) return
+  const state = audioStore.tracks[props.fileID]
+  if (Object.entries(updates).every(([key, value]) => state[key as keyof AudioTrack] === value)) return
   audioStore.updateTrackState(props.fileID, updates)
 }
 
 function reportPlaybackError(cause: unknown) {
+  if (disposed || !audioStore.tracks[props.fileID]) return
   console.error(`Failed to play track ${props.fileID}:`, cause)
+  cancelOverlap()
+  fade = undefined
+  envelope = 0
+  primary.value?.pause()
+  secondary.value?.pause()
   updatePlaybackState({ isPlaying: false })
   emit('error', 'Unable to play track. Try again or choose another track.')
-}
-
-function isFadeable(trackID: string) {
-  const track = audioStore.tracks[trackID]
-  if (!track) {
-    return false
-  }
-
-  // FIXME: This is a hack until we can better distinguish between fadeable and non-fadeable tracks
-  return track.isRepeating
-}
-
-function setVolume(newVolume: number) {
-  if (!videoElement.value) {
-    return
-  }
-
-  if (newVolume < 0) {
-    newVolume = 0;
-  } else if (newVolume > 1) {
-    newVolume = 1;
-  }
-
-  videoElement.value.volume = newVolume;
 }
 </script>

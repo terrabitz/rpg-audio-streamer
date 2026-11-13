@@ -19,7 +19,8 @@
           <time :datetime="item.createdAt">{{ new Date(item.createdAt).toLocaleString() }}</time>
         </template>
         <template #[`item.actions`]="{ item }">
-          <AudioControls :fileID="item.id" :fileName="item.name" :deleteTrack="count => deleteFile(item, count)" library>
+          <AudioControls :fileID="item.id" :fileName="item.name" :deleteTrack="count => deleteFile(item, count)" library
+            @settings="settings => handleSettings(item.id, settings)">
             <template #activator="{ open }">
               <v-btn icon="$dotsVertical" variant="text" size="small" :aria-label="`Edit ${item.name}`"
                 @click.stop="open" />
@@ -76,6 +77,7 @@
                   @click.stop @keydown="handleKeydown($event, file.id)" />
                 <AudioControls :fileID="file.id" :fileName="file.name"
                   :deleteTrack="count => deleteFile(file, count)"
+                  @settings="settings => handleSettings(file.id, settings)"
                   @volume="vol => handleVolume(file.id, vol)" @seek="time => handleSeek(file.id, time)" />
               </v-card>
             </SortableTrack>
@@ -87,7 +89,8 @@
 </template>
 
 <script setup lang="ts">
-import { type Track } from '@/client/apiClient'
+import { type Track, type PlaybackSettings } from '@/client/apiClient'
+import { defaultPlayback } from '@/composables/playback'
 import { defaultPreset, Feedback, PointerActivationConstraints, PointerSensor } from '@dnd-kit/dom'
 import { DragDropProvider, type DragEndEvent } from '@dnd-kit/vue'
 import { isSortable } from '@dnd-kit/vue/sortable'
@@ -161,7 +164,12 @@ watch(tracks, (tracks) => {
   }
   if (props.library) return
   for (const track of tracks) {
+    const isNew = !audioStore.tracks[track.id]
     audioStore.initTrack(track.id, track.name, track.typeID)
+    if (isNew) audioStore.updateTrackState(track.id, {
+      playback: track.playback ?? defaultPlayback(),
+      currentTime: track.playback?.startTime ?? 0,
+    })
   }
 }, { immediate: true })
 
@@ -309,7 +317,22 @@ function previewTrack(fileID: string) {
   }
   audioStore.clearTracks()
   audioStore.initTrack(fileID, track.name, trackType.name)
-  audioStore.updateTrackState(fileID, { isPlaying: true, isRepeating: trackType.isRepeating })
+  audioStore.updateTrackState(fileID, {
+    isPlaying: true, isRepeating: trackType.isRepeating,
+    playback: track.playback ?? defaultPlayback(), currentTime: track.playback?.startTime ?? 0,
+  })
+}
+
+function handleSettings(fileID: string, playback: PlaybackSettings) {
+  const state = audioStore.tracks[fileID]
+  if (!state) return
+  const currentTime = Math.max(playback.startTime, Math.min(state.currentTime, playback.endTime ?? Infinity))
+  audioStore.updateTrackState(fileID, { playback, currentTime })
+  if (!props.library && wsStore.isConnected) {
+    wsStore.sendMessage('syncTrack', {
+      ...audioStore.tracks[fileID], volume: state.volume * audioStore.masterVolume / 100,
+    })
+  }
 }
 
 const handleVolume = (fileID: string, volume: number) => {

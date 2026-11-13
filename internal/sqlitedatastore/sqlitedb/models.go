@@ -4,6 +4,10 @@
 
 package sqlitedb
 
+import (
+	"database/sql"
+)
+
 type GameTable struct {
 	ID          []byte
 	Name        string
@@ -17,11 +21,14 @@ type TableTrack struct {
 }
 
 type Track struct {
-	ID        []byte
-	CreatedAt string
-	Name      string
-	Path      string
-	TypeID    []byte
+	ID           []byte
+	CreatedAt    string
+	Name         string
+	Path         string
+	TypeID       []byte
+	StartTime    float64
+	EndTime      sql.NullFloat64
+	LoopBackTime sql.NullFloat64
 }
 
 type TrackType struct {

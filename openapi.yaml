@@ -156,6 +156,24 @@ components:
         typeID:
           type: string
           format: uuid
+        playback:
+          $ref: "#/components/schemas/PlaybackSettings"
+
+    PlaybackSettings:
+      type: object
+      description: Times in seconds, shared across every table using the track. Null clears an optional point.
+      required: [startTime, endTime, loopBackTime]
+      properties:
+        startTime:
+          type: number
+          minimum: 0
+          default: 0
+        endTime:
+          type: [number, "null"]
+          exclusiveMinimum: 0
+        loopBackTime:
+          type: [number, "null"]
+          minimum: 0
 
     UpdateTrackRequest:
       type: object
@@ -172,6 +190,8 @@ components:
           type: string
           format: uuid
           nullable: true
+        playback:
+          $ref: "#/components/schemas/PlaybackSettings"
 
     TrackUsage:
       type: object

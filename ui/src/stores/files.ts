@@ -74,7 +74,7 @@ export const useFileStore = defineStore('files', {
         throw new Error('Failed to upload file')
       }
     },
-    async updateTrack(trackId: string, update: { name?: string; typeID?: string }) {
+    async updateTrack(trackId: string, update: Omit<UpdateTrackRequest, 'id'>) {
       try {
         const trackRequest: UpdateTrackRequest = {
           id: trackId
@@ -86,6 +86,9 @@ export const useFileStore = defineStore('files', {
 
         if (update.typeID !== undefined) {
           trackRequest.typeID = update.typeID
+        }
+        if (update.playback !== undefined) {
+          trackRequest.playback = update.playback
         }
 
         const { data } = await putApiV1FilesByTrackId<true>({

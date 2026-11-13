@@ -40,7 +40,7 @@ func (q *Queries) DeleteTrackByIDIfTableCount(ctx context.Context, arg DeleteTra
 }
 
 const getTrackByID = `-- name: GetTrackByID :one
-select id, created_at, name, path, type_id from tracks where id = ?1
+select id, created_at, name, path, type_id, start_time, end_time, loop_back_time from tracks where id = ?1
 `
 
 func (q *Queries) GetTrackByID(ctx context.Context, id []byte) (Track, error) {
@@ -52,12 +52,15 @@ func (q *Queries) GetTrackByID(ctx context.Context, id []byte) (Track, error) {
 		&i.Name,
 		&i.Path,
 		&i.TypeID,
+		&i.StartTime,
+		&i.EndTime,
+		&i.LoopBackTime,
 	)
 	return i, err
 }
 
 const getTracks = `-- name: GetTracks :many
-select id, created_at, name, path, type_id from tracks
+select id, created_at, name, path, type_id, start_time, end_time, loop_back_time from tracks
 `
 
 func (q *Queries) GetTracks(ctx context.Context) ([]Track, error) {
@@ -75,6 +78,9 @@ func (q *Queries) GetTracks(ctx context.Context) ([]Track, error) {
 			&i.Name,
 			&i.Path,
 			&i.TypeID,
+			&i.StartTime,
+			&i.EndTime,
+			&i.LoopBackTime,
 		); err != nil {
 			return nil, err
 		}
@@ -90,15 +96,19 @@ func (q *Queries) GetTracks(ctx context.Context) ([]Track, error) {
 }
 
 const saveTrack = `-- name: SaveTrack :exec
-insert into tracks (id, created_at, name, path, type_id) values (?1, ?2, ?3, ?4, ?5)
+insert into tracks (id, created_at, name, path, type_id, start_time, end_time, loop_back_time)
+values (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
 `
 
 type SaveTrackParams struct {
-	ID        []byte
-	CreatedAt string
-	Name      string
-	Path      string
-	TypeID    []byte
+	ID           []byte
+	CreatedAt    string
+	Name         string
+	Path         string
+	TypeID       []byte
+	StartTime    float64
+	EndTime      sql.NullFloat64
+	LoopBackTime sql.NullFloat64
 }
 
 func (q *Queries) SaveTrack(ctx context.Context, arg SaveTrackParams) error {
@@ -108,6 +118,9 @@ func (q *Queries) SaveTrack(ctx context.Context, arg SaveTrackParams) error {
 		arg.Name,
 		arg.Path,
 		arg.TypeID,
+		arg.StartTime,
+		arg.EndTime,
+		arg.LoopBackTime,
 	)
 	return err
 }
@@ -116,19 +129,34 @@ const updateTrack = `-- name: UpdateTrack :one
 update tracks
 set
   name = coalesce(?1, name),
-  type_id = coalesce(?2, type_id)
-where id = ?3
-returning id, created_at, name, path, type_id
+  type_id = coalesce(?2, type_id),
+  start_time = CASE WHEN ?3 THEN ?4 ELSE start_time END,
+  end_time = CASE WHEN ?3 THEN ?5 ELSE end_time END,
+  loop_back_time = CASE WHEN ?3 THEN ?6 ELSE loop_back_time END
+where id = ?7
+returning id, created_at, name, path, type_id, start_time, end_time, loop_back_time
 `
 
 type UpdateTrackParams struct {
-	Name   sql.NullString
-	TypeID []byte
-	ID     []byte
+	Name         sql.NullString
+	TypeID       []byte
+	SetPlayback  float64
+	StartTime    float64
+	EndTime      sql.NullFloat64
+	LoopBackTime sql.NullFloat64
+	ID           []byte
 }
 
 func (q *Queries) UpdateTrack(ctx context.Context, arg UpdateTrackParams) (Track, error) {
-	row := q.db.QueryRowContext(ctx, updateTrack, arg.Name, arg.TypeID, arg.ID)
+	row := q.db.QueryRowContext(ctx, updateTrack,
+		arg.Name,
+		arg.TypeID,
+		arg.SetPlayback,
+		arg.StartTime,
+		arg.EndTime,
+		arg.LoopBackTime,
+		arg.ID,
+	)
 	var i Track
 	err := row.Scan(
 		&i.ID,
@@ -136,6 +164,9 @@ func (q *Queries) UpdateTrack(ctx context.Context, arg UpdateTrackParams) (Track
 		&i.Name,
 		&i.Path,
 		&i.TypeID,
+		&i.StartTime,
+		&i.EndTime,
+		&i.LoopBackTime,
 	)
 	return i, err
 }
