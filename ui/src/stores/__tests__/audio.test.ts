@@ -5,6 +5,38 @@ import { useAudioStore } from '../audio'
 describe('audio session state', () => {
   beforeEach(() => setActivePinia(createPinia()))
 
+  it('uses the saved table mix without replacing player preferences or restoring playback', () => {
+    const audio = useAudioStore()
+    audio.masterVolume = 45
+    audio.setTypeVolume('Music', 25)
+    audio.loadTableMix({
+      masterVolume: 0, typeVolumes: { Music: 0 }, trackVolumes: { forest: 0 }, trackOrder: ['forest'],
+    })
+    audio.initTrack('forest', 'Forest')
+    audio.initTrack('rain', 'Rain')
+    expect(audio.mixMasterVolume).toBe(0)
+    expect(audio.getTypeVolume('Music')).toBe(0)
+    expect(audio.tracks.forest).toMatchObject({ volume: 0, isPlaying: false, currentTime: 0 })
+    expect(audio.tracks.rain?.volume).toBe(100)
+    audio.setMasterVolume(80)
+    audio.setTypeVolume('Music', 60)
+    audio.updateTrackState('forest', { volume: 30, currentTime: 12, isPlaying: true })
+    expect(audio.tableMix).toEqual({
+      masterVolume: 80, typeVolumes: { Music: 60 }, trackVolumes: { forest: 30 },
+    })
+    expect(audio.masterVolume).toBe(45)
+    expect(audio.typeVolumes).toEqual({ Music: 25 })
+    audio.clearTracks()
+    audio.clearTableMix()
+    expect(audio.mixMasterVolume).toBe(45)
+    expect(audio.getTypeVolume('Music')).toBe(25)
+    audio.setMasterVolume(0)
+    expect(audio.masterVolume).toBe(0)
+    audio.loadTableMix({ masterVolume: 100, typeVolumes: {}, trackVolumes: {}, trackOrder: [] })
+    audio.initTrack('forest', 'Forest')
+    expect(audio.tracks.forest).toMatchObject({ volume: 100, currentTime: 0, isPlaying: false })
+  })
+
   it('clears table playback and fades while preserving local mix preferences', () => {
     const audio = useAudioStore()
     audio.enabled = true

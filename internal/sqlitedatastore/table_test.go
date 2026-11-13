@@ -6,12 +6,96 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/terrabitz/rpg-audio-streamer/internal/server"
 )
+
+func TestTableSettingsPersistence(t *testing.T) {
+	db, path := migratedDatabase(t)
+	ctx := context.Background()
+	defaults := server.TableSettings{
+		MasterVolume: 100, TypeVolumes: map[string]float64{},
+		TrackVolumes: map[string]float64{}, TrackOrder: []uuid.UUID{},
+	}
+	settings, err := db.GetTableSettings(ctx, server.DefaultTableID)
+	if err != nil || !reflect.DeepEqual(settings, defaults) {
+		t.Fatalf("default settings = %+v, %v", settings, err)
+	}
+	other := server.Table{ID: uuid.New(), Name: "Other", InviteToken: uuid.NewString()}
+	if _, err := db.CreateTable(ctx, other); err != nil {
+		t.Fatal(err)
+	}
+	trackID := uuid.New()
+	order := []uuid.UUID{trackID, uuid.New()}
+	master := 0.0
+	want := server.TableSettings{
+		MasterVolume: 0, TypeVolumes: map[string]float64{"Music": 0, "Ambiance": 42},
+		TrackVolumes: map[string]float64{trackID.String(): 0}, TrackOrder: order,
+	}
+	settings, err = db.UpdateTableSettings(ctx, server.DefaultTableID, server.TableSettingsPatch{
+		MasterVolume: &master, TypeVolumes: want.TypeVolumes,
+		TrackVolumes: want.TrackVolumes, TrackOrder: &order,
+	})
+	if err != nil || !reflect.DeepEqual(settings, want) {
+		t.Fatalf("save settings = %+v, %v", settings, err)
+	}
+	want.TypeVolumes["Ambiance"] = 65
+	settings, err = db.UpdateTableSettings(ctx, server.DefaultTableID, server.TableSettingsPatch{
+		TypeVolumes: map[string]float64{"Ambiance": 65},
+	})
+	if err != nil || !reflect.DeepEqual(settings, want) {
+		t.Fatalf("partial settings = %+v, %v", settings, err)
+	}
+	if _, err := db.UpdateTable(ctx, server.DefaultTableID, "Renamed"); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	db, err = New(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	settings, err = db.GetTableSettings(ctx, server.DefaultTableID)
+	if err != nil || !reflect.DeepEqual(settings, want) {
+		t.Fatalf("reopened settings = %+v, %v", settings, err)
+	}
+	settings, err = db.GetTableSettings(ctx, other.ID)
+	if err != nil || !reflect.DeepEqual(settings, defaults) {
+		t.Fatalf("other table settings = %+v, %v", settings, err)
+	}
+	empty := []uuid.UUID{}
+	settings, err = db.UpdateTableSettings(ctx, server.DefaultTableID, server.TableSettingsPatch{TrackOrder: &empty})
+	if err != nil || len(settings.TrackOrder) != 0 || settings.TrackOrder == nil {
+		t.Fatalf("empty order = %+v, %v", settings, err)
+	}
+	for _, id := range []uuid.UUID{uuid.New(), other.ID} {
+		if id == other.ID {
+			if err := db.DeleteTable(ctx, id); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if _, err := db.GetTableSettings(ctx, id); !errors.Is(err, sql.ErrNoRows) {
+			t.Fatalf("missing settings = %v", err)
+		}
+		if _, err := db.UpdateTableSettings(ctx, id, server.TableSettingsPatch{}); !errors.Is(err, sql.ErrNoRows) {
+			t.Fatalf("missing settings update = %v", err)
+		}
+	}
+	canceled, cancel := context.WithCancel(ctx)
+	cancel()
+	if _, err := db.GetTableSettings(canceled, server.DefaultTableID); !errors.Is(err, context.Canceled) {
+		t.Fatalf("canceled settings lookup = %v", err)
+	}
+	if _, err := db.UpdateTableSettings(canceled, server.DefaultTableID, server.TableSettingsPatch{}); !errors.Is(err, context.Canceled) {
+		t.Fatalf("canceled settings update = %v", err)
+	}
+}
 
 func TestTableLifecycle(t *testing.T) {
 	db, path := migratedDatabase(t)
@@ -197,7 +281,11 @@ func TestExistingLibraryMigratesToDefaultTable(t *testing.T) {
 	if err != nil || len(tracks) != 1 || tracks[0] != track {
 		t.Fatalf("migrated tracks = %v, %v", tracks, err)
 	}
-	if err := m.Steps(-1); err != nil {
+	settings, err := db.GetTableSettings(ctx, server.DefaultTableID)
+	if err != nil || settings.MasterVolume != 100 || len(settings.TrackOrder) != 0 {
+		t.Fatalf("migrated settings = %+v, %v", settings, err)
+	}
+	if err := m.Steps(-2); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := db.GetTrackByID(ctx, track.ID); err != nil {

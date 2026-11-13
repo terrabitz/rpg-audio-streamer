@@ -41,12 +41,12 @@ watch(() => audioStore.tracks[props.fileID]?.volume, () => {
   syncVolume(props.fileID, videoElement.value)
 })
 
-watch(() => audioStore.masterVolume, () => {
+watch(() => audioStore.mixMasterVolume, () => {
   if (!hlsReady.value || fadeTimer) return
   syncVolumeImmediate(props.fileID)
 })
 
-watch(() => audioStore.typeVolumes, () => {
+watch(() => audioStore.mixTypeVolumes, () => {
   if (!hlsReady.value || fadeTimer) return
   syncVolumeImmediate(props.fileID)
 }, { deep: true })
@@ -142,7 +142,7 @@ function getVolumeMultiplier() {
   }
 
   const typeVolume = audioStore.getTypeVolume(track.trackType) ?? 100
-  return (audioStore.masterVolume / 100) * (typeVolume / 100)
+  return (audioStore.mixMasterVolume / 100) * (typeVolume / 100)
 }
 
 function syncVolume(fileID: string, videoElement: HTMLVideoElement) {
@@ -151,12 +151,16 @@ function syncVolume(fileID: string, videoElement: HTMLVideoElement) {
     return
   }
 
-  let volumeMultiplier = getVolumeMultiplier()
-  if (volumeMultiplier < 0.01) {
-    volumeMultiplier = 0.01
+  if (!desiredState.isPlaying &&
+    (videoElement.paused || videoElement.volume <= MIN_VOLUME_SKEW || !isFadeable(fileID))) {
+    stopFade()
+    videoElement.pause()
+    setVolume(0)
+    return
   }
 
-  const currentVolume = videoElement.volume / getVolumeMultiplier()
+  const volumeMultiplier = getVolumeMultiplier()
+  const currentVolume = volumeMultiplier > 0 ? videoElement.volume / volumeMultiplier : 0
   const desiredVolume = getDesiredVolume(desiredState)
 
   if (videoElement.paused) {

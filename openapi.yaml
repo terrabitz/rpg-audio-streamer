@@ -41,6 +41,49 @@ components:
           minLength: 1
           maxLength: 200
 
+    TableSettings:
+      type: object
+      required: [masterVolume, typeVolumes, trackVolumes, trackOrder]
+      properties:
+        masterVolume:
+          type: number
+          minimum: 0
+          maximum: 200
+        typeVolumes:
+          type: object
+          description: GM volume percentages keyed by track-type name.
+          additionalProperties:
+            type: number
+            minimum: 0
+            maximum: 100
+        trackVolumes:
+          type: object
+          description: GM volume percentages keyed by track UUID.
+          additionalProperties:
+            type: number
+            minimum: 0
+            maximum: 100
+        trackOrder:
+          type: array
+          uniqueItems: true
+          items:
+            type: string
+            format: uuid
+
+    TableSettingsPatch:
+      type: object
+      additionalProperties: false
+      description: Omitted fields are preserved. Volume maps merge by key; trackOrder replaces the saved order.
+      properties:
+        masterVolume:
+          $ref: "#/components/schemas/TableSettings/properties/masterVolume"
+        typeVolumes:
+          $ref: "#/components/schemas/TableSettings/properties/typeVolumes"
+        trackVolumes:
+          $ref: "#/components/schemas/TableSettings/properties/trackVolumes"
+        trackOrder:
+          $ref: "#/components/schemas/TableSettings/properties/trackOrder"
+
     LoginRequest:
       type: object
       required:
@@ -161,6 +204,53 @@ components:
           type: boolean
 
 paths:
+  /api/v1/tables/{tableID}/settings:
+    parameters:
+      - name: tableID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      summary: Get the table's saved GM mix and track order (GM only)
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Table settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TableSettings"
+        "401":
+          description: GM authentication required
+        "404":
+          description: Table not found
+    patch:
+      summary: Save partial GM mixing and ordering preferences (GM only)
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TableSettingsPatch"
+      responses:
+        "200":
+          description: Saved table settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TableSettings"
+        "400":
+          description: Invalid table settings
+        "401":
+          description: GM authentication required
+        "404":
+          description: Table not found
+
   /api/v1/tables:
     get:
       summary: List GM tables and their invite tokens

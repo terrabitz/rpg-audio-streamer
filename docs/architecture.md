@@ -98,7 +98,7 @@ SQLite stores metadata, not media bytes:
 - `tracks`: UUID ID, creation timestamp, display name, disk path, track-type ID.
 - `track_types`: UUID ID, name, color, repeat policy, simultaneous-play policy,
   and creation timestamp.
-- `game_tables`: UUID ID, name, and unique invite token.
+- `game_tables`: UUID ID, name, unique invite token, and JSON GM mixing/ordering settings.
 - `table_tracks`: many-to-many table/track associations.
 
 UUIDs are stored as BLOBs. Track creation timestamps are serialized as RFC3339
@@ -106,6 +106,15 @@ text, with second precision. Partial updates preserve omitted name/type fields.
 The initial migration seeds Ambiance (repeating, simultaneous), Music
 (repeating, exclusive), and One-Shot (non-repeating, simultaneous).
 Empty metadata collections are returned as JSON arrays, not `null`.
+
+Each table stores the GM's master volume, per-type volume map (keyed by type
+name), per-track volume map (keyed by track UUID), and ordered track UUIDs.
+The GM-only settings endpoint reads these preferences and accepts partial
+patches: volume maps merge by key, the order is replaced, and omitted fields
+are preserved atomically. Master volume accepts 0–200 percent; type and track
+volumes accept 0–100 percent, including mute. Tables default to 100 percent
+volume and creation-time track order. Playback position, play/pause state,
+duration, and fades are not part of stored settings.
 
 The table migration seeds "My Table" and associates all pre-existing tracks
 with it, preserving the existing invite URL. New tables start empty. Removing
@@ -175,11 +184,15 @@ reauthentication.
 | `composables/` | Shared app-bar state, browser origin, immutable partial-object patches |
 | `FileList`, `AudioControls`, `PlayingTrackList`, `TrackPlaybackControls`, `AudioUploader` | Shared-library metadata management and uploads; table associations, responsive now-playing surfaces, and shared playback controls |
 | `AudioPlayer`, `AudioTrackPlayer` | Per-track HLS.js media elements and playback synchronization |
-| `VolumeMixer`, `VolumeSlider` | Local master and per-type mixing |
+| `VolumeMixer`, `VolumeSlider` | Active master and per-type mixing; player preferences stay local |
 
-Library and track-type metadata and local mixer preferences use the Pinia
-persistence plugin. Table metadata and playback state are not persisted in
-browser storage. Playback is keyed by file UUID within the active table and
+Library and track-type metadata and player mixer preferences use the Pinia
+persistence plugin. GM mixes and track order load from the server before table
+controls become available. They do not inherit browser-local mixer preferences.
+Mix edits are debounced and flushed when leaving the table; saves are serialized
+with ordering edits, and failures show an explicit retry action. Table metadata,
+GM settings, and playback state are not persisted in browser storage.
+Playback is keyed by file UUID within the active table and
 cleared on table changes, so even the same library track cannot inherit another
 table's playback. Local browser state is not authoritative for stored metadata.
 Players must explicitly connect audio; full-state synchronization is ignored
@@ -230,10 +243,11 @@ other card areas retain normal touch scrolling. Card clicks or Enter/Space toggl
 playback, while the inline controls do not trigger card clicks. Focused cards or
 handles can be reordered with Alt + Left/Right, with screen-reader announcements.
 Cancelled drags restore the original layout without changing the saved order.
-The table store persists only track-order preferences, scoped by table ID, in the GM's browser,
-preserves it across metadata refreshes, appends newly discovered tracks, and drops
-deleted tracks. Ordering does not change playback state or player mixes and is
-not stored on the server or shared across devices.
+The table store loads track order from server settings, scoped by table ID,
+preserves it across metadata refreshes, appends newly discovered tracks, and
+drops deleted tracks from the displayed order. Reordering saves to the server
+so another GM browser restores the same layout. Ordering does not change
+playback state or player mixes.
 
 ### Playback synchronization
 
@@ -265,7 +279,8 @@ approximately two seconds; significant seek differences are reconciled.
 Removing a media component destroys its HLS instance and clears playback
 timers; queued media events cannot recreate deleted track state.
 Playback is ephemeral browser state, not persisted in SQLite or recovered by
-the server after every GM disconnect.
+the server after every GM disconnect. Opening a table restores its saved mix
+and layout with every track stopped at the beginning.
 
 ## Release pipeline
 

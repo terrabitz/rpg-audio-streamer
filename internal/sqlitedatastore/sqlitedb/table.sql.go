@@ -44,7 +44,7 @@ func (q *Queries) CountTrackTables(ctx context.Context, id []byte) (int64, error
 }
 
 const createTable = `-- name: CreateTable :one
-INSERT INTO game_tables (id, name, invite_token) VALUES (?, ?, ?) RETURNING id, name, invite_token
+INSERT INTO game_tables (id, name, invite_token) VALUES (?, ?, ?) RETURNING id, name, invite_token, settings
 `
 
 type CreateTableParams struct {
@@ -56,7 +56,12 @@ type CreateTableParams struct {
 func (q *Queries) CreateTable(ctx context.Context, arg CreateTableParams) (GameTable, error) {
 	row := q.db.QueryRowContext(ctx, createTable, arg.ID, arg.Name, arg.InviteToken)
 	var i GameTable
-	err := row.Scan(&i.ID, &i.Name, &i.InviteToken)
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.InviteToken,
+		&i.Settings,
+	)
 	return i, err
 }
 
@@ -73,25 +78,46 @@ func (q *Queries) DeleteTable(ctx context.Context, id []byte) (int64, error) {
 }
 
 const getTable = `-- name: GetTable :one
-SELECT id, name, invite_token FROM game_tables WHERE id = ?
+SELECT id, name, invite_token, settings FROM game_tables WHERE id = ?
 `
 
 func (q *Queries) GetTable(ctx context.Context, id []byte) (GameTable, error) {
 	row := q.db.QueryRowContext(ctx, getTable, id)
 	var i GameTable
-	err := row.Scan(&i.ID, &i.Name, &i.InviteToken)
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.InviteToken,
+		&i.Settings,
+	)
 	return i, err
 }
 
 const getTableByInvite = `-- name: GetTableByInvite :one
-SELECT id, name, invite_token FROM game_tables WHERE invite_token = ?
+SELECT id, name, invite_token, settings FROM game_tables WHERE invite_token = ?
 `
 
 func (q *Queries) GetTableByInvite(ctx context.Context, inviteToken string) (GameTable, error) {
 	row := q.db.QueryRowContext(ctx, getTableByInvite, inviteToken)
 	var i GameTable
-	err := row.Scan(&i.ID, &i.Name, &i.InviteToken)
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.InviteToken,
+		&i.Settings,
+	)
 	return i, err
+}
+
+const getTableSettings = `-- name: GetTableSettings :one
+SELECT settings FROM game_tables WHERE id = ?
+`
+
+func (q *Queries) GetTableSettings(ctx context.Context, id []byte) (string, error) {
+	row := q.db.QueryRowContext(ctx, getTableSettings, id)
+	var settings string
+	err := row.Scan(&settings)
+	return settings, err
 }
 
 const getTableTracks = `-- name: GetTableTracks :many
@@ -130,7 +156,7 @@ func (q *Queries) GetTableTracks(ctx context.Context, tableID []byte) ([]Track, 
 }
 
 const getTables = `-- name: GetTables :many
-SELECT id, name, invite_token FROM game_tables ORDER BY name, id
+SELECT id, name, invite_token, settings FROM game_tables ORDER BY name, id
 `
 
 func (q *Queries) GetTables(ctx context.Context) ([]GameTable, error) {
@@ -142,7 +168,12 @@ func (q *Queries) GetTables(ctx context.Context) ([]GameTable, error) {
 	var items []GameTable
 	for rows.Next() {
 		var i GameTable
-		if err := rows.Scan(&i.ID, &i.Name, &i.InviteToken); err != nil {
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.InviteToken,
+			&i.Settings,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -187,7 +218,7 @@ func (q *Queries) RemoveTableTrack(ctx context.Context, arg RemoveTableTrackPara
 }
 
 const updateTable = `-- name: UpdateTable :one
-UPDATE game_tables SET name = ? WHERE id = ? RETURNING id, name, invite_token
+UPDATE game_tables SET name = ? WHERE id = ? RETURNING id, name, invite_token, settings
 `
 
 type UpdateTableParams struct {
@@ -198,6 +229,28 @@ type UpdateTableParams struct {
 func (q *Queries) UpdateTable(ctx context.Context, arg UpdateTableParams) (GameTable, error) {
 	row := q.db.QueryRowContext(ctx, updateTable, arg.Name, arg.ID)
 	var i GameTable
-	err := row.Scan(&i.ID, &i.Name, &i.InviteToken)
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.InviteToken,
+		&i.Settings,
+	)
 	return i, err
+}
+
+const updateTableSettings = `-- name: UpdateTableSettings :one
+UPDATE game_tables SET settings = json_patch(settings, ?1)
+WHERE id = ?2 RETURNING settings
+`
+
+type UpdateTableSettingsParams struct {
+	Patch interface{}
+	ID    []byte
+}
+
+func (q *Queries) UpdateTableSettings(ctx context.Context, arg UpdateTableSettingsParams) (string, error) {
+	row := q.db.QueryRowContext(ctx, updateTableSettings, arg.Patch, arg.ID)
+	var settings string
+	err := row.Scan(&settings)
+	return settings, err
 }

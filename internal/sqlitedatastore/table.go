@@ -3,6 +3,7 @@ package sqlitedatastore
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 
 	"github.com/google/uuid"
 	"github.com/terrabitz/rpg-audio-streamer/internal/server"
@@ -68,6 +69,32 @@ func (db *SQLiteDatastore) DeleteTable(ctx context.Context, id uuid.UUID) error 
 		return sql.ErrNoRows
 	}
 	return nil
+}
+
+func (db *SQLiteDatastore) GetTableSettings(ctx context.Context, id uuid.UUID) (server.TableSettings, error) {
+	value, err := sqlitedb.New(db.DB).GetTableSettings(ctx, id[:])
+	if err != nil {
+		return server.TableSettings{}, err
+	}
+	var settings server.TableSettings
+	err = json.Unmarshal([]byte(value), &settings)
+	return settings, err
+}
+
+func (db *SQLiteDatastore) UpdateTableSettings(ctx context.Context, id uuid.UUID, patch server.TableSettingsPatch) (server.TableSettings, error) {
+	value, err := json.Marshal(patch)
+	if err != nil {
+		return server.TableSettings{}, err
+	}
+	updated, err := sqlitedb.New(db.DB).UpdateTableSettings(ctx, sqlitedb.UpdateTableSettingsParams{
+		ID: id[:], Patch: string(value),
+	})
+	if err != nil {
+		return server.TableSettings{}, err
+	}
+	var settings server.TableSettings
+	err = json.Unmarshal([]byte(updated), &settings)
+	return settings, err
 }
 
 func (db *SQLiteDatastore) GetTableTracks(ctx context.Context, id uuid.UUID) ([]server.Track, error) {

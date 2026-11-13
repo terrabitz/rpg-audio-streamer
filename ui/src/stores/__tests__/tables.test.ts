@@ -8,6 +8,8 @@ const api = vi.hoisted(() => ({
   putApiV1TablesByTableId: vi.fn(),
   deleteApiV1TablesByTableId: vi.fn(),
   getApiV1TablesByTableId: vi.fn(),
+  getApiV1TablesByTableIdSettings: vi.fn(),
+  patchApiV1TablesByTableIdSettings: vi.fn(),
   getApiV1TablesCurrent: vi.fn(),
   getApiV1TablesByTableIdTracks: vi.fn(),
   putApiV1TablesByTableIdTracksByTrackId: vi.fn(),
@@ -25,9 +27,54 @@ const track = {
 beforeEach(() => {
   setActivePinia(createPinia())
   vi.resetAllMocks()
+  api.patchApiV1TablesByTableIdSettings.mockResolvedValue({})
 })
 
 describe('tables', () => {
+  it('loads server ordering, serializes writes, and retries unsaved settings', async () => {
+    const tables = useTableStore()
+    tables.current = friday
+    const settings = { masterVolume: 0, typeVolumes: { Music: 0 }, trackVolumes: {}, trackOrder: ['rain', 'forest'] }
+    api.getApiV1TablesByTableIdSettings.mockResolvedValue({ data: settings })
+    expect(await tables.loadSettings(friday.id)).toEqual(settings)
+    expect(tables.trackOrders.friday).toEqual(['rain', 'forest'])
+    let finish!: () => void
+    api.patchApiV1TablesByTableIdSettings.mockImplementationOnce(() => new Promise(resolve => {
+      finish = () => resolve({})
+    }))
+    const first = tables.saveSettings(friday.id, { masterVolume: 0 })
+    const next = tables.saveSettings(friday.id, { masterVolume: 60 })
+    await Promise.resolve()
+    expect(api.patchApiV1TablesByTableIdSettings).toHaveBeenCalledOnce()
+    finish()
+    await Promise.all([first, next])
+    expect(api.patchApiV1TablesByTableIdSettings).toHaveBeenLastCalledWith({
+      path: { tableID: friday.id }, body: { masterVolume: 60, typeVolumes: {}, trackVolumes: {} }, keepalive: true,
+    })
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      api.patchApiV1TablesByTableIdSettings.mockRejectedValueOnce(new Error('offline'))
+      await tables.saveSettings(friday.id, { masterVolume: 0, typeVolumes: { Music: 0 }, trackOrder: ['forest'] })
+      expect(tables.settingsError).toContain('not saved')
+      tables.clearCurrent()
+      tables.current = friday
+      expect(await tables.loadSettings(friday.id)).toEqual({ ...settings, trackOrder: ['forest'] })
+      expect(tables.settingsError).toContain('not saved')
+      await tables.saveSettings(friday.id, { trackVolumes: { forest: 35 } })
+      expect(api.patchApiV1TablesByTableIdSettings).toHaveBeenLastCalledWith({
+        path: { tableID: friday.id },
+        body: { masterVolume: 0, typeVolumes: { Music: 0 }, trackVolumes: { forest: 35 }, trackOrder: ['forest'] },
+        keepalive: true,
+      })
+      expect(tables.settingsError).toBe('')
+      expect(tables.failedSettings).toEqual({})
+    } finally {
+      vi.restoreAllMocks()
+    }
+    await tables.loadSettings(sunday.id)
+    expect(tables.trackOrders.sunday).toBeUndefined()
+  })
+
   it('moves tracks in either direction and keeps ordering scoped to each table', () => {
     const tables = useTableStore()
     const rain = { ...track, id: 'rain', name: 'Rain' }

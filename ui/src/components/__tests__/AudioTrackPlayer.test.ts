@@ -63,6 +63,41 @@ it('releases HLS and never recreates deleted state from queued media events', as
   expect(audio.availableTracks).toEqual([])
 })
 
+it.each([
+  { volume: 0, masterVolume: 100, isRepeating: true },
+  { volume: 100, masterVolume: 0, isRepeating: true },
+  { volume: 100, masterVolume: 100, isRepeating: true },
+  { volume: 100, masterVolume: 100, isRepeating: false },
+])('pauses a stopped track even when silent or starting a fade: %j', async (mix) => {
+  vi.useFakeTimers()
+  const pinia = createPinia()
+  setActivePinia(pinia)
+  const audio = useAudioStore()
+  audio.loadTableMix({ masterVolume: mix.masterVolume, trackVolumes: { forest: mix.volume }, typeVolumes: {}, trackOrder: [] })
+  audio.initTrack('forest', 'Forest')
+  audio.updateTrackState('forest', { isPlaying: true, isRepeating: mix.isRepeating })
+  let paused = true
+  vi.spyOn(HTMLMediaElement.prototype, 'paused', 'get').mockImplementation(() => paused)
+  vi.spyOn(HTMLMediaElement.prototype, 'play').mockImplementation(async () => { paused = false })
+  vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => { paused = true })
+  const player = mount(AudioTrackPlayer, { props: { fileID: 'forest' }, global: { plugins: [pinia] } })
+  try {
+    await nextTick()
+    hls.events.manifestParsed?.()
+    await nextTick()
+    expect(paused).toBe(false)
+    audio.updateTrackState('forest', { isPlaying: false })
+    await nextTick()
+    await vi.advanceTimersByTimeAsync(2500)
+    expect(paused).toBe(true)
+    expect(player.get('video').element.volume).toBe(0)
+    expect(audio.fadeStates.forest?.inProgress).toBe(false)
+  } finally {
+    player.unmount()
+    vi.useRealTimers()
+  }
+})
+
 it('reports fatal playback errors without treating recoverable HLS events as failures', async () => {
   const pinia = createPinia()
   setActivePinia(pinia)
