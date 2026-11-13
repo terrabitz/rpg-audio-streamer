@@ -2,7 +2,7 @@
 
 import { type Client, type ClientMeta, formDataBodySerializer, type Options as Options2, type RequestResult, type TDataShape } from './client';
 import { client } from './client.gen';
-import type { DeleteApiV1FilesByTrackIdData, DeleteApiV1FilesByTrackIdErrors, DeleteApiV1FilesByTrackIdResponses, DeleteApiV1TablesByTableIdData, DeleteApiV1TablesByTableIdErrors, DeleteApiV1TablesByTableIdResponses, DeleteApiV1TablesByTableIdTracksByTrackIdData, DeleteApiV1TablesByTableIdTracksByTrackIdErrors, DeleteApiV1TablesByTableIdTracksByTrackIdResponses, GetApiV1AuthStatusData, GetApiV1AuthStatusResponses, GetApiV1FilesByTrackIdUsageData, GetApiV1FilesByTrackIdUsageErrors, GetApiV1FilesByTrackIdUsageResponses, GetApiV1FilesData, GetApiV1FilesErrors, GetApiV1FilesResponses, GetApiV1JoinTokenData, GetApiV1JoinTokenErrors, GetApiV1JoinTokenResponses, GetApiV1StreamByPathData, GetApiV1StreamByPathErrors, GetApiV1StreamByPathResponses, GetApiV1TablesByTableIdData, GetApiV1TablesByTableIdErrors, GetApiV1TablesByTableIdResponses, GetApiV1TablesByTableIdSettingsData, GetApiV1TablesByTableIdSettingsErrors, GetApiV1TablesByTableIdSettingsResponses, GetApiV1TablesByTableIdTracksData, GetApiV1TablesByTableIdTracksErrors, GetApiV1TablesByTableIdTracksResponses, GetApiV1TablesCurrentData, GetApiV1TablesCurrentErrors, GetApiV1TablesCurrentResponses, GetApiV1TablesData, GetApiV1TablesResponses, GetApiV1TrackTypesData, GetApiV1TrackTypesErrors, GetApiV1TrackTypesResponses, GetApiV1WsData, GetApiV1WsErrors, PatchApiV1TablesByTableIdSettingsData, PatchApiV1TablesByTableIdSettingsErrors, PatchApiV1TablesByTableIdSettingsResponses, PostApiV1AuthLogoutData, PostApiV1AuthLogoutResponses, PostApiV1FilesData, PostApiV1FilesErrors, PostApiV1FilesResponses, PostApiV1LoginData, PostApiV1LoginErrors, PostApiV1LoginResponses, PostApiV1TablesData, PostApiV1TablesErrors, PostApiV1TablesResponses, PutApiV1FilesByTrackIdData, PutApiV1FilesByTrackIdErrors, PutApiV1FilesByTrackIdResponses, PutApiV1TablesByTableIdData, PutApiV1TablesByTableIdErrors, PutApiV1TablesByTableIdResponses, PutApiV1TablesByTableIdTracksByTrackIdData, PutApiV1TablesByTableIdTracksByTrackIdErrors, PutApiV1TablesByTableIdTracksByTrackIdResponses } from './types.gen';
+import type { DeleteApiV1FilesByTrackIdData, DeleteApiV1FilesByTrackIdErrors, DeleteApiV1FilesByTrackIdResponses, DeleteApiV1TablesByTableIdData, DeleteApiV1TablesByTableIdErrors, DeleteApiV1TablesByTableIdResponses, DeleteApiV1TablesByTableIdTracksByTrackIdData, DeleteApiV1TablesByTableIdTracksByTrackIdErrors, DeleteApiV1TablesByTableIdTracksByTrackIdResponses, GetApiV1AuthStatusData, GetApiV1AuthStatusResponses, GetApiV1FilesByTrackIdUsageData, GetApiV1FilesByTrackIdUsageErrors, GetApiV1FilesByTrackIdUsageResponses, GetApiV1FilesByTrackIdWaveformData, GetApiV1FilesByTrackIdWaveformErrors, GetApiV1FilesByTrackIdWaveformResponses, GetApiV1FilesData, GetApiV1FilesErrors, GetApiV1FilesResponses, GetApiV1JoinTokenData, GetApiV1JoinTokenErrors, GetApiV1JoinTokenResponses, GetApiV1StreamByPathData, GetApiV1StreamByPathErrors, GetApiV1StreamByPathResponses, GetApiV1TablesByTableIdData, GetApiV1TablesByTableIdErrors, GetApiV1TablesByTableIdResponses, GetApiV1TablesByTableIdSettingsData, GetApiV1TablesByTableIdSettingsErrors, GetApiV1TablesByTableIdSettingsResponses, GetApiV1TablesByTableIdTracksData, GetApiV1TablesByTableIdTracksErrors, GetApiV1TablesByTableIdTracksResponses, GetApiV1TablesCurrentData, GetApiV1TablesCurrentErrors, GetApiV1TablesCurrentResponses, GetApiV1TablesData, GetApiV1TablesResponses, GetApiV1TrackTypesData, GetApiV1TrackTypesErrors, GetApiV1TrackTypesResponses, GetApiV1WsData, GetApiV1WsErrors, PatchApiV1TablesByTableIdSettingsData, PatchApiV1TablesByTableIdSettingsErrors, PatchApiV1TablesByTableIdSettingsResponses, PostApiV1AuthLogoutData, PostApiV1AuthLogoutResponses, PostApiV1FilesData, PostApiV1FilesErrors, PostApiV1FilesResponses, PostApiV1LoginData, PostApiV1LoginErrors, PostApiV1LoginResponses, PostApiV1TablesData, PostApiV1TablesErrors, PostApiV1TablesResponses, PutApiV1FilesByTrackIdData, PutApiV1FilesByTrackIdErrors, PutApiV1FilesByTrackIdResponses, PutApiV1TablesByTableIdData, PutApiV1TablesByTableIdErrors, PutApiV1TablesByTableIdResponses, PutApiV1TablesByTableIdTracksByTrackIdData, PutApiV1TablesByTableIdTracksByTrackIdErrors, PutApiV1TablesByTableIdTracksByTrackIdResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -282,6 +282,19 @@ export const getApiV1FilesByTrackIdUsage = <ThrowOnError extends boolean = false
             type: 'apiKey'
         }],
     url: '/api/v1/files/{trackID}/usage',
+    ...options
+});
+
+/**
+ * Get the amplitude waveform of a track (GM only)
+ */
+export const getApiV1FilesByTrackIdWaveform = <ThrowOnError extends boolean = false>(options: Options<GetApiV1FilesByTrackIdWaveformData, ThrowOnError>): RequestResult<GetApiV1FilesByTrackIdWaveformResponses, GetApiV1FilesByTrackIdWaveformErrors, ThrowOnError> => (options.client ?? client).get<GetApiV1FilesByTrackIdWaveformResponses, GetApiV1FilesByTrackIdWaveformErrors, ThrowOnError>({
+    security: [{
+            in: 'cookie',
+            name: 'auth_token',
+            type: 'apiKey'
+        }],
+    url: '/api/v1/files/{trackID}/waveform',
     ...options
 });
 

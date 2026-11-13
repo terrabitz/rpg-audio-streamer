@@ -106,6 +106,13 @@ export type TrackUsage = {
     tableCount: number;
 };
 
+export type Waveform = {
+    /**
+     * Peak amplitude of equal-length slices of the track, scaled so the loudest slice is 1
+     */
+    peaks: Array<number>;
+};
+
 export type TrackType = {
     id: string;
     name: string;
@@ -622,6 +629,43 @@ export type GetApiV1FilesByTrackIdUsageResponses = {
 };
 
 export type GetApiV1FilesByTrackIdUsageResponse = GetApiV1FilesByTrackIdUsageResponses[keyof GetApiV1FilesByTrackIdUsageResponses];
+
+export type GetApiV1FilesByTrackIdWaveformData = {
+    body?: never;
+    path: {
+        trackID: string;
+    };
+    query?: never;
+    url: '/api/v1/files/{trackID}/waveform';
+};
+
+export type GetApiV1FilesByTrackIdWaveformErrors = {
+    /**
+     * Invalid track ID
+     */
+    400: unknown;
+    /**
+     * Not authorized
+     */
+    401: unknown;
+    /**
+     * Track not found
+     */
+    404: unknown;
+    /**
+     * Failed to generate the waveform
+     */
+    500: unknown;
+};
+
+export type GetApiV1FilesByTrackIdWaveformResponses = {
+    /**
+     * Peak amplitudes across the whole track
+     */
+    200: Waveform;
+};
+
+export type GetApiV1FilesByTrackIdWaveformResponse = GetApiV1FilesByTrackIdWaveformResponses[keyof GetApiV1FilesByTrackIdWaveformResponses];
 
 export type GetApiV1JoinTokenData = {
     body?: never;

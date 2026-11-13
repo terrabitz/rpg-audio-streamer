@@ -20,7 +20,7 @@
         </template>
         <template #[`item.actions`]="{ item }">
           <AudioControls :fileID="item.id" :fileName="item.name" :deleteTrack="count => deleteFile(item, count)" library
-            @settings="settings => handleSettings(item.id, settings)" @seek="time => handleSeek(item.id, time)">
+            @settings="settings => handleSettings(item.id, settings)" @seek="time => handleSeek(item.id, time)" @play="handlePlay(item.id)">
             <template #activator="{ open }">
               <v-btn icon="$dotsVertical" variant="text" size="small" :aria-label="`Edit ${item.name}`"
                 @click.stop="open" />
@@ -78,7 +78,8 @@
                 <AudioControls :fileID="file.id" :fileName="file.name"
                   :deleteTrack="count => deleteFile(file, count)"
                   @settings="settings => handleSettings(file.id, settings)"
-                  @volume="vol => handleVolume(file.id, vol)" @seek="time => handleSeek(file.id, time)" />
+                  @volume="vol => handleVolume(file.id, vol)" @seek="time => handleSeek(file.id, time)"
+                  @play="handlePlay(file.id)" />
               </v-card>
             </SortableTrack>
           </v-row>
@@ -315,11 +316,13 @@ function previewTrack(fileID: string) {
     audioStore.updateTrackState(fileID, { isPlaying: false })
     return
   }
+  const previousState = audioStore.tracks[fileID]
   audioStore.clearTracks()
   audioStore.initTrack(fileID, track.name, trackType.name)
   audioStore.updateTrackState(fileID, {
     isPlaying: true, isRepeating: trackType.isRepeating,
-    playback: track.playback ?? defaultPlayback(), currentTime: track.playback?.startTime ?? 0,
+    playback: previousState?.playback ?? track.playback ?? defaultPlayback(),
+    currentTime: previousState?.currentTime ?? track.playback?.startTime ?? 0,
   })
 }
 

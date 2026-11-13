@@ -63,6 +63,50 @@ it('shares volume changes without adding restart or playback buttons', async () 
   wrapper.unmount()
 })
 
+it('toggles playback from an optional play button', async () => {
+  const wrapper = mount(TrackTimeline, {
+    props: { modelValue: defaultPlayback(), duration: 60, currentTime: 0, name: 'Forest', showPlay: true },
+    global: {
+      stubs: {
+        VBtn: {
+          props: ['icon', 'disabled'],
+          emits: ['click'],
+          template: '<button :data-icon="icon" :disabled="disabled" @click="$emit(\'click\')" />',
+        },
+      },
+    },
+  })
+  const play = wrapper.get('[aria-label="Play Forest"]')
+  expect(play.attributes('data-icon')).toBe('$play')
+  await play.trigger('click')
+  expect(wrapper.emitted('play')).toEqual([[]])
+  await wrapper.setProps({ isPlaying: true })
+  expect(wrapper.get('[aria-label="Pause Forest"]').attributes('aria-pressed')).toBe('true')
+  expect(wrapper.get('[aria-label="Pause Forest"]').attributes('data-icon')).toBe('$pause')
+  await wrapper.setProps({ showPlay: false })
+  expect(wrapper.find('[aria-label="Pause Forest"]').exists()).toBe(false)
+  wrapper.unmount()
+})
+
+it('draws the waveform with the excluded, usable, and played areas', async () => {
+  const wrapper = await mountTimeline()
+  expect(wrapper.find('svg').exists()).toBe(false)
+  await wrapper.setProps({
+    waveform: [0, 0.5, 1, 2],
+    modelValue: { startTime: 6, endTime: 54, loopBackTime: null },
+    currentTime: 30,
+  })
+  expect(wrapper.get('.timeline-axis').classes()).toContain('has-waveform')
+  expect(wrapper.find('.timeline-usable').exists()).toBe(false)
+  const path = wrapper.get('[data-testid="waveform-track"] path').attributes('d')
+  expect(path).toBe('M0,1 L0.5,0.98 L1.5,0.5 L2.5,0 L3.5,0 L4,1 L3.5,2 L2.5,2 L1.5,1.5 L0.5,1.02 Z')
+  expect(wrapper.get('[data-testid="waveform-track"]').attributes('viewBox')).toBe('0 0 4 2')
+  expect(wrapper.get('[data-testid="waveform-usable"]').attributes('style')).toContain('inset(0px 10%)')
+  expect(wrapper.get('[data-testid="waveform-progress"]').attributes('style')).toContain('inset(0px 50% 0px 10%)')
+  expect(wrapper.get('.timeline-playhead').attributes('style')).toContain('left: 50%')
+  wrapper.unmount()
+})
+
 it('drags boundaries without seeking, cancels pointer edits, and clamps clicks in excluded areas', async () => {
   const wrapper = await mountTimeline()
   const axis = wrapper.get('.timeline-axis')

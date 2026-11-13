@@ -3,10 +3,23 @@
     <VolumeSlider v-if="volume !== undefined" :model-value="volume" :disabled="disabled" :aria-label="`Volume for ${name}`"
       thumb-size="18" track-size="6" class="timeline-volume ma-0"
       @update:model-value="$emit('volume', $event)" />
-    <div ref="axis" class="timeline-axis" @pointerdown="startDrag($event, 'seek')"
+    <v-btn v-if="showPlay" class="timeline-play" :icon="isPlaying ? '$pause' : '$play'" size="small"
+      variant="text" :disabled="disabled" :aria-label="`${isPlaying ? 'Pause' : 'Play'} ${name}`" :aria-pressed="isPlaying"
+      @click="$emit('play')" />
+    <div ref="axis" class="timeline-axis" :class="{ 'has-waveform': waveformPath }" @pointerdown="startDrag($event, 'seek')"
       @pointermove="moveDrag" @pointerup="finishDrag" @pointercancel="cancelDrag">
-      <div class="timeline-usable" :style="{ left: percent(modelValue.startTime), right: percent(duration - end) }" />
-      <div class="timeline-progress" :style="{ left: percent(modelValue.startTime), width: percent(position - modelValue.startTime) }" />
+      <template v-if="waveformPath">
+        <svg v-for="layer in waveformLayers" :key="layer.key" :class="`timeline-waveform timeline-waveform--${layer.key}`"
+          :style="{ clipPath: layer.clip }" :viewBox="`0 0 ${waveform!.length} 2`" preserveAspectRatio="none"
+          aria-hidden="true" :data-testid="`waveform-${layer.key}`">
+          <path :d="waveformPath" />
+        </svg>
+        <div class="timeline-playhead" :style="{ left: percent(position) }" />
+      </template>
+      <template v-else>
+        <div class="timeline-usable" :style="{ left: percent(modelValue.startTime), right: percent(duration - end) }" />
+        <div class="timeline-progress" :style="{ left: percent(modelValue.startTime), width: percent(position - modelValue.startTime) }" />
+      </template>
       <button v-for="point in points" :key="point.key" type="button" role="slider"
         class="timeline-handle" :class="[
           `timeline-handle--${point.key}`,
@@ -45,6 +58,9 @@ const props = defineProps<{
   currentTime: number
   name: string
   volume?: number
+  waveform?: number[]
+  showPlay?: boolean
+  isPlaying?: boolean
   isRepeating?: boolean
   disabled?: boolean
 }>()
@@ -52,6 +68,7 @@ const emit = defineEmits<{
   'update:modelValue': [settings: PlaybackSettings]
   seek: [time: number]
   volume: [volume: number]
+  play: []
 }>()
 const axis = ref<HTMLElement | null>(null)
 const drag = ref<{
@@ -72,6 +89,20 @@ const points = computed(() => [
   ...(props.isRepeating ? [
     { key: 'loop' as const, label: 'Loop-back point', value: loop.value, min: props.modelValue.startTime, max: end.value - gap.value },
   ] : []),
+])
+const waveformPath = computed(() => {
+  const peaks = props.waveform
+  if (!peaks?.length) return ''
+  // Keep silent stretches visible as a thin line.
+  const heights = peaks.map(peak => Math.max(0.02, Math.min(1, peak)))
+  const top = heights.map((height, i) => `L${i + 0.5},${1 - height}`)
+  const bottom = heights.map((height, i) => `L${i + 0.5},${1 + height}`).reverse()
+  return `M0,1 ${top.join(' ')} L${peaks.length},1 ${bottom.join(' ')} Z`
+})
+const waveformLayers = computed(() => [
+  { key: 'track', clip: undefined },
+  { key: 'usable', clip: `inset(0 ${percent(props.duration - end.value)} 0 ${percent(props.modelValue.startTime)})` },
+  { key: 'progress', clip: `inset(0 ${percent(props.duration - position.value)} 0 ${percent(props.modelValue.startTime)})` },
 ])
 
 function startDrag(event: PointerEvent, point: TimelinePoint) {
@@ -220,11 +251,18 @@ function formatTime(time: number, precise = false) {
   height: 100%;
 }
 
+.timeline-play {
+  grid-column: 1;
+  grid-row: 2;
+  justify-self: center;
+}
+
 .timeline-axis {
+  --axis-height: 6px;
   grid-column: 2;
   grid-row: 2;
   position: relative;
-  height: 6px;
+  height: var(--axis-height);
   margin-block: 48px;
   border-radius: 3px;
   background: rgba(var(--v-theme-on-surface), 0.12);
@@ -236,6 +274,42 @@ function formatTime(time: number, precise = false) {
   content: '';
   position: absolute;
   inset: -12px 0;
+}
+
+.timeline-axis.has-waveform {
+  --axis-height: 64px;
+  border-radius: 4px;
+  background: rgba(var(--v-theme-on-surface), 0.04);
+}
+
+.timeline-waveform {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.timeline-waveform--track {
+  fill: rgba(var(--v-theme-on-surface), 0.25);
+}
+
+.timeline-waveform--usable {
+  fill: rgba(var(--v-theme-primary), 0.55);
+}
+
+.timeline-waveform--progress {
+  fill: rgb(var(--v-theme-primary));
+}
+
+.timeline-playhead {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  transform: translateX(-50%);
+  background: rgb(var(--v-theme-on-surface));
+  pointer-events: none;
 }
 
 .timeline-usable,
@@ -282,7 +356,7 @@ function formatTime(time: number, precise = false) {
   left: calc(50% - 1px);
   top: 100%;
   width: 2px;
-  height: 14px;
+  height: calc(var(--axis-height) + 8px);
   background: currentColor;
   pointer-events: none;
 }
@@ -304,7 +378,7 @@ function formatTime(time: number, precise = false) {
 }
 
 .timeline-handle--loop {
-  top: 24px;
+  top: calc(var(--axis-height) + 18px);
   border-color: rgb(var(--v-theme-warning));
   color: rgb(var(--v-theme-warning));
 }
@@ -312,7 +386,7 @@ function formatTime(time: number, precise = false) {
 .timeline-handle--loop::after {
   top: auto;
   bottom: 100%;
-  height: 20px;
+  height: calc(var(--axis-height) + 14px);
 }
 
 .timeline-handle--anchored {
@@ -320,7 +394,7 @@ function formatTime(time: number, precise = false) {
 }
 
 .timeline-cursor {
-  top: -6px;
+  top: calc(50% - 9px);
   width: 18px;
   height: 18px;
   border: 3px solid rgb(var(--v-theme-surface));

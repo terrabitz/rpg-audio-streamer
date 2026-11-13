@@ -11,8 +11,8 @@ const CONFIRMATION = '[role="dialog"][aria-label="Delete track?"]'
 
 afterEach(() => vi.restoreAllMocks())
 
-it('wires paused timeline controls without play, pause, or restart buttons', async () => {
-  const { wrapper } = mountControls(false)
+it('wires the timeline, waveform, and play toggle without a restart button', async () => {
+  const { wrapper, fetchWaveform } = mountControls(false)
   useAudioStore().initTrack('forest', 'Forest', 'Music')
   await wrapper.get('[aria-label="Edit Forest"]').trigger('click')
   const controls = wrapper.getComponent({ name: 'TrackTimeline' })
@@ -21,12 +21,34 @@ it('wires paused timeline controls without play, pause, or restart buttons', asy
   expect(controls.props('isRepeating')).toBe(true)
   expect(wrapper.text()).not.toContain('Playback region')
   expect(wrapper.find('[aria-label="Restart Forest"]').exists()).toBe(false)
-  expect(wrapper.find('[aria-label="Play Forest"]').exists()).toBe(false)
-  expect(wrapper.find('[aria-label="Pause Forest"]').exists()).toBe(false)
+  expect(controls.props('showPlay')).toBe(true)
+  expect(controls.props('isPlaying')).toBe(false)
+  await flushPromises()
+  expect(fetchWaveform).toHaveBeenCalledWith('forest')
+  expect(controls.props('waveform')).toEqual([0.2, 1])
   await controls.vm.$emit('volume', 25)
   await controls.vm.$emit('seek', 12)
+  await controls.vm.$emit('play')
   expect(wrapper.emitted('volume')).toEqual([[25]])
   expect(wrapper.emitted('seek')).toEqual([[12]])
+  expect(wrapper.emitted('play')).toEqual([[]])
+  useAudioStore().updateTrackState('forest', { isPlaying: true })
+  await flushPromises()
+  expect(controls.props('isPlaying')).toBe(true)
+  await wrapper.get('[aria-label="Close track controls"]').trigger('click')
+  await wrapper.get('[aria-label="Edit Forest"]').trigger('click')
+  expect(fetchWaveform).toHaveBeenCalledTimes(1)
+  wrapper.unmount()
+})
+
+it('keeps the plain timeline when the waveform cannot load', async () => {
+  const { wrapper, fetchWaveform } = mountControls()
+  const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+  fetchWaveform.mockRejectedValue(new Error('offline'))
+  await wrapper.get('[aria-label="Edit Forest"]').trigger('click')
+  await flushPromises()
+  expect(wrapper.getComponent({ name: 'TrackTimeline' }).props('waveform')).toBeUndefined()
+  expect(error).toHaveBeenCalledWith('Failed to load track waveform:', expect.any(Error))
   wrapper.unmount()
 })
 
@@ -48,7 +70,7 @@ it('uses the draft track type to show or hide loop-back controls immediately', a
   wrapper.unmount()
 })
 
-it('loads a library timeline without playing and saves only confirmed point edits', async () => {
+it('previews point edits immediately, restores them on cancel, and persists only on save', async () => {
   const { wrapper } = mountControls()
   const audio = useAudioStore()
   const files = useFileStore()
@@ -61,9 +83,11 @@ it('loads a library timeline without playing and saves only confirmed point edit
   await flushPromises()
   const timeline = wrapper.getComponent({ name: 'TrackTimeline' })
   await timeline.vm.$emit('update:modelValue', { startTime: 10, endTime: 50, loopBackTime: 20 })
-  expect(audio.tracks.forest?.playback).toEqual({ startTime: 0, endTime: null, loopBackTime: null })
+  expect(wrapper.emitted('settings')).toEqual([[{ startTime: 10, endTime: 50, loopBackTime: 20 }]])
+  expect(files.tracks[0]?.playback).toBeUndefined()
   expect(update).not.toHaveBeenCalled()
   await wrapper.get('[aria-label="Close track controls"]').trigger('click')
+  expect(wrapper.emitted('settings')?.at(-1)).toEqual([{ startTime: 0, endTime: null, loopBackTime: null }])
   await wrapper.get('[aria-label="Edit Forest"]').trigger('click')
   expect(wrapper.getComponent({ name: 'TrackTimeline' }).props('modelValue').startTime).toBe(0)
   await wrapper.getComponent({ name: 'TrackTimeline' }).vm.$emit('update:modelValue', {
@@ -72,8 +96,30 @@ it('loads a library timeline without playing and saves only confirmed point edit
   await wrapper.findAll('button').find(button => button.text() === 'Save Changes')!.trigger('click')
   await flushPromises()
   expect(update).toHaveBeenCalledWith('forest', { playback: { startTime: 10, endTime: 50, loopBackTime: 20 } })
-  expect(wrapper.emitted('settings')).toEqual([[{ startTime: 10, endTime: 50, loopBackTime: 20 }]])
+  expect(wrapper.emitted('settings')).toHaveLength(4)
+  expect(wrapper.emitted('settings')?.at(-1)).toEqual([{ startTime: 10, endTime: 50, loopBackTime: 20 }])
   wrapper.unmount()
+})
+
+it('rejects invalid previews and restores saved settings after a failed save', async () => {
+  const { wrapper } = mountControls()
+  vi.spyOn(console, 'error').mockImplementation(() => {})
+  const update = vi.spyOn(useFileStore(), 'updateTrack').mockRejectedValue(new Error('offline'))
+  await wrapper.get('[aria-label="Edit Forest"]').trigger('click')
+  useAudioStore().updateTrackState('forest', { duration: 60 })
+  const timeline = wrapper.getComponent({ name: 'TrackTimeline' })
+  await timeline.vm.$emit('update:modelValue', { startTime: 50, endTime: 10, loopBackTime: null })
+  expect(wrapper.emitted('settings')).toBeUndefined()
+  await timeline.vm.$emit('update:modelValue', { startTime: 10, endTime: 50, loopBackTime: null })
+  await wrapper.findAll('button').find(button => button.text() === 'Save Changes')!.trigger('click')
+  await flushPromises()
+  expect(update).toHaveBeenCalledOnce()
+  expect(wrapper.text()).toContain('Failed to update track.')
+  expect(wrapper.emitted('settings')).toEqual([[{ startTime: 10, endTime: 50, loopBackTime: null }]])
+  const settings = vi.fn()
+  await wrapper.setProps({ onSettings: settings })
+  wrapper.unmount()
+  expect(settings).toHaveBeenCalledExactlyOnceWith({ startTime: 0, endTime: null, loopBackTime: null })
 })
 
 it.each([
@@ -200,6 +246,7 @@ function mountControls(library = true) {
     id: 'music', name: 'Music', color: '#123456', isRepeating: true, allowSimultaneousPlay: false,
   }]
   const countTables = vi.spyOn(files, 'countTrackTables')
+  const fetchWaveform = vi.spyOn(files, 'fetchWaveform').mockResolvedValue([0.2, 1])
   const deleteTrack = vi.fn().mockResolvedValue(undefined)
   const passthrough = { template: '<div><slot /></div>' }
   const wrapper = mount(AudioControls, {
@@ -231,5 +278,5 @@ function mountControls(library = true) {
       },
     },
   })
-  return { wrapper, countTables, deleteTrack }
+  return { wrapper, countTables, deleteTrack, fetchWaveform }
 }

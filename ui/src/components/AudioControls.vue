@@ -23,11 +23,12 @@
             class="pa-0 ma-0"></v-text-field>
           <TrackTypeSelector v-model="editTrackType" />
           <v-alert v-if="regionError" type="error" class="mb-3">{{ regionError }}</v-alert>
-          <TrackTimeline v-if="audioState" v-model="editedPlayback" :duration="audioState.duration"
-            :current-time="audioState.currentTime" :name="props.fileName"
+          <TrackTimeline v-if="audioState" :model-value="editedPlayback" @update:model-value="previewPlayback" :duration="audioState.duration"
+            :current-time="audioState.currentTime" :name="props.fileName" :waveform="waveform"
+            show-play :is-playing="audioState.isPlaying"
             :is-repeating="trackTypeStore.getTypeById(editTrackType)?.isRepeating"
             :volume="props.library ? undefined : audioState.volume" :disabled="isSaving || isDeleting" class="mt-3"
-            @volume="$emit('volume', $event)" @seek="$emit('seek', $event)" />
+            @volume="$emit('volume', $event)" @seek="$emit('seek', $event)" @play="$emit('play')" />
         </v-card-text>
         <v-divider></v-divider>
         <v-card-actions>
@@ -70,7 +71,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch, watchEffect } from 'vue';
+import { computed, onBeforeUnmount, ref, watch, watchEffect } from 'vue';
 import type { PlaybackSettings, UpdateTrackRequest } from '@/client/apiClient';
 import { defaultPlayback, playbackError } from '@/composables/playback';
 import { useAudioStore } from '../stores/audio';
@@ -106,6 +107,8 @@ const isActive = computed(() => audioState.value?.isPlaying);
 const editName = ref(props.fileName);
 const editTrackType = ref(trackType.value?.id || '');
 const editedPlayback = ref<PlaybackSettings>(defaultPlayback());
+const waveform = ref<number[]>();
+let hasPlaybackPreview = false;
 const regionError = computed(() => playbackError(editedPlayback.value, audioState.value?.duration));
 
 function openControls() {
@@ -133,8 +136,37 @@ watch(showControls, (open) => {
     editName.value = track.value.name;
     editTrackType.value = track.value.typeID;
     editedPlayback.value = { ...(track.value.playback ?? defaultPlayback()) };
+    loadWaveform(track.value.id);
   }
+  if (!open) restorePlayback();
 });
+
+function previewPlayback(playback: PlaybackSettings) {
+  editedPlayback.value = playback;
+  if (regionError.value) return;
+  hasPlaybackPreview = true;
+  emit('settings', { ...playback });
+}
+
+function restorePlayback() {
+  if (!hasPlaybackPreview) return;
+  hasPlaybackPreview = false;
+  if (track.value && audioState.value) {
+    emit('settings', { ...(track.value.playback ?? defaultPlayback()) });
+  }
+}
+
+onBeforeUnmount(restorePlayback);
+
+async function loadWaveform(trackID: string) {
+  if (waveform.value) return;
+  try {
+    waveform.value = await fileStore.fetchWaveform(trackID);
+  } catch (cause) {
+    // The plain timeline remains usable without a waveform.
+    console.error('Failed to load track waveform:', cause);
+  }
+}
 
 async function requestDelete() {
   error.value = '';
@@ -212,7 +244,10 @@ async function saveTrackChanges() {
     // Only make API call if something has changed
     if (Object.keys(updates).length > 0) {
       const updatedTrack = await fileStore.updateTrack(track.value.id, updates);
-      if (updatedTrack) emit('settings', updatedTrack.playback ?? defaultPlayback());
+      if (updatedTrack) {
+        emit('settings', updatedTrack.playback ?? defaultPlayback());
+        hasPlaybackPreview = false;
+      }
 
       // Update audio track state if track type changed (may affect isRepeating)
       if (updates.typeID && updatedTrack) {
@@ -249,6 +284,7 @@ watchEffect(() => {
 const emit = defineEmits<{
   (e: 'volume', volume: number): void
   (e: 'seek', time: number): void
+  (e: 'play'): void
   (e: 'settings', playback: PlaybackSettings): void
 }>();
 
