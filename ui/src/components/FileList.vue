@@ -1,5 +1,5 @@
 <template>
-  <v-container :class="{ 'pa-0': !props.library }">
+  <v-container :fluid="!props.library" :class="{ 'pa-0': !props.library }">
     <v-alert v-if="error" type="error" class="mb-4">{{ error }}</v-alert>
     <template v-if="props.library">
       <AudioPlayer @error="error = $event" />
@@ -28,35 +28,61 @@
         </template>
       </v-data-table>
     </template>
-    <p v-else-if="!tracks.length" class="mb-4">
-      No tracks at this table. Add a library track or upload a new one.
-    </p>
-    <p id="track-reorder-help" class="d-sr-only">
-      Click a track to play or pause. Drag its handle to reorder, or focus a card or handle and press Alt + Left or Right.
-      Hover or focus a card to show playback controls; on touch devices, use the toggle.
-    </p>
-    <div class="d-sr-only" role="status">{{ reorderAnnouncement }}</div>
-    <DragDropProvider v-if="!props.library" :sensors="sensors" :plugins="plugins" @drag-start="startDrag" @drag-end="finishDrag">
-      <v-row dense class="track-list" :class="{ 'is-dragging': dragging }">
-        <SortableTrack v-for="(file, index) in tracks" :key="file.id" :id="file.id" :index="index"
-          :class="{ 'has-visible-controls': controlsVisible(file.id) }">
-          <v-card class="file-tile" role="group" tabindex="0" :aria-label="file.name" aria-describedby="track-reorder-help"
-            aria-keyshortcuts="Alt+ArrowLeft Alt+ArrowRight" @keydown="handleKeydown($event, file.id)"
-            @click="handlePlay(file.id)" @pointerenter="handlePointerEnter($event, file.id)"
-            @pointerleave="handlePointerLeave($event, file.id)" @pointerdown="handlePointerDown($event, file.id)"
-            @focusin="handleFocusIn($event, file.id)" @focusout="handleFocusOut($event, file.id)">
-            <v-btn class="track-drag-handle" icon="$drag" size="x-small" variant="text"
-              :aria-label="`Drag to reorder ${file.name}`" title="Drag to reorder"
-              aria-describedby="track-reorder-help" aria-keyshortcuts="Alt+ArrowLeft Alt+ArrowRight"
-              @click.stop @keydown="handleKeydown($event, file.id)" />
-            <AudioControls :fileID="file.id" :fileName="file.name" :controls-visible="controlsVisible(file.id)"
-              :deleteTrack="count => deleteFile(file, count)"
-              @toggle-controls="toggleControls(file.id)" @volume="vol => handleVolume(file.id, vol)"
-              @play="handlePlay(file.id)" @seek="time => handleSeek(file.id, time)" />
+    <div v-else class="table-playback-layout" :class="{ 'is-mobile': smAndDown }">
+      <aside v-if="!smAndDown" class="playing-sidebar" aria-label="Currently playing">
+        <h2 class="now-playing-heading mb-2">Currently playing</h2>
+        <PlayingTrackList :tracks="playingTracks" @play="handlePlay" @volume="handleVolume" @seek="handleSeek" />
+      </aside>
+      <template v-else>
+        <v-bottom-sheet v-model="showNowPlaying" max-height="70dvh" aria-label="Currently playing">
+          <template #activator="{ props: activatorProps }">
+            <div class="now-playing-bar">
+              <v-btn v-bind="activatorProps" block variant="text" prepend-icon="$music" append-icon="$collapse"
+                :aria-label="`Now playing (${playingTracks.length})`" :aria-expanded="showNowPlaying">
+                Now playing ({{ playingTracks.length }})
+              </v-btn>
+            </div>
+          </template>
+          <v-card class="now-playing-drawer">
+            <div class="d-flex align-center justify-space-between px-3">
+              <h2 class="now-playing-heading">Currently playing ({{ playingTracks.length }})</h2>
+              <v-btn icon="$close" size="small" variant="text" aria-label="Close now playing"
+                @click="showNowPlaying = false" />
+            </div>
+            <div class="now-playing-drawer-tracks">
+              <PlayingTrackList :tracks="playingTracks" @play="handlePlay" @volume="handleVolume" @seek="handleSeek" />
+            </div>
           </v-card>
-        </SortableTrack>
-      </v-row>
-    </DragDropProvider>
+        </v-bottom-sheet>
+      </template>
+      <div class="table-track-grid">
+        <p v-if="!tracks.length" class="mb-4">
+          No tracks at this table. Add a library track or upload a new one.
+        </p>
+        <p id="track-reorder-help" class="d-sr-only">
+          Click a track to play or pause. Drag its handle to reorder, or focus a card or handle and press Alt + Left or Right.
+          Use the three-dot button for track settings, volume, and playback position.
+        </p>
+        <div class="d-sr-only" role="status">{{ reorderAnnouncement }}</div>
+        <DragDropProvider :sensors="sensors" :plugins="plugins" @drag-start="startDrag" @drag-end="finishDrag">
+          <v-row gap="3" class="track-list" :class="{ 'is-dragging': dragging }">
+            <SortableTrack v-for="(file, index) in tracks" :key="file.id" :id="file.id" :index="index">
+              <v-card class="file-tile" role="group" tabindex="0" :aria-label="file.name" aria-describedby="track-reorder-help"
+                aria-keyshortcuts="Alt+ArrowLeft Alt+ArrowRight" @keydown="handleKeydown($event, file.id)"
+                @click="handlePlay(file.id)">
+                <v-btn class="track-drag-handle" icon="$drag" size="x-small" variant="text"
+                  :aria-label="`Drag to reorder ${file.name}`" title="Drag to reorder"
+                  aria-describedby="track-reorder-help" aria-keyshortcuts="Alt+ArrowLeft Alt+ArrowRight"
+                  @click.stop @keydown="handleKeydown($event, file.id)" />
+                <AudioControls :fileID="file.id" :fileName="file.name"
+                  :deleteTrack="count => deleteFile(file, count)"
+                  @volume="vol => handleVolume(file.id, vol)" @seek="time => handleSeek(file.id, time)" />
+              </v-card>
+            </SortableTrack>
+          </v-row>
+        </DragDropProvider>
+      </div>
+    </div>
   </v-container>
 </template>
 
@@ -71,21 +97,21 @@ import { useTrackTypeStore } from '@/stores/trackTypes'
 import { useTableStore } from '@/stores/tables'
 import { useWebSocketStore } from '@/stores/websocket'
 import debounce from 'lodash.debounce'
-import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { useDisplay } from 'vuetify'
 import { useAudioStore } from '../stores/audio'
 import AudioControls from './AudioControls.vue'
 import SortableTrack from './SortableTrack.vue'
 import AudioPlayer from './AudioPlayer.vue'
+import PlayingTrackList from './PlayingTrackList.vue'
 
 const fileStore = useFileStore()
 const audioStore = useAudioStore()
 const wsStore = useWebSocketStore()
 const trackTypeStore = useTrackTypeStore()
 const dragging = ref(false)
-const hoveredTrack = ref<string | null>(null)
-const focusedTrack = ref<string | null>(null)
-const expandedTrack = ref<string | null>(null)
-const activeControlPointers = reactive(new Map<number, { fileID: string }>())
+const { smAndDown } = useDisplay()
+const showNowPlaying = ref(false)
 const reorderAnnouncement = ref('')
 const plugins = defaultPreset.plugins.map(plugin => plugin === Feedback
   ? Feedback.configure({ feedback: 'clone', dropAnimation: { duration: 180 } })
@@ -108,6 +134,12 @@ const libraryHeaders = [
 ]
 const tracks = computed(() => props.library ? fileStore.tracks :
   tables.orderedTracks.map(track => fileStore.getTrackById(track.id) ?? track))
+const playingTracks = computed(() => tracks.value.flatMap(track => {
+  const state = audioStore.tracks[track.id]
+  return state?.isPlaying ? [{ ...track, state }] : []
+}))
+
+watch(smAndDown, () => { showNowPlaying.value = false })
 
 onMounted(async () => {
   if (props.library) audioStore.clearTracks()
@@ -123,8 +155,6 @@ onMounted(async () => {
   }
 })
 
-onUnmounted(clearControlPointers)
-
 watch(tracks, (tracks) => {
   for (const id of Object.keys(audioStore.tracks)) {
     if (!tracks.some(track => track.id === id)) audioStore.removeTrack(id)
@@ -135,78 +165,8 @@ watch(tracks, (tracks) => {
   }
 }, { immediate: true })
 
-function toggleControls(fileID: string) {
-  if (!controlsVisible(fileID)) {
-    expandedTrack.value = fileID
-    return
-  }
-  if (expandedTrack.value === fileID) expandedTrack.value = null
-  if (hoveredTrack.value === fileID) hoveredTrack.value = null
-  if (focusedTrack.value === fileID) focusedTrack.value = null
-}
-
-function controlsVisible(fileID: string) {
-  return !dragging.value && (
-    hoveredTrack.value === fileID || focusedTrack.value === fileID || expandedTrack.value === fileID
-    || [...activeControlPointers.values()].some(pointer => pointer.fileID === fileID)
-  )
-}
-
-function handlePointerEnter(event: PointerEvent, fileID: string) {
-  if (event.pointerType !== 'touch') hoveredTrack.value = fileID
-}
-
-function handlePointerLeave(event: PointerEvent, fileID: string) {
-  if (event.pointerType !== 'touch' && hoveredTrack.value === fileID) hoveredTrack.value = null
-}
-
-function handlePointerDown(event: PointerEvent, fileID: string) {
-  if (event.target instanceof Element && event.target.closest('.track-controls .v-slider')) {
-    activeControlPointers.set(event.pointerId, { fileID })
-    window.addEventListener('pointerup', finishControlPointer)
-    window.addEventListener('pointercancel', finishControlPointer)
-    window.addEventListener('blur', clearControlPointers)
-  }
-  if (event.pointerType !== 'touch') return
-  hoveredTrack.value = null
-  if (expandedTrack.value !== fileID) expandedTrack.value = null
-}
-
-function finishControlPointer(event: PointerEvent) {
-  const pointer = activeControlPointers.get(event.pointerId)
-  if (!pointer) return
-  // Keep the slider rendered through the following mouseup or touchend event.
-  requestAnimationFrame(() => {
-    if (activeControlPointers.get(event.pointerId) !== pointer) return
-    activeControlPointers.delete(event.pointerId)
-    if (activeControlPointers.size === 0) clearControlPointers()
-  })
-}
-
-function clearControlPointers() {
-  activeControlPointers.clear()
-  window.removeEventListener('pointerup', finishControlPointer)
-  window.removeEventListener('pointercancel', finishControlPointer)
-  window.removeEventListener('blur', clearControlPointers)
-}
-
-function handleFocusIn(event: FocusEvent, fileID: string) {
-  focusedTrack.value = event.target instanceof HTMLElement && event.target.matches(':focus-visible')
-    ? fileID
-    : null
-}
-
-function handleFocusOut(event: FocusEvent, fileID: string) {
-  if (event.currentTarget instanceof HTMLElement && event.relatedTarget instanceof Node
-    && event.currentTarget.contains(event.relatedTarget)) return
-  if (focusedTrack.value === fileID) focusedTrack.value = null
-}
-
 function startDrag() {
   dragging.value = true
-  expandedTrack.value = null
-  hoveredTrack.value = null
-  focusedTrack.value = null
 }
 
 function finishDrag(event: DragEndEvent) {
@@ -224,9 +184,6 @@ function finishDrag(event: DragEndEvent) {
 }
 
 async function handleKeydown(event: KeyboardEvent, fileID: string) {
-  if (!(event.target instanceof Element) || !event.target.closest('.track-touch-toggle')) {
-    focusedTrack.value = fileID
-  }
   if (event.target !== event.currentTarget || !(event.currentTarget instanceof HTMLElement)) return
   const card = event.currentTarget
   if ((event.key === 'Enter' || event.key === ' ') && card.classList.contains('file-tile')) {
@@ -392,9 +349,73 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-.track-item.has-visible-controls {
-  position: relative;
-  z-index: 1;
+.table-playback-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 260px;
+  align-items: start;
+  min-height: calc(100dvh - var(--v-layout-top, 64px));
+}
+
+.table-track-grid {
+  grid-column: 1;
+  grid-row: 1;
+  min-width: 0;
+  padding: 10px;
+}
+
+.track-list {
+  margin: 0;
+}
+
+.playing-sidebar {
+  grid-column: 2;
+  position: sticky;
+  top: var(--v-layout-top, 64px);
+  height: calc(100dvh - var(--v-layout-top, 64px));
+  overflow-y: auto;
+  padding: 8px;
+  background: rgb(var(--v-theme-surface));
+  border-left: 1px solid rgba(var(--v-theme-on-surface), 0.12);
+}
+
+.now-playing-heading {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 500;
+  line-height: 24px;
+}
+
+.now-playing-bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 4;
+  padding-bottom: env(safe-area-inset-bottom);
+  background: rgb(var(--v-theme-surface));
+  border-top: 1px solid rgba(var(--v-theme-on-surface), 0.12);
+}
+
+.now-playing-bar .v-btn {
+  height: 44px;
+}
+
+.now-playing-drawer {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.now-playing-drawer-tracks {
+  overflow-y: auto;
+  padding: 0 12px 12px;
+}
+
+.table-playback-layout.is-mobile {
+  display: block;
+  padding-bottom: calc(60px + env(safe-area-inset-bottom));
+}
+
+.table-playback-layout.is-mobile .table-track-grid {
+  width: 100%;
 }
 
 .file-tile {

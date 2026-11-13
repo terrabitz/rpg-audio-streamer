@@ -70,7 +70,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <v-container class="py-2">
+  <v-container :fluid="auth.role === 'gm'" :class="auth.role === 'gm' ? 'pa-0' : 'py-2'">
     <v-progress-circular v-if="loading" indeterminate aria-label="Checking session" />
     <v-alert v-else-if="error" type="error">{{ error }}</v-alert>
     <template v-else-if="tables.current">
