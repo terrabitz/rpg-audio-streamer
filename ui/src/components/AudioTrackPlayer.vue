@@ -1,8 +1,8 @@
 <template>
-  <video ref="primary" :data-active="active === 0 && audioStore.tracks[props.fileID]?.isPlaying"
+  <video ref="primary" :data-active="active === 0"
     style="display: none;" @ended="handleEnded(0)" @timeupdate="handleTimeUpdate(0)"
     @loadedmetadata="handleMetadata(0)" />
-  <audio ref="secondary" :data-active="active === 1 && audioStore.tracks[props.fileID]?.isPlaying"
+  <audio ref="secondary" :data-active="active === 1"
     style="display: none;" @ended="handleEnded(1)" @timeupdate="handleTimeUpdate(1)"
     @loadedmetadata="handleMetadata(1)" />
 </template>
