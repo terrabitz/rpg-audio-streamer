@@ -7,6 +7,7 @@ import {
   patchApiV1TablesByTableIdSettings,
   getApiV1TablesByTableIdTracks,
   postApiV1Tables,
+  postApiV1TablesByTableIdExternalId,
   putApiV1TablesByTableId,
   putApiV1TablesByTableIdTracksByTrackId,
   type Table,
@@ -28,7 +29,7 @@ export const useTableStore = defineStore('tables', {
   }),
   getters: {
     orderedTracks(state): Track[] {
-      const order = state.current ? state.trackOrders[state.current.id] ?? [] : []
+      const order = state.current ? state.trackOrders[state.current.externalID] ?? [] : []
       const positions = new Map(order.map((id, index) => [id, index]))
       return [...state.tracks].sort((a, b) =>
         (positions.get(a.id) ?? order.length) - (positions.get(b.id) ?? order.length),
@@ -46,7 +47,7 @@ export const useTableStore = defineStore('tables', {
         typeVolumes: { ...data.typeVolumes, ...failed?.typeVolumes },
         trackVolumes: { ...data.trackVolumes, ...failed?.trackVolumes },
       }
-      if (this.current?.id === tableID) {
+      if (this.current?.externalID === tableID) {
         this.trackOrders[tableID] = settings.trackOrder
         if (failed) {
           this.settingsError = 'Unable to save table settings. Your changes are not saved.'
@@ -66,11 +67,11 @@ export const useTableStore = defineStore('tables', {
         try {
           await patchApiV1TablesByTableIdSettings<true>({ path: { tableID }, body, keepalive: true })
           delete this.failedSettings[tableID]
-          if (this.current?.id === tableID) this.settingsError = ''
+          if (this.current?.externalID === tableID) this.settingsError = ''
         } catch (e) {
           console.error('Failed to save table settings:', e)
           this.failedSettings[tableID] = body
-          if (this.current?.id === tableID) {
+          if (this.current?.externalID === tableID) {
             this.settingsError = 'Unable to save table settings. Your changes are not saved.'
           }
         }
@@ -88,14 +89,29 @@ export const useTableStore = defineStore('tables', {
     },
     async renameTable(tableID: string, name: string) {
       const { data } = await putApiV1TablesByTableId<true>({ path: { tableID }, body: { name } })
-      this.tables = this.tables.map(table => table.id === tableID ? data : table)
-      if (this.current?.id === tableID) this.current = data
+      this.tables = this.tables.map(table => table.externalID === tableID ? data : table)
+      if (this.current?.externalID === tableID) this.current = data
     },
     async deleteTable(tableID: string) {
       await deleteApiV1TablesByTableId<true>({ path: { tableID } })
-      this.tables = this.tables.filter(table => table.id !== tableID)
+      this.tables = this.tables.filter(table => table.externalID !== tableID)
       delete this.trackOrders[tableID]
-      if (this.current?.id === tableID) this.clearCurrent()
+      if (this.current?.externalID === tableID) this.clearCurrent()
+    },
+    async rotateExternalID(tableID: string) {
+      await this.saveQueue
+      const { data } = await postApiV1TablesByTableIdExternalId<true>({ path: { tableID } })
+      this.tables = this.tables.map(table => table.externalID === tableID ? data : table)
+      if (this.trackOrders[tableID]) {
+        this.trackOrders[data.externalID] = this.trackOrders[tableID]
+        delete this.trackOrders[tableID]
+      }
+      if (this.failedSettings[tableID]) {
+        this.failedSettings[data.externalID] = this.failedSettings[tableID]
+        delete this.failedSettings[tableID]
+      }
+      if (this.current?.externalID === tableID) this.current = data
+      return data
     },
     async loadTable(tableID: string) {
       this.clearCurrent()
@@ -105,7 +121,7 @@ export const useTableStore = defineStore('tables', {
     },
     async fetchTracks(tableID: string) {
       const { data } = await getApiV1TablesByTableIdTracks<true>({ path: { tableID } })
-      if (this.current?.id !== tableID) return
+      if (this.current?.externalID !== tableID) return
       this.tracks = data
       this.trackOrders[tableID] = this.orderedTracks.map(track => track.id)
     },
@@ -117,8 +133,8 @@ export const useTableStore = defineStore('tables', {
       if (sourceIndex < 0 || targetIndex < 0 || sourceIndex === targetIndex) return
       const [track] = ordered.splice(sourceIndex, 1)
       if (track) ordered.splice(targetIndex, 0, track)
-      this.trackOrders[this.current.id] = ordered.map(track => track.id)
-      void this.saveSettings(this.current.id, { trackOrder: this.trackOrders[this.current.id] })
+      this.trackOrders[this.current.externalID] = ordered.map(track => track.id)
+      void this.saveSettings(this.current.externalID, { trackOrder: this.trackOrders[this.current.externalID] })
     },
     async addTrack(tableID: string, trackID: string) {
       await putApiV1TablesByTableIdTracksByTrackId<true>({ path: { tableID, trackID } })

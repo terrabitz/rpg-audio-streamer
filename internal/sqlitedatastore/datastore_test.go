@@ -162,7 +162,7 @@ func TestMigrationLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	version, err := m.Version()
-	if err != nil || version.Version != 5 || version.Dirty {
+	if err != nil || version.Version != 6 || version.Dirty {
 		t.Fatalf("version = %#v, %v", version, err)
 	}
 	if err := m.Up(); !errors.Is(err, migrate.ErrNoChange) {

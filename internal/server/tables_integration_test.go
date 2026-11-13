@@ -2,6 +2,7 @@ package server_test
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"io"
 	"log/slog"
@@ -73,18 +74,19 @@ func TestTableHTTP(t *testing.T) {
 		request("POST", "/api/v1/tables", body, "", true, 400)
 	}
 	first := decodeTable(request("POST", "/api/v1/tables", `{"name":" Friday "}`, "", true, 201))
-	if first.Name != "Friday" {
+	decodedExternalID, decodeErr := base64.RawURLEncoding.DecodeString(first.ExternalID)
+	if first.Name != "Friday" || decodeErr != nil || len(decodedExternalID) != 32 {
 		t.Fatalf("created table = %+v", first)
 	}
 	second := decodeTable(request("POST", "/api/v1/tables", `{"name":"Sunday"}`, "", true, 201))
-	firstPath := "/api/v1/tables/" + first.ID.String()
-	secondPath := "/api/v1/tables/" + second.ID.String()
+	firstPath := "/api/v1/tables/" + first.ExternalID
+	secondPath := "/api/v1/tables/" + second.ExternalID
 	settingsPath := firstPath + "/settings"
 	request("GET", settingsPath, "", "", false, 401)
 	request("GET", settingsPath, "", "", false, 401)
 	request("PATCH", settingsPath, `{"masterVolume":0}`, "", false, 401)
 	request("POST", settingsPath, `{}`, "", true, 405)
-	request("GET", "/api/v1/tables/"+uuid.NewString()+"/settings", "", "", true, 404)
+	request("GET", "/api/v1/tables/not-a-table/settings", "", "", true, 404)
 	for _, body := range []string{
 		`{`, `null`, `{"currentTime":12}`, `{"isPlaying":true}`,
 		`{"masterVolume":-1}`, `{"masterVolume":201}`, `{"masterVolume":"50"}`,
@@ -130,11 +132,11 @@ func TestTableHTTP(t *testing.T) {
 	request("PUT", firstPath, `{"name":"Forbidden"}`, "", false, 403)
 	request("DELETE", firstPath, "", "", false, 403)
 	request("GET", firstPath+"/tracks", "", "", false, 200)
-	request("GET", "/api/v1/tables/invalid", "", "", true, 400)
-	request("GET", "/api/v1/tables/"+uuid.NewString(), "", "", true, 404)
+	request("GET", "/api/v1/tables/invalid", "", "", true, 404)
+	request("GET", "/api/v1/tables/not-a-table", "", "", true, 404)
 	request("PATCH", firstPath, "", "", true, 405)
 	request("PATCH", "/api/v1/tables", "", "", true, 405)
-	request("POST", "/api/v1/tables/current", "", "", true, 400)
+	request("POST", "/api/v1/tables/current", "", "", true, 404)
 	request("POST", firstPath+"/tracks", "", "", true, 405)
 	types, err := db.GetTrackTypes(ctx)
 	if err != nil {
@@ -200,7 +202,23 @@ func TestTableHTTP(t *testing.T) {
 	stream := firstPath + "/stream/" + track.ID.String() + "/index.m3u8"
 	request("GET", stream, "", "", false, 200)
 	request("GET", secondPath+"/stream/"+track.ID.String()+"/index.m3u8", "", "", false, 404)
-	request("GET", "/api/v1/tables/invalid/stream/"+track.ID.String()+"/index.m3u8", "", "", false, 400)
+	request("GET", "/api/v1/tables/invalid/stream/"+track.ID.String()+"/index.m3u8", "", "", false, 404)
+	request("POST", firstPath+"/external-id", "", "", false, 401)
+	rotated := decodeTable(request("POST", firstPath+"/external-id", "", "", true, 200))
+	if rotated.ID != first.ID || rotated.ExternalID == first.ExternalID {
+		t.Fatalf("rotated table = %+v; previous = %+v", rotated, first)
+	}
+	decodedRotatedID, decodeErr := base64.RawURLEncoding.DecodeString(rotated.ExternalID)
+	if decodeErr != nil || len(decodedRotatedID) != 32 {
+		t.Fatalf("rotated external ID is not a 32-byte base64url value: %q, %v", rotated.ExternalID, decodeErr)
+	}
+	request("GET", firstPath, "", "", false, 404)
+	firstPath = "/api/v1/tables/" + rotated.ExternalID
+	settingsPath = firstPath + "/settings"
+	association = firstPath + "/tracks/" + track.ID.String()
+	stream = firstPath + "/stream/" + track.ID.String() + "/index.m3u8"
+	request("GET", firstPath, "", "", false, 200)
+	request("GET", stream, "", "", false, 200)
 	request("DELETE", association, "", "", true, 204)
 	assertUsage(0)
 	request("GET", stream, "", "", false, 404)
@@ -211,7 +229,11 @@ func TestTableHTTP(t *testing.T) {
 	request("GET", "/api/v1/stream/"+track.ID.String()+"/index.m3u8", "", "", true, 200)
 	request("DELETE", filePath+"?expectedTableCount=0", "", "", true, 200)
 	request("GET", usagePath, "", "", true, 404)
-	request("DELETE", "/api/v1/tables/"+server.DefaultTableID.String(), "", "", true, 204)
+	defaultTable, err := db.GetTable(ctx, server.DefaultTableID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request("DELETE", "/api/v1/tables/"+defaultTable.ExternalID, "", "", true, 204)
 	request("GET", "/api/v1/joinToken", "", "", true, 404)
 	request("DELETE", secondPath, "", "", true, 204)
 	if rec := request("GET", "/api/v1/tables", "", "", true, 200); strings.TrimSpace(rec.Body.String()) != "[]" {

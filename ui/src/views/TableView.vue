@@ -42,9 +42,9 @@ onMounted(async () => {
   await auth.checkAuthStatus()
   if (disposed) return
   try {
-    const tableID = typeof route.params.tableID === 'string' ? route.params.tableID : undefined
-    if (!tableID) throw new Error('Missing table ID')
-    await tables.loadTable(tableID)
+    const externalID = typeof route.params.externalID === 'string' ? route.params.externalID : undefined
+    if (!externalID) throw new Error('Missing table external ID')
+    await tables.loadTable(externalID)
     if (disposed) return
     setTitle(tables.current?.name ?? 'Table')
   } catch (e) {

@@ -78,13 +78,15 @@ GM login compares the configured username and Argon2id password hash, then
 sets an HTTP-only `auth_token` cookie containing a signed JWT. Cookies are
 secure outside development mode. Logout expires the cookie.
 
-The table UUID is also its public external ID. Anyone with `/tables/<id>` can
-read that table's name and associated tracks, stream those tracks, and connect
-to its WebSocket without signing in or exchanging credentials. API stream URLs
-and WebSocket connections carry the table ID, and the server scopes playback
-and track access to that table. There is no player session, so each tab can
-open a different table independently. A valid GM cookie on the same URL
-selects the GM controls; it does not change the URL.
+Each table has a database UUID and a separate, randomly generated Base64URL
+external ID. Anyone with `/tables/<external-id>` can read that table's name
+and associated tracks, stream those tracks, and connect to its WebSocket
+without signing in or exchanging credentials. API stream URLs and WebSocket
+connections carry the external ID; the server resolves it to the internal UUID
+for table-scoped playback and track access. There is no player session, so each
+tab can open a different table independently. A valid GM cookie on the same
+URL selects the GM controls; it does not change the URL. GMs can rotate the
+external ID; this invalidates the old URL and disconnects connected players.
 
 Only GMs can create, rename, or delete tables, associate tracks, manage the
 shared library, or change table settings. The auth-status endpoint reports GM
@@ -98,8 +100,9 @@ SQLite stores metadata, not media bytes:
   and shared playback-region points (beginning, optional end, optional loop-back).
 - `track_types`: UUID ID, name, color, repeat policy, simultaneous-play policy,
   and creation timestamp.
-- `game_tables`: UUID ID, name, and JSON GM mixing/ordering settings. The UUID is
-  the public table identifier used in player URLs.
+- `game_tables`: UUID ID, unique random Base64URL external ID, name, and JSON GM
+  mixing/ordering settings. The external ID is the public table identifier
+  used in player URLs; the UUID remains the internal database identity.
 - `table_tracks`: many-to-many table/track associations.
 
 UUIDs are stored as BLOBs. Track creation timestamps are serialized as RFC3339
@@ -144,7 +147,7 @@ queries and the TypeScript SDK are adapters, not handwritten business logic.
 The Vue 3 application uses Vue Router, Vuetify, and Pinia. Routes are `/`
 (landing), `/login` (GM credentials), `/tables` (GM table creation, renaming,
 and deletion), `/library` (shared uploads and metadata management), and
-`/tables/:tableID` (the shared GM/player table URL). Login opens table
+`/tables/:externalID` (the shared GM/player table URL). Login opens table
 management. Table views show associated tracks only; GMs can add an
 existing library track or upload a new one directly into the table.
 To preserve space during play, the table name appears only in the app bar.
@@ -207,7 +210,7 @@ These settings are stored with the shared library track and apply in every table
 Opening library controls loads audio metadata without starting playback or
 sending synchronization messages.
 
-The table route checks for an optional GM cookie and loads by public table ID.
+The table route checks for an optional GM cookie and loads by public external ID.
 It mounts the GM controls for a logged-in GM and the player view otherwise.
 Players need no session, so switching links or opening multiple table tabs
 requires no authentication exchange.
@@ -299,7 +302,8 @@ playback state or player mixes.
 
 The server routes messages rather than storing authoritative playback state.
 Each connection has a server-validated table scope: the GM selects an existing
-table ID, while players supply the public table ID from the URL. All routing filters,
+table by its external ID, while players supply that public external ID from the
+URL. All routing filters,
 including targeted full syncs and sync requests, also require a matching table.
 The GM browser owns current track state. On player connection, `syncRequest`
 is forwarded to GM clients; a GM responds with `syncAll`, targeting the

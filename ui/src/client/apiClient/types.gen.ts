@@ -6,6 +6,10 @@ export type ClientOptions = {
 
 export type Table = {
     id: string;
+    /**
+     * Random URL-safe identifier that grants access to this table
+     */
+    externalID: string;
     name: string;
 };
 
@@ -112,6 +116,9 @@ export type TrackType = {
 export type GetApiV1TablesByTableIdSettingsData = {
     body?: never;
     path: {
+        /**
+         * Table's public Base64URL external ID
+         */
         tableID: string;
     };
     query?: never;
@@ -141,6 +148,9 @@ export type GetApiV1TablesByTableIdSettingsResponse = GetApiV1TablesByTableIdSet
 export type PatchApiV1TablesByTableIdSettingsData = {
     body: TableSettingsPatch;
     path: {
+        /**
+         * Table's public Base64URL external ID
+         */
         tableID: string;
     };
     query?: never;
@@ -213,6 +223,9 @@ export type PostApiV1TablesResponse = PostApiV1TablesResponses[keyof PostApiV1Ta
 export type DeleteApiV1TablesByTableIdData = {
     body?: never;
     path: {
+        /**
+         * Table's public Base64URL external ID
+         */
         tableID: string;
     };
     query?: never;
@@ -238,6 +251,9 @@ export type DeleteApiV1TablesByTableIdResponse = DeleteApiV1TablesByTableIdRespo
 export type GetApiV1TablesByTableIdData = {
     body?: never;
     path: {
+        /**
+         * Table's public Base64URL external ID
+         */
         tableID: string;
     };
     query?: never;
@@ -263,6 +279,9 @@ export type GetApiV1TablesByTableIdResponse = GetApiV1TablesByTableIdResponses[k
 export type PutApiV1TablesByTableIdData = {
     body: TableRequest;
     path: {
+        /**
+         * Table's public Base64URL external ID
+         */
         tableID: string;
     };
     query?: never;
@@ -289,9 +308,44 @@ export type PutApiV1TablesByTableIdResponses = {
 
 export type PutApiV1TablesByTableIdResponse = PutApiV1TablesByTableIdResponses[keyof PutApiV1TablesByTableIdResponses];
 
+export type PostApiV1TablesByTableIdExternalIdData = {
+    body?: never;
+    path: {
+        /**
+         * Table's public Base64URL external ID
+         */
+        tableID: string;
+    };
+    query?: never;
+    url: '/api/v1/tables/{tableID}/external-id';
+};
+
+export type PostApiV1TablesByTableIdExternalIdErrors = {
+    /**
+     * GM authentication required
+     */
+    401: unknown;
+    /**
+     * Table not found
+     */
+    404: unknown;
+};
+
+export type PostApiV1TablesByTableIdExternalIdResponses = {
+    /**
+     * Table with its newly generated external ID
+     */
+    200: Table;
+};
+
+export type PostApiV1TablesByTableIdExternalIdResponse = PostApiV1TablesByTableIdExternalIdResponses[keyof PostApiV1TablesByTableIdExternalIdResponses];
+
 export type GetApiV1TablesByTableIdTracksData = {
     body?: never;
     path: {
+        /**
+         * Table's public Base64URL external ID
+         */
         tableID: string;
     };
     query?: never;
@@ -317,6 +371,9 @@ export type GetApiV1TablesByTableIdTracksResponse = GetApiV1TablesByTableIdTrack
 export type DeleteApiV1TablesByTableIdTracksByTrackIdData = {
     body?: never;
     path: {
+        /**
+         * Table's public Base64URL external ID
+         */
         tableID: string;
         trackID: string;
     };
@@ -343,6 +400,9 @@ export type DeleteApiV1TablesByTableIdTracksByTrackIdResponse = DeleteApiV1Table
 export type PutApiV1TablesByTableIdTracksByTrackIdData = {
     body?: never;
     path: {
+        /**
+         * Table's public Base64URL external ID
+         */
         tableID: string;
         trackID: string;
     };
@@ -656,6 +716,9 @@ export type GetApiV1StreamByPathResponse = GetApiV1StreamByPathResponses[keyof G
 export type GetApiV1TablesByTableIdStreamByPathData = {
     body?: never;
     path: {
+        /**
+         * Table's public Base64URL external ID
+         */
         tableID: string;
         path: string;
     };
@@ -700,7 +763,7 @@ export type GetApiV1WsData = {
     path?: never;
     query?: {
         /**
-         * Public table ID for player connections; GMs may omit it to use the default table.
+         * Public table external ID for player connections; GMs may omit it to use the default table.
          */
         tableID?: string;
     };

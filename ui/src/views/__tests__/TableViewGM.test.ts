@@ -24,7 +24,7 @@ beforeEach(() => {
     data: { masterVolume: 45, typeVolumes: { Music: 0 }, trackVolumes: { forest: 30 }, trackOrder: ['forest'] },
   })
   api.save.mockResolvedValue({})
-  useTableStore().current = { id: 'friday', name: 'Friday' }
+  useTableStore().current = { id: 'friday-internal', externalID: 'friday', name: 'Friday' }
   vi.spyOn(useWebSocketStore(), 'connect').mockResolvedValue()
   vi.spyOn(useWebSocketStore(), 'disconnect').mockImplementation(() => {})
 })

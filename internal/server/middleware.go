@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/google/uuid"
 	"github.com/terrabitz/rpg-audio-streamer/internal/auth"
 )
 
@@ -48,14 +47,14 @@ func (s *Server) publicMiddleware(next AuthedHandlerFunc) http.HandlerFunc {
 
 func (s *Server) tableAccessMiddleware(next AuthedHandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		id, err := uuid.Parse(r.PathValue("tableID"))
+		table, err := s.store.GetTableByExternalID(r.Context(), r.PathValue("tableID"))
 		if err != nil {
-			http.Error(w, "Invalid table ID", http.StatusBadRequest)
+			s.tableError(w, err)
 			return
 		}
 		token, err := s.getToken(r)
 		if err != nil || token.Role != auth.RoleGM {
-			token = &auth.Token{Role: auth.RolePlayer, TableID: id.String()}
+			token = &auth.Token{Role: auth.RolePlayer, TableID: table.ID.String()}
 		}
 		next(w, r, token)
 	}
@@ -68,15 +67,11 @@ func (s *Server) tableWebSocketMiddleware(next AuthedHandlerFunc) http.HandlerFu
 			next(w, r, token)
 			return
 		}
-		id, err := uuid.Parse(r.URL.Query().Get("tableID"))
+		table, err := s.store.GetTableByExternalID(r.Context(), r.URL.Query().Get("tableID"))
 		if err != nil {
-			http.Error(w, "A valid table ID is required", http.StatusUnauthorized)
-			return
-		}
-		if _, err := s.store.GetTable(r.Context(), id); err != nil {
 			s.tableError(w, err)
 			return
 		}
-		next(w, r, &auth.Token{Role: auth.RolePlayer, TableID: id.String()})
+		next(w, r, &auth.Token{Role: auth.RolePlayer, TableID: table.ID.String()})
 	}
 }

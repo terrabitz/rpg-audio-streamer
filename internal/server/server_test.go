@@ -54,6 +54,7 @@ type mockWSRegisterer struct {
 }
 
 func (m *mockWSRegisterer) CloseTable(string)          {}
+func (m *mockWSRegisterer) RevokePlayerAccess(string)  {}
 func (m *mockWSRegisterer) RemoveTrack(string, string) {}
 
 func (m *mockWSRegisterer) Register(conn *websocket.Conn, token *auth.Token) {

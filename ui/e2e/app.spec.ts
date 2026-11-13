@@ -2,8 +2,6 @@ import { execFileSync } from 'node:child_process'
 import { devices, type Locator, type Page } from '@playwright/test'
 import { expect, test } from './fixtures'
 
-const defaultTableURL = '/tables/00000000-0000-4000-8000-000000000001'
-
 test('GM can recover from invalid credentials, keep a session, and log out', async ({ page }) => {
   await page.goto('/')
   await expect(page.getByRole('banner').getByRole('link', { name: 'Login', exact: true })).toBeVisible()
@@ -829,6 +827,36 @@ test('GM creates, renames, opens, and deletes tables', async ({ page }) => {
   await expect(page.getByRole('link', { name: 'Open My Table', exact: true })).toBeVisible()
 })
 
+test('GM rotates a table link and revokes the previous link', async ({ page, browser }) => {
+  await login(page)
+  const oldURL = new URL(page.url()).pathname
+  const playerContext = await browser.newContext()
+  try {
+    const player = await playerContext.newPage()
+    await player.goto(oldURL)
+    await expect(player.getByText('Volume Mixer', { exact: true })).toBeVisible()
+    await player.getByRole('button', { name: 'Connect Audio', exact: true }).click()
+    await expect(player.getByText('Connected', { exact: true })).toBeVisible()
+
+    await page.getByRole('button', { name: 'Rotate table link', exact: true }).click()
+    await expect(page.getByText(/connected players will be disconnected/)).toBeVisible()
+    await page.getByRole('button', { name: 'Rotate link', exact: true }).click()
+    await expect(page.getByText(/connected players will be disconnected/)).toHaveCount(0)
+    await expect(page).toHaveURL(/\/tables\/[A-Za-z0-9_-]+$/)
+    const newURL = new URL(page.url()).pathname
+    expect(newURL).not.toBe(oldURL)
+    await expect(page.getByRole('button', { name: 'Add Track', exact: true })).toBeVisible()
+    await expect(player.getByText('Disconnected', { exact: true })).toBeVisible()
+
+    await player.goto(oldURL)
+    await expect(player.getByText('This table is unavailable or has been deleted.')).toBeVisible()
+    await player.goto(newURL)
+    await expect(player.getByText('Volume Mixer', { exact: true })).toBeVisible()
+  } finally {
+    await playerContext.close()
+  }
+})
+
 test('GM keeps track ordering independent for each table', async ({ page, browser }) => {
   test.slow()
   await login(page)
@@ -1012,6 +1040,7 @@ test('deleting a shared library track confirms affected tables in a follow-up di
 test('library row previews stay local while a table is streaming', async ({ page, context, browser }) => {
   test.slow()
   await login(page)
+  const defaultTableURL = new URL(page.url()).pathname
   await uploadTrack(page, 'Live Music')
   await page.locator('.file-tile').filter({ hasText: 'Live Music' }).click()
   await expect.poll(() => page.locator('video').evaluate(
@@ -1503,6 +1532,7 @@ test('player receives live playback, late-join state, and pause', async ({
   browser,
 }) => {
   await login(page)
+  const defaultTableURL = new URL(page.url()).pathname
   await uploadTrack(page, 'Session Music')
   const tile = page.locator('.file-tile').filter({ hasText: 'Session Music' })
   await tile.click()

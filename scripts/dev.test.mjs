@@ -45,7 +45,8 @@ test(
       new Set(types.map((type) => type.id)),
     )
     const table = (await json(a, '/api/v1/tables', cookie))[0]
-    const settingsPath = `/api/v1/tables/${table.id}/settings`
+    assert.equal(Buffer.from(table.externalID, 'base64url').byteLength, 32)
+    const settingsPath = `/api/v1/tables/${table.externalID}/settings`
     const defaults = { masterVolume: 100, typeVolumes: {}, trackVolumes: {}, trackOrder: [] }
     assert.deepEqual(await json(a, settingsPath, cookie), defaults)
     await response(a, settingsPath, cookie, {
@@ -55,8 +56,8 @@ test(
     })
     assert.equal((await json(a, settingsPath, cookie)).masterVolume, 0)
     const otherTable = (await json(b, '/api/v1/tables', otherCookie))[0]
-    assert.deepEqual(await json(b, `/api/v1/tables/${otherTable.id}/settings`, otherCookie), defaults)
-    const tableTracks = await json(a, `/api/v1/tables/${table.id}/tracks`, cookie)
+    assert.deepEqual(await json(b, `/api/v1/tables/${otherTable.externalID}/settings`, otherCookie), defaults)
+    const tableTracks = await json(a, `/api/v1/tables/${table.externalID}/tracks`, cookie)
     assert.deepEqual(
       new Set(tableTracks.map((track) => track.id)),
       new Set(tracks.map((track) => track.id)),
@@ -64,12 +65,12 @@ test(
     for (const track of tracks) {
       assert.ok(!track.name.startsWith('Dev -'), track.name)
       assert.ok(track.path.startsWith(join(a.scratch, 'uploads')))
-      const playlist = await response(a, `/api/v1/tables/${table.id}/stream/${track.id}/index.m3u8`)
+      const playlist = await response(a, `/api/v1/tables/${table.externalID}/stream/${track.id}/index.m3u8`)
       const text = await playlist.text()
       assert.match(text, /^#EXTM3U/)
       const segment = text.split('\n').find((line) => line.endsWith('.ts'))
       assert.ok(segment, 'playlist references a real segment')
-      const media = await response(a, `/api/v1/tables/${table.id}/stream/${track.id}/${segment}`)
+      const media = await response(a, `/api/v1/tables/${table.externalID}/stream/${track.id}/${segment}`)
       assert.ok((await media.arrayBuffer()).byteLength > 0)
     }
     for (const type of types.filter((type) => type.isRepeating)) {
@@ -90,7 +91,7 @@ test(
         }
       }
     }
-    const playerPlaylist = await response(a, `/api/v1/tables/${table.id}/stream/${tracks[0].id}/index.m3u8`)
+    const playerPlaylist = await response(a, `/api/v1/tables/${table.externalID}/stream/${tracks[0].id}/index.m3u8`)
     assert.match(await playerPlaylist.text(), /^#EXTM3U/)
     const ui = await fetch(a.url)
     assert.equal(ui.status, 200)
@@ -104,15 +105,16 @@ test(
       headers: { Cookie: cookie },
     })
     assert.equal(rejected.status, 401, 'signing keys differ between instances')
-    const publicTable = await json(a, `/api/v1/tables/${table.id}`)
+    const publicTable = await json(a, `/api/v1/tables/${table.externalID}`)
     assert.equal(publicTable.id, table.id)
-    const publicTracks = await json(a, `/api/v1/tables/${table.id}/tracks`)
+    assert.equal(publicTable.externalID, table.externalID)
+    const publicTracks = await json(a, `/api/v1/tables/${table.externalID}/tracks`)
     assert.equal(publicTracks.length, tracks.length)
     await response(a, `/api/v1/files/${tracks[0].id}?expectedTableCount=1`, cookie, {
       method: 'DELETE',
     })
     assert.equal((await json(a, '/api/v1/files', cookie)).length, 8)
-    assert.equal((await json(a, `/api/v1/tables/${table.id}/tracks`, cookie)).length, 8)
+    assert.equal((await json(a, `/api/v1/tables/${table.externalID}/tracks`, cookie)).length, 8)
     assert.equal((await json(b, '/api/v1/files', otherCookie)).length, 9)
     await first.stop('SIGINT')
     await assertCleaned(a)
@@ -125,7 +127,8 @@ test(
     const freshTracks = await json(fresh, '/api/v1/files', freshCookie)
     assert.equal(freshTracks.length, 9)
     assert.ok(freshTracks.every((track) => !tracks.some((old) => old.id === track.id)))
-    assert.deepEqual(await json(fresh, settingsPath, freshCookie), defaults)
+    const freshTable = (await json(fresh, '/api/v1/tables', freshCookie))[0]
+    assert.deepEqual(await json(fresh, `/api/v1/tables/${freshTable.externalID}/settings`, freshCookie), defaults)
     await restarted.stop()
     await assertCleaned(fresh)
   },

@@ -18,15 +18,18 @@ type Store interface {
 var DefaultTableID = uuid.MustParse("00000000-0000-4000-8000-000000000001")
 
 type Table struct {
-	ID   uuid.UUID `json:"id"`
-	Name string    `json:"name"`
+	ID         uuid.UUID `json:"id"`
+	ExternalID string    `json:"externalID"`
+	Name       string    `json:"name"`
 }
 
 type TableStore interface {
 	GetTables(context.Context) ([]Table, error)
 	GetTable(context.Context, uuid.UUID) (Table, error)
+	GetTableByExternalID(context.Context, string) (Table, error)
 	CreateTable(context.Context, Table) (Table, error)
 	UpdateTable(context.Context, uuid.UUID, string) (Table, error)
+	RotateTableExternalID(context.Context, uuid.UUID) (Table, error)
 	GetTableSettings(context.Context, uuid.UUID) (TableSettings, error)
 	UpdateTableSettings(context.Context, uuid.UUID, TableSettingsPatch) (TableSettings, error)
 	DeleteTable(context.Context, uuid.UUID) error

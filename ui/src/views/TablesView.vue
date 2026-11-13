@@ -41,7 +41,7 @@ async function save() {
   saving.value = true
   error.value = ''
   try {
-    if (editing.value) await tables.renameTable(editing.value.id, name.value.trim())
+    if (editing.value) await tables.renameTable(editing.value.externalID, name.value.trim())
     else await tables.createTable(name.value.trim())
     showEditor.value = false
   } catch (e) {
@@ -57,7 +57,7 @@ async function deleteTable() {
   saving.value = true
   error.value = ''
   try {
-    await tables.deleteTable(deleting.value.id)
+    await tables.deleteTable(deleting.value.externalID)
     deleting.value = null
   } catch (e) {
     console.error('Failed to delete table:', e)
@@ -78,7 +78,7 @@ async function deleteTable() {
       <p v-if="!tables.tables.length">No tables yet. Create a table for your group.</p>
       <v-list>
         <v-list-item v-for="table in tables.tables" :key="table.id" :title="table.name"
-          :to="`/tables/${table.id}`" :aria-label="`Open ${table.name}`">
+          :to="`/tables/${table.externalID}`" :aria-label="`Open ${table.name}`">
           <template #append>
             <v-menu>
               <template #activator="{ props: menuProps }">

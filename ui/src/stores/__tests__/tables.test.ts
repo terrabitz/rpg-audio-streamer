@@ -10,14 +10,15 @@ const api = vi.hoisted(() => ({
   getApiV1TablesByTableId: vi.fn(),
   getApiV1TablesByTableIdSettings: vi.fn(),
   patchApiV1TablesByTableIdSettings: vi.fn(),
+  postApiV1TablesByTableIdExternalId: vi.fn(),
   getApiV1TablesByTableIdTracks: vi.fn(),
   putApiV1TablesByTableIdTracksByTrackId: vi.fn(),
   deleteApiV1TablesByTableIdTracksByTrackId: vi.fn(),
 }))
 vi.mock('@/client/apiClient', () => api)
 
-const friday = { id: 'friday', name: 'Friday' }
-const sunday = { id: 'sunday', name: 'Sunday' }
+const friday = { id: 'friday-internal', externalID: 'friday', name: 'Friday' }
+const sunday = { id: 'sunday-internal', externalID: 'sunday', name: 'Sunday' }
 const track = {
   id: 'forest', name: 'Forest', typeID: 'ambiance',
   path: '/uploads/forest', createdAt: '2026-01-01T00:00:00Z',
@@ -35,33 +36,33 @@ describe('tables', () => {
     tables.current = friday
     const settings = { masterVolume: 0, typeVolumes: { Music: 0 }, trackVolumes: {}, trackOrder: ['rain', 'forest'] }
     api.getApiV1TablesByTableIdSettings.mockResolvedValue({ data: settings })
-    expect(await tables.loadSettings(friday.id)).toEqual(settings)
+    expect(await tables.loadSettings(friday.externalID)).toEqual(settings)
     expect(tables.trackOrders.friday).toEqual(['rain', 'forest'])
     let finish!: () => void
     api.patchApiV1TablesByTableIdSettings.mockImplementationOnce(() => new Promise(resolve => {
       finish = () => resolve({})
     }))
-    const first = tables.saveSettings(friday.id, { masterVolume: 0 })
-    const next = tables.saveSettings(friday.id, { masterVolume: 60 })
+    const first = tables.saveSettings(friday.externalID, { masterVolume: 0 })
+    const next = tables.saveSettings(friday.externalID, { masterVolume: 60 })
     await Promise.resolve()
     expect(api.patchApiV1TablesByTableIdSettings).toHaveBeenCalledOnce()
     finish()
     await Promise.all([first, next])
     expect(api.patchApiV1TablesByTableIdSettings).toHaveBeenLastCalledWith({
-      path: { tableID: friday.id }, body: { masterVolume: 60, typeVolumes: {}, trackVolumes: {} }, keepalive: true,
+      path: { tableID: friday.externalID }, body: { masterVolume: 60, typeVolumes: {}, trackVolumes: {} }, keepalive: true,
     })
     vi.spyOn(console, 'error').mockImplementation(() => {})
     try {
       api.patchApiV1TablesByTableIdSettings.mockRejectedValueOnce(new Error('offline'))
-      await tables.saveSettings(friday.id, { masterVolume: 0, typeVolumes: { Music: 0 }, trackOrder: ['forest'] })
+      await tables.saveSettings(friday.externalID, { masterVolume: 0, typeVolumes: { Music: 0 }, trackOrder: ['forest'] })
       expect(tables.settingsError).toContain('not saved')
       tables.clearCurrent()
       tables.current = friday
-      expect(await tables.loadSettings(friday.id)).toEqual({ ...settings, trackOrder: ['forest'] })
+      expect(await tables.loadSettings(friday.externalID)).toEqual({ ...settings, trackOrder: ['forest'] })
       expect(tables.settingsError).toContain('not saved')
-      await tables.saveSettings(friday.id, { trackVolumes: { forest: 35 } })
+      await tables.saveSettings(friday.externalID, { trackVolumes: { forest: 35 } })
       expect(api.patchApiV1TablesByTableIdSettings).toHaveBeenLastCalledWith({
-        path: { tableID: friday.id },
+        path: { tableID: friday.externalID },
         body: { masterVolume: 0, typeVolumes: { Music: 0 }, trackVolumes: { forest: 35 }, trackOrder: ['forest'] },
         keepalive: true,
       })
@@ -70,7 +71,7 @@ describe('tables', () => {
     } finally {
       vi.restoreAllMocks()
     }
-    await tables.loadSettings(sunday.id)
+    await tables.loadSettings(sunday.externalID)
     expect(tables.trackOrders.sunday).toBeUndefined()
   })
 
@@ -109,18 +110,18 @@ describe('tables', () => {
     tables.trackOrders.friday = ['rain', 'forest', 'deleted']
     const renamed = { ...track, name: 'New Forest' }
     api.getApiV1TablesByTableIdTracks.mockResolvedValue({ data: [renamed, tavern, rain] })
-    await tables.fetchTracks(friday.id)
+    await tables.fetchTracks(friday.externalID)
     expect(tables.orderedTracks).toEqual([rain, renamed, tavern])
     expect(tables.trackOrders.friday).toEqual(['rain', 'forest', 'tavern'])
     api.deleteApiV1TablesByTableIdTracksByTrackId.mockResolvedValue({})
-    await tables.removeTrack(friday.id, 'rain')
+    await tables.removeTrack(friday.externalID, 'rain')
     expect(tables.orderedTracks).toEqual([renamed, tavern])
     expect(tables.trackOrders.friday).toEqual(['forest', 'tavern'])
     api.getApiV1TablesByTableIdTracks.mockResolvedValue({ data: [renamed, rain, tavern] })
-    await tables.fetchTracks(friday.id)
+    await tables.fetchTracks(friday.externalID)
     expect(tables.orderedTracks).toEqual([renamed, tavern, rain])
     api.deleteApiV1TablesByTableId.mockResolvedValue({})
-    await tables.deleteTable(friday.id)
+    await tables.deleteTable(friday.externalID)
     expect(tables.trackOrders.friday).toBeUndefined()
   })
 
@@ -134,17 +135,17 @@ describe('tables', () => {
     expect(api.postApiV1Tables).toHaveBeenCalledWith({ body: { name: 'Sunday' } })
     api.putApiV1TablesByTableId.mockResolvedValue({ data: { ...friday, name: 'Friday group' } })
     tables.current = friday
-    await tables.renameTable(friday.id, 'Friday group')
+    await tables.renameTable(friday.externalID, 'Friday group')
     expect(tables.tables.map(table => table.name)).toEqual(['Friday group', 'Sunday'])
     expect(tables.current?.name).toBe('Friday group')
     api.putApiV1TablesByTableId.mockResolvedValue({ data: { ...sunday, name: 'Sunday group' } })
-    await tables.renameTable(sunday.id, 'Sunday group')
+    await tables.renameTable(sunday.externalID, 'Sunday group')
     expect(tables.current?.id).toBe(friday.id)
     api.deleteApiV1TablesByTableId.mockResolvedValue({})
-    await tables.deleteTable(sunday.id)
+    await tables.deleteTable(sunday.externalID)
     expect(tables.current?.id).toBe(friday.id)
     tables.tracks = [track]
-    await tables.deleteTable(friday.id)
+    await tables.deleteTable(friday.externalID)
     expect(tables.tables).toEqual([])
     expect(tables.current).toBeNull()
     expect(tables.tracks).toEqual([])
@@ -154,30 +155,47 @@ describe('tables', () => {
     const tables = useTableStore()
     tables.tracks = [track]
     api.getApiV1TablesByTableId.mockResolvedValue({ data: friday })
-    await tables.loadTable(friday.id)
-    expect(api.getApiV1TablesByTableId).toHaveBeenCalledWith({ path: { tableID: friday.id } })
+    await tables.loadTable(friday.externalID)
+    expect(api.getApiV1TablesByTableId).toHaveBeenCalledWith({ path: { tableID: friday.externalID } })
     expect(tables.current).toEqual(friday)
     expect(tables.tracks).toEqual([])
     api.getApiV1TablesByTableId.mockResolvedValue({ data: sunday })
-    await tables.loadTable(sunday.id)
-    expect(api.getApiV1TablesByTableId).toHaveBeenLastCalledWith({ path: { tableID: sunday.id } })
+    await tables.loadTable(sunday.externalID)
+    expect(api.getApiV1TablesByTableId).toHaveBeenLastCalledWith({ path: { tableID: sunday.externalID } })
     expect(tables.current).toEqual(sunday)
+  })
+
+  it('rotates a public external ID and moves table-scoped state to the replacement ID', async () => {
+    const tables = useTableStore()
+    const rotated = { ...friday, externalID: 'friday-replacement' }
+    tables.tables = [friday, sunday]
+    tables.current = friday
+    tables.trackOrders.friday = ['forest']
+    tables.failedSettings.friday = { masterVolume: 0 }
+    api.postApiV1TablesByTableIdExternalId.mockResolvedValue({ data: rotated })
+
+    expect(await tables.rotateExternalID(friday.externalID)).toEqual(rotated)
+    expect(api.postApiV1TablesByTableIdExternalId).toHaveBeenCalledWith({ path: { tableID: 'friday' } })
+    expect(tables.current).toEqual(rotated)
+    expect(tables.tables).toEqual([rotated, sunday])
+    expect(tables.trackOrders).toEqual({ 'friday-replacement': ['forest'] })
+    expect(tables.failedSettings).toEqual({ 'friday-replacement': { masterVolume: 0 } })
   })
 
   it('associates and removes tracks without deleting them from the library', async () => {
     const tables = useTableStore()
     tables.current = friday
     api.getApiV1TablesByTableIdTracks.mockResolvedValue({ data: [track] })
-    await tables.fetchTracks(friday.id)
+    await tables.fetchTracks(friday.externalID)
     expect(tables.tracks).toEqual([track])
     api.putApiV1TablesByTableIdTracksByTrackId.mockResolvedValue({})
-    await tables.addTrack(friday.id, track.id)
+    await tables.addTrack(friday.externalID, track.id)
     expect(api.putApiV1TablesByTableIdTracksByTrackId).toHaveBeenCalledWith({
-      path: { tableID: friday.id, trackID: track.id },
+      path: { tableID: friday.externalID, trackID: track.id },
     })
     tables.tracks.push({ ...track, id: 'rain' })
     api.deleteApiV1TablesByTableIdTracksByTrackId.mockResolvedValue({})
-    await tables.removeTrack(friday.id, track.id)
+    await tables.removeTrack(friday.externalID, track.id)
     expect(tables.tracks.map(track => track.id)).toEqual(['rain'])
   })
 
@@ -193,10 +211,10 @@ describe('tables', () => {
     api.putApiV1TablesByTableIdTracksByTrackId.mockRejectedValue(failure)
     api.deleteApiV1TablesByTableIdTracksByTrackId.mockRejectedValue(failure)
     await expect(tables.createTable('Sunday')).rejects.toThrow('offline')
-    await expect(tables.renameTable(friday.id, 'Changed')).rejects.toThrow('offline')
-    await expect(tables.deleteTable(friday.id)).rejects.toThrow('offline')
-    await expect(tables.addTrack(friday.id, 'rain')).rejects.toThrow('offline')
-    await expect(tables.removeTrack(friday.id, track.id)).rejects.toThrow('offline')
+    await expect(tables.renameTable(friday.externalID, 'Changed')).rejects.toThrow('offline')
+    await expect(tables.deleteTable(friday.externalID)).rejects.toThrow('offline')
+    await expect(tables.addTrack(friday.externalID, 'rain')).rejects.toThrow('offline')
+    await expect(tables.removeTrack(friday.externalID, track.id)).rejects.toThrow('offline')
     expect(tables.tables).toEqual([friday])
     expect(tables.current).toEqual(friday)
     expect(tables.tracks).toEqual([track])
@@ -212,17 +230,17 @@ describe('tables', () => {
     expect(tables.tracks).toEqual([])
     let finish!: (value: { data: typeof friday }) => void
     api.getApiV1TablesByTableId.mockImplementationOnce(() => new Promise(resolve => { finish = resolve }))
-    const previous = tables.loadTable(friday.id)
+    const previous = tables.loadTable(friday.externalID)
     api.getApiV1TablesByTableId.mockResolvedValueOnce({ data: sunday })
-    await tables.loadTable(sunday.id)
+    await tables.loadTable(sunday.externalID)
     finish({ data: friday })
     await previous
     expect(tables.current).toEqual(sunday)
     api.getApiV1TablesByTableIdTracks.mockResolvedValue({ data: [track] })
-    await tables.fetchTracks(friday.id)
+    await tables.fetchTracks(friday.externalID)
     expect(tables.tracks).toEqual([])
     tables.clearCurrent()
-    await tables.fetchTracks(friday.id)
+    await tables.fetchTracks(friday.externalID)
     expect(tables.tracks).toEqual([])
   })
 })

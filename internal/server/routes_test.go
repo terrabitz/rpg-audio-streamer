@@ -79,7 +79,7 @@ func TestRoutedValidation(t *testing.T) {
 	}{
 		{"unauthenticated files", "GET", "/api/v1/files", "", false, 401},
 		{"unauthenticated library stream", "GET", "/api/v1/stream/missing/index.m3u8", "", false, 401},
-		{"invalid table stream", "GET", "/api/v1/tables/invalid/stream/missing/index.m3u8", "", false, 400},
+		{"invalid table stream", "GET", "/api/v1/tables/invalid/stream/missing/index.m3u8", "", false, 404},
 		{"unsupported files method", "PATCH", "/api/v1/files", "", true, 405},
 		{"unsupported file method", "GET", "/api/v1/files/" + id, "", true, 405},
 		{"invalid update JSON", "PUT", "/api/v1/files/" + id, "{", true, 400},
@@ -186,7 +186,7 @@ func TestWebSocketRoute(t *testing.T) {
 		t.Fatal("websocket scope mutated the shared authentication token")
 	}
 	player, _, err := websocket.DefaultDialer.Dial(
-		"ws"+strings.TrimPrefix(httpServer.URL, "http")+"/api/v1/ws?tableID="+DefaultTableID.String(), nil,
+		"ws"+strings.TrimPrefix(httpServer.URL, "http")+"/api/v1/ws?tableID="+testDefaultExternalID, nil,
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -203,7 +203,7 @@ func TestWebSocketRoute(t *testing.T) {
 	for _, tc := range []struct {
 		tableID string
 		status  int
-	}{{"invalid", http.StatusBadRequest}, {uuid.NewString(), http.StatusNotFound}} {
+	}{{"invalid", http.StatusNotFound}, {uuid.NewString(), http.StatusNotFound}} {
 		rec := routedRequest(ts.Handler(), "GET", "/api/v1/ws?tableID="+tc.tableID, "", true)
 		if rec.Code != tc.status {
 			t.Fatalf("GM socket table %s = %d; want %d", tc.tableID, rec.Code, tc.status)
@@ -252,6 +252,7 @@ type recordingWSRegisterer struct {
 }
 
 func (r *recordingWSRegisterer) CloseTable(string)          {}
+func (r *recordingWSRegisterer) RevokePlayerAccess(string)  {}
 func (r *recordingWSRegisterer) RemoveTrack(string, string) {}
 
 func (r *recordingWSRegisterer) Register(conn *websocket.Conn, token *auth.Token) {

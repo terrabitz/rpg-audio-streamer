@@ -318,17 +318,13 @@ func (s *Server) streamDirectory(w http.ResponseWriter, r *http.Request, token *
 	relativePath := r.PathValue("path")
 	tableIDValue := r.PathValue("tableID")
 	if tableIDValue != "" {
-		tableID, err := uuid.Parse(tableIDValue)
+		table, err := s.store.GetTableByExternalID(r.Context(), tableIDValue)
 		if err != nil {
-			http.Error(w, "Invalid table ID", http.StatusBadRequest)
-			return
-		}
-		if _, err := s.store.GetTable(r.Context(), tableID); err != nil {
 			s.tableError(w, err)
 			return
 		}
 		if token.Role == auth.RolePlayer {
-			if token.TableID != tableID.String() {
+			if token.TableID != table.ID.String() {
 				http.Error(w, "Forbidden", http.StatusForbidden)
 				return
 			}
@@ -338,7 +334,7 @@ func (s *Server) streamDirectory(w http.ResponseWriter, r *http.Request, token *
 				http.Error(w, "Invalid track ID", http.StatusBadRequest)
 				return
 			}
-			allowed, err := s.store.HasTableTrack(r.Context(), tableID, trackID)
+			allowed, err := s.store.HasTableTrack(r.Context(), table.ID, trackID)
 			if err != nil {
 				s.tableError(w, err)
 				return
@@ -378,16 +374,12 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request, token *
 	if token.Role == auth.RoleGM {
 		id := DefaultTableID
 		if value := r.URL.Query().Get("tableID"); value != "" {
-			var err error
-			id, err = uuid.Parse(value)
+			table, err := s.store.GetTableByExternalID(r.Context(), value)
 			if err != nil {
-				http.Error(w, "Invalid table ID", http.StatusBadRequest)
+				s.tableError(w, err)
 				return
 			}
-		}
-		if _, err := s.store.GetTable(r.Context(), id); err != nil {
-			s.tableError(w, err)
-			return
+			id = table.ID
 		}
 		scoped.TableID = id.String()
 	}

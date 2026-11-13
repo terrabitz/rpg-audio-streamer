@@ -3,6 +3,7 @@ package sqlitedatastore
 import (
 	"context"
 	"database/sql"
+	"encoding/base64"
 	"errors"
 	"os"
 	"path/filepath"
@@ -104,11 +105,20 @@ func TestTableLifecycle(t *testing.T) {
 	if err != nil || len(tables) != 1 || tables[0].ID != server.DefaultTableID {
 		t.Fatalf("seeded tables = %v, %v", tables, err)
 	}
+	if decoded, err := base64.RawURLEncoding.DecodeString(tables[0].ExternalID); err != nil || len(decoded) != 32 {
+		t.Fatalf("seeded external ID is not a 32-byte base64url value: %q, %v", tables[0].ExternalID, err)
+	}
 	first := server.Table{ID: uuid.New(), Name: "Friday"}
 	second := server.Table{ID: uuid.New(), Name: "Sunday"}
-	for _, table := range []server.Table{first, second} {
-		if got, err := db.CreateTable(ctx, table); err != nil || got != table {
+	for i, table := range []server.Table{first, second} {
+		got, err := db.CreateTable(ctx, table)
+		if err != nil || got.ID != table.ID || got.Name != table.Name || got.ExternalID == "" {
 			t.Fatalf("create = %v, %v", got, err)
+		}
+		if i == 0 {
+			first = got
+		} else {
+			second = got
 		}
 	}
 	if _, err := db.CreateTable(ctx, first); err == nil {
@@ -118,6 +128,20 @@ func TestTableLifecycle(t *testing.T) {
 	if got, err := db.UpdateTable(ctx, first.ID, first.Name); err != nil || got != first {
 		t.Fatalf("rename = %v, %v", got, err)
 	}
+	rotated, err := db.RotateTableExternalID(ctx, first.ID)
+	if err != nil || rotated.ID != first.ID || rotated.Name != first.Name || rotated.ExternalID == first.ExternalID {
+		t.Fatalf("rotate external ID = %v, %v; previous = %v", rotated, err, first)
+	}
+	if decoded, err := base64.RawURLEncoding.DecodeString(rotated.ExternalID); err != nil || len(decoded) != 32 {
+		t.Fatalf("rotated external ID is not a 32-byte base64url value: %q, %v", rotated.ExternalID, err)
+	}
+	if _, err := db.GetTableByExternalID(ctx, first.ExternalID); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("old external ID lookup error = %v; want no rows", err)
+	}
+	if got, err := db.GetTableByExternalID(ctx, rotated.ExternalID); err != nil || got != rotated {
+		t.Fatalf("rotated external ID lookup = %v, %v", got, err)
+	}
+	first = rotated
 	tracks, err := db.GetTableTracks(ctx, first.ID)
 	if err != nil || tracks == nil || len(tracks) != 0 {
 		t.Fatalf("empty tracks = %v, %v", tracks, err)
@@ -268,7 +292,7 @@ func TestExistingLibraryMigratesToDefaultTable(t *testing.T) {
 	if err := db.SaveTrack(ctx, &track); err != nil {
 		t.Fatal(err)
 	}
-	if err := m.Steps(-4); err != nil {
+	if err := m.Steps(-5); err != nil {
 		t.Fatal(err)
 	}
 	if err := m.Up(); err != nil {
@@ -282,7 +306,7 @@ func TestExistingLibraryMigratesToDefaultTable(t *testing.T) {
 	if err != nil || settings.MasterVolume != 100 || len(settings.TrackOrder) != 0 {
 		t.Fatalf("migrated settings = %+v, %v", settings, err)
 	}
-	if err := m.Steps(-4); err != nil {
+	if err := m.Steps(-5); err != nil {
 		t.Fatal(err)
 	}
 	if err := m.Up(); err != nil {

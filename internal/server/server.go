@@ -27,6 +27,7 @@ type Authenticator interface {
 type WSRegisterer interface {
 	Register(conn *websocket.Conn, token *auth.Token)
 	CloseTable(tableID string)
+	RevokePlayerAccess(tableID string)
 	RemoveTrack(tableID, trackID string)
 }
 
@@ -124,6 +125,7 @@ func (s *Server) registerHandlers() *http.ServeMux {
 	mux.HandleFunc("/api/v1/trackTypes", s.publicMiddleware(s.handleTrackTypes))
 	mux.HandleFunc("/api/v1/tables", s.gmOnlyMiddleware(s.handleTables))
 	mux.HandleFunc("/api/v1/tables/{tableID}", s.tableAccessMiddleware(s.handleTable))
+	mux.HandleFunc("/api/v1/tables/{tableID}/external-id", s.gmOnlyMiddleware(s.handleRotateTableExternalID))
 	mux.HandleFunc("/api/v1/tables/{tableID}/settings", s.gmOnlyMiddleware(s.handleTableSettings))
 	mux.HandleFunc("/api/v1/tables/{tableID}/tracks", s.tableAccessMiddleware(s.handleTableTracks))
 	mux.HandleFunc("/api/v1/tables/{tableID}/stream/{path...}", s.tableAccessMiddleware(s.streamDirectory))

@@ -13,11 +13,15 @@ components:
   schemas:
     Table:
       type: object
-      required: [id, name]
+      required: [id, externalID, name]
       properties:
         id:
           type: string
           format: uuid
+        externalID:
+          type: string
+          pattern: "^[A-Za-z0-9_-]{43}$"
+          description: Random URL-safe identifier that grants access to this table
         name:
           type: string
     TableRequest:
@@ -212,10 +216,11 @@ paths:
     parameters:
       - name: tableID
         in: path
+        description: Table's public Base64URL external ID
         required: true
         schema:
           type: string
-          format: uuid
+          pattern: "^[A-Za-z0-9_-]{43}$"
     get:
       summary: Get the table's saved GM mix and track order (GM only)
       security:
@@ -293,12 +298,13 @@ paths:
     parameters:
       - name: tableID
         in: path
+        description: Table's public Base64URL external ID
         required: true
         schema:
           type: string
-          format: uuid
+          pattern: "^[A-Za-z0-9_-]{43}$"
     get:
-      summary: Get a table using its public table ID
+      summary: Get a table using its public external ID
       responses:
         "200":
           description: Table
@@ -339,16 +345,42 @@ paths:
         "404":
           description: Table not found
 
+  /api/v1/tables/{tableID}/external-id:
+    post:
+      summary: Rotate a table's public external ID (GM only)
+      parameters:
+        - name: tableID
+          in: path
+          description: Table's public Base64URL external ID
+          required: true
+          schema:
+            type: string
+            pattern: "^[A-Za-z0-9_-]{43}$"
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Table with its newly generated external ID
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Table"
+        "401":
+          description: GM authentication required
+        "404":
+          description: Table not found
+
   /api/v1/tables/{tableID}/tracks:
     get:
       summary: List a table's associated tracks using its public table ID
       parameters:
         - name: tableID
           in: path
+          description: Table's public Base64URL external ID
           required: true
           schema:
             type: string
-            format: uuid
+            pattern: "^[A-Za-z0-9_-]{43}$"
       responses:
         "200":
           description: Associated tracks
@@ -365,10 +397,11 @@ paths:
     parameters:
       - name: tableID
         in: path
+        description: Table's public Base64URL external ID
         required: true
         schema:
           type: string
-          format: uuid
+          pattern: "^[A-Za-z0-9_-]{43}$"
       - name: trackID
         in: path
         required: true
@@ -632,10 +665,11 @@ paths:
       parameters:
         - name: tableID
           in: path
+          description: Table's public Base64URL external ID
           required: true
           schema:
             type: string
-            format: uuid
+            pattern: "^[A-Za-z0-9_-]{43}$"
         - name: path
           in: path
           required: true
@@ -670,10 +704,10 @@ paths:
       parameters:
         - name: tableID
           in: query
-          description: Public table ID for player connections; GMs may omit it to use the default table.
+          description: Public table external ID for player connections; GMs may omit it to use the default table.
           schema:
             type: string
-            format: uuid
+            pattern: "^[A-Za-z0-9_-]{43}$"
       responses:
         "101":
           description: Switching protocols to WebSocket

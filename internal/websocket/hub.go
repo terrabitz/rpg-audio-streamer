@@ -140,6 +140,18 @@ func (h *Hub) CloseTable(tableID string) {
 	}
 }
 
+func (h *Hub) RevokePlayerAccess(tableID string) {
+	h.clientsMu.Lock()
+	defer h.clientsMu.Unlock()
+	for client := range h.clients {
+		if client.Token.TableID == tableID && client.Token.Role == auth.RolePlayer {
+			client.closed = true
+			close(client.send)
+			delete(h.clients, client)
+		}
+	}
+}
+
 func (h *Hub) RemoveTrack(tableID, trackID string) {
 	payload, _ := json.Marshal(struct {
 		FileID string `json:"fileID"`

@@ -15,7 +15,7 @@ const debugStore = useDebugStore()
 const connecting = ref(false)
 const error = ref('')
 
-const tableID = route.params.tableID as string
+const externalID = route.params.externalID as string
 
 const buttonLabel = computed(() => {
   if (connecting.value) return 'Connecting...'
@@ -73,7 +73,7 @@ async function connectAudio() {
   error.value = ''
   audioStore.enabled = true
   try {
-    await wsStore.connect(tableID)
+    await wsStore.connect(externalID)
   } catch (e) {
     console.error('Failed to connect audio:', e)
     error.value = 'Failed to connect audio. Please try again.'
@@ -93,7 +93,7 @@ function disconnectAudio() {
 <template>
   <v-container>
     <v-alert v-if="error" type="error" class="mb-4">{{ error }}</v-alert>
-    <AudioPlayer v-if="audioStore.enabled" :tableID="tableID" />
+    <AudioPlayer v-if="audioStore.enabled" :tableID="externalID" />
 
     <div class="d-flex align-center mb-4">
       <v-btn size="x-large" @click="handleAudioToggle" :loading="connecting"

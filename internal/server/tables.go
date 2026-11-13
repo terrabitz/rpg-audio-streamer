@@ -39,6 +39,24 @@ func (s *Server) handleTables(w http.ResponseWriter, r *http.Request, token *aut
 	}
 }
 
+func (s *Server) handleRotateTableExternalID(w http.ResponseWriter, r *http.Request, token *auth.Token) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	id, ok := s.tableID(w, r, token)
+	if !ok {
+		return
+	}
+	table, err := s.store.RotateTableExternalID(r.Context(), id)
+	if err != nil {
+		s.tableError(w, err)
+		return
+	}
+	s.hub.RevokePlayerAccess(id.String())
+	respondJSON(w, http.StatusOK, table)
+}
+
 func (s *Server) handleTable(w http.ResponseWriter, r *http.Request, token *auth.Token) {
 	id, ok := s.tableID(w, r, token)
 	if !ok {
@@ -130,20 +148,16 @@ func (s *Server) handleTableTrack(w http.ResponseWriter, r *http.Request, token 
 }
 
 func (s *Server) tableID(w http.ResponseWriter, r *http.Request, token *auth.Token) (uuid.UUID, bool) {
-	id, err := uuid.Parse(r.PathValue("tableID"))
+	table, err := s.store.GetTableByExternalID(r.Context(), r.PathValue("tableID"))
 	if err != nil {
-		http.Error(w, "Invalid table ID", http.StatusBadRequest)
-		return uuid.Nil, false
-	}
-	if token.Role == auth.RolePlayer && token.TableID != id.String() {
-		http.Error(w, "Forbidden", http.StatusForbidden)
-		return uuid.Nil, false
-	}
-	if _, err := s.store.GetTable(r.Context(), id); err != nil {
 		s.tableError(w, err)
 		return uuid.Nil, false
 	}
-	return id, true
+	if token.Role == auth.RolePlayer && token.TableID != table.ID.String() {
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return uuid.Nil, false
+	}
+	return table.ID, true
 }
 
 func (s *Server) tableError(w http.ResponseWriter, err error) {

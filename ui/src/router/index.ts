@@ -10,7 +10,7 @@ const router = createRouter({
       component: () => import('../views/TablesView.vue'),
     },
     {
-      path: '/tables/:tableID',
+      path: '/tables/:externalID',
       name: 'table',
       component: () => import('../views/TableView.vue'),
     },
