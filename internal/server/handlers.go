@@ -193,6 +193,10 @@ func (s *Server) uploadFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if _, err := generateWaveform(hlsDir); err != nil {
+		s.logger.Warn("failed to pre-generate waveform", "error", err, "trackID", id)
+	}
+
 	s.logger.Info("file uploaded and converted to HLS", "filename", handler.Filename)
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("File uploaded and converted to HLS successfully"))

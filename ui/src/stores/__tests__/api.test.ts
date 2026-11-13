@@ -11,6 +11,7 @@ const api = vi.hoisted(() => ({
   postApiV1AuthLogout: vi.fn(),
   getApiV1Files: vi.fn(),
   getApiV1FilesByTrackIdUsage: vi.fn(),
+  getApiV1FilesByTrackIdWaveform: vi.fn(),
   postApiV1Files: vi.fn(),
   deleteApiV1FilesByTrackId: vi.fn(),
   putApiV1FilesByTrackId: vi.fn(),
@@ -113,6 +114,15 @@ describe('file library', () => {
     }
     api.getApiV1FilesByTrackIdUsage.mockRejectedValue(new Error('offline'))
     await expect(files.countTrackTables('forest')).rejects.toThrow('offline')
+  })
+
+  it('fetches a track waveform and rejects malformed responses', async () => {
+    const files = useFileStore()
+    api.getApiV1FilesByTrackIdWaveform.mockResolvedValue({ data: { peaks: [0, 0.5, 1] } })
+    expect(await files.fetchWaveform('forest')).toEqual([0, 0.5, 1])
+    expect(api.getApiV1FilesByTrackIdWaveform).toHaveBeenCalledWith({ path: { trackID: 'forest' } })
+    api.getApiV1FilesByTrackIdWaveform.mockResolvedValue({ data: {} })
+    await expect(files.fetchWaveform('forest')).rejects.toThrow('Invalid track waveform')
   })
 
   it('fetches, finds, updates, and deletes tracks', async () => {

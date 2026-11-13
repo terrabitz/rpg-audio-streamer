@@ -202,6 +202,18 @@ components:
           format: int64
           minimum: 0
 
+    Waveform:
+      type: object
+      required: [peaks]
+      properties:
+        peaks:
+          type: array
+          description: Peak amplitude of equal-length slices of the track, scaled so the loudest slice is 1
+          items:
+            type: number
+            minimum: 0
+            maximum: 1
+
     TrackType:
       type: object
       required:
@@ -615,6 +627,34 @@ paths:
           description: Track not found
         "500":
           description: Failed to retrieve usage
+
+  /api/v1/files/{trackID}/waveform:
+    get:
+      summary: Get the amplitude waveform of a track (GM only)
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: trackID
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Peak amplitudes across the whole track
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Waveform"
+        "400":
+          description: Invalid track ID
+        "401":
+          description: Not authorized
+        "404":
+          description: Track not found
+        "500":
+          description: Failed to generate the waveform
 
   /api/v1/joinToken:
     get:

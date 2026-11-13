@@ -147,6 +147,115 @@ test('GM reads playback time relative to the trimmed track', async ({ page }) =>
   await deleteLibraryTrack(page, 'Trimmed Timer', 0)
 })
 
+test('GM plays and pauses a track from its settings', async ({ page }) => {
+  await login(page)
+  await uploadTrack(page, 'Settings Preview')
+  const tile = page.locator('.file-tile').filter({ hasText: 'Settings Preview' })
+  await tile.getByRole('button', { name: 'Edit Settings Preview' }).click()
+  const dialog = page.getByRole('dialog')
+  await expect(dialog.locator('.timeline-axis.has-waveform')).toBeVisible()
+  await dialog.getByRole('button', { name: 'Play Settings Preview', exact: true }).click()
+  const pause = dialog.getByRole('button', { name: 'Pause Settings Preview', exact: true })
+  await expect(pause).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.getByRole('group', { name: 'Playing Settings Preview', exact: true })).toBeVisible()
+  await expect.poll(() => page.locator('video').evaluate((media: HTMLVideoElement) => media.currentTime))
+    .toBeGreaterThan(0.5)
+  await pause.click()
+  await expect(dialog.getByRole('button', { name: 'Play Settings Preview', exact: true }))
+    .toHaveAttribute('aria-pressed', 'false')
+  await expect.poll(() => page.locator('video').evaluate((media: HTMLVideoElement) => media.paused)).toBe(true)
+  await dialog.getByRole('button', { name: 'Remove from table', exact: true }).click()
+  await deleteLibraryTrack(page, 'Settings Preview', 0)
+})
+
+test('GM previews loop edits live for listeners before saving them', async ({ page, browser }) => {
+  test.slow()
+  await login(page)
+  await uploadTrack(page, 'Live Loop')
+  const tile = page.locator('.file-tile').filter({ hasText: 'Live Loop' })
+  await tile.locator('.track-heading').click()
+  const playerContext = await browser.newContext()
+  try {
+    const player = await playerContext.newPage()
+    await player.goto('/table/e2e-invite')
+    await player.getByRole('button', { name: 'Connect Audio', exact: true }).click()
+    await expect.poll(() => player.locator('[data-active="true"]').evaluate(
+      (media: HTMLMediaElement) => !media.paused && media.currentTime > 0,
+    )).toBe(true)
+    await tile.getByRole('button', { name: 'Edit Live Loop', exact: true }).click()
+    await dragTimelinePoint(page, 'Beginning for Live Loop', 10)
+    await dragTimelinePoint(page, 'End for Live Loop', 20)
+    await dragTimelinePoint(page, 'Loop-back point for Live Loop', 12)
+    for (const browserPage of [page, player]) {
+      await expect.poll(() => browserPage.locator('[data-active="true"]').evaluate(
+        (media: HTMLMediaElement) => !media.paused && media.currentTime >= 10,
+      )).toBe(true)
+    }
+    const savedPlayback = async () => {
+      const response = await page.request.get('/api/v1/files')
+      expect(response.ok()).toBe(true)
+      const tracks = await response.json()
+      return tracks.find((track: { name: string }) => track.name === 'Live Loop').playback
+    }
+    expect(await savedPlayback()).toEqual({ startTime: 0, endTime: null, loopBackTime: null })
+    const seek = page.getByRole('dialog').getByRole('slider', { name: 'Playback position for Live Loop' })
+    await seek.press('End')
+    for (const browserPage of [page, player]) {
+      await expect.poll(() => browserPage.locator('[data-active="true"]').evaluate(
+        (media: HTMLMediaElement) => !media.paused && media.currentTime >= 12 && media.currentTime < 18,
+      )).toBe(true)
+    }
+    await page.getByRole('button', { name: 'Close track controls', exact: true }).click()
+    const sidebar = page.getByRole('group', { name: 'Playing Live Loop', exact: true })
+    await expect(sidebar.getByRole('slider', { name: 'Playback position for Live Loop' }))
+      .toHaveAttribute('aria-valuemax', /^30(?:\.\d+)?$/)
+    await expect(sidebar.locator('.v-slider-track__tick')).toHaveCount(0)
+    expect(await savedPlayback()).toEqual({ startTime: 0, endTime: null, loopBackTime: null })
+    await tile.getByRole('button', { name: 'Edit Live Loop', exact: true }).click()
+    await dragTimelinePoint(page, 'Beginning for Live Loop', 10)
+    await dragTimelinePoint(page, 'End for Live Loop', 20)
+    await dragTimelinePoint(page, 'Loop-back point for Live Loop', 12)
+    await page.getByRole('button', { name: 'Save Changes', exact: true }).click()
+    await expect(page.getByRole('dialog')).toHaveCount(0)
+    expect(await savedPlayback()).toEqual({ startTime: 10, endTime: 20, loopBackTime: 12 })
+  } finally {
+    await playerContext.close()
+  }
+  await deleteLibraryTrack(page, 'Live Loop', 1)
+})
+
+test('GM auditions unsaved loop points in the library', async ({ page }) => {
+  await login(page)
+  await page.getByRole('link', { name: 'Library', exact: true }).click()
+  await uploadTrack(page, 'Draft Preview')
+  const row = page.getByRole('row').filter({ hasText: 'Draft Preview' })
+  await row.getByRole('button', { name: 'Edit Draft Preview', exact: true }).click()
+  await dragTimelinePoint(page, 'Beginning for Draft Preview', 5)
+  await dragTimelinePoint(page, 'End for Draft Preview', 15)
+  const dialog = page.getByRole('dialog')
+  await dialog.getByRole('button', { name: 'Play Draft Preview', exact: true }).click()
+  await expect.poll(() => page.locator('[data-active="true"]').evaluate(
+    (media: HTMLMediaElement) => !media.paused && media.currentTime >= 5,
+  )).toBe(true)
+  await dialog.getByRole('button', { name: 'Pause Draft Preview', exact: true }).click()
+  await dialog.getByRole('button', { name: 'Play Draft Preview', exact: true }).click()
+  await expect.poll(() => page.locator('[data-active="true"]').evaluate(
+    (media: HTMLMediaElement) => !media.paused && media.currentTime >= 5,
+  )).toBe(true)
+  await expect(dialog.getByRole('slider', { name: 'Beginning for Draft Preview' })).toHaveAttribute('aria-valuenow', '5')
+  await expect(dialog.getByRole('slider', { name: 'End for Draft Preview' })).toHaveAttribute('aria-valuenow', '15')
+  await dialog.getByRole('slider', { name: 'Playback position for Draft Preview' }).press('End')
+  await expect.poll(() => page.locator('[data-active="true"]').evaluate(
+    (media: HTMLMediaElement) => !media.paused && media.currentTime >= 5 && media.currentTime < 12,
+  )).toBe(true)
+  await dialog.getByRole('button', { name: 'Close track controls', exact: true }).click()
+  await row.getByRole('button', { name: 'Edit Draft Preview', exact: true }).click()
+  await expect(dialog.getByRole('slider', { name: 'Beginning for Draft Preview' })).toHaveAttribute('aria-valuenow', '0')
+  await expect(dialog.getByRole('slider', { name: 'End for Draft Preview' })).toHaveAttribute('aria-valuenow', /^30(?:\.\d+)?$/)
+  await dialog.getByRole('button', { name: 'Close track controls', exact: true }).click()
+  await deleteLibraryTrack(page, 'Draft Preview', 0)
+})
+
 test('GM trims a one-shot without loop-back controls', async ({ page }) => {
   await login(page)
   await uploadTrack(page, 'Trimmed Bell', 'One-Shot')
@@ -740,7 +849,7 @@ test.describe('drag-handle reordering', () => {
     await forest.getByRole('button', { name: 'Edit Forest' }).click()
     const settings = page.getByRole('dialog')
     const forestPosition = settings.getByRole('slider', { name: 'Playback position for Forest' })
-    await expect(settings.getByRole('button', { name: /^(Play|Pause) Forest$/ })).toHaveCount(0)
+    await expect(settings.getByRole('button', { name: 'Play Forest', exact: true })).toBeVisible()
     await expect(forestPosition).toBeEnabled()
     await settings.locator('.timeline-axis').click()
     await expectTimelineLayout(settings)
@@ -1389,9 +1498,15 @@ async function expectTimelineLayout(dialog: Locator) {
   const start = await dialog.locator('.timeline-handle--start').boundingBox()
   const end = await dialog.locator('.timeline-handle--end').boundingBox()
   const loop = await dialog.locator('.timeline-handle--loop').boundingBox()
-  const usable = await dialog.locator('.timeline-usable').boundingBox()
   const time = await dialog.locator('.position-time').boundingBox()
-  if (!axis || !cursor || !start || !end || !loop || !usable || !time) throw new Error('All timeline controls must be visible')
+  if (!axis || !cursor || !start || !end || !loop || !time) throw new Error('All timeline controls must be visible')
+  const duration = Number(await dialog.locator('.timeline-handle--end').getAttribute('aria-valuemax'))
+  const usable = {
+    x: axis.x + Number(await dialog.locator('.timeline-handle--start').getAttribute('aria-valuenow')) / duration * axis.width,
+    width: 0,
+  }
+  usable.width = axis.x + Number(await dialog.locator('.timeline-handle--end').getAttribute('aria-valuenow')) / duration
+    * axis.width - usable.x
   expect(start.y + start.height).toBeLessThan(axis.y)
   expect(end.y + end.height).toBeLessThan(axis.y)
   expect(loop.y).toBeGreaterThan(axis.y + axis.height)
@@ -1417,8 +1532,11 @@ async function expectTimelineLayout(dialog: Locator) {
     await expect(dialog.locator('.timeline-volume .v-slider-thumb__ripple')).toHaveCSS('width', `${cursor.width}px`)
     await expect(dialog.locator('.timeline-volume .v-slider-thumb__ripple')).toHaveCSS('height', `${cursor.height}px`)
   }
-  await expect(dialog.locator('.timeline-axis')).not.toHaveCSS(
-    'background-color', await dialog.locator('.timeline-usable').evaluate(el => getComputedStyle(el).backgroundColor),
+  for (const layer of ['track', 'usable', 'progress']) {
+    await expect(dialog.getByTestId(`waveform-${layer}`)).toBeVisible()
+  }
+  await expect(dialog.getByTestId('waveform-usable')).not.toHaveCSS(
+    'fill', await dialog.getByTestId('waveform-track').evaluate(el => getComputedStyle(el).fill),
   )
 }
 

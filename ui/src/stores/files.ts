@@ -1,4 +1,4 @@
-import { deleteApiV1FilesByTrackId, getApiV1Files, getApiV1FilesByTrackIdUsage, postApiV1Files, putApiV1FilesByTrackId, type Track, type UpdateTrackRequest } from '@/client/apiClient'
+import { deleteApiV1FilesByTrackId, getApiV1Files, getApiV1FilesByTrackIdUsage, getApiV1FilesByTrackIdWaveform, postApiV1Files, putApiV1FilesByTrackId, type Track, type UpdateTrackRequest } from '@/client/apiClient'
 import { defineStore } from 'pinia'
 
 export class TrackUsageChangedError extends Error {
@@ -34,6 +34,11 @@ export const useFileStore = defineStore('files', {
         throw new Error('Invalid track usage count')
       }
       return data.tableCount
+    },
+    async fetchWaveform(trackID: string) {
+      const { data } = await getApiV1FilesByTrackIdWaveform<true>({ path: { trackID } })
+      if (!Array.isArray(data.peaks)) throw new Error('Invalid track waveform')
+      return data.peaks
     },
     async deleteFile(trackId: string, expectedTableCount: number) {
       try {

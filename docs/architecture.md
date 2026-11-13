@@ -131,6 +131,10 @@ UUID. The server validates the type, assigns a UUIDv7, stages the input, and run
 produce AAC HLS playlists and `.ts` segments under `<upload-dir>/<track-id>/`.
 It then saves metadata; table uploads save the library entry and association
 in one database transaction. Streaming reads files from that upload directory.
+After conversion the server also computes a 400-bucket peak waveform with
+FFmpeg and caches it as `waveform.json` beside the playlist; a failure there only
+logs a warning. The GM-only `GET /api/v1/files/{trackID}/waveform` endpoint
+serves that cache, generating it on first request for older tracks.
 Deletion removes metadata and the associated HLS directory. These filesystem
 and database operations are not a single atomic transaction.
 
@@ -161,6 +165,7 @@ delete live in each row's three-dot menu.
 The shared library uses a sortable, paginated metadata table showing each
 track's name, type, and creation time. Row clicks (or keyboard
 activation) toggle a local preview, with at most one preview playing at once.
+Resuming a paused preview continues from its current position.
 Library previews reuse the HLS player without opening a WebSocket or sending
 synchronization messages. Preview state is cleared on leaving the library;
 it cannot become a table's playback state. Track editing is shared with the
@@ -172,7 +177,11 @@ immediately. Deletion is blocked if the usage lookup fails. The deletion compare
 atomically with the current associations; if it changed, the GM must check
 usage again before deleting.
 The audio-controls dialog combines seeking and playback-region editing on one
-full-duration timeline. Beginning and end handles sit above the bar; repeating
+full-duration timeline, with a play/pause button to its left that uses the same
+playback path as the track tile. When the dialog opens it fetches the track's
+waveform once and draws it as the timeline bar: the played portion is bright, the
+unplayed region dimmer, and trimmed areas grey. If the waveform cannot be loaded
+the plain bar is shown instead. Beginning and end handles sit above the bar; repeating
 types also have a loop-back handle below it. The draft type selection controls
 its visibility without discarding saved loop-back points. Areas outside the
 selected region are dimmed and cannot be
@@ -182,7 +191,9 @@ loop-back point inside the region. The end defaults to the track duration;
 moving the loop-back handle to the beginning reanchors it so it follows later
 beginning adjustments. Moving the beginning to zero and the end to the full
 duration restores the full track without separate reset controls. Point edits
-remain local to the dialog until saved; closing without saving discards them.
+immediately update live playback (including listening players at the current
+table), but shared library metadata is only persisted on Save. Closing without
+saving restores the saved region in playback; invalid drafts are not applied.
 These settings are stored with the shared library track and apply in every table.
 Opening library controls loads audio metadata without starting playback or
 sending synchronization messages.
@@ -250,7 +261,7 @@ grid's mobile layout so they switch at the same breakpoint.
 Paused, completed, removed, and type-exclusive displaced tracks leave the sidebar;
 starting a track adds it automatically. Each card's always-visible three-dot
 button opens a track-settings dialog with a volume slider aligned to the
-timeline, but no play/pause or restart button, so paused tracks can be prepared before playback.
+timeline and a play/pause button, but no restart button.
 `TrackPlaybackControls` supplies the compact sidebar controls; `TrackTimeline`
 supplies the editor. Both use the same state and synchronization handlers.
 Seeking preserves the playing/paused state; playing tracks synchronize volume
