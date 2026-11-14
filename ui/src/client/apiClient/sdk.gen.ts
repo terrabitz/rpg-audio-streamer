@@ -2,7 +2,7 @@
 
 import { type Client, type ClientMeta, formDataBodySerializer, type Options as Options2, type RequestResult, type TDataShape } from './client';
 import { client } from './client.gen';
-import type { DeleteApiV1FilesByTrackIdData, DeleteApiV1FilesByTrackIdErrors, DeleteApiV1FilesByTrackIdResponses, DeleteApiV1TablesByTableIdData, DeleteApiV1TablesByTableIdErrors, DeleteApiV1TablesByTableIdResponses, DeleteApiV1TablesByTableIdTracksByTrackIdData, DeleteApiV1TablesByTableIdTracksByTrackIdErrors, DeleteApiV1TablesByTableIdTracksByTrackIdResponses, GetApiV1AuthStatusData, GetApiV1AuthStatusResponses, GetApiV1FilesByTrackIdUsageData, GetApiV1FilesByTrackIdUsageErrors, GetApiV1FilesByTrackIdUsageResponses, GetApiV1FilesByTrackIdWaveformData, GetApiV1FilesByTrackIdWaveformErrors, GetApiV1FilesByTrackIdWaveformResponses, GetApiV1FilesData, GetApiV1FilesErrors, GetApiV1FilesResponses, GetApiV1JoinTokenData, GetApiV1JoinTokenErrors, GetApiV1JoinTokenResponses, GetApiV1StreamByPathData, GetApiV1StreamByPathErrors, GetApiV1StreamByPathResponses, GetApiV1TablesByTableIdData, GetApiV1TablesByTableIdErrors, GetApiV1TablesByTableIdResponses, GetApiV1TablesByTableIdSettingsData, GetApiV1TablesByTableIdSettingsErrors, GetApiV1TablesByTableIdSettingsResponses, GetApiV1TablesByTableIdTracksData, GetApiV1TablesByTableIdTracksErrors, GetApiV1TablesByTableIdTracksResponses, GetApiV1TablesCurrentData, GetApiV1TablesCurrentErrors, GetApiV1TablesCurrentResponses, GetApiV1TablesData, GetApiV1TablesResponses, GetApiV1TrackTypesData, GetApiV1TrackTypesErrors, GetApiV1TrackTypesResponses, GetApiV1WsData, GetApiV1WsErrors, PatchApiV1TablesByTableIdSettingsData, PatchApiV1TablesByTableIdSettingsErrors, PatchApiV1TablesByTableIdSettingsResponses, PostApiV1AuthLogoutData, PostApiV1AuthLogoutResponses, PostApiV1FilesData, PostApiV1FilesErrors, PostApiV1FilesResponses, PostApiV1LoginData, PostApiV1LoginErrors, PostApiV1LoginResponses, PostApiV1TablesData, PostApiV1TablesErrors, PostApiV1TablesResponses, PutApiV1FilesByTrackIdData, PutApiV1FilesByTrackIdErrors, PutApiV1FilesByTrackIdResponses, PutApiV1TablesByTableIdData, PutApiV1TablesByTableIdErrors, PutApiV1TablesByTableIdResponses, PutApiV1TablesByTableIdTracksByTrackIdData, PutApiV1TablesByTableIdTracksByTrackIdErrors, PutApiV1TablesByTableIdTracksByTrackIdResponses } from './types.gen';
+import type { DeleteApiV1FilesByTrackIdData, DeleteApiV1FilesByTrackIdErrors, DeleteApiV1FilesByTrackIdResponses, DeleteApiV1TablesByTableIdData, DeleteApiV1TablesByTableIdErrors, DeleteApiV1TablesByTableIdResponses, DeleteApiV1TablesByTableIdTracksByTrackIdData, DeleteApiV1TablesByTableIdTracksByTrackIdErrors, DeleteApiV1TablesByTableIdTracksByTrackIdResponses, DeleteApiV1TagsByTagIdData, DeleteApiV1TagsByTagIdErrors, DeleteApiV1TagsByTagIdResponses, GetApiV1AuthStatusData, GetApiV1AuthStatusResponses, GetApiV1FilesByTrackIdUsageData, GetApiV1FilesByTrackIdUsageErrors, GetApiV1FilesByTrackIdUsageResponses, GetApiV1FilesByTrackIdWaveformData, GetApiV1FilesByTrackIdWaveformErrors, GetApiV1FilesByTrackIdWaveformResponses, GetApiV1FilesData, GetApiV1FilesErrors, GetApiV1FilesResponses, GetApiV1JoinTokenData, GetApiV1JoinTokenErrors, GetApiV1JoinTokenResponses, GetApiV1StreamByPathData, GetApiV1StreamByPathErrors, GetApiV1StreamByPathResponses, GetApiV1TablesByTableIdData, GetApiV1TablesByTableIdErrors, GetApiV1TablesByTableIdResponses, GetApiV1TablesByTableIdSettingsData, GetApiV1TablesByTableIdSettingsErrors, GetApiV1TablesByTableIdSettingsResponses, GetApiV1TablesByTableIdTracksData, GetApiV1TablesByTableIdTracksErrors, GetApiV1TablesByTableIdTracksResponses, GetApiV1TablesCurrentData, GetApiV1TablesCurrentErrors, GetApiV1TablesCurrentResponses, GetApiV1TablesData, GetApiV1TablesResponses, GetApiV1TagsData, GetApiV1TagsResponses, GetApiV1TrackTypesData, GetApiV1TrackTypesErrors, GetApiV1TrackTypesResponses, GetApiV1WsData, GetApiV1WsErrors, PatchApiV1TablesByTableIdSettingsData, PatchApiV1TablesByTableIdSettingsErrors, PatchApiV1TablesByTableIdSettingsResponses, PostApiV1AuthLogoutData, PostApiV1AuthLogoutResponses, PostApiV1FilesData, PostApiV1FilesErrors, PostApiV1FilesResponses, PostApiV1LoginData, PostApiV1LoginErrors, PostApiV1LoginResponses, PostApiV1TablesData, PostApiV1TablesErrors, PostApiV1TablesResponses, PostApiV1TagsData, PostApiV1TagsErrors, PostApiV1TagsResponses, PutApiV1FilesByTrackIdData, PutApiV1FilesByTrackIdErrors, PutApiV1FilesByTrackIdResponses, PutApiV1TablesByTableIdData, PutApiV1TablesByTableIdErrors, PutApiV1TablesByTableIdResponses, PutApiV1TablesByTableIdTracksByTrackIdData, PutApiV1TablesByTableIdTracksByTrackIdErrors, PutApiV1TablesByTableIdTracksByTrackIdResponses, PutApiV1TagsByTagIdData, PutApiV1TagsByTagIdErrors, PutApiV1TagsByTagIdResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -343,6 +343,66 @@ export const getApiV1TrackTypes = <ThrowOnError extends boolean = false>(options
         }, { scheme: 'bearer', type: 'http' }],
     url: '/api/v1/trackTypes',
     ...options
+});
+
+/**
+ * List reusable library tags (GM only)
+ */
+export const getApiV1Tags = <ThrowOnError extends boolean = false>(options?: Options<GetApiV1TagsData, ThrowOnError>): RequestResult<GetApiV1TagsResponses, unknown, ThrowOnError> => (options?.client ?? client).get<GetApiV1TagsResponses, unknown, ThrowOnError>({
+    security: [{
+            in: 'cookie',
+            name: 'auth_token',
+            type: 'apiKey'
+        }],
+    url: '/api/v1/tags',
+    ...options
+});
+
+/**
+ * Create a reusable library tag (GM only)
+ */
+export const postApiV1Tags = <ThrowOnError extends boolean = false>(options: Options<PostApiV1TagsData, ThrowOnError>): RequestResult<PostApiV1TagsResponses, PostApiV1TagsErrors, ThrowOnError> => (options.client ?? client).post<PostApiV1TagsResponses, PostApiV1TagsErrors, ThrowOnError>({
+    security: [{
+            in: 'cookie',
+            name: 'auth_token',
+            type: 'apiKey'
+        }],
+    url: '/api/v1/tags',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Delete a tag and remove its track assignments (GM only)
+ */
+export const deleteApiV1TagsByTagId = <ThrowOnError extends boolean = false>(options: Options<DeleteApiV1TagsByTagIdData, ThrowOnError>): RequestResult<DeleteApiV1TagsByTagIdResponses, DeleteApiV1TagsByTagIdErrors, ThrowOnError> => (options.client ?? client).delete<DeleteApiV1TagsByTagIdResponses, DeleteApiV1TagsByTagIdErrors, ThrowOnError>({
+    security: [{
+            in: 'cookie',
+            name: 'auth_token',
+            type: 'apiKey'
+        }],
+    url: '/api/v1/tags/{tagID}',
+    ...options
+});
+
+/**
+ * Rename or recolor a tag across the library (GM only)
+ */
+export const putApiV1TagsByTagId = <ThrowOnError extends boolean = false>(options: Options<PutApiV1TagsByTagIdData, ThrowOnError>): RequestResult<PutApiV1TagsByTagIdResponses, PutApiV1TagsByTagIdErrors, ThrowOnError> => (options.client ?? client).put<PutApiV1TagsByTagIdResponses, PutApiV1TagsByTagIdErrors, ThrowOnError>({
+    security: [{
+            in: 'cookie',
+            name: 'auth_token',
+            type: 'apiKey'
+        }],
+    url: '/api/v1/tags/{tagID}',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
 });
 
 /**

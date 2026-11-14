@@ -95,6 +95,9 @@ export const useFileStore = defineStore('files', {
         if (update.playback !== undefined) {
           trackRequest.playback = update.playback
         }
+        if (update.tagIDs !== undefined) {
+          trackRequest.tagIDs = update.tagIDs
+        }
 
         const { data } = await putApiV1FilesByTrackId<true>({
           path: { trackID: trackId },

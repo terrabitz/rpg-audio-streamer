@@ -3,6 +3,7 @@ package server
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"os"
@@ -242,6 +243,10 @@ func (s *Server) handleFileUpdate(w http.ResponseWriter, r *http.Request) {
 
 	track, err := s.store.UpdateTrack(r.Context(), trackID, req)
 	if err != nil {
+		if errors.Is(err, ErrInvalidTag) {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 		s.logger.Error("failed to update track", "error", err)
 		http.Error(w, "Failed to update track", http.StatusInternalServerError)
 		return

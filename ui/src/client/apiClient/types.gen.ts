@@ -84,6 +84,7 @@ export type Track = {
     path: string;
     typeID: string;
     playback?: PlaybackSettings;
+    tags?: Array<Tag>;
 };
 
 /**
@@ -100,6 +101,21 @@ export type UpdateTrackRequest = {
     name?: string;
     typeID?: string;
     playback?: PlaybackSettings;
+    /**
+     * Replaces the track's tags. Omit to preserve; an empty array removes all tags.
+     */
+    tagIDs?: Array<string>;
+};
+
+export type Tag = {
+    id: string;
+    name: string;
+    color: string;
+};
+
+export type TagInput = {
+    name: string;
+    color: string;
 };
 
 export type TrackUsage = {
@@ -745,6 +761,107 @@ export type GetApiV1TrackTypesResponses = {
 };
 
 export type GetApiV1TrackTypesResponse = GetApiV1TrackTypesResponses[keyof GetApiV1TrackTypesResponses];
+
+export type GetApiV1TagsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/tags';
+};
+
+export type GetApiV1TagsResponses = {
+    /**
+     * Tags ordered by name
+     */
+    200: Array<Tag>;
+};
+
+export type GetApiV1TagsResponse = GetApiV1TagsResponses[keyof GetApiV1TagsResponses];
+
+export type PostApiV1TagsData = {
+    body: TagInput;
+    path?: never;
+    query?: never;
+    url: '/api/v1/tags';
+};
+
+export type PostApiV1TagsErrors = {
+    /**
+     * Invalid name or color
+     */
+    400: unknown;
+    /**
+     * Tag name already exists (case insensitive)
+     */
+    409: unknown;
+};
+
+export type PostApiV1TagsResponses = {
+    /**
+     * Created tag
+     */
+    201: Tag;
+};
+
+export type PostApiV1TagsResponse = PostApiV1TagsResponses[keyof PostApiV1TagsResponses];
+
+export type DeleteApiV1TagsByTagIdData = {
+    body?: never;
+    path: {
+        tagID: string;
+    };
+    query?: never;
+    url: '/api/v1/tags/{tagID}';
+};
+
+export type DeleteApiV1TagsByTagIdErrors = {
+    /**
+     * Tag not found
+     */
+    404: unknown;
+};
+
+export type DeleteApiV1TagsByTagIdResponses = {
+    /**
+     * Tag deleted; audio and table associations are unchanged
+     */
+    204: void;
+};
+
+export type DeleteApiV1TagsByTagIdResponse = DeleteApiV1TagsByTagIdResponses[keyof DeleteApiV1TagsByTagIdResponses];
+
+export type PutApiV1TagsByTagIdData = {
+    body: TagInput;
+    path: {
+        tagID: string;
+    };
+    query?: never;
+    url: '/api/v1/tags/{tagID}';
+};
+
+export type PutApiV1TagsByTagIdErrors = {
+    /**
+     * Invalid name or color
+     */
+    400: unknown;
+    /**
+     * Tag not found
+     */
+    404: unknown;
+    /**
+     * Tag name already exists
+     */
+    409: unknown;
+};
+
+export type PutApiV1TagsByTagIdResponses = {
+    /**
+     * Updated tag
+     */
+    200: Tag;
+};
+
+export type PutApiV1TagsByTagIdResponse = PutApiV1TagsByTagIdResponses[keyof PutApiV1TagsByTagIdResponses];
 
 export type GetApiV1WsData = {
     body?: never;

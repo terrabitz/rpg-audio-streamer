@@ -206,6 +206,15 @@ async function seed(apiURL) {
       duration: 1.5,
     },
   ]
+  const tags = {}
+  for (const [name, color] of [['Low intensity', '#4caf50'], ['High intensity', '#ef5350']]) {
+    const tag = await (await request(`${apiURL}/api/v1/tags`, {
+      method: 'POST',
+      headers: { Cookie: cookie, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, color }),
+    })).json()
+    tags[name] = tag.id
+  }
   for (const [index, sample] of samples.entries()) {
     const type = types.find((type) => type.name === sample.type)
     if (!type) throw new Error(`Missing seeded track type: ${sample.type}`)
@@ -240,6 +249,18 @@ async function seed(apiURL) {
       body,
     })
     await rm(file)
+  }
+  const tracks = await (await request(`${apiURL}/api/v1/files`, {
+    headers: { Cookie: cookie },
+  })).json()
+  for (const track of tracks) {
+    const intensity = ['Adventure theme', 'Distant rumble', 'Drumbeat'].includes(track.name)
+      ? 'High intensity' : 'Low intensity'
+    await request(`${apiURL}/api/v1/files/${track.id}`, {
+      method: 'PUT',
+      headers: { Cookie: cookie, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: track.id, tagIDs: [tags[intensity]] }),
+    })
   }
 }
 

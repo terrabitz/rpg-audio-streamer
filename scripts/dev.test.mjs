@@ -38,6 +38,13 @@ test(
     const tracks = await json(a, '/api/v1/files', cookie)
     assert.equal(tracks.length, 9)
     assert.equal(new Set(tracks.map((track) => track.name)).size, 9)
+    const tags = await json(a, '/api/v1/tags', cookie)
+    assert.deepEqual(tags.map(tag => tag.name).sort(), ['High intensity', 'Low intensity'])
+    for (const track of tracks) {
+      const name = ['Adventure theme', 'Distant rumble', 'Drumbeat'].includes(track.name)
+        ? 'High intensity' : 'Low intensity'
+      assert.deepEqual(track.tags, [tags.find(tag => tag.name === name)])
+    }
     for (const type of types) {
       assert.equal(tracks.filter((track) => track.typeID === type.id).length, 3, type.name)
     }

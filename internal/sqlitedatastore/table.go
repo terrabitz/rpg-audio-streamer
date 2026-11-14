@@ -110,6 +110,9 @@ func (db *SQLiteDatastore) GetTableTracks(ctx context.Context, id uuid.UUID) ([]
 		}
 		tracks = append(tracks, track)
 	}
+	if err := attachTrackTags(ctx, sqlitedb.New(db.DB), tracks); err != nil {
+		return nil, err
+	}
 	return tracks, nil
 }
 

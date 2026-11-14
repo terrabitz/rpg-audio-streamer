@@ -5,6 +5,7 @@ import AudioControls from '../AudioControls.vue'
 import { TrackUsageChangedError, useFileStore } from '@/stores/files'
 import { useTrackTypeStore } from '@/stores/trackTypes'
 import { useAudioStore } from '@/stores/audio'
+import { useTagStore } from '@/stores/tags'
 
 const EDITOR = '[role="dialog"]:not([aria-label])'
 const CONFIRMATION = '[role="dialog"][aria-label="Delete track?"]'
@@ -235,6 +236,29 @@ it('shows table-removal failures without closing the controls', async () => {
   wrapper.unmount()
 })
 
+it('keeps tag assignments as a draft until save and supports clearing them', async () => {
+  const { wrapper } = mountControls()
+  const files = useFileStore()
+  const tag = { id: 'intensity', name: 'High intensity', color: '#123456' }
+  files.tracks[0]!.tags = [tag]
+  useTagStore().tags = [tag]
+  const update = vi.spyOn(files, 'updateTrack').mockResolvedValue({ ...files.tracks[0]!, tags: [] })
+  await wrapper.get('[aria-label="Edit Forest"]').trigger('click')
+  await flushPromises()
+  const selector = wrapper.getComponent({ name: 'VAutocomplete' })
+  await selector.vm.$emit('update:modelValue', [])
+  expect(files.tracks[0]?.tags).toEqual([tag])
+  await wrapper.get('[aria-label="Close track controls"]').trigger('click')
+  expect(update).not.toHaveBeenCalled()
+  await wrapper.get('[aria-label="Edit Forest"]').trigger('click')
+  await flushPromises()
+  await wrapper.getComponent({ name: 'VAutocomplete' }).vm.$emit('update:modelValue', [])
+  await wrapper.findAll('button').find(button => button.text() === 'Save Changes')!.trigger('click')
+  await flushPromises()
+  expect(update).toHaveBeenCalledExactlyOnceWith('forest', { tagIDs: [] })
+  wrapper.unmount()
+})
+
 function mountControls(library = true) {
   const pinia = createPinia()
   setActivePinia(pinia)
@@ -247,6 +271,7 @@ function mountControls(library = true) {
   }]
   const countTables = vi.spyOn(files, 'countTrackTables')
   const fetchWaveform = vi.spyOn(files, 'fetchWaveform').mockResolvedValue([0.2, 1])
+  vi.spyOn(useTagStore(), 'fetchTags').mockResolvedValue(undefined)
   const deleteTrack = vi.fn().mockResolvedValue(undefined)
   const passthrough = { template: '<div><slot /></div>' }
   const wrapper = mount(AudioControls, {
@@ -274,6 +299,8 @@ function mountControls(library = true) {
         VTextField: true,
         VIcon: true,
         TrackTypeSelector: true,
+        TagManager: true,
+        VAutocomplete: true,
         VolumeSlider: true,
       },
     },

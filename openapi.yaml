@@ -158,6 +158,10 @@ components:
           format: uuid
         playback:
           $ref: "#/components/schemas/PlaybackSettings"
+        tags:
+          type: array
+          items:
+            $ref: "#/components/schemas/Tag"
 
     PlaybackSettings:
       type: object
@@ -192,6 +196,37 @@ components:
           nullable: true
         playback:
           $ref: "#/components/schemas/PlaybackSettings"
+        tagIDs:
+          type: array
+          description: Replaces the track's tags. Omit to preserve; an empty array removes all tags.
+          uniqueItems: true
+          items:
+            type: string
+            format: uuid
+
+    Tag:
+      type: object
+      required: [id, name, color]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        color:
+          type: string
+
+    TagInput:
+      type: object
+      required: [name, color]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 50
+        color:
+          type: string
+          pattern: "^#[0-9a-fA-F]{6}$"
 
     TrackUsage:
       type: object
@@ -715,6 +750,83 @@ paths:
                   $ref: "#/components/schemas/TrackType"
         "403":
           description: Not authorized
+
+  /api/v1/tags:
+    get:
+      summary: List reusable library tags (GM only)
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Tags ordered by name
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Tag"
+    post:
+      summary: Create a reusable library tag (GM only)
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TagInput"
+      responses:
+        "201":
+          description: Created tag
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Tag"
+        "400":
+          description: Invalid name or color
+        "409":
+          description: Tag name already exists (case insensitive)
+
+  /api/v1/tags/{tagID}:
+    parameters:
+      - name: tagID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    put:
+      summary: Rename or recolor a tag across the library (GM only)
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TagInput"
+      responses:
+        "200":
+          description: Updated tag
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Tag"
+        "400":
+          description: Invalid name or color
+        "404":
+          description: Tag not found
+        "409":
+          description: Tag name already exists
+    delete:
+      summary: Delete a tag and remove its track assignments (GM only)
+      security:
+        - cookieAuth: []
+      responses:
+        "204":
+          description: Tag deleted; audio and table associations are unchanged
+        "404":
+          description: Tag not found
 
   /api/v1/ws:
     get:

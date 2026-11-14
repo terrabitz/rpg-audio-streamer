@@ -51,6 +51,9 @@ func (db *SQLiteDatastore) GetTracks(ctx context.Context) ([]server.Track, error
 		}
 		result = append(result, track)
 	}
+	if err := attachTrackTags(ctx, sqlitedb.New(db.DB), result); err != nil {
+		return nil, err
+	}
 	return result, nil
 }
 
@@ -60,7 +63,12 @@ func (db *SQLiteDatastore) GetTrackByID(ctx context.Context, trackID uuid.UUID) 
 		return server.Track{}, fmt.Errorf("couldn't get track by ID: %w", err)
 	}
 
-	return convertDBTrack(dbTrack)
+	track, err := convertDBTrack(dbTrack)
+	if err != nil {
+		return server.Track{}, err
+	}
+	track.Tags, err = getTrackTags(ctx, sqlitedb.New(db.DB), trackID)
+	return track, err
 }
 
 func (db *SQLiteDatastore) DeleteTrack(ctx context.Context, trackID uuid.UUID) error {
@@ -97,12 +105,34 @@ func (db *SQLiteDatastore) UpdateTrack(ctx context.Context, trackID uuid.UUID, u
 		params.LoopBackTime = nullableTime(update.Playback.LoopBackTime)
 	}
 
-	dbTrack, err := sqlitedb.New(db.DB).UpdateTrack(ctx, params)
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return server.Track{}, err
+	}
+	defer tx.Rollback()
+	queries := sqlitedb.New(tx)
+	dbTrack, err := queries.UpdateTrack(ctx, params)
 	if err != nil {
 		return server.Track{}, fmt.Errorf("couldn't update track in SQLite: %w", err)
 	}
 
-	return convertDBTrack(dbTrack)
+	if update.TagIDs != nil {
+		if err := replaceTrackTags(ctx, queries, trackID, *update.TagIDs); err != nil {
+			return server.Track{}, err
+		}
+	}
+	track, err := convertDBTrack(dbTrack)
+	if err != nil {
+		return server.Track{}, err
+	}
+	track.Tags, err = getTrackTags(ctx, queries, trackID)
+	if err != nil {
+		return server.Track{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return server.Track{}, err
+	}
+	return track, nil
 }
 
 func convertDBTrack(dbTrack sqlitedb.Track) (server.Track, error) {

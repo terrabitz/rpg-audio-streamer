@@ -3,8 +3,12 @@
     <v-alert v-if="error" type="error" class="mb-4">{{ error }}</v-alert>
     <template v-if="props.library">
       <AudioPlayer @error="error = $event" />
-      <v-data-table :headers="libraryHeaders" :items="tracks" :loading="loading" density="compact" hover
-        :row-props="libraryRowProps" no-data-text="No tracks in the library yet.">
+      <v-text-field v-model="librarySearch" label="Search library tracks" clearable hide-details class="mb-3" />
+      <v-data-table :headers="libraryHeaders" :items="filteredLibraryTracks" :loading="loading" density="compact" hover
+        :row-props="libraryRowProps" :no-data-text="tracks.length ? 'No tracks match your search.' : 'No tracks in the library yet.'">
+        <template #[`item.tags`]="{ item }">
+          <TrackTags :tags="item.tags" />
+        </template>
         <template #[`item.preview`]="{ item }">
           <v-btn :icon="audioStore.tracks[item.id]?.isPlaying ? '$pause' : '$play'" variant="text" size="small"
             :aria-label="`${audioStore.tracks[item.id]?.isPlaying ? 'Pause preview' : 'Preview'} ${item.name}`"
@@ -108,6 +112,8 @@ import AudioControls from './AudioControls.vue'
 import SortableTrack from './SortableTrack.vue'
 import AudioPlayer from './AudioPlayer.vue'
 import PlayingTrackList from './PlayingTrackList.vue'
+import TrackTags from './TrackTags.vue'
+import { matchesLibrarySearch } from '@/composables/librarySearch'
 
 const fileStore = useFileStore()
 const audioStore = useAudioStore()
@@ -129,15 +135,19 @@ const tables = useTableStore()
 const props = defineProps<{ library?: boolean }>()
 const error = ref('')
 const loading = ref(true)
+const librarySearch = ref<string | null>('')
 const libraryHeaders = [
   { title: '', key: 'preview', sortable: false, width: 56 },
   { title: 'Name', key: 'name' },
   { title: 'Type', key: 'typeID', sortable: false },
+  { title: 'Tags', key: 'tags', sortable: false },
   { title: 'Added', key: 'createdAt' },
   { title: '', key: 'actions', sortable: false, width: 56 },
 ]
 const tracks = computed(() => props.library ? fileStore.tracks :
   tables.orderedTracks.map(track => fileStore.getTrackById(track.id) ?? track))
+const filteredLibraryTracks = computed(() => tracks.value.filter(track =>
+  matchesLibrarySearch(track, librarySearch.value ?? '', trackTypeStore.trackTypes)))
 const playingTracks = computed(() => tracks.value.flatMap(track => {
   const state = audioStore.tracks[track.id]
   return state?.isPlaying ? [{ ...track, state }] : []

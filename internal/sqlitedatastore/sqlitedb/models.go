@@ -20,6 +20,12 @@ type TableTrack struct {
 	TrackID []byte
 }
 
+type Tag struct {
+	ID    []byte
+	Name  string
+	Color string
+}
+
 type Track struct {
 	ID           []byte
 	CreatedAt    string
@@ -29,6 +35,11 @@ type Track struct {
 	StartTime    float64
 	EndTime      sql.NullFloat64
 	LoopBackTime sql.NullFloat64
+}
+
+type TrackTag struct {
+	TrackID []byte
+	TagID   []byte
 }
 
 type TrackType struct {
