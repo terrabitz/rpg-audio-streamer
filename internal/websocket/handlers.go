@@ -35,45 +35,14 @@ func (h *Hub) handleBroadcast(payload json.RawMessage, c *Client) {
 }
 
 func (h *Hub) handleSyncRequest(payload json.RawMessage, c *Client) {
-	// Only forward to GM clients
-	h.Broadcast(Message{
-		Method:   "syncRequest",
-		SenderID: c.ID,
-		Payload:  payload,
-	}, ToGMOnly(), ToTable(c.Token.TableID))
-}
-
-func (h *Hub) handleSyncAll(payload json.RawMessage, c *Client) {
-	if c.Token.Role != auth.RoleGM {
-		h.logger.Warn("unauthorized broadcast attempt", "role", c.Token.Role)
+	h.stateMu.Lock()
+	defer h.stateMu.Unlock()
+	settings, err := h.tableSettings(c.Token.TableID)
+	if err != nil {
+		h.playbackError(c, err)
 		return
 	}
-
-	// Extract target client ID from payload
-	var syncPayload struct {
-		Tracks []any  `json:"tracks"`
-		To     string `json:"to"`
-	}
-	if err := json.Unmarshal(payload, &syncPayload); err != nil {
-		h.logger.Error("failed to unmarshal sync payload", "error", err)
-		return
-	}
-
-	// If a target client is specified, only send to them
-	if syncPayload.To != "" {
-		h.Broadcast(Message{
-			Method:   "syncAll",
-			SenderID: c.ID,
-			Payload:  payload,
-		}, ToClientID(syncPayload.To), ToPlayersOnly(), ToTable(c.Token.TableID))
-	} else {
-		// Otherwise broadcast to all players
-		h.Broadcast(Message{
-			Method:   "syncAll",
-			SenderID: c.ID,
-			Payload:  payload,
-		}, ToPlayersOnly(), ToTable(c.Token.TableID))
-	}
+	h.sendState(c.Token.TableID, settings, c.ID)
 }
 
 func (h *Hub) handleSyncTrack(payload json.RawMessage, c *Client) {
@@ -81,9 +50,5 @@ func (h *Hub) handleSyncTrack(payload json.RawMessage, c *Client) {
 		h.logger.Warn("unauthorized syncTrack command", "role", c.Token.Role)
 		return
 	}
-	h.Broadcast(Message{
-		Method:   "syncTrack",
-		SenderID: c.ID,
-		Payload:  payload,
-	}, ToPlayersOnly(), ToTable(c.Token.TableID))
+	h.updatePlayback(payload, c)
 }

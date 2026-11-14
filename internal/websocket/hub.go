@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"sync"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
@@ -19,9 +20,12 @@ type Hub struct {
 	unregister chan *Client
 	logger     *slog.Logger
 	handlers   map[string]HandlerFunc
+	stateMu    sync.Mutex
+	playback   map[string]map[string]playingTrack
+	store      PlaybackStore
 }
 
-func NewHub(logger *slog.Logger) *Hub {
+func NewHub(logger *slog.Logger, store PlaybackStore) *Hub {
 	hub := &Hub{
 		clients:    make(map[*Client]bool),
 		broadcast:  make(chan []byte),
@@ -29,20 +33,25 @@ func NewHub(logger *slog.Logger) *Hub {
 		unregister: make(chan *Client),
 		logger:     logger,
 		handlers:   make(map[string]HandlerFunc),
+		playback:   make(map[string]map[string]playingTrack),
+		store:      store,
 	}
 
 	hub.HandleFunc("ping", hub.handlePing)
 	hub.HandleFunc("broadcast", hub.handleBroadcast)
 	hub.HandleFunc("syncRequest", hub.handleSyncRequest)
-	hub.HandleFunc("syncAll", hub.handleSyncAll)
 	hub.HandleFunc("syncTrack", hub.handleSyncTrack)
 
 	return hub
 }
 
 func (h *Hub) Run() {
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
 	for {
 		select {
+		case <-ticker.C:
+			h.refreshPlayback()
 		case client := <-h.register:
 			h.clientsMu.Lock()
 			h.clients[client] = true
@@ -128,6 +137,9 @@ func ToTable(tableID string) BroadcastOption {
 }
 
 func (h *Hub) CloseTable(tableID string) {
+	h.stateMu.Lock()
+	defer h.stateMu.Unlock()
+	delete(h.playback, tableID)
 	h.Broadcast(Message{Method: "tableDeleted", Payload: json.RawMessage(`{}`)}, ToTable(tableID))
 	h.clientsMu.Lock()
 	defer h.clientsMu.Unlock()
@@ -153,6 +165,13 @@ func (h *Hub) RevokePlayerAccess(tableID string) {
 }
 
 func (h *Hub) RemoveTrack(tableID, trackID string) {
+	h.stateMu.Lock()
+	defer h.stateMu.Unlock()
+	for id, tracks := range h.playback {
+		if tableID == "" || tableID == id {
+			delete(tracks, trackID)
+		}
+	}
 	payload, _ := json.Marshal(struct {
 		FileID string `json:"fileID"`
 	}{FileID: trackID})
@@ -160,6 +179,7 @@ func (h *Hub) RemoveTrack(tableID, trackID string) {
 	if tableID != "" {
 		opts = append(opts, ToTable(tableID))
 	}
+
 	h.Broadcast(Message{Method: "removeTrack", Payload: payload}, opts...)
 }
 

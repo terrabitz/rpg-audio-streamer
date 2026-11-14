@@ -147,6 +147,26 @@ it('shortens crossfades for short loops and respects zero-volume mixer changes d
   } finally { player.unmount() }
 })
 
+it('preserves loop handoffs for clock snapshots but applies explicit server seek commands', async () => {
+  const { player, audio, primary, secondary } = await mountPlaying({})
+  try {
+    audio.updateTrackState('forest', { currentTime: 58, positionVersion: 1 })
+    await nextTick()
+    await player.get('video').trigger('timeupdate')
+    await flushPromises()
+    expect(secondary.paused).toBe(false)
+    audio.updateTrackState('forest', { currentTime: 2, positionVersion: 1 })
+    await nextTick()
+    expect(primary.currentTime).toBe(58)
+    expect(secondary.paused).toBe(false)
+    audio.updateTrackState('forest', { currentTime: 12, positionVersion: 2 })
+    await nextTick()
+    expect(primary.currentTime).toBe(12)
+    expect(secondary.paused).toBe(true)
+    expect(primary.paused).toBe(false)
+  } finally { player.unmount() }
+})
+
 it.each([true, false])('ramps volume for two seconds and retargets from its current gain (repeat=%s)', async (isRepeating) => {
   const { player, audio, primary } = await mountPlaying({})
   try {

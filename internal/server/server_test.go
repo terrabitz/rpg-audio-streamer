@@ -53,9 +53,10 @@ type mockWSRegisterer struct {
 	t *testing.T
 }
 
-func (m *mockWSRegisterer) CloseTable(string)          {}
-func (m *mockWSRegisterer) RevokePlayerAccess(string)  {}
-func (m *mockWSRegisterer) RemoveTrack(string, string) {}
+func (m *mockWSRegisterer) CloseTable(string)                       {}
+func (m *mockWSRegisterer) RemoveTrack(string, string)              {}
+func (m *mockWSRegisterer) SyncSettings(string, TableSettingsPatch) {}
+func (m *mockWSRegisterer) RevokePlayerAccess(string)               {}
 
 func (m *mockWSRegisterer) Register(conn *websocket.Conn, token *auth.Token) {
 	// For testing purposes, just verify the inputs are not nil

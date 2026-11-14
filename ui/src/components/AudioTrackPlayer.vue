@@ -12,6 +12,7 @@ import Hls from 'hls.js'
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { defaultPlayback, playbackError, playbackRegion } from '@/composables/playback'
 import { useAudioStore, type AudioTrack } from '../stores/audio'
+import { useWebSocketStore } from '../stores/websocket'
 
 const props = defineProps<{ fileID: string, tableID?: string }>()
 const emit = defineEmits<{ error: [message: string] }>()
@@ -29,12 +30,20 @@ let envelope = 0
 let fade: { from: number, to: number, start: number } | undefined
 let mixedVolume = targetVolume()
 let volumeFade: { from: number, to: number, start: number } | undefined
+let positionVersion = audioStore.tracks[props.fileID]?.positionVersion
 
 watch(() => audioStore.tracks[props.fileID]?.isPlaying, syncPlaying)
-watch(() => audioStore.tracks[props.fileID]?.currentTime, () => {
+watch([
+  () => audioStore.tracks[props.fileID]?.currentTime,
+  () => audioStore.tracks[props.fileID]?.positionVersion,
+], () => {
   const state = audioStore.tracks[props.fileID]
   const media = element(active.value)
   if (!state || !media || !ready[active.value]) return
+  const commanded = state.positionVersion !== positionVersion
+  positionVersion = state.positionVersion
+  // Running media owns its handoff timing; only an explicit command may interrupt it.
+  if (!commanded && state.positionVersion !== undefined && state.isPlaying && !media.paused) return
   if (Math.abs(media.currentTime - state.currentTime) > 0.5) {
     cancelOverlap()
     media.currentTime = state.currentTime
@@ -275,7 +284,12 @@ function handleMetadata(index: number) {
 }
 
 function updateDuration(duration: number) {
-  if (Number.isFinite(duration) && duration > 0) updatePlaybackState({ duration })
+  if (!Number.isFinite(duration) || duration <= 0 || duration === audioStore.tracks[props.fileID]?.duration) return
+  updatePlaybackState({ duration })
+  const ws = useWebSocketStore()
+  if (audioStore.tableMix && audioStore.tracks[props.fileID]?.isPlaying && ws.isConnected) {
+    ws.sendMessage('syncTrack', { fileID: props.fileID, duration })
+  }
 }
 
 function element(index: number): HTMLMediaElement | null {
@@ -297,7 +311,7 @@ function reportPlaybackError(cause: unknown) {
   envelope = 0
   primary.value?.pause()
   secondary.value?.pause()
-  updatePlaybackState({ isPlaying: false })
+  if (!audioStore.tableMix) updatePlaybackState({ isPlaying: false })
   emit('error', 'Unable to play track. Try again or choose another track.')
 }
 </script>
