@@ -10,7 +10,7 @@ import { useTableStore } from '@/stores/tables';
 import { useWebSocketStore, type WebSocketMessage } from '@/stores/websocket';
 import type { TableSettings, TableSettingsPatch } from '@/client/apiClient';
 import debounce from 'lodash.debounce';
-import { onMounted, onUnmounted, ref, watch } from 'vue';
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 
 const audioStore = useAudioStore()
 const wsStore = useWebSocketStore()
@@ -18,7 +18,7 @@ const tables = useTableStore()
 const error = ref('')
 const ready = ref(false)
 const synchronized = ref(false)
-const tableID = tables.current!.id
+const externalID = computed(() => tables.current!.externalID)
 let disposed = false
 let applyingRemote = false
 let refreshingTracks = false
@@ -28,7 +28,7 @@ const saveMix = debounce(() => {
   const patch = pendingMix
   pendingMix = {}
   savingMix.push(patch)
-  void tables.saveSettings(tableID, patch).then(() => { savingMix.shift() })
+  void tables.saveSettings(externalID.value, patch).then(() => { savingMix.shift() })
 }, 200)
 
 watch(snapshotMix, (mix, previous) => {
@@ -49,7 +49,7 @@ function handlePlayback(message: WebSocketMessage) {
   }
   if (message.method !== 'syncAll') return
   const payload = message.payload as { tracks: AudioTrack[], settings: TableSettings }
-  const localMix = [tables.failedSettings[tableID] ?? {}, ...savingMix, pendingMix]
+  const localMix = [tables.failedSettings[externalID.value] ?? {}, ...savingMix, pendingMix]
     .reduce<TableSettingsPatch>((mix, patch) => ({
       ...mix, ...patch,
       typeVolumes: { ...mix.typeVolumes, ...patch.typeVolumes },
@@ -79,7 +79,7 @@ async function refreshTracks() {
   if (refreshingTracks) return
   refreshingTracks = true
   try {
-    await Promise.all([useFileStore().fetchFiles(), tables.fetchTracks(tableID)])
+    await Promise.all([useFileStore().fetchFiles(), tables.fetchTracks(externalID.value)])
   } catch (e) {
     console.error('Failed to refresh table tracks:', e)
     if (!disposed) error.value = 'Unable to load updated tracks. Reload the table to try again.'
@@ -98,18 +98,18 @@ onMounted(async () => {
   setTitle(tables.current?.name ?? 'Table')
   window.addEventListener('pagehide', flushMix)
   try {
-    const settings = await tables.loadSettings(tableID)
+    const settings = await tables.loadSettings(externalID.value)
     await Promise.all([
       useFileStore().fetchFiles(),
       useTrackTypeStore().fetchTrackTypes(),
-      tables.fetchTracks(tableID),
+      tables.fetchTracks(externalID.value),
     ])
     if (disposed) return
     audioStore.loadTableMix(settings)
     audioStore.enabled = true
     ready.value = true
     setActions([TableActions])
-    await wsStore.connect(undefined, tableID)
+    await wsStore.connect(externalID.value)
   } catch (e) {
     console.error('Failed to connect table:', e)
     error.value = 'Unable to connect to the table. Reload to try again.'
@@ -149,8 +149,8 @@ function changedVolumes(current: Record<string, number>, previous: Record<string
   <v-alert v-if="error" type="error">{{ error }}</v-alert>
   <v-alert v-if="tables.settingsError" type="error" class="mb-4">
     {{ tables.settingsError }}
-    <v-btn variant="text" @click="tables.saveSettings(tableID, {})">Retry saving</v-btn>
+    <v-btn variant="text" @click="tables.saveSettings(externalID, {})">Retry saving</v-btn>
   </v-alert>
-  <AudioPlayer v-if="ready" @error="error = $event" />
+  <AudioPlayer v-if="ready" :tableID="externalID" @error="error = $event" />
   <FileList v-if="ready && wsStore.isConnected && synchronized" />
 </template>

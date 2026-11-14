@@ -26,7 +26,7 @@ beforeEach(() => {
     data: { masterVolume: 45, typeVolumes: { Music: 0 }, trackVolumes: { forest: 30 }, trackOrder: ['forest'] },
   })
   api.save.mockResolvedValue({})
-  useTableStore().current = { id: 'friday', name: 'Friday' }
+  useTableStore().current = { id: 'friday-internal', externalID: 'friday', name: 'Friday' }
   vi.spyOn(useFileStore(), 'fetchFiles').mockResolvedValue()
   vi.spyOn(useTrackTypeStore(), 'fetchTrackTypes').mockResolvedValue()
   vi.spyOn(useTableStore(), 'fetchTracks').mockResolvedValue()
@@ -82,7 +82,7 @@ it('loads the mix before playback, saves volumes but not playback, and flushes o
     expect(audio.mixMasterVolume).toBe(45)
     expect(audio.getTypeVolume('Music')).toBe(0)
     expect(useTableStore().trackOrders.friday).toEqual(['forest'])
-    expect(useWebSocketStore().connect).toHaveBeenCalledWith(undefined, 'friday')
+    expect(useWebSocketStore().connect).toHaveBeenCalledWith('friday')
     audio.initTrack('forest', 'Forest')
     audio.updateTrackState('forest', { currentTime: 12, duration: 30, isPlaying: true })
     await vi.advanceTimersByTimeAsync(250)

@@ -19,12 +19,26 @@ func (m *MockTrackStore) GetTable(ctx context.Context, id uuid.UUID) (Table, err
 	if id != DefaultTableID {
 		return Table{}, sql.ErrNoRows
 	}
-	return Table{ID: id, Name: "My Table"}, nil
+	return Table{ID: id, ExternalID: testDefaultExternalID, Name: "My Table"}, nil
 }
 
-func (m *MockTrackStore) GetTableByInvite(ctx context.Context, invite string) (Table, error) {
-	return Table{}, sql.ErrNoRows
+func (m *MockTrackStore) GetTableByExternalID(ctx context.Context, externalID string) (Table, error) {
+	if externalID != testDefaultExternalID {
+		return Table{}, sql.ErrNoRows
+	}
+	return m.GetTable(ctx, DefaultTableID)
 }
+
+func (m *MockTrackStore) RotateTableExternalID(ctx context.Context, id uuid.UUID) (Table, error) {
+	table, err := m.GetTable(ctx, id)
+	if err != nil {
+		return Table{}, err
+	}
+	table.ExternalID = "bmV3LWRlZmF1bHQtZXh0ZXJuYWwtaWQ"
+	return table, nil
+}
+
+const testDefaultExternalID = "ZGVmYXVsdC10YWJsZS1leHRlcm5hbC1pZA"
 
 func (m *MockTrackStore) CountTrackTables(ctx context.Context, id uuid.UUID) (int64, error) {
 	if _, ok := m.tracks[id]; !ok {

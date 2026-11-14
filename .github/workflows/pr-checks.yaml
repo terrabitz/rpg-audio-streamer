@@ -51,6 +51,7 @@ jobs:
               - 'sql/**'
               - 'ui/**'
               - '.github/workflows/pr-checks.yaml'
+              - '.github/workflows/docker-build.yaml'
 
   go:
     name: Go Tests and Coverage
@@ -190,20 +191,7 @@ jobs:
     name: Build Docker Image
     needs: changes
     if: ${{ !cancelled() && (github.event_name == 'workflow_dispatch' || needs.changes.outputs.docker == 'true') }}
-    runs-on: ubuntu-latest
-    steps:
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v4
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
-      - name: Build
-        uses: docker/build-push-action@v7
-        with:
-          file: docker/Dockerfile
-          platforms: linux/amd64,linux/arm64
-          tags: testimage
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+    uses: ./.github/workflows/docker-build.yaml
 
   pr-checks:
     name: PR Checks

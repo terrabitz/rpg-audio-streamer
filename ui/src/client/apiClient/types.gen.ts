@@ -6,11 +6,11 @@ export type ClientOptions = {
 
 export type Table = {
     id: string;
-    name: string;
     /**
-     * Only returned to GMs.
+     * Random URL-safe identifier that grants access to this table
      */
-    inviteToken?: string;
+    externalID: string;
+    name: string;
 };
 
 export type TableRequest = {
@@ -62,14 +62,6 @@ export type LoginRequest = {
 export type LoginResponse = {
     success: boolean;
     error: string;
-};
-
-export type JoinRequest = {
-    token: string;
-};
-
-export type JoinTokenResponse = {
-    token: string;
 };
 
 export type AuthStatusResponse = {
@@ -124,6 +116,9 @@ export type TrackType = {
 export type GetApiV1TablesByTableIdSettingsData = {
     body?: never;
     path: {
+        /**
+         * Table's public Base64URL external ID
+         */
         tableID: string;
     };
     query?: never;
@@ -153,6 +148,9 @@ export type GetApiV1TablesByTableIdSettingsResponse = GetApiV1TablesByTableIdSet
 export type PatchApiV1TablesByTableIdSettingsData = {
     body: TableSettingsPatch;
     path: {
+        /**
+         * Table's public Base64URL external ID
+         */
         tableID: string;
     };
     query?: never;
@@ -222,32 +220,12 @@ export type PostApiV1TablesResponses = {
 
 export type PostApiV1TablesResponse = PostApiV1TablesResponses[keyof PostApiV1TablesResponses];
 
-export type GetApiV1TablesCurrentData = {
-    body?: never;
-    path?: never;
-    query?: never;
-    url: '/api/v1/tables/current';
-};
-
-export type GetApiV1TablesCurrentErrors = {
-    /**
-     * Table not found
-     */
-    404: unknown;
-};
-
-export type GetApiV1TablesCurrentResponses = {
-    /**
-     * Current table
-     */
-    200: Table;
-};
-
-export type GetApiV1TablesCurrentResponse = GetApiV1TablesCurrentResponses[keyof GetApiV1TablesCurrentResponses];
-
 export type DeleteApiV1TablesByTableIdData = {
     body?: never;
     path: {
+        /**
+         * Table's public Base64URL external ID
+         */
         tableID: string;
     };
     query?: never;
@@ -273,6 +251,9 @@ export type DeleteApiV1TablesByTableIdResponse = DeleteApiV1TablesByTableIdRespo
 export type GetApiV1TablesByTableIdData = {
     body?: never;
     path: {
+        /**
+         * Table's public Base64URL external ID
+         */
         tableID: string;
     };
     query?: never;
@@ -280,10 +261,6 @@ export type GetApiV1TablesByTableIdData = {
 };
 
 export type GetApiV1TablesByTableIdErrors = {
-    /**
-     * Wrong table
-     */
-    403: unknown;
     /**
      * Table not found
      */
@@ -302,6 +279,9 @@ export type GetApiV1TablesByTableIdResponse = GetApiV1TablesByTableIdResponses[k
 export type PutApiV1TablesByTableIdData = {
     body: TableRequest;
     path: {
+        /**
+         * Table's public Base64URL external ID
+         */
         tableID: string;
     };
     query?: never;
@@ -328,9 +308,44 @@ export type PutApiV1TablesByTableIdResponses = {
 
 export type PutApiV1TablesByTableIdResponse = PutApiV1TablesByTableIdResponses[keyof PutApiV1TablesByTableIdResponses];
 
+export type PostApiV1TablesByTableIdExternalIdData = {
+    body?: never;
+    path: {
+        /**
+         * Table's public Base64URL external ID
+         */
+        tableID: string;
+    };
+    query?: never;
+    url: '/api/v1/tables/{tableID}/external-id';
+};
+
+export type PostApiV1TablesByTableIdExternalIdErrors = {
+    /**
+     * GM authentication required
+     */
+    401: unknown;
+    /**
+     * Table not found
+     */
+    404: unknown;
+};
+
+export type PostApiV1TablesByTableIdExternalIdResponses = {
+    /**
+     * Table with its newly generated external ID
+     */
+    200: Table;
+};
+
+export type PostApiV1TablesByTableIdExternalIdResponse = PostApiV1TablesByTableIdExternalIdResponses[keyof PostApiV1TablesByTableIdExternalIdResponses];
+
 export type GetApiV1TablesByTableIdTracksData = {
     body?: never;
     path: {
+        /**
+         * Table's public Base64URL external ID
+         */
         tableID: string;
     };
     query?: never;
@@ -356,6 +371,9 @@ export type GetApiV1TablesByTableIdTracksResponse = GetApiV1TablesByTableIdTrack
 export type DeleteApiV1TablesByTableIdTracksByTrackIdData = {
     body?: never;
     path: {
+        /**
+         * Table's public Base64URL external ID
+         */
         tableID: string;
         trackID: string;
     };
@@ -382,6 +400,9 @@ export type DeleteApiV1TablesByTableIdTracksByTrackIdResponse = DeleteApiV1Table
 export type PutApiV1TablesByTableIdTracksByTrackIdData = {
     body?: never;
     path: {
+        /**
+         * Table's public Base64URL external ID
+         */
         tableID: string;
         trackID: string;
     };
@@ -667,33 +688,6 @@ export type GetApiV1FilesByTrackIdWaveformResponses = {
 
 export type GetApiV1FilesByTrackIdWaveformResponse = GetApiV1FilesByTrackIdWaveformResponses[keyof GetApiV1FilesByTrackIdWaveformResponses];
 
-export type GetApiV1JoinTokenData = {
-    body?: never;
-    path?: never;
-    query?: never;
-    url: '/api/v1/joinToken';
-};
-
-export type GetApiV1JoinTokenErrors = {
-    /**
-     * Not authorized
-     */
-    403: unknown;
-    /**
-     * The default table has been deleted
-     */
-    404: unknown;
-};
-
-export type GetApiV1JoinTokenResponses = {
-    /**
-     * Join token
-     */
-    200: JoinTokenResponse;
-};
-
-export type GetApiV1JoinTokenResponse = GetApiV1JoinTokenResponses[keyof GetApiV1JoinTokenResponses];
-
 export type GetApiV1StreamByPathData = {
     body?: never;
     path: {
@@ -704,10 +698,6 @@ export type GetApiV1StreamByPathData = {
 };
 
 export type GetApiV1StreamByPathErrors = {
-    /**
-     * Not authorized
-     */
-    403: unknown;
     /**
      * File not found
      */
@@ -723,18 +713,40 @@ export type GetApiV1StreamByPathResponses = {
 
 export type GetApiV1StreamByPathResponse = GetApiV1StreamByPathResponses[keyof GetApiV1StreamByPathResponses];
 
+export type GetApiV1TablesByTableIdStreamByPathData = {
+    body?: never;
+    path: {
+        /**
+         * Table's public Base64URL external ID
+         */
+        tableID: string;
+        path: string;
+    };
+    query?: never;
+    url: '/api/v1/tables/{tableID}/stream/{path}';
+};
+
+export type GetApiV1TablesByTableIdStreamByPathErrors = {
+    /**
+     * Table, track, or file not found
+     */
+    404: unknown;
+};
+
+export type GetApiV1TablesByTableIdStreamByPathResponses = {
+    /**
+     * Audio stream
+     */
+    200: string;
+};
+
+export type GetApiV1TablesByTableIdStreamByPathResponse = GetApiV1TablesByTableIdStreamByPathResponses[keyof GetApiV1TablesByTableIdStreamByPathResponses];
+
 export type GetApiV1TrackTypesData = {
     body?: never;
     path?: never;
     query?: never;
     url: '/api/v1/trackTypes';
-};
-
-export type GetApiV1TrackTypesErrors = {
-    /**
-     * Not authorized
-     */
-    403: unknown;
 };
 
 export type GetApiV1TrackTypesResponses = {
@@ -751,7 +763,7 @@ export type GetApiV1WsData = {
     path?: never;
     query?: {
         /**
-         * GM table scope; defaults to the legacy table. Players are scoped by their invite.
+         * Public table external ID for player connections; GMs may omit it to use the default table.
          */
         tableID?: string;
     };

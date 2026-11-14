@@ -32,8 +32,6 @@ const server = spawn(
     passwordHash,
     '--token-secret',
     'public-e2e-signing-key-not-for-production',
-    '--join-token',
-    'e2e-invite',
     '--db-path',
     join(scratch, 'app.db'),
     '--upload-dir',
