@@ -87,7 +87,7 @@ test('GM uses mobile table options and navigation', async ({ page, context }) =>
   await page.getByRole('button', { name: 'Cancel', exact: true }).click()
   await page.getByRole('button', { name: 'Table options' }).click()
   await page.getByRole('menuitem', { name: 'Copy invite link', exact: true }).click()
-  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toContain('/table/')
+  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toContain('/tables/')
   await navigate(page, 'Library')
   await expect(page.getByRole('button', { name: 'Toggle navigation' })).toHaveAttribute('aria-expanded', 'false')
 })
@@ -257,7 +257,7 @@ test('GM previews loop edits live for listeners before saving them', async ({ pa
   const playerContext = await browser.newContext()
   try {
     const player = await playerContext.newPage()
-    await player.goto('/table/e2e-invite')
+    await player.goto(page.url())
     await player.getByRole('button', { name: 'Connect Audio', exact: true }).click()
     await expect.poll(() => player.locator('[data-active="true"]').evaluate(
       (media: HTMLMediaElement) => !media.paused && media.currentTime > 0,
@@ -313,7 +313,7 @@ test('GM adjusts waveform markers without interrupting playback for listeners', 
   const playerContext = await browser.newContext()
   try {
     const player = await playerContext.newPage()
-    await player.goto('/table/e2e-invite')
+    await player.goto(page.url())
     await player.getByRole('button', { name: 'Connect Audio', exact: true }).click()
     for (const browserPage of [page, player]) {
       await expect.poll(() => browserPage.locator('[data-active="true"]').evaluate(
@@ -362,7 +362,7 @@ test('GM drags waveform markers continuously without stuttering for listeners', 
   const playerContext = await browser.newContext()
   try {
     const player = await playerContext.newPage()
-    await player.goto('/table/e2e-invite')
+    await player.goto(page.url())
     await player.getByRole('button', { name: 'Connect Audio', exact: true }).click()
     await tile.getByRole('button', { name: 'Edit Continuous Drag', exact: true }).click()
     for (const [point, toTime] of [
@@ -459,7 +459,7 @@ test('GM continuously drags markers through short natural loops without audio st
   const playerContext = await browser.newContext()
   try {
     const player = await playerContext.newPage()
-    await player.goto('/table/e2e-invite')
+    await player.goto(page.url())
     await player.getByRole('button', { name: 'Connect Audio', exact: true }).click()
     for (const browserPage of [page, player]) {
       await expect.poll(() => browserPage.locator('[data-active="true"]').evaluate(
@@ -557,7 +557,7 @@ for (const point of ['Loop-back point', 'End']) {
     const playerContext = await browser.newContext()
     try {
       const player = await playerContext.newPage()
-      await player.goto('/table/e2e-invite')
+      await player.goto(page.url())
       await player.getByRole('button', { name: 'Connect Audio', exact: true }).click()
       for (const browserPage of [page, player]) {
         await expect.poll(() => browserPage.locator('[data-active="true"]').evaluate(
@@ -841,12 +841,23 @@ test('GM creates, renames, opens, and deletes tables', async ({ page }) => {
 test('GM copies an invite code to share a table', async ({ page, context }) => {
   await context.grantPermissions(['clipboard-read', 'clipboard-write'])
   await login(page)
-  await page.getByRole('link', { name: 'Tables', exact: true }).click()
-  await page.getByRole('button', { name: 'Options for My Table', exact: true }).click()
-  await page.getByRole('menuitem', { name: 'Copy invite code for My Table', exact: true }).click()
-  await expect(page.getByText('Invite code copied to clipboard.', { exact: true })).toBeVisible()
+  const banner = page.getByRole('banner')
+  await expect(banner.getByRole('button', { name: 'Add Track', exact: true })).toBeVisible()
+  await banner.getByRole('button', { name: 'Copy invite link', exact: true }).click()
+  await expect(banner.getByRole('button', { name: 'Copied to clipboard', exact: true })).toBeVisible()
   const inviteURL = await page.evaluate(() => navigator.clipboard.readText())
   expect(new URL(inviteURL).pathname).toMatch(/^\/tables\/[A-Za-z0-9_-]{43}$/)
+  expect(inviteURL).toBe(page.url())
+
+  await page.setViewportSize({ width: 375, height: 812 })
+  await expect(banner.getByRole('button', { name: 'Add Track', exact: true })).toHaveCount(0)
+  await expect(banner.getByRole('button', { name: 'Copy invite link', exact: true })).toHaveCount(0)
+  await banner.getByRole('button', { name: 'Table options', exact: true }).click()
+  await expect(page.getByRole('menuitem', { name: 'Copy invite link', exact: true })).toBeVisible()
+  await page.getByRole('menuitem', { name: 'Copy invite link', exact: true }).click()
+  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(inviteURL)
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await expect(banner.getByRole('button', { name: 'Add Track', exact: true })).toBeVisible()
 })
 
 test('GM rotates an invite code and revokes the previous code', async ({ page, browser }) => {
@@ -860,29 +871,61 @@ test('GM rotates an invite code and revokes the previous code', async ({ page, b
     await player.getByRole('button', { name: 'Connect Audio', exact: true }).click()
     await expect(player.getByText('Connected', { exact: true })).toBeVisible()
 
-    await page.getByRole('link', { name: 'Tables', exact: true }).click()
-    await page.getByRole('button', { name: 'Options for My Table', exact: true }).click()
-    await page.getByRole('menuitem', { name: 'Rotate invite code for My Table', exact: true }).click()
-    await expect(page.getByText(/connected players will be disconnected/)).toBeVisible()
-    await page.getByRole('button', { name: 'Rotate invite code', exact: true }).click()
-    await expect(page.getByText(/connected players will be disconnected/)).toHaveCount(0)
-    await expect(page.getByRole('link', { name: 'Open My Table', exact: true })).toHaveAttribute(
-      'href', /^\/tables\/[A-Za-z0-9_-]{43}$/,
-    )
-    const newURL = await page.getByRole('link', { name: 'Open My Table', exact: true }).getAttribute('href')
-    expect(newURL).toBeTruthy()
+    const banner = page.getByRole('banner')
+    await expect(banner.getByRole('button', { name: 'Rotate invite link', exact: true })).toHaveCount(0)
+    await banner.getByRole('button', { name: 'Table options', exact: true }).click()
+    const rotation = page.getByRole('menuitem', { name: 'Rotate invite link', exact: true })
+    await expect(rotation).toHaveCSS('color', 'rgb(207, 102, 121)')
+    await rotation.click()
+    const dialog = page.getByRole('dialog')
+    await expect(dialog).toContainText('Any active players will be disconnected')
+    await expect(dialog).toContainText('You will need to reshare the new link with your players.')
+    await dialog.getByRole('button', { name: 'Cancel', exact: true }).click()
+    await expect(player.getByText('Connected', { exact: true })).toBeVisible()
+    await expect(page).toHaveURL(new RegExp(`${oldURL}$`))
+
+    await page.setViewportSize({ width: 375, height: 812 })
+    await banner.getByRole('button', { name: 'Table options', exact: true }).click()
+    await rotation.click()
+    await expect(dialog).toContainText('You will need to reshare the new link with your players.')
+    await dialog.getByRole('button', { name: 'Rotate invite link', exact: true }).click()
+    await expect(dialog).toHaveCount(0)
+    await expect(page).not.toHaveURL(new RegExp(`${oldURL}$`))
+    const newURL = new URL(page.url()).pathname
+    expect(newURL).toMatch(/^\/tables\/[A-Za-z0-9_-]{43}$/)
     expect(newURL).not.toBe(oldURL)
     await expect(player.getByText('Disconnected', { exact: true })).toBeVisible()
 
     await player.goto(oldURL)
     await expect(player.getByText('This table is unavailable or has been deleted.')).toBeVisible()
-    await player.goto(newURL!)
+    await player.goto(newURL)
     await expect(player.getByText('Volume Mixer', { exact: true })).toBeVisible()
-    await page.getByRole('link', { name: 'Open My Table', exact: true }).click()
-    await expect(page.getByRole('button', { name: 'Add Track', exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Table options', exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Now playing (0)', exact: true })).toBeVisible()
   } finally {
     await playerContext.close()
   }
+})
+
+test('GM confirms invite-link rotation from the table list', async ({ page }) => {
+  await login(page)
+  await navigate(page, 'Tables')
+  const table = page.getByRole('link', { name: 'Open My Table', exact: true })
+  const oldURL = await table.getAttribute('href')
+  await page.getByRole('button', { name: 'Options for My Table', exact: true }).click()
+  const rotation = page.getByRole('menuitem', { name: 'Rotate invite link for My Table', exact: true })
+  await expect(rotation).toHaveCSS('color', 'rgb(207, 102, 121)')
+  await rotation.click()
+  const dialog = page.getByRole('dialog')
+  await expect(dialog).toContainText('Any active players will be disconnected')
+  await expect(dialog).toContainText('You will need to reshare the new link with your players.')
+  await dialog.getByRole('button', { name: 'Cancel', exact: true }).click()
+  await expect(table).toHaveAttribute('href', oldURL!)
+  await page.getByRole('button', { name: 'Options for My Table', exact: true }).click()
+  await rotation.click()
+  await dialog.getByRole('button', { name: 'Rotate invite link', exact: true }).click()
+  await expect(dialog).toHaveCount(0)
+  await expect(table).not.toHaveAttribute('href', oldURL!)
 })
 
 test('GM keeps track ordering independent for each table', async ({ page, browser }) => {
@@ -1993,7 +2036,7 @@ test('tables share a library but isolate playback, removal, and deletion', async
   await createTable(page, 'Sunday')
   await page.getByRole('link', { name: 'Open Friday', exact: true }).click()
   await addExistingTrack(page, 'Shared Forest')
-  await page.getByRole('link', { name: 'Tables', exact: true }).click()
+  await navigate(page, 'Tables')
   await page.getByRole('button', { name: 'Options for Friday', exact: true }).click()
   await page.getByRole('menuitem', { name: 'Copy invite code for Friday', exact: true }).click()
   await expect(page.getByText('Invite code copied to clipboard.', { exact: true })).toBeVisible()
@@ -2004,7 +2047,7 @@ test('tables share a library but isolate playback, removal, and deletion', async
   await sundayGM.goto('/tables')
   await sundayGM.getByRole('link', { name: 'Open Sunday', exact: true }).click()
   await addExistingTrack(sundayGM, 'Shared Forest')
-  await sundayGM.getByRole('link', { name: 'Tables', exact: true }).click()
+  await navigate(sundayGM, 'Tables')
   await sundayGM.getByRole('button', { name: 'Options for Sunday', exact: true }).click()
   await sundayGM.getByRole('menuitem', { name: 'Copy invite code for Sunday', exact: true }).click()
   await expect(sundayGM.getByText('Invite code copied to clipboard.', { exact: true })).toBeVisible()
@@ -2116,7 +2159,7 @@ async function login(page: Page) {
   await page.getByRole('button', { name: 'Login', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'Tables', exact: true })).toBeVisible()
   await page.getByRole('link', { name: 'Open My Table', exact: true }).click()
-  await expect(page.getByRole('button', { name: page.viewportSize()!.width < 960 ? 'Table options' : 'Add Track', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Table options', exact: true })).toBeVisible()
 }
 
 async function navigate(page: Page, destination: 'Library' | 'Tables') {
@@ -2207,16 +2250,16 @@ async function uploadTrack(page: Page, name: string, typeName = 'Music', duratio
 }
 
 async function openUploadDialog(page: Page) {
+  const addTrack = page.getByRole('button', { name: 'Add Track', exact: true })
+  if (await addTrack.isVisible()) {
+    await addTrack.click()
+    await page.getByRole('tab', { name: 'Upload new', exact: true }).click()
+    return
+  }
   const options = page.getByRole('button', { name: 'Table options', exact: true })
   if (await options.isVisible()) {
     await options.click()
     await page.getByRole('menuitem', { name: 'Add Track', exact: true }).click()
-    await page.getByRole('tab', { name: 'Upload new', exact: true }).click()
-    return
-  }
-  const addTrack = page.getByRole('button', { name: 'Add Track', exact: true })
-  if (await addTrack.count()) {
-    await addTrack.click()
     await page.getByRole('tab', { name: 'Upload new', exact: true }).click()
     return
   }

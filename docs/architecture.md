@@ -158,18 +158,23 @@ Authenticated navigation lives in a left sidebar that is closed by default and
 overlays the page when opened, with logout at the bottom. Logged-out visitors
 see a login button in the app bar; player views show neither navigation nor login.
 On GM tables, the master-volume control appears in the desktop now-playing
-sidebar and the mobile now-playing drawer. Mobile table actions are grouped in
-the app bar's options menu; on desktop they remain in the app bar. **Add Track** opens a dialog with
-library selection and new-upload tabs; neither workflow adds a permanent
-control row to the track grid.
+sidebar and the mobile now-playing drawer. **Add Track** and **Copy invite link**
+appear at the top-right of the app bar on desktop and in its three-dot options
+menu on smaller screens. **Rotate invite link** is always a red item in that
+menu. Its confirmation dialog warns that active players will be disconnected
+and the GM must reshare the new link; cancellation leaves the link unchanged.
+After rotation, the GM's table URL updates to the new invite code.
+**Add Track** opens a dialog with library selection and new-upload tabs;
+neither workflow adds a permanent control row to the track grid.
 Uploads require a file, a nonblank name, and a valid library track type before
 the Upload action is enabled.
 Upload results appear as compact, auto-dismissing bottom-center toasts attached
 to the document body, independent of the uploader's app-bar or library placement;
 upload failures remain inline while the dialog is open.
 The table-management list opens a table when its row is clicked. Each row's
-three-dot menu copies or rotates the invite code and also contains rename and
-delete actions.
+three-dot menu copies the invite code and also contains rename, delete, and
+red invite-link rotation actions. Rotation uses the same confirmation dialog
+as the app bar.
 
 The shared library uses a sortable, paginated metadata table showing each
 track's name, type, and creation time. Row clicks (or keyboard
