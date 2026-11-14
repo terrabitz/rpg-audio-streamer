@@ -100,10 +100,15 @@ watch(trackFile, (file) => {
 
 async function loadLibrary() {
   if (!props.tableID) return
+  const externalID = tables.current?.externalID
+  if (!externalID) {
+    uploadStatus.value = { type: 'error', message: 'Table is unavailable. Reopen the dialog to try again.' }
+    return
+  }
   loadingLibrary.value = true
   libraryReady.value = false
   try {
-    await Promise.all([fileStore.fetchFiles(), tables.fetchTracks(props.tableID)])
+    await Promise.all([fileStore.fetchFiles(), tables.fetchTracks(externalID)])
     libraryReady.value = true
   } catch (error) {
     console.error('Failed to load library:', error)
@@ -114,11 +119,12 @@ async function loadLibrary() {
 }
 
 async function addTrack() {
-  if (!props.tableID || !selectedTrack.value) return
+  const externalID = tables.current?.externalID
+  if (!props.tableID || !externalID || !selectedTrack.value) return
   isAdding.value = true
   uploadStatus.value = null
   try {
-    await tables.addTrack(props.tableID, selectedTrack.value)
+    await tables.addTrack(externalID, selectedTrack.value)
     showModal.value = false
     selectedTrack.value = null
   } catch (error) {
@@ -162,7 +168,7 @@ async function uploadTrack() {
 
     uploaded = true
     await fileStore.fetchFiles()
-    if (props.tableID) await tables.fetchTracks(props.tableID)
+    if (props.tableID && tables.current) await tables.fetchTracks(tables.current.externalID)
     uploadStatus.value = { type: 'success', message: 'File uploaded successfully!' }
     return true
   } catch (error) {

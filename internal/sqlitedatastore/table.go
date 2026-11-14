@@ -2,7 +2,9 @@ package sqlitedatastore
 
 import (
 	"context"
+	"crypto/rand"
 	"database/sql"
+	"encoding/base64"
 	"encoding/json"
 
 	"github.com/google/uuid"
@@ -34,8 +36,8 @@ func (db *SQLiteDatastore) GetTable(ctx context.Context, id uuid.UUID) (server.T
 	return convertDBTable(row)
 }
 
-func (db *SQLiteDatastore) GetTableByInvite(ctx context.Context, invite string) (server.Table, error) {
-	row, err := sqlitedb.New(db.DB).GetTableByInvite(ctx, invite)
+func (db *SQLiteDatastore) GetTableByExternalID(ctx context.Context, externalID string) (server.Table, error) {
+	row, err := sqlitedb.New(db.DB).GetTableByExternalID(ctx, externalID)
 	if err != nil {
 		return server.Table{}, err
 	}
@@ -43,8 +45,27 @@ func (db *SQLiteDatastore) GetTableByInvite(ctx context.Context, invite string) 
 }
 
 func (db *SQLiteDatastore) CreateTable(ctx context.Context, table server.Table) (server.Table, error) {
+	externalID, err := generateExternalID()
+	if err != nil {
+		return server.Table{}, err
+	}
 	row, err := sqlitedb.New(db.DB).CreateTable(ctx, sqlitedb.CreateTableParams{
-		ID: table.ID[:], Name: table.Name, InviteToken: table.InviteToken,
+		ID: table.ID[:], Name: table.Name, ExternalID: externalID,
+	})
+	if err != nil {
+		return server.Table{}, err
+	}
+	return convertDBTable(row)
+}
+
+func (db *SQLiteDatastore) RotateTableExternalID(ctx context.Context, id uuid.UUID) (server.Table, error) {
+	externalID, err := generateExternalID()
+	if err != nil {
+		return server.Table{}, err
+	}
+	row, err := sqlitedb.New(db.DB).RotateTableExternalID(ctx, sqlitedb.RotateTableExternalIDParams{
+		ExternalID: externalID,
+		ID:         id[:],
 	})
 	if err != nil {
 		return server.Table{}, err
@@ -152,5 +173,13 @@ func convertDBTable(row sqlitedb.GameTable) (server.Table, error) {
 	if err != nil {
 		return server.Table{}, err
 	}
-	return server.Table{ID: id, Name: row.Name, InviteToken: row.InviteToken}, nil
+	return server.Table{ID: id, ExternalID: row.ExternalID, Name: row.Name}, nil
+}
+
+func generateExternalID() (string, error) {
+	value := make([]byte, 32)
+	if _, err := rand.Read(value); err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(value), nil
 }

@@ -44,23 +44,23 @@ func (q *Queries) CountTrackTables(ctx context.Context, id []byte) (int64, error
 }
 
 const createTable = `-- name: CreateTable :one
-INSERT INTO game_tables (id, name, invite_token) VALUES (?, ?, ?) RETURNING id, name, invite_token, settings
+INSERT INTO game_tables (id, name, external_id) VALUES (?, ?, ?) RETURNING id, name, settings, external_id
 `
 
 type CreateTableParams struct {
-	ID          []byte
-	Name        string
-	InviteToken string
+	ID         []byte
+	Name       string
+	ExternalID string
 }
 
 func (q *Queries) CreateTable(ctx context.Context, arg CreateTableParams) (GameTable, error) {
-	row := q.db.QueryRowContext(ctx, createTable, arg.ID, arg.Name, arg.InviteToken)
+	row := q.db.QueryRowContext(ctx, createTable, arg.ID, arg.Name, arg.ExternalID)
 	var i GameTable
 	err := row.Scan(
 		&i.ID,
 		&i.Name,
-		&i.InviteToken,
 		&i.Settings,
+		&i.ExternalID,
 	)
 	return i, err
 }
@@ -78,7 +78,7 @@ func (q *Queries) DeleteTable(ctx context.Context, id []byte) (int64, error) {
 }
 
 const getTable = `-- name: GetTable :one
-SELECT id, name, invite_token, settings FROM game_tables WHERE id = ?
+SELECT id, name, settings, external_id FROM game_tables WHERE id = ?
 `
 
 func (q *Queries) GetTable(ctx context.Context, id []byte) (GameTable, error) {
@@ -87,24 +87,24 @@ func (q *Queries) GetTable(ctx context.Context, id []byte) (GameTable, error) {
 	err := row.Scan(
 		&i.ID,
 		&i.Name,
-		&i.InviteToken,
 		&i.Settings,
+		&i.ExternalID,
 	)
 	return i, err
 }
 
-const getTableByInvite = `-- name: GetTableByInvite :one
-SELECT id, name, invite_token, settings FROM game_tables WHERE invite_token = ?
+const getTableByExternalID = `-- name: GetTableByExternalID :one
+SELECT id, name, settings, external_id FROM game_tables WHERE external_id = ?
 `
 
-func (q *Queries) GetTableByInvite(ctx context.Context, inviteToken string) (GameTable, error) {
-	row := q.db.QueryRowContext(ctx, getTableByInvite, inviteToken)
+func (q *Queries) GetTableByExternalID(ctx context.Context, externalID string) (GameTable, error) {
+	row := q.db.QueryRowContext(ctx, getTableByExternalID, externalID)
 	var i GameTable
 	err := row.Scan(
 		&i.ID,
 		&i.Name,
-		&i.InviteToken,
 		&i.Settings,
+		&i.ExternalID,
 	)
 	return i, err
 }
@@ -159,7 +159,7 @@ func (q *Queries) GetTableTracks(ctx context.Context, tableID []byte) ([]Track, 
 }
 
 const getTables = `-- name: GetTables :many
-SELECT id, name, invite_token, settings FROM game_tables ORDER BY name, id
+SELECT id, name, settings, external_id FROM game_tables ORDER BY name, id
 `
 
 func (q *Queries) GetTables(ctx context.Context) ([]GameTable, error) {
@@ -174,8 +174,8 @@ func (q *Queries) GetTables(ctx context.Context) ([]GameTable, error) {
 		if err := rows.Scan(
 			&i.ID,
 			&i.Name,
-			&i.InviteToken,
 			&i.Settings,
+			&i.ExternalID,
 		); err != nil {
 			return nil, err
 		}
@@ -220,8 +220,29 @@ func (q *Queries) RemoveTableTrack(ctx context.Context, arg RemoveTableTrackPara
 	return err
 }
 
+const rotateTableExternalID = `-- name: RotateTableExternalID :one
+UPDATE game_tables SET external_id = ? WHERE id = ? RETURNING id, name, settings, external_id
+`
+
+type RotateTableExternalIDParams struct {
+	ExternalID string
+	ID         []byte
+}
+
+func (q *Queries) RotateTableExternalID(ctx context.Context, arg RotateTableExternalIDParams) (GameTable, error) {
+	row := q.db.QueryRowContext(ctx, rotateTableExternalID, arg.ExternalID, arg.ID)
+	var i GameTable
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Settings,
+		&i.ExternalID,
+	)
+	return i, err
+}
+
 const updateTable = `-- name: UpdateTable :one
-UPDATE game_tables SET name = ? WHERE id = ? RETURNING id, name, invite_token, settings
+UPDATE game_tables SET name = ? WHERE id = ? RETURNING id, name, settings, external_id
 `
 
 type UpdateTableParams struct {
@@ -235,8 +256,8 @@ func (q *Queries) UpdateTable(ctx context.Context, arg UpdateTableParams) (GameT
 	err := row.Scan(
 		&i.ID,
 		&i.Name,
-		&i.InviteToken,
 		&i.Settings,
+		&i.ExternalID,
 	)
 	return i, err
 }

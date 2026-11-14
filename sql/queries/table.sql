@@ -4,14 +4,17 @@ SELECT * FROM game_tables ORDER BY name, id;
 -- name: GetTable :one
 SELECT * FROM game_tables WHERE id = ?;
 
--- name: GetTableByInvite :one
-SELECT * FROM game_tables WHERE invite_token = ?;
+-- name: GetTableByExternalID :one
+SELECT * FROM game_tables WHERE external_id = ?;
 
 -- name: CreateTable :one
-INSERT INTO game_tables (id, name, invite_token) VALUES (?, ?, ?) RETURNING *;
+INSERT INTO game_tables (id, name, external_id) VALUES (?, ?, ?) RETURNING *;
 
 -- name: UpdateTable :one
 UPDATE game_tables SET name = ? WHERE id = ? RETURNING *;
+
+-- name: RotateTableExternalID :one
+UPDATE game_tables SET external_id = ? WHERE id = ? RETURNING *;
 
 -- name: GetTableSettings :one
 SELECT settings FROM game_tables WHERE id = ?;

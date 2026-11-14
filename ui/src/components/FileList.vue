@@ -159,7 +159,7 @@ onMounted(async () => {
   try {
     await trackTypeStore.fetchTrackTypes()
     await fileStore.fetchFiles()
-    if (!props.library && tables.current) await tables.fetchTracks(tables.current.id)
+    if (!props.library && tables.current) await tables.fetchTracks(tables.current.externalID)
   } catch (e) {
     console.error('Failed to load tracks:', e)
     error.value = 'Failed to load tracks.'
@@ -233,7 +233,7 @@ async function deleteFile(file: Track, expectedTableCount: number | null) {
     await fileStore.deleteFile(file.id, expectedTableCount)
   } else {
     if (!tables.current) throw new Error('No current table')
-    await tables.removeTrack(tables.current.id, file.id)
+    await tables.removeTrack(tables.current.externalID, file.id)
   }
   audioStore.removeTrack(file.id)
 }
