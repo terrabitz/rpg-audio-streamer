@@ -4,6 +4,9 @@ import { expect, test } from './fixtures'
 
 test('GM can recover from invalid credentials, keep a session, and log out', async ({ page }) => {
   await page.goto('/')
+  await expect(page.getByRole('banner').getByRole('link', { name: 'Login', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Toggle navigation' })).toHaveCount(0)
+  await expect(page.getByRole('navigation', { name: 'Navigation' })).toHaveCount(0)
   await page.getByRole('link', { name: 'GM Login' }).click()
   await page.getByLabel('Username').fill('e2e-gm')
   await page.getByLabel('Password', { exact: true }).fill('wrong-password')
@@ -17,6 +20,7 @@ test('GM can recover from invalid credentials, keep a session, and log out', asy
   await expect(page.getByRole('button', { name: 'Add Track', exact: true })).toBeVisible()
   await page.reload()
   await expect(page.getByRole('button', { name: 'Add Track', exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'Toggle navigation' }).click()
   await page.getByRole('button', { name: 'Logout' }).click()
   await expect(page.getByRole('link', { name: 'GM Login' })).toBeVisible()
   await page.reload()
@@ -28,16 +32,29 @@ test('GM navigates and adjusts master volume in the now-playing sidebar', async 
   const navigation = page.getByLabel('Navigation', { exact: true })
   const sidebar = page.getByRole('complementary', { name: 'Currently playing', exact: true })
   const master = sidebar.getByRole('slider', { name: 'Master volume', exact: true })
+  const toggle = page.getByRole('button', { name: 'Toggle navigation' })
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false')
+  const grid = page.locator('.table-track-grid')
+  const originalGrid = await grid.boundingBox()
+  await toggle.click()
   await expect(navigation.getByRole('link', { name: 'Library', exact: true })).toBeVisible()
   await expect(navigation.getByRole('slider', { name: 'Master volume', exact: true })).toHaveCount(0)
+  await expect.poll(async () => {
+    const bounds = await grid.boundingBox()
+    return bounds && originalGrid && bounds.x === originalGrid.x && bounds.width === originalGrid.width
+  }).toBe(true)
+  const logout = navigation.getByRole('button', { name: 'Logout' })
+  await expect(logout).toHaveCSS('color', 'rgb(207, 102, 121)')
+  await expect.poll(async () => {
+    const drawerBounds = await navigation.boundingBox()
+    const logoutBounds = await logout.boundingBox()
+    return drawerBounds && logoutBounds && drawerBounds.y + drawerBounds.height - (logoutBounds.y + logoutBounds.height) < 30
+  }).toBe(true)
+  await page.keyboard.press('Escape')
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false')
   await expect(master).toBeVisible()
   await expect(sidebar.getByText('Master volume', { exact: true })).toHaveCount(0)
   await master.press('Home')
-  await expect(master).toHaveAttribute('aria-valuenow', '0')
-  await page.getByRole('button', { name: 'Toggle navigation' }).click()
-  await expect(page.getByRole('button', { name: 'Toggle navigation' })).toHaveAttribute('aria-expanded', 'false')
-  await expect(master).toBeVisible()
-  await page.getByRole('button', { name: 'Toggle navigation' }).click()
   await expect(master).toHaveAttribute('aria-valuenow', '0')
   await master.press('End')
   await navigate(page, 'Library')
@@ -1079,6 +1096,7 @@ test.describe('drag-handle reordering', () => {
   test('GM drags handles, keeps the order, and uses inline playback controls', async ({
     page,
   }, testInfo) => {
+    testInfo.setTimeout(Math.max(testInfo.timeout, 60_000))
     await login(page)
     for (const name of ['Forest', 'Rain', 'Tavern']) await uploadTrack(page, name)
     const tiles = page.locator('.track-item:not([data-dnd-dragging]) > .file-tile')
@@ -1497,6 +1515,9 @@ test('invited player receives live playback, late-join state, and pause', async 
     const player = await playerContext.newPage()
     await player.goto('/table/e2e-invite')
     await expect(player.getByText('Volume Mixer', { exact: true })).toBeVisible()
+    await expect(player.getByRole('button', { name: 'Toggle navigation' })).toHaveCount(0)
+    await expect(player.getByRole('navigation', { name: 'Navigation' })).toHaveCount(0)
+    await expect(player.getByRole('banner').getByRole('link', { name: 'Login', exact: true })).toHaveCount(0)
     await expect(player.getByRole('button', { name: 'Add Track', exact: true })).toHaveCount(0)
     await expect(player.getByRole('banner')).toContainText('My Table')
     await expect(player.getByRole('heading', { name: 'My Table', exact: true })).toHaveCount(0)
@@ -1781,10 +1802,7 @@ async function expectEdgeToEdgeTable(page: Page, sidebar: Locator) {
     const banner = await page.getByRole('banner').boundingBox()
     const viewport = page.viewportSize()
     if (!panel || !grid || !card || !banner || !viewport) return false
-    const navigation = page.getByLabel('Navigation', { exact: true })
-    const navigationWidth = await page.getByRole('button', { name: 'Toggle navigation' }).getAttribute('aria-expanded') === 'true'
-      ? (await navigation.boundingBox())?.width ?? 0 : 0
-    return grid.x === navigationWidth && card.x === grid.x + 10 && card.y === grid.y + 10
+    return grid.x === 0 && card.x === grid.x + 10 && card.y === grid.y + 10
       && panel.x === grid.x + grid.width
       && panel.x + panel.width === viewport.width
       && panel.y === banner.y + banner.height

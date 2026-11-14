@@ -152,7 +152,9 @@ metadata management), `/tables/:tableID` (GM table), and `/table/:token?`
 table management. Table views show associated tracks only; GMs can add an
 existing library track or upload a new one directly into the table.
 To preserve space during play, the table name appears only in the app bar.
-Navigation and authentication controls live in a collapsible left sidebar.
+Authenticated navigation lives in a left sidebar that is closed by default and
+overlays the page when opened, with logout at the bottom. Logged-out visitors
+see a login button in the app bar; player views show neither navigation nor login.
 On GM tables, the master-volume control appears in the desktop now-playing
 sidebar and the mobile now-playing drawer. Mobile table actions are grouped in
 the app bar's options menu; on desktop they remain in the app bar. **Add Track** opens a dialog with
