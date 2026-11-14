@@ -11,6 +11,7 @@ import (
 
 type MockTrackStore struct {
 	TableStore
+	TagStore
 	tracks     map[uuid.UUID]Track
 	trackTypes map[uuid.UUID]TrackType
 }

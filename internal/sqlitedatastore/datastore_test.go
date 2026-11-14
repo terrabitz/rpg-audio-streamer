@@ -162,7 +162,7 @@ func TestMigrationLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	version, err := m.Version()
-	if err != nil || version.Version != 4 || version.Dirty {
+	if err != nil || version.Version != 5 || version.Dirty {
 		t.Fatalf("version = %#v, %v", version, err)
 	}
 	if err := m.Up(); !errors.Is(err, migrate.ErrNoChange) {
@@ -180,6 +180,113 @@ func TestMigrationLifecycle(t *testing.T) {
 	types, err := db.GetTrackTypes(context.Background())
 	if err != nil || len(types) != 3 {
 		t.Fatalf("reapplied seeds = %v, %v", types, err)
+	}
+}
+
+func TestTagLifecycle(t *testing.T) {
+	db, path := migratedDatabase(t)
+	ctx := context.Background()
+	tags, err := db.GetTags(ctx)
+	if err != nil || tags == nil || len(tags) != 0 {
+		t.Fatalf("empty tags = %v, %v", tags, err)
+	}
+	intensity := server.Tag{ID: uuid.New(), Name: "High intensity", Color: "#ff0000"}
+	calm := server.Tag{ID: uuid.New(), Name: "Calm", Color: "#00ff00"}
+	for _, tag := range []server.Tag{intensity, calm} {
+		if got, err := db.CreateTag(ctx, tag); err != nil || got != tag {
+			t.Fatalf("create tag = %v, %v", got, err)
+		}
+	}
+	if _, err := db.CreateTag(ctx, server.Tag{ID: uuid.New(), Name: "CALM", Color: "#ffffff"}); !errors.Is(err, server.ErrTagConflict) {
+		t.Fatalf("duplicate tag = %v", err)
+	}
+	types, err := db.GetTrackTypes(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	track := server.Track{ID: uuid.New(), Name: "Battle", Path: "/battle", TypeID: types[0].ID,
+		CreatedAt: time.Now().UTC().Truncate(time.Second)}
+	if err := db.SaveTrackToTable(ctx, &track, server.DefaultTableID); err != nil {
+		t.Fatal(err)
+	}
+	ids := []uuid.UUID{intensity.ID, calm.ID}
+	updated, err := db.UpdateTrack(ctx, track.ID, server.UpdateTrackRequest{TagIDs: &ids})
+	if err != nil || !reflect.DeepEqual(updated.Tags, []server.Tag{calm, intensity}) {
+		t.Fatalf("assigned tags = %v, %v", updated.Tags, err)
+	}
+	name := "Must not persist"
+	for _, invalid := range [][]uuid.UUID{{uuid.New()}, {intensity.ID, intensity.ID}, {uuid.Nil}} {
+		if _, err := db.UpdateTrack(ctx, track.ID, server.UpdateTrackRequest{Name: &name, TagIDs: &invalid}); !errors.Is(err, server.ErrInvalidTag) {
+			t.Fatalf("invalid assignment = %v", err)
+		}
+		got, err := db.GetTrackByID(ctx, track.ID)
+		if err != nil || !reflect.DeepEqual(got, updated) {
+			t.Fatalf("failed assignment changed track = %v, %v", got, err)
+		}
+	}
+	if _, err := db.UpdateTag(ctx, server.Tag{ID: intensity.ID, Name: "calm", Color: "#ffffff"}); !errors.Is(err, server.ErrTagConflict) {
+		t.Fatalf("duplicate rename = %v", err)
+	}
+	intensity.Color = "#123456"
+	if _, err := db.UpdateTag(ctx, intensity); err != nil {
+		t.Fatal(err)
+	}
+	for _, list := range []func(context.Context) ([]server.Track, error){
+		db.GetTracks, func(ctx context.Context) ([]server.Track, error) {
+			return db.GetTableTracks(ctx, server.DefaultTableID)
+		},
+	} {
+		tracks, err := list(ctx)
+		if err != nil || len(tracks) != 1 || !reflect.DeepEqual(tracks[0].Tags, []server.Tag{calm, intensity}) {
+			t.Fatalf("shared tags = %v, %v", tracks, err)
+		}
+	}
+	reopened, err := New(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.Close()
+	got, err := reopened.UpdateTrack(ctx, track.ID, server.UpdateTrackRequest{})
+	if err != nil || !reflect.DeepEqual(got.Tags, []server.Tag{calm, intensity}) {
+		t.Fatalf("reopened omitted tags = %v, %v", got.Tags, err)
+	}
+	if err := db.DeleteTag(ctx, calm.ID); err != nil {
+		t.Fatal(err)
+	}
+	got, err = db.GetTrackByID(ctx, track.ID)
+	if err != nil || !reflect.DeepEqual(got.Tags, []server.Tag{intensity}) {
+		t.Fatalf("delete tag kept audio and other tags = %v, %v", got, err)
+	}
+	empty := []uuid.UUID{}
+	got, err = db.UpdateTrack(ctx, track.ID, server.UpdateTrackRequest{TagIDs: &empty})
+	if err != nil || len(got.Tags) != 0 {
+		t.Fatalf("clear tags = %v, %v", got.Tags, err)
+	}
+	ids = []uuid.UUID{intensity.ID}
+	if _, err := db.UpdateTrack(ctx, track.ID, server.UpdateTrackRequest{TagIDs: &ids}); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.DeleteTrack(ctx, track.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.SaveTrack(ctx, &track); err != nil {
+		t.Fatal(err)
+	}
+	got, err = db.GetTrackByID(ctx, track.ID)
+	if err != nil || len(got.Tags) != 0 {
+		t.Fatalf("track deletion did not clear assignments = %v, %v", got, err)
+	}
+	missing := uuid.New()
+	if _, err := db.UpdateTag(ctx, server.Tag{ID: missing, Name: "Missing", Color: "#ffffff"}); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("missing update = %v", err)
+	}
+	if err := db.DeleteTag(ctx, missing); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("missing delete = %v", err)
+	}
+	canceled, cancel := context.WithCancel(ctx)
+	cancel()
+	if _, err := db.GetTags(canceled); !errors.Is(err, context.Canceled) {
+		t.Fatalf("canceled tags = %v", err)
 	}
 }
 

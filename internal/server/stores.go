@@ -13,6 +13,7 @@ type Store interface {
 	TrackStore
 	TrackTypeStore
 	TableStore
+	TagStore
 }
 
 var DefaultTableID = uuid.MustParse("00000000-0000-4000-8000-000000000001")
@@ -61,6 +62,7 @@ type Track struct {
 	Path      string           `json:"path,omitempty"`
 	TypeID    uuid.UUID        `json:"typeID,omitempty"`
 	Playback  PlaybackSettings `json:"playback"`
+	Tags      []Tag            `json:"tags,omitempty"`
 }
 
 type PlaybackSettings struct {
@@ -88,6 +90,7 @@ type UpdateTrackRequest struct {
 	Name     *string           `json:"name"`
 	TypeID   *uuid.UUID        `json:"typeID"`
 	Playback *PlaybackSettings `json:"playback"`
+	TagIDs   *[]uuid.UUID      `json:"tagIDs"`
 }
 
 type TrackStore interface {

@@ -8,6 +8,7 @@
           <v-btn icon="$dotsVertical" size="small" variant="text" :aria-label="`Edit ${props.fileName}`" @click.stop="openControls"
             class="position-absolute top-0 right-0" />
         </div>
+        <TrackTags :tags="track?.tags" class="px-2 pb-2" />
       </div>
     </slot>
 
@@ -22,6 +23,12 @@
           <v-text-field v-model="editName" label="Track Name" variant="underlined" hide-details
             class="pa-0 ma-0"></v-text-field>
           <TrackTypeSelector v-model="editTrackType" />
+          <template v-if="props.library">
+            <v-autocomplete v-model="editTagIDs" :items="tagStore.tags" item-title="name" item-value="id"
+              label="Track tags" multiple chips closable-chips :loading="loadingTags"
+              :disabled="isSaving || isDeleting || !tagsReady" />
+            <TagManager />
+          </template>
           <v-alert v-if="regionError" type="error" class="mb-3">{{ regionError }}</v-alert>
           <TrackTimeline v-if="audioState" :model-value="editedPlayback" @update:model-value="previewPlayback" :duration="audioState.duration"
             :current-time="audioState.currentTime" :name="props.fileName" :waveform="waveform"
@@ -79,6 +86,9 @@ import { TrackUsageChangedError, useFileStore } from '../stores/files';
 import { useTrackTypeStore } from '../stores/trackTypes';
 import TrackTypeSelector from './TrackTypeSelector.vue';
 import TrackTimeline from './TrackTimeline.vue';
+import TrackTags from './TrackTags.vue';
+import TagManager from './TagManager.vue';
+import { useTagStore } from '@/stores/tags';
 
 const props = defineProps<{
   fileName: string
@@ -90,6 +100,13 @@ const props = defineProps<{
 const audioStore = useAudioStore();
 const trackTypeStore = useTrackTypeStore();
 const fileStore = useFileStore();
+const tagStore = useTagStore();
+const editTagIDs = ref<string[]>([]);
+const loadingTags = ref(false);
+const tagsReady = ref(false);
+const savedTagIDs = computed(() => track.value?.tags?.map(tag => tag.id) ?? []);
+const tagsChanged = computed(() => JSON.stringify([...editTagIDs.value].sort()) !==
+  JSON.stringify([...savedTagIDs.value].sort()));
 
 const track = computed(() => fileStore.tracks.find(t => t.id === props.fileID));
 const trackType = computed(() => track.value ? trackTypeStore.getTypeById(track.value.typeID) : null);
@@ -127,6 +144,7 @@ function openControls() {
 const hasChanges = computed(() => {
   if (!track.value) return false;
   return editName.value !== track.value.name || editTrackType.value !== track.value.typeID ||
+    (props.library && tagsChanged.value) ||
     JSON.stringify(editedPlayback.value) !== JSON.stringify(track.value.playback ?? defaultPlayback());
 });
 
@@ -136,9 +154,29 @@ watch(showControls, (open) => {
     editName.value = track.value.name;
     editTrackType.value = track.value.typeID;
     editedPlayback.value = { ...(track.value.playback ?? defaultPlayback()) };
+    editTagIDs.value = [...savedTagIDs.value];
+    if (props.library) loadTags();
     loadWaveform(track.value.id);
   }
   if (!open) restorePlayback();
+});
+
+async function loadTags() {
+  loadingTags.value = true;
+  tagsReady.value = false;
+  try {
+    await tagStore.fetchTags();
+    tagsReady.value = true;
+  } catch (cause) {
+    console.error('Failed to load tags:', cause);
+    error.value = 'Failed to load tags. Reopen track controls to try again.';
+  } finally {
+    loadingTags.value = false;
+  }
+}
+
+watch(() => tagStore.tags, tags => {
+  if (tagsReady.value) editTagIDs.value = editTagIDs.value.filter(id => tags.some(tag => tag.id === id));
 });
 
 function previewPlayback(playback: PlaybackSettings) {
@@ -229,6 +267,9 @@ async function saveTrackChanges() {
 
     // Only update if values have changed
     const updates: Omit<UpdateTrackRequest, 'id'> = {};
+    if (props.library && tagsReady.value && tagsChanged.value) {
+      updates.tagIDs = editTagIDs.value;
+    }
 
     if (editName.value !== track.value.name) {
       updates.name = editName.value;

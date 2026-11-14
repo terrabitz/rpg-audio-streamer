@@ -2,6 +2,7 @@
 import { onMounted, ref } from 'vue'
 import AudioUploader from '@/components/AudioUploader.vue'
 import FileList from '@/components/FileList.vue'
+import TagManager from '@/components/TagManager.vue'
 import { useAppBar } from '@/composables/useAppBar'
 import { useAuthStore } from '@/stores/auth'
 
@@ -21,7 +22,10 @@ onMounted(async () => {
   <v-container>
     <v-progress-circular v-if="loading" indeterminate aria-label="Loading library" />
     <template v-else-if="auth.role === 'gm'">
-      <AudioUploader />
+      <div class="d-flex align-center ga-2">
+        <AudioUploader />
+        <TagManager />
+      </div>
       <FileList library />
     </template>
     <p v-else>Please <router-link to="/login">log in as GM</router-link> to manage the library.</p>

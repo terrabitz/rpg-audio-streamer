@@ -48,7 +48,9 @@ through authenticated HTTP. Music fixtures use short original note sequences;
 seeded ambiance noise gently swells over time so loop crossfades are audible.
 Repeating fixtures remain 12 seconds long; one-shot tones retain their short
 durations. This exercises normal validation, conversion, and persistence rather than writing
-database fixtures directly. Vite uses the isolated API proxy and ignores
+database fixtures directly. Shared Low intensity and High intensity tags are
+created and assigned through the authenticated metadata API to demonstrate
+library search and colored soundboard pills. Vite uses the isolated API proxy and ignores
 developer dotenv files; the API runs from the temporary directory with
 explicit configuration. The launcher owns shutdown and removes its temporary
 state on normal termination or startup failure. Uncatchable termination
@@ -104,12 +106,27 @@ SQLite stores metadata, not media bytes:
   and creation timestamp.
 - `game_tables`: UUID ID, name, unique invite token, and JSON GM mixing/ordering settings.
 - `table_tracks`: many-to-many table/track associations.
+- `tags`: UUID ID, reusable text name, and custom `#RRGGBB` color.
+- `track_tags`: many-to-many track/tag assignments.
 
 UUIDs are stored as BLOBs. Track creation timestamps are serialized as RFC3339
 text, with second precision. Partial updates preserve omitted name/type fields.
 The initial migration seeds Ambiance (repeating, simultaneous), Music
 (repeating, exclusive), and One-Shot (non-repeating, simultaneous).
 Empty metadata collections are returned as JSON arrays, not `null`.
+
+Tags are shared library metadata, independent of track types and tables.
+GM-only `/api/v1/tags` and `/api/v1/tags/{tagID}` endpoints list, create,
+rename, recolor, and delete tags. Names are trimmed, limited to 50 characters,
+and unique under SQLite's NOCASE collation. A tag's color applies to every
+track using it. Library and table track responses include their assigned tag
+objects. Track updates accept optional `tagIDs`: omission preserves assignments,
+an empty array clears them, and unknown or duplicate IDs reject the update.
+Metadata edits and assignment replacement share one transaction so failed
+assignments cannot partially save other edits. Deleting a tag removes its
+assignments without deleting audio or table associations; deleting audio also
+cleans up its tag assignments. Cleanup triggers enforce these guarantees on
+connections without foreign keys enabled.
 
 Each table stores the GM's master volume, per-type volume map (keyed by type
 name), per-track volume map (keyed by track UUID), and ordered track UUIDs.
@@ -152,8 +169,14 @@ metadata management), `/tables/:tableID` (GM table), and `/table/:token?`
 table management. Table views show associated tracks only; GMs can add an
 existing library track or upload a new one directly into the table.
 To preserve space during play, the table name appears only in the app bar.
-Its **Add Track** action opens a dialog with library selection and new-upload
-tabs; neither workflow adds a permanent control row to the track grid.
+Its **Add Track** action opens a right-side picker drawer with library selection
+and new-upload tabs; neither workflow adds a permanent control row to the grid.
+The picker searches track names, type names, and tag names and offers a type
+filter. Checkboxes select multiple tracks, retaining the selection when search
+or filters change. Already-associated tracks are excluded. Additions are
+submitted individually; a failure keeps the drawer open, refreshes associations,
+and leaves remaining selections available for retry rather than rolling back
+successful additions.
 Uploads require a file, a nonblank name, and a valid library track type before
 the Upload action is enabled.
 Upload results appear as compact, auto-dismissing bottom-center toasts attached
@@ -162,8 +185,14 @@ upload failures remain inline while the dialog is open.
 The table-management list opens a table when its row is clicked; rename and
 delete live in each row's three-dot menu.
 
-The shared library uses a sortable, paginated metadata table showing each
-track's name, type, and creation time. Row clicks (or keyboard
+The shared library uses a searchable, sortable, paginated metadata table showing
+each track's name, type, tags, and creation time. Search matches names, types,
+and tag names. The Manage tags dialog creates reusable tags and edits their names
+and colors; deletion requires confirmation that the tag is removed from every
+track. Library track controls assign existing tags using a searchable
+multi-select, with assignments committed on Save Changes. Tags appear as tiny
+colored pills on soundboard tiles, with black or white text chosen for contrast.
+Row clicks (or keyboard
 activation) toggle a local preview, with at most one preview playing at once.
 Resuming a paused preview continues from its current position.
 Library previews reuse the HLS player without opening a WebSocket or sending
@@ -207,12 +236,12 @@ reauthentication.
 | Surface | Responsibility |
 | --- | --- |
 | `stores/auth.ts`, `stores/join.ts` | Session role, credentials, logout, invite retrieval |
-| `stores/files.ts`, `stores/trackTypes.ts`, `stores/tables.ts` | Library, track-type, table, and association metadata through the generated SDK |
+| `stores/files.ts`, `stores/trackTypes.ts`, `stores/tables.ts`, `stores/tags.ts` | Library, track-type, table, tag, and association metadata through the generated SDK |
 | `stores/audio.ts` | Per-file playback state, synchronization reconciliation, fades, master/type volumes |
 | `stores/websocket.ts` | Socket connection/reconnection, message handlers and history |
 | `stores/debug.ts` | Development-only debug panel state |
 | `composables/` | Shared app-bar state, browser origin, immutable partial-object patches |
-| `FileList`, `AudioControls`, `PlayingTrackList`, `TrackPlaybackControls`, `TrackTimeline`, `AudioUploader` | Shared-library metadata management and uploads; table associations, responsive now-playing surfaces, and shared playback controls |
+| `FileList`, `AudioControls`, `TagManager`, `TrackTags`, `PlayingTrackList`, `TrackPlaybackControls`, `TrackTimeline`, `AudioUploader` | Shared-library metadata and tag management, colored pills, and uploads; searchable table picker, responsive now-playing surfaces, and shared playback controls |
 | `AudioPlayer`, `AudioTrackPlayer` | Per-track HLS.js media elements and playback synchronization |
 | `VolumeMixer`, `VolumeSlider` | Active master and per-type mixing; player preferences stay local |
 

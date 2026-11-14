@@ -133,10 +133,10 @@ describe('file library', () => {
     expect(files.getTrackById('missing')).toBeUndefined()
     const updated = { ...track, name: 'Rain', typeID: 'music' }
     api.putApiV1FilesByTrackId.mockResolvedValue({ data: updated })
-    expect(await files.updateTrack('forest', { name: 'Rain', typeID: 'music' })).toEqual(updated)
+    expect(await files.updateTrack('forest', { name: 'Rain', typeID: 'music', tagIDs: [] })).toEqual(updated)
     expect(api.putApiV1FilesByTrackId).toHaveBeenCalledWith({
       path: { trackID: 'forest' },
-      body: { id: 'forest', name: 'Rain', typeID: 'music' },
+      body: { id: 'forest', name: 'Rain', typeID: 'music', tagIDs: [] },
     })
     expect(files.tracks).toEqual([updated])
     await files.updateTrack('absent', {})
