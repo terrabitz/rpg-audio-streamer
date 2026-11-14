@@ -273,6 +273,65 @@ test('GM adjusts waveform markers without interrupting playback for listeners', 
   } finally { await playerContext.close() }
 })
 
+for (const point of ['Loop-back point', 'End']) {
+  test(`GM keeps looping while adjusting the ${point.toLowerCase()} marker`, async ({ page, browser }) => {
+    test.slow()
+    await login(page)
+    await uploadTrack(page, 'Editing Loop')
+    const tile = page.locator('.file-tile').filter({ hasText: 'Editing Loop' })
+    await tile.getByRole('button', { name: 'Edit Editing Loop', exact: true }).click()
+    await dragTimelinePoint(page, 'End for Editing Loop', 4)
+    await dragTimelinePoint(page, 'Loop-back point for Editing Loop', 1)
+    await page.getByRole('dialog').getByRole('button', { name: 'Play Editing Loop', exact: true }).click()
+    const playerContext = await browser.newContext()
+    try {
+      const player = await playerContext.newPage()
+      await player.goto('/table/e2e-invite')
+      await player.getByRole('button', { name: 'Connect Audio', exact: true }).click()
+      for (const browserPage of [page, player]) {
+        await expect.poll(() => browserPage.locator('[data-active="true"]').evaluate(
+          (media: HTMLMediaElement) => !media.paused && media.currentTime > 0,
+        )).toBe(true)
+      }
+      const observations = await Promise.all([page, player].map(browserPage =>
+        browserPage.evaluateHandle(() => {
+          const observation = { handoffs: 0 }
+          let active = document.querySelector('[data-active="true"]')
+          const observer = new MutationObserver(() => {
+            const next = document.querySelector('[data-active="true"]')
+            if (next && next !== active) observation.handoffs++
+            active = next
+          })
+          for (const media of document.querySelectorAll('video, audio')) {
+            observer.observe(media, { attributes: true, attributeFilter: ['data-active'] })
+          }
+          return observation
+        }),
+      ))
+      let edits = 0
+      const handle = page.getByRole('dialog').getByRole('slider', { name: `${point} for Editing Loop`, exact: true })
+      await expect.poll(async () => {
+        await handle.press(edits++ % 2 === 0 ? 'ArrowRight' : 'ArrowLeft')
+        return Math.min(...await Promise.all(observations.map(observation =>
+          observation.evaluate(value => value.handoffs),
+        )))
+      }, { timeout: 30_000, intervals: [100] }).toBeGreaterThanOrEqual(4)
+      for (const browserPage of [page, player]) {
+        const position = await browserPage.locator('[data-active="true"]').evaluate(
+          (media: HTMLMediaElement) => media.currentTime,
+        )
+        await expect.poll(() => browserPage.locator('[data-active="true"]').evaluate(
+          (media: HTMLMediaElement, previous: number) => !media.paused && Math.abs(media.currentTime - previous) > 0.25,
+          position,
+        )).toBe(true)
+      }
+      for (const observation of observations) await observation.dispose()
+      await page.getByRole('button', { name: 'Remove from table', exact: true }).click()
+    } finally { await playerContext.close() }
+    await deleteLibraryTrack(page, 'Editing Loop', 0)
+  })
+}
+
 test('GM auditions unsaved loop points in the library', async ({ page }) => {
   await login(page)
   await page.getByRole('link', { name: 'Library', exact: true }).click()

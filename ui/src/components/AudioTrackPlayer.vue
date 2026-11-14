@@ -44,10 +44,7 @@ watch([
   () => audioStore.tracks[props.fileID]?.playback?.startTime,
   () => audioStore.tracks[props.fileID]?.playback?.endTime,
   () => audioStore.tracks[props.fileID]?.playback?.loopBackTime,
-], () => {
-  cancelOverlap()
-  syncPosition(element(active.value)?.currentTime)
-})
+], syncRegion)
 watch(() => audioStore.tracks[props.fileID]?.isRepeating, (isRepeating) => {
   cancelOverlap()
   if (isRepeating && audioStore.tracks[props.fileID]?.isPlaying) bindHLS(1)
@@ -124,6 +121,23 @@ function syncPlaying() {
   tick()
 }
 
+function syncRegion() {
+  const state = audioStore.tracks[props.fileID]
+  const media = element(active.value)
+  if (!state || !media) return
+  const { start, end, loop } = playbackRegion(state.playback, state.duration)
+  if (overlap) {
+    // An in-flight handoff must survive edits, even if the outgoing source has ended.
+    overlap.end = Math.min(overlap.end, end)
+    const incoming = element(overlap.incoming)
+    if (incoming) {
+      const position = incoming.currentTime >= end ? loop : Math.max(start, incoming.currentTime)
+      if (incoming.currentTime !== position) incoming.currentTime = position
+    }
+  }
+  syncPosition(media.currentTime)
+}
+
 function syncPosition(currentTime?: number) {
   const state = audioStore.tracks[props.fileID]
   const media = element(active.value)
@@ -158,11 +172,12 @@ function tick() {
     reportPlaybackError(new Error(error))
     return
   }
-  if (state.isRepeating && !overlap && ready[1 - active.value] && !media.paused &&
-      media.currentTime >= region.end - region.fade) {
+  if (state.isRepeating && !overlap && ready[1 - active.value] &&
+      (media.ended || media.currentTime >= region.end ||
+        !media.paused && media.currentTime >= region.end - region.fade)) {
     startOverlap(region.loop, region.end)
   }
-  if (overlap && media.currentTime >= overlap.end) finishOverlap()
+  if (overlap && (media.ended || media.currentTime >= overlap.end)) finishOverlap()
   else if (!state.isRepeating && media.currentTime >= region.end) finishTrack()
   applyVolumes()
   if (audioStore.tracks[props.fileID]) audioStore.setFading(props.fileID, !!fade || !!overlap || !!volumeFade)
