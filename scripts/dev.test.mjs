@@ -46,6 +46,7 @@ test(
     )
     const table = (await json(a, '/api/v1/tables', cookie))[0]
     assert.equal(Buffer.from(table.externalID, 'base64url').byteLength, 32)
+    assert.equal(a.invite, new URL(`/tables/${table.externalID}`, a.url).href)
     const settingsPath = `/api/v1/tables/${table.externalID}/settings`
     const defaults = { masterVolume: 100, typeVolumes: {}, trackVolumes: {}, trackOrder: [] }
     assert.deepEqual(await json(a, settingsPath, cookie), defaults)

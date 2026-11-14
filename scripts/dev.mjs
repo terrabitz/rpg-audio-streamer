@@ -103,15 +103,19 @@ async function main() {
   const [{ url }] = await once(frontend, 'message', {
     signal: controller.signal,
   })
+  const invite = new URL(`/tables/${table.externalID}`, url).href
   console.log(`\nFresh dev instance: ${url}\nGM login: ${username} / ${password}`)
-  console.log(`Table link: ${url}tables/${table.id}\nStop with Ctrl-C to remove this instance.`)
+  console.log(
+    `Player URL: ${invite}\nInvite code: ${table.externalID}\nStop with Ctrl-C to remove this instance.`,
+  )
   console.log(
     `DEV_INSTANCE_READY ${JSON.stringify({
       url,
       apiURL,
       username,
       password,
-      tableID: table.id,
+      invite,
+      externalID: table.externalID,
       scratch,
     })}`,
   )
