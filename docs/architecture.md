@@ -148,9 +148,10 @@ The Vue 3 application uses Vue Router, Vuetify, and Pinia. Routes are `/`
 (landing), `/login` (GM credentials), `/player-login` (invite-code entry),
 `/tables` (GM table creation, renaming, and deletion), `/library` (shared
 uploads and metadata management), and `/tables/:externalID` (the shared
-GM/player table URL). GM login opens table management. Player Login accepts an
-invite code or full invite URL and navigates to the shared table route without
-creating a player session. Table views show associated tracks only; GMs can add an
+GM/player table URL). GM login opens table management. Player Login is a small
+information page explaining that players need the full `/tables/:externalID`
+URL from their GM; it creates no player session. Table views show associated
+tracks only; GMs can add an
 existing library track or upload a new one directly into the table.
 To preserve space during play, the table name appears only in the app bar.
 Authenticated navigation lives in a left sidebar that is closed by default and
