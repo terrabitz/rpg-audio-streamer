@@ -359,12 +359,16 @@ Release notes live in GitHub releases.
 
 Release runs are serialized to avoid competing version calculations. When no
 release is needed, publication and image building are skipped. After successful
-publication, the Docker job builds Linux amd64/arm64 images and pushes `latest`,
-full-version, major, and major.minor tags to GHCR.
+publication, the shared `docker-build` workflow builds the Linux amd64 and
+arm64 images natively on matching GitHub-hosted runners, pushes each by digest
+to GHCR, and combines them into a multi-arch manifest tagged `latest`,
+full-version, major.minor, and major. Each architecture keeps its own Buildx
+GitHub Actions cache scope.
 
-Pull requests that touch any image input build the same multi-arch image and
-check that the Dockerfile's Go and Node base images match `go.mod` and
-`ui/.nvmrc`, since dependency bumps do not update the Dockerfile.
+Pull requests that touch any image input run the same per-architecture builds
+without pushing or publishing a manifest, and check that the Dockerfile's Go
+and Node base images match `go.mod` and `ui/.nvmrc`, since dependency bumps do
+not update the Dockerfile.
 
 All pull requests run the `pr-checks` workflow. `dorny/paths-filter` selects Go
 tests for backend inputs, frontend lint/build/domain checks for UI, development
