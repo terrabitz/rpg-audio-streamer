@@ -10,28 +10,20 @@ components:
       type: apiKey
       in: cookie
       name: auth_token
-    bearerAuth:
-      type: http
-      scheme: bearer
-    queryAuth:
-      type: apiKey
-      in: query
-      name: token
-
   schemas:
     Table:
       type: object
-      required: [id, name]
+      required: [id, externalID, name]
       properties:
         id:
           type: string
           format: uuid
+        externalID:
+          type: string
+          pattern: "^[A-Za-z0-9_-]{43}$"
+          description: Random URL-safe identifier that grants access to this table
         name:
           type: string
-        inviteToken:
-          type: string
-          description: Only returned to GMs.
-
     TableRequest:
       type: object
       required: [name]
@@ -104,22 +96,6 @@ components:
         success:
           type: boolean
         error:
-          type: string
-
-    JoinRequest:
-      type: object
-      required:
-        - token
-      properties:
-        token:
-          type: string
-
-    JoinTokenResponse:
-      type: object
-      required:
-        - token
-      properties:
-        token:
           type: string
 
     AuthStatusResponse:
@@ -240,10 +216,11 @@ paths:
     parameters:
       - name: tableID
         in: path
+        description: Table's public Base64URL external ID
         required: true
         schema:
           type: string
-          format: uuid
+          pattern: "^[A-Za-z0-9_-]{43}$"
     get:
       summary: Get the table's saved GM mix and track order (GM only)
       security:
@@ -285,7 +262,7 @@ paths:
 
   /api/v1/tables:
     get:
-      summary: List GM tables and their invite tokens
+      summary: List tables (GM only)
       security:
         - cookieAuth: []
       responses:
@@ -317,35 +294,17 @@ paths:
         "400":
           description: Invalid table name
 
-  /api/v1/tables/current:
-    get:
-      summary: Resolve the invited player's table or the GM's legacy default table
-      security:
-        - cookieAuth: []
-        - bearerAuth: []
-      responses:
-        "200":
-          description: Current table
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Table"
-        "404":
-          description: Table not found
-
   /api/v1/tables/{tableID}:
     parameters:
       - name: tableID
         in: path
+        description: Table's public Base64URL external ID
         required: true
         schema:
           type: string
-          format: uuid
+          pattern: "^[A-Za-z0-9_-]{43}$"
     get:
-      summary: Get a table (players may only access their invited table)
-      security:
-        - cookieAuth: []
-        - bearerAuth: []
+      summary: Get a table using its public external ID
       responses:
         "200":
           description: Table
@@ -353,8 +312,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Table"
-        "403":
-          description: Wrong table
         "404":
           description: Table not found
     put:
@@ -388,18 +345,42 @@ paths:
         "404":
           description: Table not found
 
-  /api/v1/tables/{tableID}/tracks:
-    get:
-      summary: List a table's associated library tracks (GM only)
-      security:
-        - cookieAuth: []
+  /api/v1/tables/{tableID}/external-id:
+    post:
+      summary: Rotate a table's public external ID (GM only)
       parameters:
         - name: tableID
           in: path
+          description: Table's public Base64URL external ID
           required: true
           schema:
             type: string
-            format: uuid
+            pattern: "^[A-Za-z0-9_-]{43}$"
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Table with its newly generated external ID
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Table"
+        "401":
+          description: GM authentication required
+        "404":
+          description: Table not found
+
+  /api/v1/tables/{tableID}/tracks:
+    get:
+      summary: List a table's associated tracks using its public table ID
+      parameters:
+        - name: tableID
+          in: path
+          description: Table's public Base64URL external ID
+          required: true
+          schema:
+            type: string
+            pattern: "^[A-Za-z0-9_-]{43}$"
       responses:
         "200":
           description: Associated tracks
@@ -416,10 +397,11 @@ paths:
     parameters:
       - name: tableID
         in: path
+        description: Table's public Base64URL external ID
         required: true
         schema:
           type: string
-          format: uuid
+          pattern: "^[A-Za-z0-9_-]{43}$"
       - name: trackID
         in: path
         required: true
@@ -656,30 +638,11 @@ paths:
         "500":
           description: Failed to generate the waveform
 
-  /api/v1/joinToken:
-    get:
-      summary: Get the legacy default table's invite token (GM only)
-      security:
-        - cookieAuth: []
-      responses:
-        "200":
-          description: Join token
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/JoinTokenResponse"
-        "403":
-          description: Not authorized
-        "404":
-          description: The default table has been deleted
-
   /api/v1/stream/{path}:
     get:
-      summary: Stream audio content
+      summary: Stream a library track (GM only)
       security:
         - cookieAuth: []
-        - bearerAuth: []
-        - queryAuth: []
       parameters:
         - name: path
           in: path
@@ -693,17 +656,38 @@ paths:
             application/vnd.apple.mpegurl:
               schema:
                 type: string
-        "403":
-          description: Not authorized
         "404":
           description: File not found
+
+  /api/v1/tables/{tableID}/stream/{path}:
+    get:
+      summary: Stream a track associated with a public table
+      parameters:
+        - name: tableID
+          in: path
+          description: Table's public Base64URL external ID
+          required: true
+          schema:
+            type: string
+            pattern: "^[A-Za-z0-9_-]{43}$"
+        - name: path
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Audio stream
+          content:
+            application/vnd.apple.mpegurl:
+              schema:
+                type: string
+        "404":
+          description: Table, track, or file not found
 
   /api/v1/trackTypes:
     get:
       summary: Get available track types
-      security:
-        - cookieAuth: []
-        - bearerAuth: []
       responses:
         "200":
           description: List of track types
@@ -713,8 +697,6 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/TrackType"
-        "403":
-          description: Not authorized
 
   /api/v1/ws:
     get:
@@ -722,13 +704,10 @@ paths:
       parameters:
         - name: tableID
           in: query
-          description: GM table scope; defaults to the legacy table. Players are scoped by their invite.
+          description: Public table external ID for player connections; GMs may omit it to use the default table.
           schema:
             type: string
-            format: uuid
-      security:
-        - cookieAuth: []
-        - queryAuth: []
+            pattern: "^[A-Za-z0-9_-]{43}$"
       responses:
         "101":
           description: Switching protocols to WebSocket

@@ -246,6 +246,34 @@ func TestTableDeletionAndTrackRemoval(t *testing.T) {
 	}
 }
 
+func TestRevokePlayerAccessDisconnectsOnlyPlayersInTable(t *testing.T) {
+	hub, clients := testHub()
+	for id, client := range clients {
+		client.Token.TableID = "friday"
+		if id == "otherGM" || id == "otherPlayer" {
+			client.Token.TableID = "sunday"
+		}
+	}
+	hub.RevokePlayerAccess("friday")
+	for id, client := range clients {
+		_, registered := hub.clients[client]
+		disconnected := client.closed
+		switch id {
+		case "player":
+			if registered || !disconnected {
+				t.Fatal("table player remained connected after access revocation")
+			}
+			if _, open := <-client.send; open {
+				t.Fatal("revoked player send channel remains open")
+			}
+		case "gm", "otherGM", "otherPlayer":
+			if !registered || disconnected {
+				t.Fatalf("%s was disconnected by another table's link rotation", id)
+			}
+		}
+	}
+}
+
 func testHub() (*Hub, map[string]*Client) {
 	hub := NewHub(slog.New(slog.NewTextHandler(io.Discard, nil)))
 	clients := make(map[string]*Client)

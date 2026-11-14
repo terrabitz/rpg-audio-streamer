@@ -8,12 +8,12 @@
 </template>
 
 <script setup lang="ts">
-import Hls, { type HlsConfig } from 'hls.js'
+import Hls from 'hls.js'
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { defaultPlayback, playbackError, playbackRegion } from '@/composables/playback'
 import { useAudioStore, type AudioTrack } from '../stores/audio'
 
-const props = defineProps<{ fileID: string, token?: string }>()
+const props = defineProps<{ fileID: string, tableID?: string }>()
 const emit = defineEmits<{ error: [message: string] }>()
 const audioStore = useAudioStore()
 const primary = ref<HTMLVideoElement | null>(null)
@@ -82,13 +82,13 @@ function bindHLS(index: number) {
   const media = element(index)
   if (!media) return
   bound[index] = true
-  const options: Partial<HlsConfig> = props.token ? {
-    xhrSetup(xhr) { xhr.setRequestHeader('Authorization', `Bearer ${props.token}`) },
-  } : {}
-  const player = new Hls(options)
+  const player = new Hls()
   players.push(player)
   media.volume = 0
-  player.loadSource(`/api/v1/stream/${props.fileID}/index.m3u8`)
+  const streamURL = props.tableID
+    ? `/api/v1/tables/${props.tableID}/stream/${props.fileID}/index.m3u8`
+    : `/api/v1/stream/${props.fileID}/index.m3u8`
+  player.loadSource(streamURL)
   player.attachMedia(media)
   player.on(Hls.Events.MANIFEST_PARSED, () => {
     if (disposed) return

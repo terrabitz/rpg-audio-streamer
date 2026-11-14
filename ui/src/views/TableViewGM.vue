@@ -8,18 +8,18 @@ import { useTableStore } from '@/stores/tables';
 import { useWebSocketStore, type WebSocketMessage } from '@/stores/websocket';
 import type { TableSettingsPatch } from '@/client/apiClient';
 import debounce from 'lodash.debounce';
-import { onMounted, onUnmounted, ref, watch } from 'vue';
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 
 const audioStore = useAudioStore()
 const wsStore = useWebSocketStore()
 const tables = useTableStore()
 const error = ref('')
 const ready = ref(false)
-const tableID = tables.current!.id
+const externalID = computed(() => tables.current!.externalID)
 let disposed = false
 let pendingMix: TableSettingsPatch = {}
 const saveMix = debounce(() => {
-  void tables.saveSettings(tableID, pendingMix)
+  void tables.saveSettings(externalID.value, pendingMix)
   pendingMix = {}
 }, 200)
 
@@ -56,13 +56,13 @@ onMounted(async () => {
   setTitle(tables.current?.name ?? 'Table')
   window.addEventListener('pagehide', flushMix)
   try {
-    const settings = await tables.loadSettings(tableID)
+    const settings = await tables.loadSettings(externalID.value)
     if (disposed) return
     audioStore.loadTableMix(settings)
     audioStore.enabled = true
     ready.value = true
     setActions([TableActions])
-    await wsStore.connect(undefined, tableID)
+    await wsStore.connect(externalID.value)
   } catch (e) {
     console.error('Failed to connect table:', e)
     error.value = 'Unable to connect to the table. Reload to try again.'
@@ -103,8 +103,8 @@ function changedVolumes(current: Record<string, number>, previous: Record<string
   <v-alert v-if="error" type="error">{{ error }}</v-alert>
   <v-alert v-if="tables.settingsError" type="error" class="mb-4">
     {{ tables.settingsError }}
-    <v-btn variant="text" @click="tables.saveSettings(tableID, {})">Retry saving</v-btn>
+    <v-btn variant="text" @click="tables.saveSettings(externalID, {})">Retry saving</v-btn>
   </v-alert>
-  <AudioPlayer v-if="ready" />
+  <AudioPlayer v-if="ready" :tableID="externalID" />
   <FileList v-if="ready && wsStore.isConnected" />
 </template>

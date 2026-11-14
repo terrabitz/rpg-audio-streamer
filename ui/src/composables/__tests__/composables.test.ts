@@ -27,7 +27,7 @@ describe('shared UI state', () => {
     first.setTitle('Skald Bot')
   })
 
-  it('builds invite origins from the current browser location', () => {
+  it('builds link origins from the current browser location', () => {
     expect(useBaseUrl().getBaseUrl()).toBe(window.location.origin)
   })
 
