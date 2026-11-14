@@ -273,6 +273,197 @@ test('GM adjusts waveform markers without interrupting playback for listeners', 
   } finally { await playerContext.close() }
 })
 
+test('GM drags waveform markers continuously without stuttering for listeners', async ({ page, browser }, testInfo) => {
+  test.slow()
+  await login(page)
+  await uploadTrack(page, 'Continuous Drag')
+  const tile = page.locator('.file-tile').filter({ hasText: 'Continuous Drag' })
+  await tile.locator('.track-heading').click()
+  const playerContext = await browser.newContext()
+  try {
+    const player = await playerContext.newPage()
+    await player.goto('/table/e2e-invite')
+    await player.getByRole('button', { name: 'Connect Audio', exact: true }).click()
+    await tile.getByRole('button', { name: 'Edit Continuous Drag', exact: true }).click()
+    for (const [point, toTime] of [
+      ['Beginning', 2],
+      ['End', 26],
+      ['Loop-back point', 4],
+    ] as const) {
+      const seek = page.getByRole('dialog').getByRole('slider', { name: 'Playback position for Continuous Drag', exact: true })
+      await seek.press('Home')
+      await seek.press('PageUp')
+      const target = Number(await page.getByRole('slider', { name: 'Beginning for Continuous Drag', exact: true })
+        .getAttribute('aria-valuenow')) + 5
+      for (const browserPage of [page, player]) {
+        await expect.poll(() => browserPage.locator('[data-active="true"]').evaluate(
+          (media: HTMLMediaElement, position: number) => !media.paused && !media.seeking &&
+            media.readyState >= 3 && media.currentTime >= position && media.currentTime < position + 3,
+          target,
+        )).toBe(true)
+      }
+      const handle = page.getByRole('dialog').getByRole('slider', { name: `${point} for Continuous Drag`, exact: true })
+      await handle.hover()
+      const source = await handle.boundingBox()
+      const axis = await page.getByRole('dialog').locator('.timeline-axis').boundingBox()
+      const duration = Number(await page.getByRole('slider', { name: 'End for Continuous Drag', exact: true })
+        .getAttribute('aria-valuemax'))
+      const fromTime = Number(await handle.getAttribute('aria-valuenow'))
+      if (!source || !axis) throw new Error('The waveform marker and axis must be visible')
+      const start = source.x + source.width / 2
+      const end = start + (toTime - fromTime) / duration * axis.width
+      const y = source.y + source.height / 2
+      await page.mouse.move(start, y)
+      await page.mouse.down()
+      const observations = await Promise.all([page, player].map(browserPage =>
+        browserPage.locator('[data-active="true"]').evaluateHandle((media: HTMLMediaElement) => {
+          const samples: { elapsed: number, position: number, paused: boolean, seeking: boolean }[] = []
+          const started = performance.now()
+          let seeks = 0
+          const onSeeking = () => { seeks++ }
+          media.addEventListener('seeking', onSeeking)
+          const sample = () => samples.push({
+            elapsed: (performance.now() - started) / 1000,
+            position: media.currentTime, paused: media.paused, seeking: media.seeking,
+          })
+          sample()
+          const timer = setInterval(sample, 50)
+          return {
+            finish() {
+              clearInterval(timer)
+              media.removeEventListener('seeking', onSeeking)
+              sample()
+              return { seeks, samples }
+            },
+          }
+        }),
+      ))
+      try {
+        const deadline = Date.now() + 6000
+        let direction = true
+        do {
+          await page.mouse.move(direction ? end : start, y, { steps: 30 })
+          direction = !direction
+        } while (Date.now() < deadline)
+      } finally { await page.mouse.up() }
+      for (const [index, observation] of observations.entries()) {
+        const result = await observation.evaluate(value => value.finish())
+        await testInfo.attach(`${point}-${index === 0 ? 'GM' : 'listener'}-playback.json`, {
+          body: JSON.stringify(result), contentType: 'application/json',
+        })
+        expect(result.seeks, `${point}: no seek events during an in-bounds marker drag`).toBe(0)
+        for (const [sampleIndex, sample] of result.samples.entries()) {
+          expect(sample.paused, `${point}: playback stays unpaused throughout the gesture`).toBe(false)
+          expect(sample.seeking, `${point}: playback does not seek during the gesture`).toBe(false)
+          const earlier = result.samples.slice(0, sampleIndex).findLast(previous => sample.elapsed - previous.elapsed >= 0.5)
+          if (!earlier) continue
+          expect(sample.position - earlier.position, `${point}: every half-second window advances smoothly`)
+            .toBeGreaterThanOrEqual((sample.elapsed - earlier.elapsed) * 0.8)
+        }
+        await observation.dispose()
+      }
+    }
+    await page.getByRole('button', { name: 'Remove from table', exact: true }).click()
+  } finally { await playerContext.close() }
+  await deleteLibraryTrack(page, 'Continuous Drag', 0)
+})
+
+test('GM continuously drags markers through short natural loops without audio stalls', async ({ page, browser }, testInfo) => {
+  test.slow()
+  await login(page)
+  await uploadTrack(page, 'Natural Loop Drag', 'Music', 12)
+  const tile = page.locator('.file-tile').filter({ hasText: 'Natural Loop Drag' })
+  await tile.getByRole('button', { name: 'Edit Natural Loop Drag', exact: true }).click()
+  await dragTimelinePoint(page, 'Loop-back point for Natural Loop Drag', 9)
+  await page.getByRole('dialog').getByRole('button', { name: 'Play Natural Loop Drag', exact: true }).click()
+  const playerContext = await browser.newContext()
+  try {
+    const player = await playerContext.newPage()
+    await player.goto('/table/e2e-invite')
+    await player.getByRole('button', { name: 'Connect Audio', exact: true }).click()
+    for (const browserPage of [page, player]) {
+      await expect.poll(() => browserPage.locator('[data-active="true"]').evaluate(
+        (media: HTMLMediaElement) => !media.paused && !media.seeking && media.currentTime > 9,
+      )).toBe(true)
+    }
+    for (const [point, low, high] of [
+      ['Beginning', 2, 11],
+      ['End', 11.5, 12],
+      ['Loop-back point', 9, 11],
+    ] as const) {
+      const handle = page.getByRole('dialog').getByRole('slider', { name: `${point} for Natural Loop Drag`, exact: true })
+      await handle.hover()
+      const source = await handle.boundingBox()
+      const axis = await page.getByRole('dialog').locator('.timeline-axis').boundingBox()
+      const duration = Number(await page.getByRole('slider', { name: 'End for Natural Loop Drag', exact: true })
+        .getAttribute('aria-valuemax'))
+      const current = Number(await handle.getAttribute('aria-valuenow'))
+      if (!source || !axis) throw new Error('The waveform marker and axis must be visible')
+      const start = source.x + source.width / 2
+      const x = (time: number) => start + (time - current) / duration * axis.width
+      const y = source.y + source.height / 2
+      await page.mouse.move(start, y)
+      await page.mouse.down()
+      const observations = await Promise.all([page, player].map(browserPage =>
+        browserPage.evaluateHandle(() => {
+          const media = Array.from(document.querySelectorAll<HTMLMediaElement>('video, audio'))
+          const read = () => media.map(source => ({
+            position: source.currentTime, volume: source.volume, paused: source.paused,
+            seeking: source.seeking, readyState: source.readyState,
+          }))
+          const started = performance.now()
+          let lastTime = started
+          let previous = read()
+          let advanced = 0
+          const samples: { elapsed: number, advanced: number, sources: ReturnType<typeof read> }[] = []
+          const sample = () => {
+            const now = performance.now()
+            const elapsed = (now - lastTime) / 1000
+            const sources = read()
+            const progress = Math.max(0, ...sources.map((source, index) => {
+              const before = previous[index]!
+              if (source.paused || source.seeking || Math.max(source.volume, before.volume) < 0.05) return 0
+              return Math.min(elapsed, Math.max(0, source.position - before.position))
+            }))
+            advanced += progress
+            samples.push({ elapsed: (now - started) / 1000, advanced, sources })
+            previous = sources
+            lastTime = now
+          }
+          sample()
+          const timer = setInterval(sample, 25)
+          return {
+            finish() { clearInterval(timer); sample(); return samples },
+          }
+        }),
+      ))
+      try {
+        const deadline = Date.now() + 6000
+        let direction = true
+        do {
+          await page.mouse.move(x(direction ? low : high), y, { steps: 30 })
+          direction = !direction
+        } while (Date.now() < deadline)
+      } finally { await page.mouse.up() }
+      for (const [index, observation] of observations.entries()) {
+        const samples = await observation.evaluate(value => value.finish())
+        await testInfo.attach(`${point}-${index === 0 ? 'GM' : 'listener'}-loop-progress.json`, {
+          body: JSON.stringify(samples), contentType: 'application/json',
+        })
+        for (const [sampleIndex, sample] of samples.entries()) {
+          const earlier = samples.slice(0, sampleIndex).findLast(previous => sample.elapsed - previous.elapsed >= 0.5)
+          if (!earlier) continue
+          expect(sample.advanced - earlier.advanced, `${point}: audible playback advances through every loop and drag`)
+            .toBeGreaterThanOrEqual((sample.elapsed - earlier.elapsed) * 0.8)
+        }
+        await observation.dispose()
+      }
+    }
+    await page.getByRole('button', { name: 'Remove from table', exact: true }).click()
+  } finally { await playerContext.close() }
+  await deleteLibraryTrack(page, 'Natural Loop Drag', 0)
+})
+
 for (const point of ['Loop-back point', 'End']) {
   test(`GM keeps looping while adjusting the ${point.toLowerCase()} marker`, async ({ page, browser }) => {
     test.slow()
@@ -1831,14 +2022,14 @@ async function deleteLibraryTrack(page: Page, name: string, tableCount: number) 
   await expect(row).toHaveCount(0)
 }
 
-async function uploadTrack(page: Page, name: string, typeName = 'Music') {
+async function uploadTrack(page: Page, name: string, typeName = 'Music', duration = 30) {
   const audio = execFileSync('ffmpeg', [
     '-v',
     'error',
     '-f',
     'lavfi',
     '-i',
-    'sine=frequency=440:duration=30',
+    `sine=frequency=440:duration=${duration}`,
     '-f',
     'mp3',
     'pipe:1',
