@@ -2,6 +2,11 @@ name: pr-checks
 
 on:
   workflow_dispatch:
+    inputs:
+      discord_e2e:
+        description: Run the live two-bot test in the configured private Discord channel
+        type: boolean
+        default: false
   pull_request:
 
 permissions:
@@ -38,6 +43,7 @@ jobs:
             frontend:
               - 'ui/**'
               - 'scripts/**'
+              - 'discord/**'
               - 'openapi.yaml'
               - 'Makefile'
               - '.github/workflows/pr-checks.yaml'
@@ -50,6 +56,7 @@ jobs:
               - 'internal/**'
               - 'sql/**'
               - 'ui/**'
+              - 'discord/**'
               - '.github/workflows/pr-checks.yaml'
 
   go:
@@ -149,6 +156,24 @@ jobs:
         run: make test-dev
         working-directory: .
       - run: npm run test:e2e
+      - name: Verify experimental server mixing
+        run: npm run test:e2e -- --grep 'experimental server mix|browser playback without a server mix'
+        env:
+          E2E_EXPERIMENTAL_MIXER: "1"
+      - name: Install Discord voice worker
+        if: github.event_name == 'workflow_dispatch' && inputs.discord_e2e
+        run: npm ci --prefix ../discord
+      - name: Verify live Discord audio delivery
+        if: github.event_name == 'workflow_dispatch' && inputs.discord_e2e
+        run: make test-e2e-discord
+        working-directory: .
+        env:
+          E2E_DISCORD: "1"
+          INTEGRATION_TEST_DISCORD_SERVER_ID: ${{ secrets.INTEGRATION_TEST_DISCORD_SERVER_ID }}
+          INTEGRATION_TEST_DISCORD_VOICE_CHANNEL_ID: ${{ secrets.INTEGRATION_TEST_DISCORD_VOICE_CHANNEL_ID }}
+          INTEGRATION_TEST_DISCORD_BOT_STREAMER_TOKEN: ${{ secrets.INTEGRATION_TEST_DISCORD_BOT_STREAMER_TOKEN }}
+          INTEGRATION_TEST_DISCORD_BOT_STREAMER_CLIENT_ID: ${{ secrets.INTEGRATION_TEST_DISCORD_BOT_STREAMER_CLIENT_ID }}
+          INTEGRATION_TEST_DISCORD_BOT_LISTENER_TOKEN: ${{ secrets.INTEGRATION_TEST_DISCORD_BOT_LISTENER_TOKEN }}
       - name: Preserve browser failure evidence
         if: failure()
         uses: actions/upload-artifact@v6
@@ -158,6 +183,21 @@ jobs:
             ui/playwright-report/
             ui/test-results/
           retention-days: 7
+
+  discord:
+    name: Discord Transport Tests
+    needs: changes
+    if: ${{ !cancelled() && (github.event_name == 'workflow_dispatch' || needs.changes.outputs.frontend == 'true') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: ./ui/.nvmrc
+          cache: npm
+          cache-dependency-path: discord/package-lock.json
+      - run: npm ci --prefix discord
+      - run: make test-discord
 
   toolchains:
     name: Check Docker Toolchains

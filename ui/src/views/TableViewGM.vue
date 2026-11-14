@@ -14,6 +14,8 @@ const audioStore = useAudioStore()
 const wsStore = useWebSocketStore()
 const tables = useTableStore()
 const error = ref('')
+const mixerError = ref('')
+const mixerEnabled = ref(false)
 const ready = ref(false)
 const tableID = tables.current!.id
 let disposed = false
@@ -28,27 +30,49 @@ watch(snapshotMix, (mix, previous) => {
   if (mix.masterVolume !== previous.masterVolume) pendingMix.masterVolume = mix.masterVolume
   pendingMix.typeVolumes = { ...pendingMix.typeVolumes, ...changedVolumes(mix.typeVolumes, previous.typeVolumes) }
   pendingMix.trackVolumes = { ...pendingMix.trackVolumes, ...changedVolumes(mix.trackVolumes, previous.trackVolumes) }
+  if (mixerEnabled.value && wsStore.isConnected &&
+      JSON.stringify(mix.typeVolumes) !== JSON.stringify(previous.typeVolumes)) {
+    wsStore.sendMessage('mixVolumes', { typeVolumes: mix.typeVolumes })
+  }
   saveMix()
 }, { flush: 'sync' })
 
 const { setTitle, setActions } = useAppBar()
 
-
 function handleSyncRequest(message: WebSocketMessage<unknown>) {
-  if (message.method === 'syncRequest') {
-    const tracks = audioStore.getPlayingTracks()
-    const audioAdjusted = tracks.map((track) => {
-      return {
-        ...track,
-        volume: track.volume * audioStore.mixMasterVolume / 100,
-      }
+  if (message.method === 'mixerReady') {
+    mixerEnabled.value = true
+    wsStore.sendMessage('mixSync', {
+      tracks: adjustedTracks(),
+      typeVolumes: { ...audioStore.mixTypeVolumes },
     })
+    return
+  }
+  if (message.method === 'mixerError') {
+    const payload = message.payload
+    mixerError.value = payload && typeof payload === 'object' &&
+      'message' in payload && typeof payload.message === 'string'
+      ? payload.message : 'Server mixing failed. Reconnect to retry.'
+    return
+  }
+  if (message.method === 'mixerAck' && message.payload && typeof message.payload === 'object' &&
+      'command' in message.payload && message.payload.command === 'mixSync') {
+    mixerError.value = ''
+    return
+  }
+  if (message.method === 'syncRequest') {
     // Send current state to requesting client
     wsStore.sendMessage('syncAll', {
-      tracks: audioAdjusted,
+      tracks: adjustedTracks(),
       to: message.senderId,
     })
   }
+}
+
+function adjustedTracks() {
+  return audioStore.getPlayingTracks().map(track => ({
+    ...track, volume: track.volume * audioStore.mixMasterVolume / 100,
+  }))
 }
 
 onMounted(async () => {
@@ -101,6 +125,7 @@ function changedVolumes(current: Record<string, number>, previous: Record<string
 
 <template>
   <v-alert v-if="error" type="error">{{ error }}</v-alert>
+  <v-alert v-if="mixerError" type="error">{{ mixerError }}</v-alert>
   <v-alert v-if="tables.settingsError" type="error" class="mb-4">
     {{ tables.settingsError }}
     <v-btn variant="text" @click="tables.saveSettings(tableID, {})">Retry saving</v-btn>

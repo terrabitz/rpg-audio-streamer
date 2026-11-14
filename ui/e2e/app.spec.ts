@@ -1,6 +1,175 @@
 import { execFileSync } from 'node:child_process'
+import { fileURLToPath } from 'node:url'
 import { devices, type Locator, type Page } from '@playwright/test'
 import { expect, test } from './fixtures'
+import type { MixerStatus } from '../src/client/apiClient/types.gen'
+import { discordTestDestination } from '../../scripts/discord-env.mjs'
+
+test('GM connects the server mix to Discord from the Currently playing sidebar', async ({ page }) => {
+  test.skip(process.env.E2E_DISCORD !== '1', 'Requires a Discord bot and an isolated voice channel')
+  test.slow()
+  await login(page)
+  await page.goto('/tables')
+  await createTable(page, 'Discord setup')
+  await page.getByRole('link', { name: 'Open Discord setup', exact: true }).click()
+  await expect(page).toHaveURL(/\/tables\/[0-9a-f-]{36}$/)
+  const tableID = new URL(page.url()).pathname.split('/').pop()!
+  try {
+    const sidebar = page.getByRole('complementary', { name: 'Currently playing', exact: true })
+    await chooseDiscordDestination(page)
+    await expect(sidebar.getByRole('button', { name: 'Disconnect from Discord', exact: true })).toBeVisible()
+    await sidebar.getByRole('button', { name: 'Disconnect from Discord', exact: true }).click()
+    await expect(sidebar.getByRole('button', { name: 'Connect to Discord', exact: true })).toBeVisible()
+  } finally {
+    const cleanup = await page.request.delete(`/api/v1/tables/${tableID}`)
+    expect(cleanup.ok(), await cleanup.text()).toBe(true)
+  }
+})
+
+test('GM returns to a table and automatically reconnects its saved Discord channel', async ({ page }) => {
+  test.skip(process.env.E2E_DISCORD !== '1', 'Requires a Discord bot and an isolated voice channel')
+  test.slow()
+  await login(page)
+  await page.goto('/tables')
+  await createTable(page, 'Discord reconnect')
+  await page.getByRole('link', { name: 'Open Discord reconnect', exact: true }).click()
+  await expect(page).toHaveURL(/\/tables\/[0-9a-f-]{36}$/)
+  const tableID = new URL(page.url()).pathname.split('/').pop()!
+  try {
+    await chooseDiscordDestination(page)
+    await expect(page.getByRole('button', { name: 'Disconnect from Discord', exact: true })).toBeVisible()
+    await page.goto('/tables')
+    await expect.poll(async () => (await (await page.request.get(`/api/v1/tables/${tableID}/discord`)).json()).state)
+      .toBe('disconnected')
+    await page.getByRole('link', { name: 'Open Discord reconnect', exact: true }).click()
+    await expect(page.getByRole('button', { name: 'Disconnect from Discord', exact: true })).toBeVisible()
+  } finally {
+    const cleanup = await page.request.delete(`/api/v1/tables/${tableID}`)
+    expect(cleanup.ok(), await cleanup.text()).toBe(true)
+  }
+})
+
+test('Discord options are hidden when the server has no bot configuration', async ({ page }) => {
+  test.skip(process.env.E2E_DISCORD === '1', 'Requires Discord to be unconfigured')
+  await login(page)
+  await expect(page.getByRole('button', { name: /Discord/ })).toHaveCount(0)
+})
+
+async function chooseDiscordDestination(page: Page) {
+  const target = discordTestDestination(fileURLToPath(new URL('../../', import.meta.url)))
+  const setupResponse = await page.request.get('/api/v1/discord/setup')
+  expect(setupResponse.ok(), await setupResponse.text()).toBe(true)
+  const setup = await setupResponse.json()
+  const guild = setup.guilds.find((item: { id: string }) => item.id === target.guildID)
+  const channelsResponse = await page.request.get(`/api/v1/discord/servers/${target.guildID}/channels`)
+  expect(channelsResponse.ok(), await channelsResponse.text()).toBe(true)
+  const channels = await channelsResponse.json()
+  const channel = channels.find((item: { id: string }) => item.id === target.channelID)
+  if (!guild || !channel) throw new Error('Isolated test server and voice channel must be installed and visible to the bot')
+  await page.getByRole('button', { name: 'Connect to Discord', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: 'Discord setup' })
+  await expect(dialog.getByRole('link', { name: 'Install bot in a server', exact: true })).toHaveAttribute('href', /^https:\/\/discord.com\/oauth2\/authorize\?/)
+  await dialog.getByRole('combobox', { name: 'Discord server', exact: true }).press('ArrowDown')
+  await page.getByRole('option', { name: guild.name, exact: true }).click()
+  await dialog.getByRole('combobox', { name: 'Voice channel', exact: true }).press('ArrowDown')
+  await page.getByRole('option', { name: channel.name, exact: true }).click()
+  await dialog.getByRole('button', { name: 'Connect', exact: true }).click()
+  await expect(dialog).toBeHidden()
+}
+
+test('experimental server mixer follows live GM playback controls', async ({ page }) => {
+  test.skip(process.env.E2E_EXPERIMENTAL_MIXER !== '1', 'Requires the opt-in server mixer')
+  test.slow()
+  const failures: string[] = []
+  page.on('websocket', socket => {
+    if (!socket.url().endsWith('/api/v1/ws')) return
+    socket.on('framereceived', frame => {
+      const message = JSON.parse(String(frame.payload)) as { method: string }
+      if (message.method === 'mixerError') failures.push(String(frame.payload))
+    })
+  })
+  await login(page)
+  const tableID = new URL(page.url()).pathname.split('/').pop()!
+  const status = async (): Promise<MixerStatus> => {
+    const response = await page.request.get(`/api/v1/tables/${tableID}/mix`)
+    expect(response.status()).toBe(200)
+    return response.json()
+  }
+  await expect.poll(async () => (await status()).revision).toBeGreaterThan(0)
+  await uploadTrack(page, 'Server Forest', 'Ambiance')
+  await uploadTrack(page, 'Server Rain', 'Ambiance')
+  const forest = page.getByRole('group', { name: 'Server Forest', exact: true })
+  const rain = page.getByRole('group', { name: 'Server Rain', exact: true })
+  await forest.getByRole('button', { name: 'Edit Server Forest' }).click()
+  await dragTimelinePoint(page, 'Beginning for Server Forest', 1)
+  await dragTimelinePoint(page, 'End for Server Forest', 6)
+  await dragTimelinePoint(page, 'Loop-back point for Server Forest', 3)
+  await page.getByRole('button', { name: 'Save Changes', exact: true }).click()
+  await forest.locator('.track-heading > span').click()
+  await rain.locator('.track-heading > span').click()
+  await expect.poll(async () => (await status()).tracks.filter(track => track.isPlaying).length).toBe(2)
+  await expect.poll(async () => (await status()).peak).toBeGreaterThan(0.01)
+  const response = await page.request.get(`/api/v1/tables/${tableID}/tracks`)
+  const tracks: { id: string, name: string }[] = await response.json()
+  const forestID = tracks.find(track => track.name === 'Server Forest')!.id
+  const forestState = async () => (await status()).tracks.find(track => track.fileID === forestID)!
+  const playing = page.getByRole('group', { name: 'Playing Server Forest', exact: true })
+  const volume = playing.getByRole('slider', { name: 'Volume for Server Forest' })
+  await volume.press('Home')
+  await expect.poll(async () => (await forestState()).gain).toBe(0)
+  const master = page.getByRole('slider', { name: 'Master volume', exact: true })
+  await master.press('Home')
+  await expect.poll(async () => (await status()).tracks.every(track => track.gain === 0)).toBe(true)
+  await expect.poll(async () => (await status()).peak).toBe(0)
+  await master.press('End')
+  await volume.press('End')
+  await expect.poll(async () => (await status()).tracks.every(track => track.gain === 1)).toBe(true)
+  await expect.poll(async () => (await status()).peak).toBeGreaterThan(0.01)
+  const position = playing.getByRole('slider', { name: 'Playback position for Server Forest' })
+  const revision = (await status()).revision
+  await position.press('End')
+  await expect.poll(async () => (await status()).revision).toBeGreaterThan(revision)
+  await expect.poll(async () => (await forestState()).currentTime).toBeLessThan(5)
+  await position.press('Home')
+  await position.press('ArrowRight')
+  await expect.poll(async () => {
+    const time = (await forestState()).currentTime
+    return time >= 2 && time < 3
+  }).toBe(true)
+  await expect.poll(async () => (await forestState()).currentTime).toBeGreaterThan(5.2)
+  await expect.poll(async () => (await forestState()).currentTime).toBeLessThan(4.8)
+  await playing.getByRole('button', { name: 'Pause Server Forest', exact: true }).click()
+  await expect.poll(async () => (await forestState()).isPlaying).toBe(false)
+  const pausedAt = (await status()).framesRendered
+  await expect.poll(async () => (await status()).framesRendered).toBeGreaterThan(pausedAt + 100800)
+  const frozen = (await forestState()).currentTime
+  const rendered = (await status()).framesRendered
+  await expect.poll(async () => (await status()).framesRendered).toBeGreaterThan(rendered + 4800)
+  expect((await forestState()).currentTime).toBe(frozen)
+  await page.reload()
+  await expect(page.getByRole('button', { name: 'Add Track', exact: true })).toBeVisible()
+  await expect.poll(async () => (await status()).tracks.length).toBe(0)
+  expect(failures).toEqual([])
+  await deleteLibraryTrack(page, 'Server Forest', 1)
+  await deleteLibraryTrack(page, 'Server Rain', 1)
+})
+
+test('GM hears browser playback without a server mix monitor toggle', async ({ page }) => {
+  test.skip(process.env.E2E_EXPERIMENTAL_MIXER !== '1', 'Requires the opt-in server mixer')
+  test.slow()
+  await login(page)
+  await uploadTrack(page, 'Monitor Forest', 'Ambiance')
+  await page.getByRole('group', { name: 'Monitor Forest', exact: true }).locator('.track-heading > span').click()
+  const media = page.locator('video, audio').first()
+  await expect.poll(() => media.evaluate((element: HTMLMediaElement) => element.paused)).toBe(false)
+  await expect(page.getByRole('checkbox', { name: 'Listen to server mix', exact: true })).toHaveCount(0)
+  await expect.poll(() => page.locator('video, audio').evaluateAll(elements =>
+    elements.some(element => (element as HTMLMediaElement).muted))).toBe(false)
+  expect(await media.evaluate((element: HTMLMediaElement) => element.paused)).toBe(false)
+  await page.getByRole('group', { name: 'Playing Monitor Forest', exact: true })
+    .getByRole('button', { name: 'Pause Monitor Forest', exact: true }).click()
+  await deleteLibraryTrack(page, 'Monitor Forest', 1)
+})
 
 test('GM can recover from invalid credentials, keep a session, and log out', async ({ page }) => {
   await page.goto('/')

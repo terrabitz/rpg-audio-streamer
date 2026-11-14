@@ -2,7 +2,7 @@
 
 import { type Client, type ClientMeta, formDataBodySerializer, type Options as Options2, type RequestResult, type TDataShape } from './client';
 import { client } from './client.gen';
-import type { DeleteApiV1FilesByTrackIdData, DeleteApiV1FilesByTrackIdErrors, DeleteApiV1FilesByTrackIdResponses, DeleteApiV1TablesByTableIdData, DeleteApiV1TablesByTableIdErrors, DeleteApiV1TablesByTableIdResponses, DeleteApiV1TablesByTableIdTracksByTrackIdData, DeleteApiV1TablesByTableIdTracksByTrackIdErrors, DeleteApiV1TablesByTableIdTracksByTrackIdResponses, GetApiV1AuthStatusData, GetApiV1AuthStatusResponses, GetApiV1FilesByTrackIdUsageData, GetApiV1FilesByTrackIdUsageErrors, GetApiV1FilesByTrackIdUsageResponses, GetApiV1FilesByTrackIdWaveformData, GetApiV1FilesByTrackIdWaveformErrors, GetApiV1FilesByTrackIdWaveformResponses, GetApiV1FilesData, GetApiV1FilesErrors, GetApiV1FilesResponses, GetApiV1JoinTokenData, GetApiV1JoinTokenErrors, GetApiV1JoinTokenResponses, GetApiV1StreamByPathData, GetApiV1StreamByPathErrors, GetApiV1StreamByPathResponses, GetApiV1TablesByTableIdData, GetApiV1TablesByTableIdErrors, GetApiV1TablesByTableIdResponses, GetApiV1TablesByTableIdSettingsData, GetApiV1TablesByTableIdSettingsErrors, GetApiV1TablesByTableIdSettingsResponses, GetApiV1TablesByTableIdTracksData, GetApiV1TablesByTableIdTracksErrors, GetApiV1TablesByTableIdTracksResponses, GetApiV1TablesCurrentData, GetApiV1TablesCurrentErrors, GetApiV1TablesCurrentResponses, GetApiV1TablesData, GetApiV1TablesResponses, GetApiV1TrackTypesData, GetApiV1TrackTypesErrors, GetApiV1TrackTypesResponses, GetApiV1WsData, GetApiV1WsErrors, PatchApiV1TablesByTableIdSettingsData, PatchApiV1TablesByTableIdSettingsErrors, PatchApiV1TablesByTableIdSettingsResponses, PostApiV1AuthLogoutData, PostApiV1AuthLogoutResponses, PostApiV1FilesData, PostApiV1FilesErrors, PostApiV1FilesResponses, PostApiV1LoginData, PostApiV1LoginErrors, PostApiV1LoginResponses, PostApiV1TablesData, PostApiV1TablesErrors, PostApiV1TablesResponses, PutApiV1FilesByTrackIdData, PutApiV1FilesByTrackIdErrors, PutApiV1FilesByTrackIdResponses, PutApiV1TablesByTableIdData, PutApiV1TablesByTableIdErrors, PutApiV1TablesByTableIdResponses, PutApiV1TablesByTableIdTracksByTrackIdData, PutApiV1TablesByTableIdTracksByTrackIdErrors, PutApiV1TablesByTableIdTracksByTrackIdResponses } from './types.gen';
+import type { DeleteApiV1FilesByTrackIdData, DeleteApiV1FilesByTrackIdErrors, DeleteApiV1FilesByTrackIdResponses, DeleteApiV1TablesByTableIdData, DeleteApiV1TablesByTableIdDiscordData, DeleteApiV1TablesByTableIdDiscordErrors, DeleteApiV1TablesByTableIdDiscordResponses, DeleteApiV1TablesByTableIdErrors, DeleteApiV1TablesByTableIdResponses, DeleteApiV1TablesByTableIdTracksByTrackIdData, DeleteApiV1TablesByTableIdTracksByTrackIdErrors, DeleteApiV1TablesByTableIdTracksByTrackIdResponses, GetApiV1AuthStatusData, GetApiV1AuthStatusResponses, GetApiV1DiscordServersByGuildIdChannelsData, GetApiV1DiscordServersByGuildIdChannelsErrors, GetApiV1DiscordServersByGuildIdChannelsResponses, GetApiV1DiscordSetupData, GetApiV1DiscordSetupErrors, GetApiV1DiscordSetupResponses, GetApiV1FilesByTrackIdUsageData, GetApiV1FilesByTrackIdUsageErrors, GetApiV1FilesByTrackIdUsageResponses, GetApiV1FilesByTrackIdWaveformData, GetApiV1FilesByTrackIdWaveformErrors, GetApiV1FilesByTrackIdWaveformResponses, GetApiV1FilesData, GetApiV1FilesErrors, GetApiV1FilesResponses, GetApiV1JoinTokenData, GetApiV1JoinTokenErrors, GetApiV1JoinTokenResponses, GetApiV1StreamByPathData, GetApiV1StreamByPathErrors, GetApiV1StreamByPathResponses, GetApiV1TablesByTableIdData, GetApiV1TablesByTableIdDiscordData, GetApiV1TablesByTableIdDiscordErrors, GetApiV1TablesByTableIdDiscordResponses, GetApiV1TablesByTableIdErrors, GetApiV1TablesByTableIdMixData, GetApiV1TablesByTableIdMixErrors, GetApiV1TablesByTableIdMixResponses, GetApiV1TablesByTableIdResponses, GetApiV1TablesByTableIdSettingsData, GetApiV1TablesByTableIdSettingsErrors, GetApiV1TablesByTableIdSettingsResponses, GetApiV1TablesByTableIdTracksData, GetApiV1TablesByTableIdTracksErrors, GetApiV1TablesByTableIdTracksResponses, GetApiV1TablesCurrentData, GetApiV1TablesCurrentErrors, GetApiV1TablesCurrentResponses, GetApiV1TablesData, GetApiV1TablesResponses, GetApiV1TrackTypesData, GetApiV1TrackTypesErrors, GetApiV1TrackTypesResponses, GetApiV1WsData, GetApiV1WsErrors, PatchApiV1TablesByTableIdSettingsData, PatchApiV1TablesByTableIdSettingsErrors, PatchApiV1TablesByTableIdSettingsResponses, PostApiV1AuthLogoutData, PostApiV1AuthLogoutResponses, PostApiV1FilesData, PostApiV1FilesErrors, PostApiV1FilesResponses, PostApiV1LoginData, PostApiV1LoginErrors, PostApiV1LoginResponses, PostApiV1TablesByTableIdDiscordData, PostApiV1TablesByTableIdDiscordErrors, PostApiV1TablesByTableIdDiscordResponses, PostApiV1TablesData, PostApiV1TablesErrors, PostApiV1TablesResponses, PutApiV1FilesByTrackIdData, PutApiV1FilesByTrackIdErrors, PutApiV1FilesByTrackIdResponses, PutApiV1TablesByTableIdData, PutApiV1TablesByTableIdErrors, PutApiV1TablesByTableIdResponses, PutApiV1TablesByTableIdTracksByTrackIdData, PutApiV1TablesByTableIdTracksByTrackIdErrors, PutApiV1TablesByTableIdTracksByTrackIdResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -17,6 +17,88 @@ export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends 
      */
     meta?: keyof ClientMeta extends never ? Record<string, unknown> : ClientMeta;
 };
+
+/**
+ * Get the bot installation link and installed servers (GM only)
+ */
+export const getApiV1DiscordSetup = <ThrowOnError extends boolean = false>(options?: Options<GetApiV1DiscordSetupData, ThrowOnError>): RequestResult<GetApiV1DiscordSetupResponses, GetApiV1DiscordSetupErrors, ThrowOnError> => (options?.client ?? client).get<GetApiV1DiscordSetupResponses, GetApiV1DiscordSetupErrors, ThrowOnError>({
+    security: [{
+            in: 'cookie',
+            name: 'auth_token',
+            type: 'apiKey'
+        }],
+    url: '/api/v1/discord/setup',
+    ...options
+});
+
+/**
+ * List regular voice channels in an installed server (GM only)
+ */
+export const getApiV1DiscordServersByGuildIdChannels = <ThrowOnError extends boolean = false>(options: Options<GetApiV1DiscordServersByGuildIdChannelsData, ThrowOnError>): RequestResult<GetApiV1DiscordServersByGuildIdChannelsResponses, GetApiV1DiscordServersByGuildIdChannelsErrors, ThrowOnError> => (options.client ?? client).get<GetApiV1DiscordServersByGuildIdChannelsResponses, GetApiV1DiscordServersByGuildIdChannelsErrors, ThrowOnError>({
+    security: [{
+            in: 'cookie',
+            name: 'auth_token',
+            type: 'apiKey'
+        }],
+    url: '/api/v1/discord/servers/{guildID}/channels',
+    ...options
+});
+
+/**
+ * Disconnect this table's Discord stream (GM only)
+ */
+export const deleteApiV1TablesByTableIdDiscord = <ThrowOnError extends boolean = false>(options: Options<DeleteApiV1TablesByTableIdDiscordData, ThrowOnError>): RequestResult<DeleteApiV1TablesByTableIdDiscordResponses, DeleteApiV1TablesByTableIdDiscordErrors, ThrowOnError> => (options.client ?? client).delete<DeleteApiV1TablesByTableIdDiscordResponses, DeleteApiV1TablesByTableIdDiscordErrors, ThrowOnError>({
+    security: [{
+            in: 'cookie',
+            name: 'auth_token',
+            type: 'apiKey'
+        }],
+    url: '/api/v1/tables/{tableID}/discord',
+    ...options
+});
+
+/**
+ * Inspect the configured Discord voice connection (GM only)
+ */
+export const getApiV1TablesByTableIdDiscord = <ThrowOnError extends boolean = false>(options: Options<GetApiV1TablesByTableIdDiscordData, ThrowOnError>): RequestResult<GetApiV1TablesByTableIdDiscordResponses, GetApiV1TablesByTableIdDiscordErrors, ThrowOnError> => (options.client ?? client).get<GetApiV1TablesByTableIdDiscordResponses, GetApiV1TablesByTableIdDiscordErrors, ThrowOnError>({
+    security: [{
+            in: 'cookie',
+            name: 'auth_token',
+            type: 'apiKey'
+        }],
+    url: '/api/v1/tables/{tableID}/discord',
+    ...options
+});
+
+/**
+ * Connect to a selected Discord channel and save it for this table (GM only)
+ */
+export const postApiV1TablesByTableIdDiscord = <ThrowOnError extends boolean = false>(options: Options<PostApiV1TablesByTableIdDiscordData, ThrowOnError>): RequestResult<PostApiV1TablesByTableIdDiscordResponses, PostApiV1TablesByTableIdDiscordErrors, ThrowOnError> => (options.client ?? client).post<PostApiV1TablesByTableIdDiscordResponses, PostApiV1TablesByTableIdDiscordErrors, ThrowOnError>({
+    security: [{
+            in: 'cookie',
+            name: 'auth_token',
+            type: 'apiKey'
+        }],
+    url: '/api/v1/tables/{tableID}/discord',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Inspect experimental server-side mixing (GM only)
+ */
+export const getApiV1TablesByTableIdMix = <ThrowOnError extends boolean = false>(options: Options<GetApiV1TablesByTableIdMixData, ThrowOnError>): RequestResult<GetApiV1TablesByTableIdMixResponses, GetApiV1TablesByTableIdMixErrors, ThrowOnError> => (options.client ?? client).get<GetApiV1TablesByTableIdMixResponses, GetApiV1TablesByTableIdMixErrors, ThrowOnError>({
+    security: [{
+            in: 'cookie',
+            name: 'auth_token',
+            type: 'apiKey'
+        }],
+    url: '/api/v1/tables/{tableID}/mix',
+    ...options
+});
 
 /**
  * Get the table's saved GM mix and track order (GM only)

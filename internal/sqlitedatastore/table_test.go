@@ -11,8 +11,46 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/terrabitz/rpg-audio-streamer/internal/discord"
 	"github.com/terrabitz/rpg-audio-streamer/internal/server"
 )
+
+func TestDiscordDestinationIsIsolatedAndSurvivesDatabaseReopening(t *testing.T) {
+	db, path := migratedDatabase(t)
+	ctx := context.Background()
+	if target, err := db.GetTableDiscord(ctx, server.DefaultTableID); err != nil || target != nil {
+		t.Fatalf("new table destination = %+v, %v", target, err)
+	}
+	target := discord.Destination{GuildID: "1", ChannelID: "2", GuildName: "Friday", ChannelName: "Music"}
+	if err := db.SaveTableDiscord(ctx, server.DefaultTableID, target); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.UpdateTableSettings(ctx, server.DefaultTableID, server.TableSettingsPatch{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := New(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = reopened.Close() }()
+	got, err := reopened.GetTableDiscord(ctx, server.DefaultTableID)
+	if err != nil || got == nil || *got != target {
+		t.Fatalf("reopened destination = %+v, %v", got, err)
+	}
+	other := server.Table{ID: uuid.New(), Name: "Other", InviteToken: uuid.NewString()}
+	if _, err := reopened.CreateTable(ctx, other); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := reopened.GetTableDiscord(ctx, other.ID); err != nil || got != nil {
+		t.Fatalf("destination leaked to other table: %+v, %v", got, err)
+	}
+	if err := reopened.SaveTableDiscord(ctx, uuid.New(), target); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("save missing table = %v", err)
+	}
+}
 
 func TestTableSettingsPersistence(t *testing.T) {
 	db, path := migratedDatabase(t)
@@ -274,7 +312,7 @@ func TestExistingLibraryMigratesToDefaultTable(t *testing.T) {
 	if err := db.SaveTrack(ctx, &track); err != nil {
 		t.Fatal(err)
 	}
-	if err := m.Steps(-3); err != nil {
+	if err := m.Steps(-4); err != nil {
 		t.Fatal(err)
 	}
 	if err := m.Up(); err != nil {
@@ -288,7 +326,7 @@ func TestExistingLibraryMigratesToDefaultTable(t *testing.T) {
 	if err != nil || settings.MasterVolume != 100 || len(settings.TrackOrder) != 0 {
 		t.Fatalf("migrated settings = %+v, %v", settings, err)
 	}
-	if err := m.Steps(-3); err != nil {
+	if err := m.Steps(-4); err != nil {
 		t.Fatal(err)
 	}
 	if err := m.Up(); err != nil {

@@ -6,10 +6,39 @@ import (
 	"encoding/json"
 
 	"github.com/google/uuid"
+	"github.com/terrabitz/rpg-audio-streamer/internal/discord"
 	"github.com/terrabitz/rpg-audio-streamer/internal/server"
 	"github.com/terrabitz/rpg-audio-streamer/internal/sqlitedatastore/sqlitedb"
 )
 
+func (db *SQLiteDatastore) GetTableDiscord(ctx context.Context, id uuid.UUID) (*discord.Destination, error) {
+	value, err := sqlitedb.New(db.DB).GetTableDiscord(ctx, id[:])
+	if err != nil || value == "" {
+		return nil, err
+	}
+	var target discord.Destination
+	if err := json.Unmarshal([]byte(value), &target); err != nil {
+		return nil, err
+	}
+	return &target, nil
+}
+
+func (db *SQLiteDatastore) SaveTableDiscord(ctx context.Context, id uuid.UUID, target discord.Destination) error {
+	value, err := json.Marshal(target)
+	if err != nil {
+		return err
+	}
+	count, err := sqlitedb.New(db.DB).SaveTableDiscord(ctx, sqlitedb.SaveTableDiscordParams{
+		ID: id[:], DiscordDestination: string(value),
+	})
+	if err != nil {
+		return err
+	}
+	if count == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
 func (db *SQLiteDatastore) GetTables(ctx context.Context) ([]server.Table, error) {
 	rows, err := sqlitedb.New(db.DB).GetTables(ctx)
 	if err != nil {

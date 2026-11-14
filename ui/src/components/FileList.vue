@@ -32,6 +32,7 @@
     <div v-else class="table-playback-layout" :class="{ 'is-mobile': smAndDown }">
       <aside v-if="!smAndDown" class="playing-sidebar" aria-label="Currently playing">
         <h2 class="now-playing-heading mb-2">Currently playing</h2>
+        <DiscordControl v-if="tables.current" :tableID="tables.current.id" />
         <PlayingTrackList :tracks="playingTracks" @play="handlePlay" @volume="handleVolume" @seek="handleSeek" />
       </aside>
       <template v-else>
@@ -51,6 +52,7 @@
                 @click="showNowPlaying = false" />
             </div>
             <div class="now-playing-drawer-tracks">
+              <DiscordControl v-if="tables.current" :tableID="tables.current.id" />
               <PlayingTrackList :tracks="playingTracks" @play="handlePlay" @volume="handleVolume" @seek="handleSeek" />
             </div>
           </v-card>
@@ -101,6 +103,7 @@ import { useTrackTypeStore } from '@/stores/trackTypes'
 import { useTableStore } from '@/stores/tables'
 import { useWebSocketStore } from '@/stores/websocket'
 import debounce from 'lodash.debounce'
+import { createTrackSync } from '@/composables/trackSync'
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useDisplay } from 'vuetify'
 import { useAudioStore } from '../stores/audio'
@@ -108,6 +111,7 @@ import AudioControls from './AudioControls.vue'
 import SortableTrack from './SortableTrack.vue'
 import AudioPlayer from './AudioPlayer.vue'
 import PlayingTrackList from './PlayingTrackList.vue'
+import DiscordControl from './DiscordControl.vue'
 
 const fileStore = useFileStore()
 const audioStore = useAudioStore()
@@ -219,6 +223,7 @@ function announceMove(name: string, index: number) {
 }
 
 async function deleteFile(file: Track, expectedTableCount: number | null) {
+  trackSync.remove(file.id)
   if (props.library) {
     if (expectedTableCount === null) throw new Error('Missing track usage count')
     await fileStore.deleteFile(file.id, expectedTableCount)
@@ -229,9 +234,7 @@ async function deleteFile(file: Track, expectedTableCount: number | null) {
   audioStore.removeTrack(file.id)
 }
 
-const debouncedSendMessage = debounce((method: string, payload: unknown) => {
-  wsStore.sendMessage(method, payload)
-}, 100)
+const trackSync = createTrackSync((method, payload) => wsStore.sendMessage(method, payload))
 
 function libraryRowProps({ item }: { item: Track }) {
   return {
@@ -263,6 +266,7 @@ const handlePlay = (fileID: string) => {
   const state = audioStore.tracks[fileID]
   if (!state) return
 
+  trackSync.flush()
   const newState = {
     isPlaying: !state.isPlaying,
     trackType: trackType.name,
@@ -297,9 +301,9 @@ const handlePlay = (fileID: string) => {
       state,
       { volume: state.volume * audioStore.mixMasterVolume / 100 },
     )
-    debouncedSendMessage('syncTrack', { ...stateToSend })
+    trackSync.send({ ...stateToSend })
   } else {
-    debouncedSendMessage('syncTrack', { fileID: fileID, ...newState })
+    trackSync.send({ fileID: fileID, ...newState })
   }
 }
 
@@ -332,6 +336,7 @@ function handleSettings(fileID: string, playback: PlaybackSettings) {
   const currentTime = Math.max(playback.startTime, Math.min(state.currentTime, playback.endTime ?? Infinity))
   audioStore.updateTrackState(fileID, { playback, currentTime })
   if (!props.library && wsStore.isConnected) {
+    trackSync.flush()
     wsStore.sendMessage('syncTrack', {
       ...audioStore.tracks[fileID], volume: state.volume * audioStore.mixMasterVolume / 100,
     })
@@ -341,14 +346,14 @@ function handleSettings(fileID: string, playback: PlaybackSettings) {
 const handleVolume = (fileID: string, volume: number) => {
   audioStore.updateTrackState(fileID, { volume })
   if (audioStore.tracks[fileID]?.isPlaying) {
-    debouncedSendMessage('syncTrack', { fileID, volume: volume * audioStore.mixMasterVolume / 100 })
+    trackSync.send({ fileID, volume: volume * audioStore.mixMasterVolume / 100 })
   }
 }
 
 const handleSeek = (fileID: string, time: number) => {
   audioStore.updateTrackState(fileID, { currentTime: time })
   if (!props.library && audioStore.tracks[fileID]?.isPlaying) {
-    debouncedSendMessage('syncTrack', { fileID, currentTime: time })
+    trackSync.send({ fileID, currentTime: time })
   }
 }
 
@@ -369,7 +374,7 @@ watch(() => audioStore.mixMasterVolume, () => {
 
 onUnmounted(() => {
   if (props.library) audioStore.clearTracks()
-  debouncedSendMessage.cancel()
+  trackSync.cancel()
   updateAllTrackVolumes.cancel()
 })
 </script>

@@ -19,6 +19,15 @@ type Hub struct {
 	unregister chan *Client
 	logger     *slog.Logger
 	handlers   map[string]HandlerFunc
+	mixer      Mixer
+}
+
+type Mixer interface {
+	Update(tableID string, payload json.RawMessage) error
+	Sync(tableID string, payload json.RawMessage) error
+	Volumes(tableID string, payload json.RawMessage) error
+	CloseTable(tableID string)
+	RemoveTrack(tableID, trackID string)
 }
 
 func NewHub(logger *slog.Logger) *Hub {
@@ -36,8 +45,15 @@ func NewHub(logger *slog.Logger) *Hub {
 	hub.HandleFunc("syncRequest", hub.handleSyncRequest)
 	hub.HandleFunc("syncAll", hub.handleSyncAll)
 	hub.HandleFunc("syncTrack", hub.handleSyncTrack)
+	hub.HandleFunc("mixSync", hub.handleMixSync)
+	hub.HandleFunc("mixVolumes", hub.handleMixVolumes)
 
 	return hub
+}
+
+// SetMixer installs the optional consumer before the hub accepts connections.
+func (h *Hub) SetMixer(mixer Mixer) {
+	h.mixer = mixer
 }
 
 func (h *Hub) Run() {
@@ -50,9 +66,7 @@ func (h *Hub) Run() {
 		case client := <-h.unregister:
 			h.clientsMu.Lock()
 			if _, ok := h.clients[client]; ok {
-				delete(h.clients, client)
-				client.closed = true
-				close(client.send)
+				h.dropClient(client)
 			}
 			h.clientsMu.Unlock()
 		case message := <-h.broadcast:
@@ -61,9 +75,7 @@ func (h *Hub) Run() {
 				select {
 				case client.send <- message:
 				default:
-					client.closed = true
-					close(client.send)
-					delete(h.clients, client)
+					h.dropClient(client)
 				}
 			}
 			h.clientsMu.Unlock()
@@ -85,6 +97,11 @@ func (h *Hub) Register(conn *websocket.Conn, token *auth.Token) {
 		"role", token.Role,
 	)
 	h.register <- client
+	if h.mixer != nil && token.Role == auth.RoleGM {
+		if err := client.Send(Message{Method: "mixerReady", Payload: json.RawMessage(`{}`)}); err != nil {
+			h.logger.Error("failed to announce mixer", "error", err)
+		}
+	}
 
 	go client.WritePump()
 	go client.ReadPump()
@@ -128,6 +145,9 @@ func ToTable(tableID string) BroadcastOption {
 }
 
 func (h *Hub) CloseTable(tableID string) {
+	if h.mixer != nil {
+		h.mixer.CloseTable(tableID)
+	}
 	h.Broadcast(Message{Method: "tableDeleted", Payload: json.RawMessage(`{}`)}, ToTable(tableID))
 	h.clientsMu.Lock()
 	defer h.clientsMu.Unlock()
@@ -141,6 +161,9 @@ func (h *Hub) CloseTable(tableID string) {
 }
 
 func (h *Hub) RemoveTrack(tableID, trackID string) {
+	if h.mixer != nil {
+		h.mixer.RemoveTrack(tableID, trackID)
+	}
 	payload, _ := json.Marshal(struct {
 		FileID string `json:"fileID"`
 	}{FileID: trackID})
@@ -178,15 +201,28 @@ func (h *Hub) Broadcast(msg Message, opts ...BroadcastOption) error {
 			select {
 			case client.send <- jsonMsg:
 			default:
-				client.closed = true
-				close(client.send)
-				delete(h.clients, client)
+				h.dropClient(client)
 			}
 		}
 	}
 	h.clientsMu.Unlock()
 
 	return nil
+}
+
+func (h *Hub) dropClient(client *Client) {
+	client.closed = true
+	close(client.send)
+	delete(h.clients, client)
+	if h.mixer == nil || client.Token.Role != auth.RoleGM {
+		return
+	}
+	for other := range h.clients {
+		if other.Token.Role == auth.RoleGM && other.Token.TableID == client.Token.TableID {
+			return
+		}
+	}
+	h.mixer.CloseTable(client.Token.TableID)
 }
 
 // ForEachClient allows iterating over clients with a filter

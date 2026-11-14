@@ -2,6 +2,7 @@ package websocket
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -13,6 +14,102 @@ import (
 	gorilla "github.com/gorilla/websocket"
 	"github.com/terrabitz/rpg-audio-streamer/internal/auth"
 )
+
+func TestMixerReceivesOnlyTableScopedGMCommands(t *testing.T) {
+	hub, clients := testHub()
+	mix := &testMixer{}
+	hub.SetMixer(mix)
+	clients["gm"].Token.TableID = "friday"
+	clients["player"].Token.TableID = "friday"
+	send := func(sender, method, payload string) {
+		t.Helper()
+		input, err := json.Marshal(Message{Method: method, Payload: json.RawMessage(payload)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		hub.route(input, clients[sender])
+	}
+	send("player", "mixSync", `{"tracks":[]}`)
+	send("player", "mixVolumes", `{"typeVolumes":{}}`)
+	send("player", "syncTrack", `{"fileID":"rain"}`)
+	send("gm", "syncAll", `{"tracks":[],"to":"player"}`)
+	if len(mix.calls) != 0 {
+		t.Fatal("player or targeted listener sync changed mixer")
+	}
+	send("gm", "syncTrack", `{"fileID":"rain","volume":0}`)
+	send("gm", "mixVolumes", `{"typeVolumes":{"Music":0}}`)
+	send("gm", "mixSync", `{"tracks":[]}`)
+	send("gm", "syncAll", `{"tracks":[]}`)
+	want := []string{"update:friday", "volumes:friday", "sync:friday", "sync:friday"}
+	if len(mix.calls) != len(want) {
+		t.Fatalf("calls: %v", mix.calls)
+	}
+	for i := range want {
+		if mix.calls[i] != want[i] {
+			t.Fatalf("calls: %v", mix.calls)
+		}
+	}
+	mix.err = errors.New("invalid seek")
+	send("gm", "syncTrack", `{"fileID":"rain","currentTime":-1}`)
+	var last Message
+	for len(clients["gm"].send) > 0 {
+		if err := json.Unmarshal(<-clients["gm"].send, &last); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if last.Method != "mixerError" {
+		t.Fatalf("failed command was not reported: %+v", last)
+	}
+	hub.RemoveTrack("friday", "rain")
+	hub.CloseTable("friday")
+	if got := mix.calls[len(mix.calls)-2:]; got[0] != "remove:friday:rain" || got[1] != "close:friday" {
+		t.Fatalf("cleanup: %v", got)
+	}
+}
+
+func TestMixerStopsOnlyAfterLastGMLeaves(t *testing.T) {
+	hub, clients := testHub()
+	mix := &testMixer{}
+	hub.SetMixer(mix)
+	clients["gm"].Token.TableID = "friday"
+	clients["otherGM"].Token.TableID = "friday"
+	hub.clientsMu.Lock()
+	hub.dropClient(clients["gm"])
+	hub.clientsMu.Unlock()
+	if len(mix.calls) != 0 {
+		t.Fatal("one GM leaving stopped another GM's mix")
+	}
+	hub.clientsMu.Lock()
+	hub.dropClient(clients["otherGM"])
+	hub.clientsMu.Unlock()
+	if len(mix.calls) != 1 || mix.calls[0] != "close:friday" {
+		t.Fatalf("last GM cleanup: %v", mix.calls)
+	}
+}
+
+type testMixer struct {
+	calls []string
+	err   error
+}
+
+func (m *testMixer) Update(tableID string, _ json.RawMessage) error {
+	m.calls = append(m.calls, "update:"+tableID)
+	return m.err
+}
+func (m *testMixer) Sync(tableID string, _ json.RawMessage) error {
+	m.calls = append(m.calls, "sync:"+tableID)
+	return m.err
+}
+func (m *testMixer) Volumes(tableID string, _ json.RawMessage) error {
+	m.calls = append(m.calls, "volumes:"+tableID)
+	return m.err
+}
+func (m *testMixer) RemoveTrack(tableID, fileID string) {
+	m.calls = append(m.calls, "remove:"+tableID+":"+fileID)
+}
+func (m *testMixer) CloseTable(tableID string) {
+	m.calls = append(m.calls, "close:"+tableID)
+}
 
 func TestMessageRouting(t *testing.T) {
 	for _, tc := range []struct {

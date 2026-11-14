@@ -4,6 +4,33 @@ export type ClientOptions = {
     baseUrl: `${string}://${string}` | (string & {});
 };
 
+export type MixerStatus = {
+    /**
+     * Number of accepted mixer commands and removals in this session.
+     */
+    revision: number;
+    framesRendered: number;
+    /**
+     * Absolute peak of the latest rendered stereo PCM block.
+     */
+    peak: number;
+    tracks: Array<{
+        fileID: string;
+        /**
+         * Absolute source position in seconds.
+         */
+        currentTime: number;
+        /**
+         * Requested playback state; pause fades may still be audible.
+         */
+        isPlaying: boolean;
+        /**
+         * Target track/master/type gain, not the current envelope.
+         */
+        gain: number;
+    }>;
+};
+
 export type Table = {
     id: string;
     name: string;
@@ -120,6 +147,238 @@ export type TrackType = {
     isRepeating: boolean;
     allowSimultaneousPlay: boolean;
 };
+
+export type DiscordStatus = {
+    enabled: boolean;
+    state: 'disconnected' | 'connecting' | 'connected' | 'error';
+    guildID?: string;
+    channelID?: string;
+    guildName?: string;
+    channelName?: string;
+    error?: string;
+};
+
+export type DiscordDestination = {
+    guildID: string;
+    channelID: string;
+};
+
+export type DiscordChoice = {
+    id: string;
+    name: string;
+};
+
+export type DiscordSetup = {
+    installURL: string;
+    guilds: Array<DiscordChoice>;
+};
+
+export type GetApiV1DiscordSetupData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/discord/setup';
+};
+
+export type GetApiV1DiscordSetupErrors = {
+    /**
+     * GM authentication required
+     */
+    401: unknown;
+    /**
+     * Discord disabled
+     */
+    404: unknown;
+    /**
+     * Discord discovery failed
+     */
+    502: unknown;
+};
+
+export type GetApiV1DiscordSetupResponses = {
+    /**
+     * Discord installation and server choices
+     */
+    200: DiscordSetup;
+};
+
+export type GetApiV1DiscordSetupResponse = GetApiV1DiscordSetupResponses[keyof GetApiV1DiscordSetupResponses];
+
+export type GetApiV1DiscordServersByGuildIdChannelsData = {
+    body?: never;
+    path: {
+        guildID: string;
+    };
+    query?: never;
+    url: '/api/v1/discord/servers/{guildID}/channels';
+};
+
+export type GetApiV1DiscordServersByGuildIdChannelsErrors = {
+    /**
+     * GM authentication required
+     */
+    401: unknown;
+    /**
+     * Discord disabled
+     */
+    404: unknown;
+    /**
+     * Discord channel discovery failed
+     */
+    502: unknown;
+};
+
+export type GetApiV1DiscordServersByGuildIdChannelsResponses = {
+    /**
+     * Voice channel choices
+     */
+    200: Array<DiscordChoice>;
+};
+
+export type GetApiV1DiscordServersByGuildIdChannelsResponse = GetApiV1DiscordServersByGuildIdChannelsResponses[keyof GetApiV1DiscordServersByGuildIdChannelsResponses];
+
+export type DeleteApiV1TablesByTableIdDiscordData = {
+    body?: never;
+    path: {
+        tableID: string;
+    };
+    query?: never;
+    url: '/api/v1/tables/{tableID}/discord';
+};
+
+export type DeleteApiV1TablesByTableIdDiscordErrors = {
+    /**
+     * GM authentication required
+     */
+    401: unknown;
+    /**
+     * Discord disabled or table not found
+     */
+    404: unknown;
+    /**
+     * Bot reserved by another session
+     */
+    409: unknown;
+    /**
+     * Disconnect failed
+     */
+    502: unknown;
+};
+
+export type DeleteApiV1TablesByTableIdDiscordResponses = {
+    /**
+     * Bot disconnected from voice
+     */
+    200: DiscordStatus;
+};
+
+export type DeleteApiV1TablesByTableIdDiscordResponse = DeleteApiV1TablesByTableIdDiscordResponses[keyof DeleteApiV1TablesByTableIdDiscordResponses];
+
+export type GetApiV1TablesByTableIdDiscordData = {
+    body?: never;
+    path: {
+        tableID: string;
+    };
+    query?: never;
+    url: '/api/v1/tables/{tableID}/discord';
+};
+
+export type GetApiV1TablesByTableIdDiscordErrors = {
+    /**
+     * GM authentication required
+     */
+    401: unknown;
+    /**
+     * Table not found
+     */
+    404: unknown;
+};
+
+export type GetApiV1TablesByTableIdDiscordResponses = {
+    /**
+     * Disabled, connecting, connected, disconnected, or failed connection
+     */
+    200: DiscordStatus;
+};
+
+export type GetApiV1TablesByTableIdDiscordResponse = GetApiV1TablesByTableIdDiscordResponses[keyof GetApiV1TablesByTableIdDiscordResponses];
+
+export type PostApiV1TablesByTableIdDiscordData = {
+    /**
+     * Omit to reconnect to this table's saved destination
+     */
+    body?: DiscordDestination;
+    path: {
+        tableID: string;
+    };
+    query?: never;
+    url: '/api/v1/tables/{tableID}/discord';
+};
+
+export type PostApiV1TablesByTableIdDiscordErrors = {
+    /**
+     * Invalid selection or no saved destination
+     */
+    400: unknown;
+    /**
+     * GM authentication required
+     */
+    401: unknown;
+    /**
+     * Discord disabled or table not found
+     */
+    404: unknown;
+    /**
+     * Mix not ready or bot already connected to a table in this server
+     */
+    409: unknown;
+    /**
+     * Unable to persist destination; connection cancelled
+     */
+    500: unknown;
+    /**
+     * Discord voice connection failed
+     */
+    502: unknown;
+};
+
+export type PostApiV1TablesByTableIdDiscordResponses = {
+    /**
+     * Bot connected to voice
+     */
+    200: DiscordStatus;
+};
+
+export type PostApiV1TablesByTableIdDiscordResponse = PostApiV1TablesByTableIdDiscordResponses[keyof PostApiV1TablesByTableIdDiscordResponses];
+
+export type GetApiV1TablesByTableIdMixData = {
+    body?: never;
+    path: {
+        tableID: string;
+    };
+    query?: never;
+    url: '/api/v1/tables/{tableID}/mix';
+};
+
+export type GetApiV1TablesByTableIdMixErrors = {
+    /**
+     * GM authentication required
+     */
+    401: unknown;
+    /**
+     * Experimental mixer disabled or table not found
+     */
+    404: unknown;
+};
+
+export type GetApiV1TablesByTableIdMixResponses = {
+    /**
+     * Current PCM rendering and command state
+     */
+    200: MixerStatus;
+};
+
+export type GetApiV1TablesByTableIdMixResponse = GetApiV1TablesByTableIdMixResponses[keyof GetApiV1TablesByTableIdMixResponses];
 
 export type GetApiV1TablesByTableIdSettingsData = {
     body?: never;

@@ -8,6 +8,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import { fileURLToPath } from 'node:url'
+import { discordEnvironment } from './discord-env.mjs'
 
 const root = fileURLToPath(new URL('../', import.meta.url))
 // Public local-development credentials, never production credentials.
@@ -45,6 +46,7 @@ async function main() {
   }
   const require = createRequire(new URL('../ui/package.json', import.meta.url))
   require.resolve('vite')
+  const discord = discordEnvironment(root, process.env.DEV_DISCORD === '1')
   controller.signal.throwIfAborted()
   scratch = await mkdtemp(join(tmpdir(), 'rpg-audio-dev-'))
   console.log(`Dev instance storage: ${scratch}`)
@@ -84,8 +86,11 @@ async function main() {
       'pretty',
       '--log-level',
       'warn',
+      ...(discord.DISCORD_BOT_TOKEN ? ['--discord-worker', join(root, 'discord/stream.mjs')] : []),
     ],
     scratch,
+    false,
+    discord,
   )
   api.done.then(() => {
     if (!controller.signal.aborted) fail(new Error('Dev API exited unexpectedly'))
@@ -298,7 +303,7 @@ async function run(command, args, cwd) {
   if (code !== 0) throw new Error(`${command} failed (${signal ?? code})`)
 }
 
-function start(command, args, cwd, ipc = false) {
+function start(command, args, cwd, ipc = false, overrides = {}) {
   controller.signal.throwIfAborted()
   const env = {
     ...process.env,
@@ -330,10 +335,13 @@ function start(command, args, cwd, ipc = false) {
   ]) {
     delete env[name]
   }
+  for (const name of Object.keys(env)) {
+    if (name.startsWith('DISCORD_') || name.startsWith('INTEGRATION_TEST_DISCORD_')) delete env[name]
+  }
   const child = spawn(command, args, {
     cwd,
     stdio: ipc ? ['ignore', 'inherit', 'inherit', 'ipc'] : 'inherit',
-    env,
+    env: { ...env, ...overrides },
   })
   children.add(child)
   child.done = once(child, 'exit').finally(() => children.delete(child))

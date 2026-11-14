@@ -23,6 +23,12 @@ WHERE id = sqlc.arg(id) RETURNING settings;
 -- name: DeleteTable :execrows
 DELETE FROM game_tables WHERE id = ?;
 
+-- name: GetTableDiscord :one
+SELECT discord_destination FROM game_tables WHERE id = ?;
+
+-- name: SaveTableDiscord :execrows
+UPDATE game_tables SET discord_destination = ? WHERE id = ?;
+
 -- name: GetTableTracks :many
 SELECT tracks.* FROM tracks
 JOIN table_tracks ON tracks.id = table_tracks.track_id

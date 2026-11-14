@@ -22,6 +22,11 @@ flowchart LR
   API --> FFmpeg[FFmpeg conversion]
   FFmpeg --> Uploads[HLS files on disk]
   API --> Uploads
+  Hub -.->|Experimental GM commands| Mix[Live table mixer]
+  Mix --> PCM[Standalone PCM core]
+  Mix -->|Decode stored HLS| FFmpeg
+  Mix -.->|Optional PCM subscription| Voice[Node Discord voice worker]
+  Voice -->|DAVE-encrypted Opus| Discord[Table-selected Discord voice channel]
 ```
 
 `main.go` composes configuration, logging, embedded migrations, the SQLite
@@ -51,7 +56,12 @@ durations. This exercises normal validation, conversion, and persistence rather 
 database fixtures directly. Vite uses the isolated API proxy and ignores
 developer dotenv files; the API runs from the temporary directory with
 explicit configuration. The launcher owns shutdown and removes its temporary
-state on normal termination or startup failure. Uncatchable termination
+state on normal termination or startup failure. Discord is enabled in a seeded
+preview only when explicitly requested through `DEV_DISCORD=1`; an allowlisted
+loader reads its configuration from the worktree environment or `.env`, and
+the API automatically enables the live mixer. Ordinary previews and browser
+tests strip ambient Discord credentials before starting the API.
+Uncatchable termination
 cannot guarantee cleanup. Procedures live in the local-dev skill.
 
 ## Backend
@@ -61,12 +71,16 @@ cannot guarantee cleanup. Procedures live in the local-dev skill.
 | `internal/auth` | Argon2id credential checks, signed JWTs, GM/player roles |
 | `internal/server` | HTTP handlers, cookies/middleware, table invite resolution, track/table contracts, datastore and hub interfaces |
 | `internal/middlewares` | API request logging and CORS |
+| `internal/mixer` | Standalone deterministic stereo PCM mixing, transport, loop overlap, and gain envelopes |
+| `internal/livemixer` | Serialized live commands, table-scoped PCM engines, rendering lifecycle, and diagnostics |
+| `internal/discord` | Bot installation/server discovery, table-bound voice connections, per-server reservations, bounded PCM transport, and worker lifecycle |
+| `discord/` | DAVE-compatible Discord voice worker, PCM conversion, and Opus transport |
+| `e2e/` | Opt-in live Discord suite: full-app harness, Go listener bot, Opus decoding, and tone analysis |
 | `internal/sqlitedatastore` | Domain-to-SQLite mapping, migrations, context-aware datastore implementation |
 | `internal/sqlitedatastore/sqlitedb` | Generated sqlc models and query implementations |
 | `internal/websocket` | Connected clients, message dispatch, recipient filters, read/write pumps |
 
-There is not a separate Go domain package today. Authentication rules live
-in `auth`; synchronization authorization/routing lives in `websocket`; the
+Authentication rules live in `auth`; synchronization authorization/routing lives in `websocket`; the
 track/table models and store interfaces live in `server`. The datastore implements
 those interfaces, which keeps HTTP handlers independent of SQLite details.
 `Server.Handler()` assembles the production HTTP pipeline independently of
@@ -324,6 +338,196 @@ playback timers; queued media events cannot recreate deleted track state.
 Playback is ephemeral browser state, not persisted in SQLite or recovered by
 the server after every GM disconnect. Opening a table restores its saved mix
 and layout with every track stopped at the beginning.
+
+### Standalone PCM mixer
+
+`internal/mixer` is an offline mixing core, not part of the HTTP, WebSocket,
+or browser playback path. It accepts decoded, normalized stereo PCM frames at
+one caller-selected sample rate. `Add` copies each clip and leaves it paused.
+`Play`, `Pause`, `Seek`, `SetRegion`, `SetRepeating`, `SetGain`, and `Remove`
+control tracks; `State` exposes their absolute frame position and requested
+playing state. `Render` overwrites a caller-owned output buffer and advances
+the mix by that many frames. No device, codec, network connection, clock,
+timer, or goroutine is created. One owner must serialize renders and controls.
+
+Regions use absolute frame offsets with an exclusive end; seeks may also land
+exactly on the end, resolving completion or looping when playback renders.
+A caller resolves an unset end to the decoded clip length
+and an unset loop-back to the beginning before setting a region. Completion
+stops non-repeating tracks and resets their position to the beginning.
+Repeating tracks overlap the outgoing tail with an incoming cursor at the
+loop-back point using complementary linear gains. The overlap length is
+`min(2 * sampleRate, (end - loopBack) / 3, end - start)`, rounded down to
+whole frames. The incoming cursor advances during the overlap and continues
+from that position afterward, so an intro before the loop-back is not replayed.
+Sub-frame overlaps become hard loops. A late seek shortens the overlap to
+the remaining tail; seeking or changing a region cancels the existing overlap.
+
+Repeating play/pause transitions use independent two-second linear envelopes.
+Pause cancels loop overlap, lets the outgoing cursor advance while fading,
+then freezes it; reaching the region end during fade-out stops and resets it
+rather than starting another loop. Non-repeating play/pause is immediate.
+`SetGain` takes an effective track/master/type product in `[0, 1]` and ramps it
+over two seconds, including while paused. Interrupted ramps start at the
+current interpolated gain. Duplicate play/pause, gain, repeat, and region
+settings do not restart ramps or loops.
+Tracks are summed in insertion order and only the final stereo output is
+saturated to `[-1, 1]`; there is no normalization or peak limiter.
+
+Tests use small known PCM arrays and exact sample positions to assert audible
+output, completion, crossfade boundaries, interruption, and silence. Rendering
+the same command timeline with single, irregular, or whole buffers produces
+the same samples and track state, including empty renders.
+The core stores complete decoded clips in memory (about 44 MiB per minute at
+48 kHz with float64 stereo samples). File decoding/resampling, bounded-memory
+source buffering, playback-state adapters, real-time scheduling, encoding,
+and external audio delivery are outside this package.
+
+### Experimental live server mixing
+
+The `--experimental-mixer` / `EXPERIMENTAL_MIXER` server flag enables an
+isolated `internal/livemixer` service inside the Go API process. It is disabled
+by default. Browser HLS playback and player synchronization remain the normal
+listening path; the experimental service does not replace them. Its rendered
+audio is available to the optional Discord transport.
+
+For an enabled service, the hub sends `mixerReady` to each authenticated GM
+connection. The GM answers with `mixSync`: a full snapshot of playing tracks
+and the current type-volume map. This happens on reconnect as well as initial
+connection. Existing `syncTrack` messages feed partial play/pause, seek,
+volume, repeating, and live playback-region changes into the mixer.
+Their volume already includes the GM master multiplier; the service applies
+the separately supplied type multiplier and caps effective gain at unity,
+matching browser per-track gain clamping. The GM sends `mixVolumes` for live
+type-volume changes. Master changes use the existing per-track volume updates.
+Paused seeks and volumes are supplied by the full track state on resume.
+Frontend partial updates coalesce by track ID, preserving independent fields
+and updates to different tracks in the same debounce window. Immediate
+exclusivity and region changes flush queued commands first.
+
+The hub derives table identity and GM authorization from the authenticated
+socket, never the command payload. Targeted player `syncAll` responses do not
+mutate the mixer; untargeted full syncs replace it, including the empty snapshot
+on leaving a table. Mixer-only commands are ignored when disabled and never
+forwarded to players. Successful commands receive `mixerAck`; failures receive
+`mixerError` and are logged with table and command context. The GM displays
+errors without stopping browser playback. A successful reconnect snapshot
+clears the error. Normal player broadcasts happen before mixer processing,
+so warming a decoder does not delay that broadcast.
+
+`internal/server` supplies the PCM source. It checks the track's association
+with the socket's table, loads track/type metadata through the datastore, and
+decodes the stored HLS playlist through FFmpeg to 48 kHz stereo float PCM.
+Each track is decoded on its first command in a session and cached for
+subsequent commands. Decoding has a ten-second deadline and a 64 MiB raw
+output limit; errors and oversized clips fail explicitly. PCM samples are
+clamped to unity to accommodate AAC decoding overshoot. Full clips and core
+copies are retained in memory, so this is not a bounded-memory streaming
+decoder.
+
+Commands are serialized while a separate lock protects PCM rendering.
+Validation and decoding precede mutation, so invalid patches and snapshots
+do not partially alter a mix, and decoding does not hold the render lock.
+The service renders 960-frame blocks every 20 ms with a cancellable loop.
+The latest block's peak, cumulative frame count, command revision, and track
+positions/target gains are available at the GM-only
+`GET /api/v1/tables/{tableID}/mix` diagnostic endpoint. Disabled mixing or an
+unknown table returns 404.
+
+Rendered PCM blocks are published to internal subscriptions for Discord
+streaming. Subscribing observes the existing timeline and never starts or
+advances playback. Each subscriber has a two-block buffer and is closed when
+it falls behind rather than delaying rendering. Closing the table session or
+stopping the renderer closes its subscriptions. GM browser audio continues
+through ordinary HLS playback; the server mix is audible through Discord.
+
+Track disassociation removes the track from its table's mix; library deletion
+removes it from all mixes. Table deletion and loss of its last GM connection
+discard the session. Closing a session does not wait for decoding, and an
+in-flight decode cannot recreate it. Multiple GMs share a table's mixer with
+last-accepted-command semantics. Mixer state is ephemeral, not stored in SQLite.
+Domain tests assert rendered samples after partial updates and snapshots,
+table isolation, rejection without mutation, and nonblocking rendering/closure.
+The opt-in full-app browser journey drives real GM controls and checks the
+resulting rendered PCM telemetry, seeks, loop-back transitions, and cleanup.
+
+### Optional Discord voice streaming
+
+Configuring `DISCORD_BOT_TOKEN` enables Discord setup and the live mixer.
+With no token, the UI hides all Discord controls.
+The server uses its configured bot identity; the GM's existing app login
+authorizes controls. This path does not link a Discord user account or use
+OAuth client secrets. `DISCORD_WORKER` selects the Node worker path and defaults
+to `discord/stream.mjs` relative to the server working directory. The Docker
+image includes Node and the locked worker dependencies, including a
+platform-matched native DAVE library.
+
+Each table's Currently playing sidebar (or mobile drawer) has a Connect to
+Discord button. Its dialog loads `GET /api/v1/discord/setup`, which obtains
+the application ID and the bot's installed servers from Discord. An
+installation link opens Discord's authorization page with only bot scope and
+View Channel, Connect, and Speak permissions. The user chooses an eligible
+server in Discord, approves installation, returns to the app, and refreshes
+the server list. No callback URL or OAuth client secret is needed. The app's
+single configured GM account is authorized to select any server that has
+installed this configured bot.
+
+The dialog prompts for a server and a regular voice channel. The GM-only
+`GET /api/v1/discord/servers/{guildID}/channels` endpoint lists channels.
+`POST /api/v1/tables/{tableID}/discord` accepts the selected server/channel
+IDs, verifies their association through Discord, connects, and saves the
+destination and display names in that table's SQLite `discord_destination`
+column. A failed save cancels the connection. An omitted request body
+reconnects the saved destination. `GET` returns state and the saved
+destination; `DELETE` disconnects only this table without forgetting it.
+The composable prevents duplicate commands, discards stale status/channel
+responses, and displays failures.
+
+`internal/discord` reserves one voice connection per Discord server. Tables
+can stream concurrently in different servers, but another table in the same
+server receives a conflict and cannot take over the connection. Each table
+owns a separate Node worker. Voice startup does not hold the rendering lock;
+the PCM subscription is created only once voice is ready, avoiding a full
+subscriber queue during the handshake. PCM travels over a child-process pipe
+as 48 kHz stereo float samples. A blocked write has a two-second deadline and
+cancels the worker rather than stalling indefinitely.
+
+The worker uses `discord.js` and `@discordjs/voice` with DAVE encryption
+enabled and only Guilds/GuildVoiceStates intents. It validates the configured
+channel's server, regular-voice type, and effective bot permissions before
+joining. `PCMTransform` validates stereo frames across arbitrary pipe chunks
+and converts float samples to signed 16-bit PCM. The voice library encodes
+20 ms Opus frames and sends them over Discord's encrypted voice connection.
+The stream bot joins self-deafened and does not receive other participants'
+audio. Bot credentials reach only the worker environment, not process
+arguments, browser payloads, or logs.
+
+Disconnecting, closing the table mix, loss of its last GM, or renderer shutdown
+ends the subscription and voice worker. Worker failures and slow PCM consumers
+become observable error states. Startup has a
+20-second deadline, and worker cancellation sends SIGTERM with a bounded
+forced-exit fallback. The first successful mixer sync of a GM table session
+attempts the saved destination once. Repeated syncs and status polling do not
+reconnect a manually disconnected bot. Leaving a table or closing its last GM
+tab cancels pending reconnection and disconnects the worker; returning creates
+a new session and attempts reconnection. Multiple GM tabs keep the bot active
+until the last one closes. A lost network connection is detected by the
+WebSocket heartbeat. Reconnection conflicts and failures are visible and
+require an explicit retry or destination change within that session.
+
+The opt-in live Discord suite in `e2e/` is written in Go. It builds and starts
+the real server, drives the GM API and mixer WebSocket, and joins a second bot
+through `disgo` with pure-Go DAVE. The listener subscribes only to the
+streamer, decrypts and decodes its received Opus through FFmpeg, and checks
+both generated tones, live volume changes, pause/resume, and departure. This
+verifies delivery through Discord rather than trusting sender-side telemetry.
+The listener defers DAVE group commits until its session is ready, so the
+streamer's DAVE implementation always admits it by Welcome; the two libraries
+otherwise race to commit and reject each other's Welcome. Audio receiving is
+supported by the selected library but is not a stable, documented Discord API
+contract; live tests are therefore separate from deterministic transport
+tests. Playwright journeys separately check installation-link presentation,
+server/channel selection, disconnect, and automatic reconnect on return.
 
 ## Release pipeline
 

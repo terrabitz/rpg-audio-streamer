@@ -24,6 +24,8 @@ Vue tooling.
 | `make test` | Go race detection, SQLite integration, and frontend domain coverage |
 | `make test-go` | All Go tests; enforce 80% internal statement coverage |
 | `make test-ui` | Vitest domain coverage; enforce 80% statements, branches, functions, and lines |
+| `make test-discord` | PCM conversion, real Opus round trip, and isolated credential loading |
+| `make test-e2e-discord` | Opt-in Go audio/lifecycle suite, then browser setup and reconnect journeys |
 | `make test-e2e` | Production UI build and real full-app Chromium journeys |
 | `make test-dev` | Seeded local dev startup, isolation, media fixtures, and cleanup |
 | `cd ui && npm run build` | Vue/TypeScript checking, including tests, and production bundle |
@@ -33,6 +35,57 @@ For focused iteration, use `go test ./internal/websocket -run TestMessageRouting
 `cd ui && npm run test:unit -- run src/stores/__tests__/audio.test.ts`, or
 `cd ui && npm run test:e2e -- --grep 'invited player'`. Run the affected coverage
 gate after focused checks. No documentation-only validation is needed.
+
+The opt-in server mixer journeys use
+`cd ui && E2E_EXPERIMENTAL_MIXER=1 npm run test:e2e -- --grep 'experimental server mix|browser playback without a server mix'`.
+The ordinary browser suite keeps mixing disabled; CI runs these journeys separately
+with the flag enabled. Assert rendered PCM telemetry as well as GM control state.
+Mixer domain tests render known PCM buffers without sleeps; live-service tests
+own the render loop's context and bound waits for decoding and cancellation.
+
+### Live Discord tests
+
+Install the worker dependencies with `npm ci --prefix discord`. Run
+`make test-e2e-discord` only against an isolated, regular voice channel with
+two distinct bot accounts. This opt-in run reads the worktree `.env` or
+environment through an explicit allowlist:
+
+- `INTEGRATION_TEST_DISCORD_SERVER_ID`
+- `INTEGRATION_TEST_DISCORD_VOICE_CHANNEL_ID`
+- `INTEGRATION_TEST_DISCORD_BOT_STREAMER_TOKEN`
+- `INTEGRATION_TEST_DISCORD_BOT_STREAMER_CLIENT_ID`
+- `INTEGRATION_TEST_DISCORD_BOT_LISTENER_TOKEN`
+
+For browser journeys, runtime `DISCORD_BOT_TOKEN` can override the streamer's
+test token. Server/channel IDs are fixture inputs for explicit UI selection,
+not server configuration. The Go suite reads only the list above and passes
+only the bot token to the server it starts. OAuth client secrets are not used. Never
+print tokens, embed them in URLs, or pass them through command arguments.
+The streamer needs View Channel, Connect, and Speak; the listener needs View
+Channel and Connect and joins with deafening disabled. Neither needs privileged
+Gateway intents.
+
+`TestDiscordStreamsServerMix` in `e2e/` (`E2E_DISCORD=1 go test ./e2e/ -run
+TestDiscord -v`) starts the real server, drives the GM API and mixer socket,
+and runs a Go listener bot in-process. The listener joins after the streamer
+connects, subscribes only to the configured streamer, decrypts and decodes
+received Opus with FFmpeg, and measures generated 440/880 Hz tones. Assertions
+use fresh observation windows and tolerance for lossy coding, not byte equality
+or a speaking indicator. Pause assertions accept decoded silence or packet
+inactivity and then require fresh audio on resume. It also closes and reopens
+the GM socket, verifies automatic reconnection with fresh audio, and checks
+the bot leaves when the last GM socket closes. Both connections are cleaned
+up on success and failure; server logs print only on failure. Do not run
+multiple copies against the same bots or while a local preview holds the
+streamer. The `e2e` package's offline signal, decoding, monitor, configuration,
+and DAVE tests run in ordinary `go test ./...` and need FFmpeg with libopus.
+Playwright covers the real installation link, server/channel selection, and
+disconnect, plus a separate return-to-table reconnect journey. Each uses its
+own table. Installation approval itself is interactive in Discord and is not
+automated; live bots must already be installed. Offline Go HTTP tests use a
+local fake Discord API for discovery, filtering, and failure handling.
+The manual `pr-checks` workflow exposes `discord_e2e`; its secret names match
+the list above. Live Discord tests never run automatically on pull requests.
 
 ## Coverage policy
 
@@ -92,7 +145,8 @@ ordinary development still defaults to port 8080.
 
 `ui/e2e/server.mjs` builds the real Go executable into a unique temporary
 directory, starts it with public test-only credentials, and removes its SQLite
-database, uploads, and executable after the child exits. No developer `.env`,
+database, uploads, and executable after the child exits. Except for the explicit
+live Discord configuration described above, no developer `.env`,
 database, uploads, or existing server is used. Do not point these tests at a
 production environment. Public fixture credentials are `e2e-gm` /
 `e2e-password`, with invite `e2e-invite`.

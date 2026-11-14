@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/terrabitz/rpg-audio-streamer/internal/discord"
 )
 
 type Store interface {
@@ -24,6 +25,8 @@ type Table struct {
 }
 
 type TableStore interface {
+	GetTableDiscord(context.Context, uuid.UUID) (*discord.Destination, error)
+	SaveTableDiscord(context.Context, uuid.UUID, discord.Destination) error
 	GetTables(context.Context) ([]Table, error)
 	GetTable(context.Context, uuid.UUID) (Table, error)
 	GetTableByInvite(context.Context, string) (Table, error)

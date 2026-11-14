@@ -46,6 +46,9 @@ test(
       new Set(types.map((type) => type.id)),
     )
     const table = await json(a, '/api/v1/tables/current', cookie)
+    assert.deepEqual(await json(a, `/api/v1/tables/${table.id}/discord`, cookie), {
+      enabled: false, state: 'disconnected',
+    })
     const settingsPath = `/api/v1/tables/${table.id}/settings`
     const defaults = { masterVolume: 100, typeVolumes: {}, trackVolumes: {}, trackOrder: [] }
     assert.deepEqual(await json(a, settingsPath, cookie), defaults)

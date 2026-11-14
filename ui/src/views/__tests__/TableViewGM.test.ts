@@ -4,7 +4,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import TableViewGM from '../TableViewGM.vue'
 import { useAudioStore } from '@/stores/audio'
 import { useTableStore } from '@/stores/tables'
-import { useWebSocketStore } from '@/stores/websocket'
+import { useWebSocketStore, type WebSocketMessage } from '@/stores/websocket'
 import type { TableSettings } from '@/client/apiClient'
 
 const api = vi.hoisted(() => ({ load: vi.fn(), save: vi.fn() }))
@@ -90,4 +90,60 @@ it('does not connect or overwrite a mix when loading fails or navigation superse
   await flushPromises()
   expect(useAudioStore().tableMix).toBeNull()
   expect(useWebSocketStore().connect).not.toHaveBeenCalled()
+})
+
+it('bootstraps the opt-in mixer, sends live type volumes, and surfaces mixer failures', async () => {
+  const ws = useWebSocketStore()
+  const send = vi.spyOn(ws, 'sendMessage').mockImplementation(() => {})
+  let handler!: (message: WebSocketMessage) => void
+  vi.spyOn(ws, 'addMessageHandler').mockImplementation(fn => { handler = fn })
+  ws.isConnected = true
+  const audio = useAudioStore()
+  const wrapper = shallowMount(TableViewGM, { global: { renderStubDefaultSlot: true } })
+  try {
+    await flushPromises()
+    audio.initTrack('forest', 'Forest', 'Music')
+    audio.updateTrackState('forest', { isPlaying: true, currentTime: 3, volume: 40 })
+    const receive = (method: string, payload: unknown = {}) => {
+      handler({ method, payload })
+    }
+    receive('mixerReady')
+    await flushPromises()
+    expect(send).toHaveBeenCalledWith('mixSync', {
+      tracks: [expect.objectContaining({ fileID: 'forest', currentTime: 3, volume: 18 })],
+      typeVolumes: { Music: 0 },
+    })
+    audio.setTypeVolume('Music', 25)
+    await flushPromises()
+    expect(send).toHaveBeenCalledWith('mixVolumes', { typeVolumes: { Music: 25 } })
+    receive('mixerError', { message: 'Unable to decode audio.' })
+    await flushPromises()
+    expect(wrapper.text()).toContain('Unable to decode audio.')
+    receive('mixerReady')
+    await flushPromises()
+    receive('mixerAck', { command: 'mixSync' })
+    await flushPromises()
+    expect(wrapper.text()).not.toContain('Unable to decode audio.')
+  } finally {
+    wrapper.unmount()
+  }
+})
+
+it('keeps browser playback available without a server-mix monitoring toggle', async () => {
+  const ws = useWebSocketStore()
+  vi.spyOn(ws, 'sendMessage').mockImplementation(() => {})
+  let handler!: (message: WebSocketMessage) => void
+  vi.spyOn(ws, 'addMessageHandler').mockImplementation(fn => { handler = fn })
+  ws.isConnected = true
+  const wrapper = shallowMount(TableViewGM)
+  try {
+    await flushPromises()
+    expect(wrapper.findComponent({ name: 'VSwitch' }).exists()).toBe(false)
+    handler({ method: 'mixerReady', payload: {} })
+    await flushPromises()
+    expect(wrapper.findComponent({ name: 'VSwitch' }).exists()).toBe(false)
+    expect(useAudioStore().enabled).toBe(true)
+  } finally {
+    wrapper.unmount()
+  }
 })

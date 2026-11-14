@@ -26,3 +26,4 @@ go.work.sum
 tmp
 uploads
 *.db
+discord/node_modules/

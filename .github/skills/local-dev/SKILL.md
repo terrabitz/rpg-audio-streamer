@@ -14,6 +14,12 @@ production or the empty-library browser test suite.
    and FFmpeg on `PATH`.
    Run `make dev` from the worktree root. If Vite is missing, install the
    locked UI dependencies with `cd ui && npm ci`, then retry.
+   For Discord streaming, install `npm ci --prefix discord` and run
+   `DEV_DISCORD=1 make dev`. This explicitly reads Discord configuration from
+   the worktree `.env` or environment; ordinary `make dev` ignores Discord
+   credentials. Only a bot token is needed. Use Connect to Discord at a table
+   to install the bot if needed and choose a server/voice channel. Keep test
+   previews in an isolated channel and disconnect before running live tests.
 2. Keep the launcher alive for the entire preview. For an agent-managed preview,
    use a detached long-lived shell only when the execution environment permits
    it; retain its exact shell ID so it can be stopped later.

@@ -3,8 +3,10 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { discordEnvironment } from '../../scripts/discord-env.mjs'
 
 const root = fileURLToPath(new URL('../..', import.meta.url))
+const discord = discordEnvironment(root, process.env.E2E_DISCORD === '1')
 const scratch = mkdtempSync(join(tmpdir(), 'rpg-audio-e2e-'))
 const binary = join(scratch, 'server')
 
@@ -26,6 +28,8 @@ const server = spawn(
     '--port',
     process.env.E2E_API_PORT ?? '18080',
     '--dev-mode',
+    ...(process.env.E2E_EXPERIMENTAL_MIXER === '1' ? ['--experimental-mixer'] : []),
+    ...(discord.DISCORD_BOT_TOKEN ? ['--discord-worker', join(root, 'discord/stream.mjs')] : []),
     '--root-username',
     'e2e-gm',
     '--root-password-hash',
@@ -39,7 +43,15 @@ const server = spawn(
     '--upload-dir',
     join(scratch, 'uploads'),
   ],
-  { cwd: scratch, stdio: 'inherit' },
+  {
+    cwd: scratch,
+    stdio: 'inherit',
+    env: {
+      ...Object.fromEntries(Object.entries(process.env).filter(([name]) =>
+        !name.startsWith('DISCORD_') && !name.startsWith('INTEGRATION_TEST_DISCORD_'))),
+      ...discord,
+    },
+  },
 )
 
 server.on('error', (error) => {

@@ -19,6 +19,44 @@ components:
       name: token
 
   schemas:
+    MixerStatus:
+      type: object
+      required: [revision, framesRendered, peak, tracks]
+      properties:
+        revision:
+          type: integer
+          minimum: 0
+          description: Number of accepted mixer commands and removals in this session.
+        framesRendered:
+          type: integer
+          minimum: 0
+        peak:
+          type: number
+          minimum: 0
+          maximum: 1
+          description: Absolute peak of the latest rendered stereo PCM block.
+        tracks:
+          type: array
+          items:
+            type: object
+            required: [fileID, currentTime, isPlaying, gain]
+            properties:
+              fileID:
+                type: string
+                format: uuid
+              currentTime:
+                type: number
+                minimum: 0
+                description: Absolute source position in seconds.
+              isPlaying:
+                type: boolean
+                description: Requested playback state; pause fades may still be audible.
+              gain:
+                type: number
+                minimum: 0
+                maximum: 1
+                description: Target track/master/type gain, not the current envelope.
+
     Table:
       type: object
       required: [id, name]
@@ -235,7 +273,202 @@ components:
         allowSimultaneousPlay:
           type: boolean
 
+    DiscordStatus:
+      type: object
+      required: [enabled, state]
+      properties:
+        enabled:
+          type: boolean
+        state:
+          type: string
+          enum: [disconnected, connecting, connected, error]
+        guildID:
+          type: string
+        channelID:
+          type: string
+        guildName:
+          type: string
+        channelName:
+          type: string
+        error:
+          type: string
+
+    DiscordDestination:
+      type: object
+      required: [guildID, channelID]
+      properties:
+        guildID:
+          type: string
+          pattern: '^[1-9][0-9]{0,19}$'
+        channelID:
+          type: string
+          pattern: '^[1-9][0-9]{0,19}$'
+
+    DiscordChoice:
+      type: object
+      required: [id, name]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+
+    DiscordSetup:
+      type: object
+      required: [installURL, guilds]
+      properties:
+        installURL:
+          type: string
+          format: uri
+        guilds:
+          type: array
+          items:
+            $ref: "#/components/schemas/DiscordChoice"
+
 paths:
+  /api/v1/discord/setup:
+    get:
+      summary: Get the bot installation link and installed servers (GM only)
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Discord installation and server choices
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DiscordSetup"
+        "401":
+          description: GM authentication required
+        "404":
+          description: Discord disabled
+        "502":
+          description: Discord discovery failed
+
+  /api/v1/discord/servers/{guildID}/channels:
+    get:
+      summary: List regular voice channels in an installed server (GM only)
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: guildID
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Voice channel choices
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/DiscordChoice"
+        "401":
+          description: GM authentication required
+        "404":
+          description: Discord disabled
+        "502":
+          description: Discord channel discovery failed
+
+  /api/v1/tables/{tableID}/discord:
+    parameters:
+      - name: tableID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      summary: Inspect the configured Discord voice connection (GM only)
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Disabled, connecting, connected, disconnected, or failed connection
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DiscordStatus"
+        "401":
+          description: GM authentication required
+        "404":
+          description: Table not found
+    post:
+      summary: Connect to a selected Discord channel and save it for this table (GM only)
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: false
+        description: Omit to reconnect to this table's saved destination
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DiscordDestination"
+      responses:
+        "200":
+          description: Bot connected to voice
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DiscordStatus"
+        "401":
+          description: GM authentication required
+        "400":
+          description: Invalid selection or no saved destination
+        "404":
+          description: Discord disabled or table not found
+        "409":
+          description: Mix not ready or bot already connected to a table in this server
+        "500":
+          description: Unable to persist destination; connection cancelled
+        "502":
+          description: Discord voice connection failed
+    delete:
+      summary: Disconnect this table's Discord stream (GM only)
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Bot disconnected from voice
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DiscordStatus"
+        "401":
+          description: GM authentication required
+        "404":
+          description: Discord disabled or table not found
+        "409":
+          description: Bot reserved by another session
+        "502":
+          description: Disconnect failed
+
+  /api/v1/tables/{tableID}/mix:
+    get:
+      summary: Inspect experimental server-side mixing (GM only)
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: tableID
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Current PCM rendering and command state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MixerStatus"
+        "401":
+          description: GM authentication required
+        "404":
+          description: Experimental mixer disabled or table not found
+
   /api/v1/tables/{tableID}/settings:
     parameters:
       - name: tableID

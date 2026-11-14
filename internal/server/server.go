@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"fmt"
 	"io/fs"
 	"log/slog"
@@ -11,7 +12,10 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/terrabitz/rpg-audio-streamer/internal/auth"
+	"github.com/terrabitz/rpg-audio-streamer/internal/discord"
+	"github.com/terrabitz/rpg-audio-streamer/internal/livemixer"
 	"github.com/terrabitz/rpg-audio-streamer/internal/middlewares"
+	ws "github.com/terrabitz/rpg-audio-streamer/internal/websocket"
 )
 
 const (
@@ -32,22 +36,38 @@ type WSRegisterer interface {
 	RemoveTrack(tableID, trackID string)
 }
 
+type DiscordController interface {
+	Connect(context.Context, string, discord.Destination) error
+	Setup(context.Context) (discord.Setup, error)
+	Channels(context.Context, string) ([]discord.Choice, error)
+	Resolve(context.Context, discord.Destination) (discord.Destination, error)
+	Fail(string, error)
+	Disconnect(context.Context, string) error
+	Status(string) discord.Status
+	Close()
+}
+
 type Server struct {
-	cfg      Config
-	logger   *slog.Logger
-	frontend fs.FS
-	hub      WSRegisterer
-	upgrader websocket.Upgrader
-	auth     Authenticator
-	store    Store
+	cfg        Config
+	logger     *slog.Logger
+	frontend   fs.FS
+	hub        WSRegisterer
+	upgrader   websocket.Upgrader
+	auth       Authenticator
+	store      Store
+	mixer      *livemixer.Service
+	discord    DiscordController
+	discordMix *discordMixer
 }
 
 type Config struct {
-	Host      string
-	Port      int
-	UploadDir string
-	DevMode   bool
-	CORS      middlewares.CorsConfig
+	Host              string
+	Port              int
+	UploadDir         string
+	DevMode           bool
+	CORS              middlewares.CorsConfig
+	ExperimentalMixer bool
+	Discord           discord.Config
 }
 
 func New(cfg Config, logger *slog.Logger, auth Authenticator, store Store, hub WSRegisterer) (*Server, error) {
@@ -66,6 +86,28 @@ func New(cfg Config, logger *slog.Logger, auth Authenticator, store Store, hub W
 		},
 	}
 
+	if cfg.ExperimentalMixer || cfg.Discord.Token != "" {
+		consumer, ok := hub.(interface{ SetMixer(ws.Mixer) })
+		if !ok {
+			return nil, fmt.Errorf("experimental mixing requires a mixer-capable WebSocket hub")
+		}
+		mix, err := livemixer.New(mixerSampleRate, srv.mixerSource)
+		if err != nil {
+			return nil, fmt.Errorf("initialize live mixer: %w", err)
+		}
+		srv.mixer = mix
+		consumer.SetMixer(mix)
+	}
+	if cfg.Discord.Token != "" {
+		bot, err := discord.New(cfg.Discord, srv.mixer)
+		if err != nil {
+			return nil, err
+		}
+		srv.discord = bot
+		srv.discordMix = newDiscordMixer(srv.mixer, srv)
+		hub.(interface{ SetMixer(ws.Mixer) }).SetMixer(srv.discordMix)
+	}
+
 	return srv, nil
 }
 
@@ -74,6 +116,12 @@ func (s *Server) Start() error {
 	if err := os.MkdirAll(s.cfg.UploadDir, os.ModePerm); err != nil {
 		return fmt.Errorf("failed to create upload directory: %w", err)
 	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if s.discord != nil {
+		defer s.discord.Close()
+	}
+	go s.RunMixer(ctx)
 
 	srv := &http.Server{
 		Addr:    net.JoinHostPort(s.cfg.Host, strconv.Itoa(s.cfg.Port)),
@@ -129,6 +177,10 @@ func (s *Server) registerHandlers() *http.ServeMux {
 	mux.HandleFunc("/api/v1/tables/current", s.authMiddleware(s.handleSessionTable))
 	mux.HandleFunc("/api/v1/tables/{tableID}", s.authMiddleware(s.handleTable))
 	mux.HandleFunc("/api/v1/tables/{tableID}/settings", s.gmOnlyMiddleware(s.handleTableSettings))
+	mux.HandleFunc("/api/v1/tables/{tableID}/mix", s.gmOnlyMiddleware(s.handleMixerStatus))
+	mux.HandleFunc("/api/v1/tables/{tableID}/discord", s.gmOnlyMiddleware(s.handleDiscord))
+	mux.HandleFunc("/api/v1/discord/setup", s.gmOnlyMiddleware(s.handleDiscordSetup))
+	mux.HandleFunc("/api/v1/discord/servers/{guildID}/channels", s.gmOnlyMiddleware(s.handleDiscordSetup))
 	mux.HandleFunc("/api/v1/tables/{tableID}/tracks", s.gmOnlyMiddleware(s.handleTableTracks))
 	mux.HandleFunc("/api/v1/tables/{tableID}/tracks/{trackID}", s.gmOnlyMiddleware(s.handleTableTrack))
 
