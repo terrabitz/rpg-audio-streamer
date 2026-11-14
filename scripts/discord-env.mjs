@@ -56,10 +56,16 @@ export function discordTestConfig(root, environment = process.env) {
 
 function discordSource(root, environment) {
   let file = {}
-  try {
-    file = parseEnv(readFileSync(join(root, '.env'), 'utf8'))
-  } catch (error) {
-    if (error.code !== 'ENOENT') throw error
+  const paths = [
+    join(environment.HOME || homedir(), '.config', 'rpg-audio-streamer', '.env'),
+    join(root, '.env'),
+  ]
+  for (const path of paths) {
+    try {
+      file = { ...file, ...parseEnv(readFileSync(path, 'utf8')) }
+    } catch (error) {
+      if (error.code !== 'ENOENT') throw error
+    }
   }
-  return { ...file, ...environment }
+  return { ...file, ...Object.fromEntries(Object.entries(environment).filter(([, value]) => value)) }
 }
