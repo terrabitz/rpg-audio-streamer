@@ -96,7 +96,16 @@ func startApp(t *testing.T, root string, config liveConfig) *app {
 		_ = server.Process.Signal(syscall.SIGTERM)
 		_ = server.Wait()
 		if t.Failed() {
-			t.Logf("server logs:\n%s", logs.String())
+			output := logs.String()
+			for _, secret := range []string{
+				config.StreamerToken, config.ListenerToken,
+				config.GuildID.String(), config.ChannelID.String(), config.StreamerID.String(),
+			} {
+				if secret != "" {
+					output = strings.ReplaceAll(output, secret, "[redacted]")
+				}
+			}
+			t.Logf("server logs:\n%s", output)
 		}
 	})
 

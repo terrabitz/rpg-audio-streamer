@@ -1,0 +1,46 @@
+name: Discord live integration
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '17 4 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: discord-live
+  cancel-in-progress: false
+
+jobs:
+  live:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: ./ui/.nvmrc
+          cache: npm
+          cache-dependency-path: |
+            ui/package-lock.json
+            discord/package-lock.json
+      - name: Install FFmpeg
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
+      - run: npm ci --prefix ui
+      - run: npm ci --prefix discord
+      - run: cd ui && npx playwright install --with-deps chromium
+      - name: Verify live Discord integration and browser audio
+        run: make test-e2e-discord
+        env:
+          INTEGRATION_TEST_DISCORD_SERVER_ID: ${{ secrets.INTEGRATION_TEST_DISCORD_SERVER_ID }}
+          INTEGRATION_TEST_DISCORD_VOICE_CHANNEL_ID: ${{ secrets.INTEGRATION_TEST_DISCORD_VOICE_CHANNEL_ID }}
+          INTEGRATION_TEST_DISCORD_BOT_STREAMER_TOKEN: ${{ secrets.INTEGRATION_TEST_DISCORD_BOT_STREAMER_TOKEN }}
+          INTEGRATION_TEST_DISCORD_BOT_STREAMER_CLIENT_ID: ${{ secrets.INTEGRATION_TEST_DISCORD_BOT_STREAMER_CLIENT_ID }}
+          INTEGRATION_TEST_DISCORD_BOT_LISTENER_TOKEN: ${{ secrets.INTEGRATION_TEST_DISCORD_BOT_LISTENER_TOKEN }}

@@ -75,7 +75,7 @@ cannot guarantee cleanup. Procedures live in the local-dev skill.
 | `internal/livemixer` | Serialized live commands, table-scoped PCM engines, rendering lifecycle, and diagnostics |
 | `internal/discord` | Bot installation/server discovery, table-bound voice connections, per-server reservations, bounded PCM transport, and worker lifecycle |
 | `discord/` | DAVE-compatible Discord voice worker, PCM conversion, and Opus transport |
-| `e2e/` | Opt-in live Discord suite: full-app harness, Go listener bot, Opus decoding, and tone analysis |
+| `e2e/` | Opt-in Go server-to-Discord integration harness, listener bot, Opus decoding, and tone analysis |
 | `internal/sqlitedatastore` | Domain-to-SQLite mapping, migrations, context-aware datastore implementation |
 | `internal/sqlitedatastore/sqlitedb` | Generated sqlc models and query implementations |
 | `internal/websocket` | Connected clients, message dispatch, recipient filters, read/write pumps |
@@ -498,6 +498,8 @@ channel's server, regular-voice type, and effective bot permissions before
 joining. `PCMTransform` validates stereo frames across arbitrary pipe chunks
 and converts float samples to signed 16-bit PCM. The voice library encodes
 20 ms Opus frames and sends them over Discord's encrypted voice connection.
+The player pauses during temporary voice transitions and tolerates short PCM
+delivery gaps instead of ending the stream immediately.
 The stream bot joins self-deafened and does not receive other participants'
 audio. Bot credentials reach only the worker environment, not process
 arguments, browser payloads, or logs.
@@ -515,19 +517,16 @@ until the last one closes. A lost network connection is detected by the
 WebSocket heartbeat. Reconnection conflicts and failures are visible and
 require an explicit retry or destination change within that session.
 
-The opt-in live Discord suite in `e2e/` is written in Go. It builds and starts
-the real server, drives the GM API and mixer WebSocket, and joins a second bot
-through `disgo` with pure-Go DAVE. The listener subscribes only to the
-streamer, decrypts and decodes its received Opus through FFmpeg, and checks
-both generated tones, live volume changes, pause/resume, and departure. This
-verifies delivery through Discord rather than trusting sender-side telemetry.
-The listener defers DAVE group commits until its session is ready, so the
-streamer's DAVE implementation always admits it by Welcome; the two libraries
-otherwise race to commit and reject each other's Welcome. Audio receiving is
-supported by the selected library but is not a stable, documented Discord API
-contract; live tests are therefore separate from deterministic transport
-tests. Playwright journeys separately check installation-link presentation,
-server/channel selection, disconnect, and automatic reconnect on return.
+The opt-in Go integration test starts the server, drives the GM API and mixer
+WebSocket, and checks a decoded tone using a second bot with pure-Go DAVE.
+Its listener defers group commits until ready so the streamer's DAVE
+implementation admits it by Welcome. The Playwright live journey drives the
+real UI and uses a separate Node listener bot with `@discordjs/voice` DAVE
+decryption and Opus decoding. It measures the two generated tones and silence
+after playback, volume, pause, disconnect, and reconnect controls. Both tests
+verify delivery through Discord rather than trusting sender-side telemetry.
+Voice receiving is not a stable, documented Discord API contract; live tests
+are separate from deterministic transport tests.
 
 ## Release pipeline
 
@@ -557,6 +556,10 @@ check. The final `PR Checks` job depends on path detection and all check jobs,
 accepts successful or skipped jobs, and fails on failed or cancelled jobs.
 It provides a single required-check target, including for documentation-only
 pull requests.
+
+The separate Discord live workflow runs on pushes to `main`, nightly, and on
+manual dispatch from `main`. One concurrency group serializes its Go and
+Playwright tests across runs; pull request checks do not receive live secrets.
 
 ## Architectural assurance
 

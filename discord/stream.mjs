@@ -1,5 +1,6 @@
-import { createAudioPlayer, createAudioResource, NoSubscriberBehavior, StreamType, VoiceConnectionStatus } from '@discordjs/voice'
+import { createAudioResource, StreamType, VoiceConnectionStatus } from '@discordjs/voice'
 import { PCMTransform } from './pcm.mjs'
+import { createMixPlayer } from './player.mjs'
 import { connectVoice } from './voice.mjs'
 
 let voice
@@ -26,9 +27,14 @@ function start() {
     if (next.status === VoiceConnectionStatus.Disconnected) fail('Discord voice disconnected')
   })
   const pcm = new PCMTransform()
-  pcm.on('error', () => fail('Invalid PCM received by Discord worker'))
+  pcm.on('error', error => {
+    const detail = error.message === 'Invalid stereo PCM sample' || error.message === 'Incomplete stereo PCM frame'
+      ? error.message
+      : error.code === 'ERR_STREAM_PREMATURE_CLOSE' ? 'stream closed prematurely' : 'stream error'
+    fail(`Discord PCM stream failed: ${detail}`)
+  })
   process.stdin.on('error', () => fail('Discord audio input failed'))
-  player = createAudioPlayer({ behaviors: { noSubscriber: NoSubscriberBehavior.Stop } })
+  player = createMixPlayer()
   player.on('error', () => fail('Discord audio encoding failed'))
   const resource = createAudioResource(pcm, { inputType: StreamType.Raw })
   voice.connection.subscribe(player)

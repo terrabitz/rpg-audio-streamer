@@ -25,7 +25,7 @@ Vue tooling.
 | `make test-go` | All Go tests; enforce 80% internal statement coverage |
 | `make test-ui` | Vitest domain coverage; enforce 80% statements, branches, functions, and lines |
 | `make test-discord` | PCM conversion, real Opus round trip, and isolated credential loading |
-| `make test-e2e-discord` | Opt-in Go audio/lifecycle suite, then browser setup and reconnect journeys |
+| `make test-e2e-discord` | Opt-in Go server-mix integration, then live browser audio journey |
 | `make test-e2e` | Production UI build and real full-app Chromium journeys |
 | `make test-dev` | Seeded local dev startup, isolation, media fixtures, and cleanup |
 | `cd ui && npm run build` | Vue/TypeScript checking, including tests, and production bundle |
@@ -47,8 +47,11 @@ own the render loop's context and bound waits for decoding and cancellation.
 
 Install the worker dependencies with `npm ci --prefix discord`. Run
 `make test-e2e-discord` only against an isolated, regular voice channel with
-two distinct bot accounts. This opt-in run reads the worktree `.env` or
-environment through an explicit allowlist:
+two distinct bot accounts already installed in that server. Configuration is
+read in increasing precedence from the worktree `.env`, `.env.test`, the
+persistent `~/.config/rpg-audio-streamer/discord-test.env`, and the environment.
+`DISCORD_TEST_ENV_FILE` replaces the persistent file path and must exist when
+specified. Never copy secrets into a worktree. The required names are:
 
 - `INTEGRATION_TEST_DISCORD_SERVER_ID`
 - `INTEGRATION_TEST_DISCORD_VOICE_CHANNEL_ID`
@@ -56,10 +59,9 @@ environment through an explicit allowlist:
 - `INTEGRATION_TEST_DISCORD_BOT_STREAMER_CLIENT_ID`
 - `INTEGRATION_TEST_DISCORD_BOT_LISTENER_TOKEN`
 
-For browser journeys, runtime `DISCORD_BOT_TOKEN` can override the streamer's
-test token. Server/channel IDs are fixture inputs for explicit UI selection,
-not server configuration. The Go suite reads only the list above and passes
-only the bot token to the server it starts. OAuth client secrets are not used. Never
+Server/channel IDs are fixture inputs for explicit UI selection, not server
+configuration. The Go suite passes only the streamer token to the server it
+starts. OAuth client secrets are not used. Never
 print tokens, embed them in URLs, or pass them through command arguments.
 The streamer needs View Channel, Connect, and Speak; the listener needs View
 Channel and Connect and joins with deafening disabled. Neither needs privileged
@@ -69,23 +71,25 @@ Gateway intents.
 TestDiscord -v`) starts the real server, drives the GM API and mixer socket,
 and runs a Go listener bot in-process. The listener joins after the streamer
 connects, subscribes only to the configured streamer, decrypts and decodes
-received Opus with FFmpeg, and measures generated 440/880 Hz tones. Assertions
-use fresh observation windows and tolerance for lossy coding, not byte equality
-or a speaking indicator. Pause assertions accept decoded silence or packet
-inactivity and then require fresh audio on resume. It also closes and reopens
-the GM socket, verifies automatic reconnection with fresh audio, and checks
-the bot leaves when the last GM socket closes. Both connections are cleaned
-up on success and failure; server logs print only on failure. Do not run
-multiple copies against the same bots or while a local preview holds the
+received Opus with FFmpeg, and measures a generated 440 Hz tone. Both
+connections are cleaned up on success and failure; server logs print only on
+failure and redact credentials and configured IDs. Do not run multiple copies
+against the same bots or while a local preview holds the
 streamer. The `e2e` package's offline signal, decoding, monitor, configuration,
 and DAVE tests run in ordinary `go test ./...` and need FFmpeg with libopus.
-Playwright covers the real installation link, server/channel selection, and
-disconnect, plus a separate return-to-table reconnect journey. Each uses its
-own table. Installation approval itself is interactive in Discord and is not
-automated; live bots must already be installed. Offline Go HTTP tests use a
-local fake Discord API for discovery, filtering, and failure handling.
-The manual `pr-checks` workflow exposes `discord_e2e`; its secret names match
-the list above. Live Discord tests never run automatically on pull requests.
+Playwright covers the real installation link, server/channel selection,
+playback, mute, pause/resume, disconnect, and reconnect. Its separate Node bot
+decrypts and decodes real voice audio, checks fresh 440/880 Hz tone windows,
+and accepts decoded silence or packet inactivity on pause before requiring
+fresh audio on resume. Live runs disable recordings, browser traces,
+screenshots, page snapshots, and the HTML report.
+Installation approval is interactive in Discord and is not automated.
+Offline Go HTTP tests use a local fake Discord API for discovery, filtering,
+and failure handling.
+The `discord-live` workflow runs on pushes to main, nightly, and manual
+dispatch from main. Configure the five names above as repository secrets.
+Its shared concurrency group serializes both live tests across workflow runs.
+Live Discord tests never run on pull requests or untrusted branch dispatches.
 
 ## Coverage policy
 

@@ -3,10 +3,12 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { discordEnvironment } from '../../scripts/discord-env.mjs'
+import { discordTestConfig } from '../../scripts/discord-env.mjs'
 
 const root = fileURLToPath(new URL('../..', import.meta.url))
-const discord = discordEnvironment(root, process.env.E2E_DISCORD === '1')
+const discord = process.env.E2E_DISCORD === '1'
+  ? { DISCORD_BOT_TOKEN: discordTestConfig(root).streamerToken }
+  : {}
 const scratch = mkdtempSync(join(tmpdir(), 'rpg-audio-e2e-'))
 const binary = join(scratch, 'server')
 

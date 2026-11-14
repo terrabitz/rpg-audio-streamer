@@ -3,6 +3,9 @@ import { recording, recordingViewport } from './e2e/fixtures'
 
 const apiPort = process.env.E2E_API_PORT ?? '18080'
 const uiPort = process.env.E2E_UI_PORT ?? '15173'
+const liveDiscord = process.env.E2E_DISCORD === '1'
+if (liveDiscord && recording) throw new Error('Discord live tests cannot run in recording mode')
+if (liveDiscord) process.env.PLAYWRIGHT_NO_COPY_PROMPT = '1'
 
 // Recording mode slows interactions so per-flow GIFs are watchable.
 const recordingOptions = recording
@@ -19,13 +22,14 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   retries: 0,
   workers: 1,
-  timeout: recording ? 300_000 : 30_000,
+  timeout: recording ? 300_000 : liveDiscord ? 60_000 : 30_000,
   expect: { timeout: recording ? 30_000 : 10_000 },
-  reporter: [['list'], ['html', { open: 'never' }]],
+  reporter: liveDiscord ? [['list']] : [['list'], ['html', { open: 'never' }]],
   use: {
     baseURL: `http://127.0.0.1:${uiPort}`,
-    trace: 'retain-on-failure',
-    screenshot: 'only-on-failure',
+    actionTimeout: liveDiscord ? 10_000 : 0,
+    trace: liveDiscord ? 'off' : 'retain-on-failure',
+    screenshot: liveDiscord ? 'off' : 'only-on-failure',
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'], ...recordingOptions } }],
   webServer: [

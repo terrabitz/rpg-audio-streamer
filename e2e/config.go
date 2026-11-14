@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -19,12 +20,40 @@ type liveConfig struct {
 	ListenerToken string
 }
 
+func loadProjectLiveConfig(root string, lookupEnv func(string) (string, bool)) (liveConfig, error) {
+	override, _ := lookupEnv("DISCORD_TEST_ENV_FILE")
+	path := override
+	if path == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return liveConfig{}, fmt.Errorf("find home directory: %w", err)
+		}
+		path = filepath.Join(home, ".config", "rpg-audio-streamer", "discord-test.env")
+	}
+	return loadLiveConfigFiles([]string{filepath.Join(root, ".env"), filepath.Join(root, ".env.test"), path}, override, lookupEnv)
+}
+
 // loadLiveConfig reads the Discord test credentials from envPath, letting the
 // process environment override the file.
 func loadLiveConfig(envPath string, lookupEnv func(string) (string, bool)) (liveConfig, error) {
-	file, err := readEnvFile(envPath)
-	if err != nil {
-		return liveConfig{}, err
+	return loadLiveConfigFiles([]string{envPath}, "", lookupEnv)
+}
+
+func loadLiveConfigFiles(paths []string, requiredPath string, lookupEnv func(string) (string, bool)) (liveConfig, error) {
+	file := make(map[string]string)
+	for _, path := range paths {
+		if requiredPath != "" && path == requiredPath {
+			if _, err := os.Stat(path); err != nil {
+				return liveConfig{}, fmt.Errorf("Discord test environment file: %w", err)
+			}
+		}
+		values, err := readEnvFile(path)
+		if err != nil {
+			return liveConfig{}, err
+		}
+		for name, value := range values {
+			file[name] = value
+		}
 	}
 	value := func(name string) string {
 		if v, ok := lookupEnv(name); ok && v != "" {
