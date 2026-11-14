@@ -94,14 +94,13 @@ test('GM uses mobile table options and navigation', async ({ page, context }) =>
 
 test('Player finds the invite-code page from home', async ({ page }) => {
   await page.goto('/')
-  await expect(page.getByRole('link', { name: 'Player Login', exact: true })).toBeVisible()
+  await expect(page.getByText('Join a game session or log in as a Game Master to manage audio for your game.'))
+    .toBeVisible()
   await expect(page.getByRole('link', { name: 'GM Login', exact: true })).toBeVisible()
-  await page.getByRole('link', { name: 'Player Login', exact: true }).click()
-  await expect(page.getByRole('heading', { name: 'Player Login', exact: true })).toBeVisible()
-  await expect(page.getByText('Ask your Game Master to share the full table URL with you.')).toBeVisible()
-  await expect(page.getByText('<host>/tables/<invite-code>', { exact: true })).toBeVisible()
-  await expect(page.getByText('You do not need a player account.')).toBeVisible()
-  await expect(page.getByLabel('Invite code')).toHaveCount(0)
+  await page.getByRole('link', { name: 'Join as Player', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'How to Join', exact: true })).toBeVisible()
+  await expect(page.getByText('Ask your GM to share their invite link with you')).toBeVisible()
+  await expect(page.getByText(`${new URL(page.url()).origin}/tables/<invite-code>`)).toBeVisible()
 })
 
 test('GM selects a required track type and receives a bottom upload toast on mobile', async ({ page }) => {

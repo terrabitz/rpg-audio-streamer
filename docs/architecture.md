@@ -145,14 +145,14 @@ queries and the TypeScript SDK are adapters, not handwritten business logic.
 ## Frontend
 
 The Vue 3 application uses Vue Router, Vuetify, and Pinia. Routes are `/`
-(landing), `/login` (GM credentials), `/player-login` (invite-code entry),
+(landing), `/login` (GM credentials), `/join` (player invite-URL guidance),
 `/tables` (GM table creation, renaming, and deletion), `/library` (shared
 uploads and metadata management), and `/tables/:externalID` (the shared
-GM/player table URL). GM login opens table management. Player Login is a small
-information page explaining that players need the full `/tables/:externalID`
-URL from their GM; it creates no player session. Table views show associated
-tracks only; GMs can add an
-existing library track or upload a new one directly into the table.
+GM/player table URL). GM login opens table management. Join as Player opens a
+small information page explaining that players need the full
+`/tables/:externalID` URL from their GM; it creates no player session. Table
+views show associated tracks only; GMs can add an existing library track or
+upload a new one directly into the table.
 To preserve space during play, the table name appears only in the app bar.
 Authenticated navigation lives in a left sidebar that is closed by default and
 overlays the page when opened, with logout at the bottom. Logged-out visitors
