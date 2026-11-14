@@ -22,13 +22,9 @@ func TestMessageRouting(t *testing.T) {
 		{"ping replies to sender", "player", "ping", `{"nonce":42}`, []string{"player"}},
 		{"GM broadcast excludes sender", "gm", "broadcast", `{"hello":"table"}`, []string{"otherGM", "player", "otherPlayer"}},
 		{"player cannot broadcast", "player", "broadcast", `{}`, nil},
-		{"sync request reaches all GMs", "player", "syncRequest", `{}`, []string{"gm", "otherGM"}},
-		{"full sync reaches players", "gm", "syncAll", `{"tracks":[]}`, []string{"player", "otherPlayer"}},
-		{"targeted full sync", "gm", "syncAll", `{"tracks":[],"to":"player"}`, []string{"player"}},
 		{"missing target", "gm", "syncAll", `{"tracks":[],"to":"missing"}`, nil},
 		{"player cannot sync all", "player", "syncAll", `{"tracks":[]}`, nil},
 		{"invalid sync payload", "gm", "syncAll", `"not an object"`, nil},
-		{"track sync reaches players", "gm", "syncTrack", `{"fileID":"rain","isPlaying":true}`, []string{"player", "otherPlayer"}},
 		{"player cannot sync track", "player", "syncTrack", `{}`, nil},
 		{"unknown method", "gm", "unknown", `{}`, nil},
 	} {
@@ -196,8 +192,8 @@ func TestTableIsolation(t *testing.T) {
 			if len(outsider.send) != 0 || len(otherGM.send) != 0 {
 				t.Fatal("message crossed table boundary")
 			}
-			if tc.method == "syncRequest" && len(clients["gm"].send) != 1 {
-				t.Fatal("same-table GM did not receive sync request")
+			if tc.method == "syncRequest" && len(clients["gm"].send) != 0 {
+				t.Fatal("sync request was forwarded to a GM")
 			}
 		})
 	}
@@ -247,7 +243,7 @@ func TestTableDeletionAndTrackRemoval(t *testing.T) {
 }
 
 func testHub() (*Hub, map[string]*Client) {
-	hub := NewHub(slog.New(slog.NewTextHandler(io.Discard, nil)))
+	hub := NewHub(slog.New(slog.NewTextHandler(io.Discard, nil)), playbackTestStore{})
 	clients := make(map[string]*Client)
 	for id, role := range map[string]auth.Role{
 		"gm": auth.RoleGM, "otherGM": auth.RoleGM,

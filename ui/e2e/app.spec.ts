@@ -501,7 +501,7 @@ test('GM keeps track ordering independent for each table', async ({ page, browse
   await deleteTable(page, 'Ordered table')
 })
 
-test('GM recovers a table mix in a fresh browser without restoring playback position', async ({ page, browser }) => {
+test('GM recovers a table mix and live playback in a fresh browser', async ({ page, browser }) => {
   test.slow()
   await login(page)
   await page.getByRole('link', { name: 'Tables', exact: true }).click()
@@ -536,11 +536,9 @@ test('GM recovers a table mix in a fresh browser without restoring playback posi
     const restored = freshGM.getByRole('group', { name: 'Mixed Forest', exact: true })
     await restored.hover()
     await restored.getByRole('button', { name: 'Edit Mixed Forest', exact: true }).click()
-    await expect(freshGM.getByRole('slider', { name: 'Volume for Mixed Forest', exact: true })).toHaveAttribute('aria-valuenow', '0')
+    await expect(freshGM.getByRole('dialog').getByRole('slider', { name: 'Volume for Mixed Forest', exact: true })).toHaveAttribute('aria-valuenow', '0')
     await freshGM.getByRole('button', { name: 'Close track controls' }).click()
     await expect(freshGM.getByRole('slider', { name: 'Master volume', exact: true })).toHaveAttribute('aria-valuenow', '40')
-    await expect.poll(() => freshGM.locator('video').evaluate((el: HTMLVideoElement) => el.paused && el.currentTime === 0)).toBe(true)
-    await restored.click()
     await expect.poll(() => freshGM.locator('video').evaluate((el: HTMLVideoElement) => !el.paused && el.currentTime > 0 && el.volume === 0)).toBe(true)
     await freshGM.getByRole('group', { name: 'Playing Mixed Forest', exact: true })
       .getByRole('button', { name: 'Pause Mixed Forest', exact: true }).click()
@@ -699,7 +697,7 @@ test('library row previews stay local while a table is streaming', async ({ page
     await expect(library.locator('.file-tile')).toHaveCount(1)
     await expect(library.getByText('Private Preview', { exact: true })).toHaveCount(0)
     await expect.poll(() => library.locator('video').evaluate(
-      (el: HTMLVideoElement) => el.paused,
+      (el: HTMLVideoElement) => !el.paused,
     )).toBe(true)
   } finally {
     await library.close()
@@ -707,6 +705,67 @@ test('library row previews stay local while a table is streaming', async ({ page
   }
   await deleteLibraryTrack(page, 'Private Preview', 0)
   await deleteLibraryTrack(page, 'Live Music', 1)
+})
+
+test('GM controls desktop playback from a phone and recovers after every GM leaves', async ({ page, browser }) => {
+  test.slow()
+  await login(page)
+  const phoneContext = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true })
+  const playerContext = await browser.newContext()
+  try {
+    const phone = await phoneContext.newPage()
+    await phone.setViewportSize({ width: 390, height: 844 })
+    await login(phone)
+    await uploadTrack(page, 'Remote Music')
+    const desktopTile = page.getByRole('group', { name: 'Remote Music', exact: true })
+    await desktopTile.click()
+    await expect.poll(() => page.locator('video').evaluate((el: HTMLVideoElement) => !el.paused && el.currentTime > 1)).toBe(true)
+    const player = await playerContext.newPage()
+    await player.goto('/table/e2e-invite')
+    await player.getByRole('button', { name: 'Connect Audio', exact: true }).click()
+    await expect.poll(() => player.locator('video').evaluate((el: HTMLVideoElement) => !el.paused && el.currentTime > 1)).toBe(true)
+    await phone.getByRole('button', { name: 'Now playing (1)', exact: true }).tap()
+    const phoneTrack = phone.getByRole('group', { name: 'Playing Remote Music', exact: true })
+    await expect(phoneTrack).toBeVisible()
+    await phoneTrack.getByRole('button', { name: 'Pause Remote Music', exact: true }).tap()
+    await expect.poll(() => page.locator('video').evaluate((el: HTMLVideoElement) => el.paused)).toBe(true)
+    await expect.poll(() => player.locator('video').evaluate((el: HTMLVideoElement) => el.paused)).toBe(true)
+    await phone.getByRole('button', { name: 'Close now playing', exact: true }).tap()
+    await phone.getByRole('group', { name: 'Remote Music', exact: true }).tap()
+    await expect.poll(() => page.locator('video').evaluate((el: HTMLVideoElement) => !el.paused)).toBe(true)
+    await phone.getByRole('button', { name: 'Now playing (1)', exact: true }).tap()
+    const seek = phoneTrack.getByRole('slider', { name: 'Playback position for Remote Music', exact: true })
+    await seek.press('Home')
+    for (let i = 0; i < 10; i++) await seek.press('ArrowRight')
+    await expect.poll(() => page.locator('video').evaluate((el: HTMLVideoElement) => el.currentTime)).toBeGreaterThanOrEqual(9)
+    const volume = phoneTrack.getByRole('slider', { name: 'Volume for Remote Music', exact: true })
+    await volume.press('Home')
+    await expect(page.getByRole('group', { name: 'Playing Remote Music', exact: true })
+      .getByRole('slider', { name: 'Volume for Remote Music', exact: true })).toHaveAttribute('aria-valuenow', '0')
+    await expect.poll(() => player.locator('video').evaluate((el: HTMLVideoElement) => el.volume)).toBe(0)
+    await phone.getByRole('button', { name: 'Close now playing', exact: true }).tap()
+    await phone.getByRole('link', { name: 'Tables', exact: true }).click()
+    await page.getByRole('link', { name: 'Tables', exact: true }).click()
+    const before = await player.locator('video').evaluate((el: HTMLVideoElement) => el.currentTime)
+    await expect.poll(() => player.locator('video').evaluate((el: HTMLVideoElement) => el.currentTime)).toBeGreaterThan(before + 1)
+    await page.getByRole('link', { name: 'Open My Table', exact: true }).click()
+    await expect(page.getByRole('group', { name: 'Playing Remote Music', exact: true })).toBeVisible()
+    await page.reload()
+    await expect(page.getByRole('group', { name: 'Playing Remote Music', exact: true })).toBeVisible()
+    await expect.poll(async () => {
+      const desktopTime = await page.locator('video').evaluate((el: HTMLVideoElement) => el.currentTime)
+      const playerTime = await player.locator('video').evaluate((el: HTMLVideoElement) => el.currentTime)
+      return Math.abs(desktopTime - playerTime)
+    }).toBeLessThan(2)
+    await phone.getByRole('link', { name: 'Open My Table', exact: true }).click()
+    await phone.getByRole('button', { name: 'Now playing (1)', exact: true }).tap()
+    await phoneTrack.getByRole('button', { name: 'Pause Remote Music', exact: true }).tap()
+    await expect.poll(() => player.locator('video').evaluate((el: HTMLVideoElement) => el.paused)).toBe(true)
+  } finally {
+    await phoneContext.close()
+    await playerContext.close()
+  }
+  await deleteLibraryTrack(page, 'Remote Music', 1)
 })
 
 test('failed audio conversion is shown as an upload error', async ({ page }) => {

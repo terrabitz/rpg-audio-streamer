@@ -42,7 +42,7 @@ func TestTableHTTP(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	srv, err := server.New(server.Config{UploadDir: dir, DevMode: true}, logger, authenticator, db, websocket.NewHub(logger))
+	srv, err := server.New(server.Config{UploadDir: dir, DevMode: true}, logger, authenticator, db, websocket.NewHub(logger, db))
 	if err != nil {
 		t.Fatal(err)
 	}

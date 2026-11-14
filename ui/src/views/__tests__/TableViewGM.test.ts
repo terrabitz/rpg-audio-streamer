@@ -5,6 +5,8 @@ import TableViewGM from '../TableViewGM.vue'
 import { useAudioStore } from '@/stores/audio'
 import { useTableStore } from '@/stores/tables'
 import { useWebSocketStore } from '@/stores/websocket'
+import { useFileStore } from '@/stores/files'
+import { useTrackTypeStore } from '@/stores/trackTypes'
 import type { TableSettings } from '@/client/apiClient'
 
 const api = vi.hoisted(() => ({ load: vi.fn(), save: vi.fn() }))
@@ -25,8 +27,44 @@ beforeEach(() => {
   })
   api.save.mockResolvedValue({})
   useTableStore().current = { id: 'friday', name: 'Friday' }
+  vi.spyOn(useFileStore(), 'fetchFiles').mockResolvedValue()
+  vi.spyOn(useTrackTypeStore(), 'fetchTrackTypes').mockResolvedValue()
+  vi.spyOn(useTableStore(), 'fetchTracks').mockResolvedValue()
   vi.spyOn(useWebSocketStore(), 'connect').mockResolvedValue()
   vi.spyOn(useWebSocketStore(), 'disconnect').mockImplementation(() => {})
+})
+
+it('restores GM playback from the server without echoing remote mix changes or stopping on departure', async () => {
+  const ws = useWebSocketStore()
+  let receive!: Parameters<typeof ws.addMessageHandler>[0]
+  vi.spyOn(ws, 'addMessageHandler').mockImplementation(handler => { receive = handler })
+  const send = vi.spyOn(ws, 'sendMessage').mockImplementation(() => {})
+  const wrapper = shallowMount(TableViewGM)
+  try {
+    await flushPromises()
+    ws.isConnected = true
+    await flushPromises()
+    expect(send).toHaveBeenCalledExactlyOnceWith('syncRequest', {})
+    receive({
+      method: 'syncAll',
+      payload: {
+        tracks: [{ fileID: 'forest', name: 'Forest', isPlaying: true, currentTime: 12, volume: 20 }],
+        settings: { masterVolume: 80, typeVolumes: { Music: 30 }, trackVolumes: { forest: 20 }, trackOrder: ['forest'] },
+      },
+    })
+    expect(useAudioStore().tracks.forest).toMatchObject({ isPlaying: true, currentTime: 12, volume: 20 })
+    expect(useAudioStore().mixMasterVolume).toBe(80)
+    await vi.advanceTimersByTimeAsync(250)
+    expect(api.save).not.toHaveBeenCalled()
+    ws.isConnected = false
+    await flushPromises()
+    ws.isConnected = true
+    await flushPromises()
+    expect(send).toHaveBeenCalledTimes(2)
+  } finally {
+    wrapper.unmount()
+  }
+  expect(send.mock.calls.every(([method]) => method === 'syncRequest')).toBe(true)
 })
 
 afterEach(() => {

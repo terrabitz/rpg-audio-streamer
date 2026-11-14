@@ -63,7 +63,7 @@ cannot guarantee cleanup. Procedures live in the local-dev skill.
 | `internal/middlewares` | API request logging and CORS |
 | `internal/sqlitedatastore` | Domain-to-SQLite mapping, migrations, context-aware datastore implementation |
 | `internal/sqlitedatastore/sqlitedb` | Generated sqlc models and query implementations |
-| `internal/websocket` | Connected clients, message dispatch, recipient filters, read/write pumps |
+| `internal/websocket` | Authoritative live table playback, connected clients, message dispatch, recipient filters, read/write pumps |
 
 There is not a separate Go domain package today. Authentication rules live
 in `auth`; synchronization authorization/routing lives in `websocket`; the
@@ -222,9 +222,11 @@ controls become available. They do not inherit browser-local mixer preferences.
 Mix edits are debounced and flushed when leaving the table; saves are serialized
 with ordering edits, and failures show an explicit retry action. Table metadata,
 GM settings, and playback state are not persisted in browser storage.
-Playback is keyed by file UUID within the active table and
+Browser playback is keyed by file UUID within the active table and
 cleared on table changes, so even the same library track cannot inherit another
-table's playback. Local browser state is not authoritative for stored metadata.
+table's playback. GM controls wait for the server's playback snapshot before
+becoming available. Local browser state is not authoritative for stored metadata
+or table playback.
 Players must explicitly connect audio; full-state synchronization is ignored
 while listening is disabled.
 Associated entries initialize GM playback state as they load. Removing a table
@@ -288,27 +290,41 @@ playback state or player mixes.
 
 ### Playback synchronization
 
-The server routes messages rather than storing authoritative playback state.
+The WebSocket hub owns authoritative live playback state in memory, keyed by
+table and track UUID. Its datastore boundary reads track membership, library
+metadata, track-type policies, and saved mixing settings through the existing
+store interfaces.
 Each connection has a server-validated table scope: the GM selects an existing
 table ID, while players inherit the table from their invite. All routing filters,
 including targeted full syncs and sync requests, also require a matching table.
-The GM browser owns current track state. On player connection, `syncRequest`
-is forwarded to GM clients; a GM responds with `syncAll`, targeting the
-requesting client. A full synchronization without a target goes to all players
-at that table.
-`syncTrack` carries incremental state from GMs to players. Players cannot issue
-GM broadcasts, full-sync responses, or incremental sync commands.
+Every GM and listening player requests a snapshot with `syncRequest` on
+connection and reconnection. The server replies directly with `syncAll`,
+including paused tracks and their positions; it does not need a connected GM.
+GMs submit partial `syncTrack` commands for play/pause, seek, volume, duration,
+and live playback-region edits. The server validates table membership and
+regions, applies commands serially, and broadcasts canonical snapshots to both
+roles, including the commanding GM. Omitted fields retain their current server
+values rather than being replaced by a stale browser snapshot. Players cannot
+change playback, and client-originated `syncAll` messages are not accepted.
 
-Leaving a GM table sends an empty full sync to its players before disconnecting.
+Leaving a GM table disconnects that browser without changing table playback.
 Deleting a table notifies and disconnects its active clients. Server-originated
 `removeTrack` messages stop removed/deleted tracks for both roles. Socket
 reconnects preserve table scope; leaving or switching tables cancels old retries
 and ignores stale socket callbacks.
 
-The GM enforces track-type exclusivity in the UI: starting Music stops other
-Music tracks, while Ambiance and One-Shot can overlap. GM master volume is
-applied to outgoing synchronization. Each listener applies its own master
-and per-type multipliers to incoming volume.
+The server enforces track-type exclusivity atomically: starting Music stops other
+Music tracks, while Ambiance and One-Shot can overlap. Snapshot positions advance
+from server timestamps, accounting for repeating-region crossfade overlap and
+one-shot completion without browser time-update messages. Browsers supply media
+duration as metadata becomes available; the server does not decode audio.
+Active tables receive a snapshot each second, keeping control-only browsers
+and completion state current even when local audio cannot autoplay.
+GM snapshots carry unscaled track volume and saved table settings. Successful
+settings patches update connected GM mixes and listener playback without
+echoing remote changes back into another settings save. Player snapshots apply
+the table master volume once; each listener then applies their own master and
+per-type multipliers. Local autoplay failures do not pause the shared table.
 
 HLS.js binds authenticated playlists to hidden media elements. Track state
 controls play/pause, seeking, looping, and volume. Playback starts at the
@@ -321,9 +337,11 @@ seconds independently of play/pause fades and loop crossfades. A new adjustment
 starts from the current interpolated gain, including mute and non-repeating
 tracks. Removing a media component destroys its HLS instances and clears
 playback timers; queued media events cannot recreate deleted track state.
-Playback is ephemeral browser state, not persisted in SQLite or recovered by
-the server after every GM disconnect. Opening a table restores its saved mix
-and layout with every track stopped at the beginning.
+Live playback survives every GM disconnect, table navigation, and browser
+refresh for the lifetime of the server process. Reopening a table restores its
+saved mix and layout together with the server's current playing/paused state
+and positions. A server restart clears live playback; SQLite persists library
+regions and table mixing/ordering settings, not the live playback clock.
 
 ## Release pipeline
 

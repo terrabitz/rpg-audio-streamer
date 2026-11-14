@@ -12,6 +12,7 @@ import Hls, { type HlsConfig } from 'hls.js'
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { defaultPlayback, playbackError, playbackRegion } from '@/composables/playback'
 import { useAudioStore, type AudioTrack } from '../stores/audio'
+import { useWebSocketStore } from '../stores/websocket'
 
 const props = defineProps<{ fileID: string, token?: string }>()
 const emit = defineEmits<{ error: [message: string] }>()
@@ -259,7 +260,12 @@ function handleMetadata(index: number) {
 }
 
 function updateDuration(duration: number) {
-  if (Number.isFinite(duration) && duration > 0) updatePlaybackState({ duration })
+  if (!Number.isFinite(duration) || duration <= 0 || duration === audioStore.tracks[props.fileID]?.duration) return
+  updatePlaybackState({ duration })
+  const ws = useWebSocketStore()
+  if (audioStore.tableMix && audioStore.tracks[props.fileID]?.isPlaying && ws.isConnected) {
+    ws.sendMessage('syncTrack', { fileID: props.fileID, duration })
+  }
 }
 
 function element(index: number): HTMLMediaElement | null {
@@ -281,7 +287,7 @@ function reportPlaybackError(cause: unknown) {
   envelope = 0
   primary.value?.pause()
   secondary.value?.pause()
-  updatePlaybackState({ isPlaying: false })
+  if (!audioStore.tableMix) updatePlaybackState({ isPlaying: false })
   emit('error', 'Unable to play track. Try again or choose another track.')
 }
 </script>

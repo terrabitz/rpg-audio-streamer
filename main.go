@@ -333,7 +333,7 @@ func startServer(cfg Config) error {
 
 	authService := auth.New(cfg.Auth, logger)
 
-	hub := ws.NewHub(logger)
+	hub := ws.NewHub(logger, db)
 
 	srv, err := server.New(cfg.Server, logger, authService, db, hub)
 	if err != nil {

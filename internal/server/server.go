@@ -30,6 +30,7 @@ type WSRegisterer interface {
 	Register(conn *websocket.Conn, token *auth.Token)
 	CloseTable(tableID string)
 	RemoveTrack(tableID, trackID string)
+	SyncSettings(tableID string, patch TableSettingsPatch)
 }
 
 type Server struct {
