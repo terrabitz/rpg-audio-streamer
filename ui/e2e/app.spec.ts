@@ -224,6 +224,55 @@ test('GM previews loop edits live for listeners before saving them', async ({ pa
   await deleteLibraryTrack(page, 'Live Loop', 1)
 })
 
+test('GM adjusts waveform markers without interrupting playback for listeners', async ({ page, browser }) => {
+  test.slow()
+  await login(page)
+  await uploadTrack(page, 'Smooth Markers')
+  const tile = page.locator('.file-tile').filter({ hasText: 'Smooth Markers' })
+  await tile.locator('.track-heading').click()
+  const playerContext = await browser.newContext()
+  try {
+    const player = await playerContext.newPage()
+    await player.goto('/table/e2e-invite')
+    await player.getByRole('button', { name: 'Connect Audio', exact: true }).click()
+    for (const browserPage of [page, player]) {
+      await expect.poll(() => browserPage.locator('[data-active="true"]').evaluate(
+        (media: HTMLMediaElement) => !media.paused && media.currentTime > 3,
+      )).toBe(true)
+    }
+    await tile.getByRole('button', { name: 'Edit Smooth Markers' }).click()
+    const observations = await Promise.all([page, player].map(browserPage =>
+      browserPage.locator('[data-active="true"]').evaluateHandle((media: HTMLMediaElement) => {
+        const observation = { seeks: 0 }
+        media.addEventListener('seeking', () => { observation.seeks++ })
+        return observation
+      }),
+    ))
+    for (const [name, key] of [
+      ['Beginning', 'ArrowRight'],
+      ['End', 'ArrowLeft'],
+      ['Loop-back point', 'ArrowRight'],
+    ]) {
+      const positions = await Promise.all([page, player].map(browserPage =>
+        browserPage.locator('[data-active="true"]').evaluate((media: HTMLMediaElement) => media.currentTime),
+      ))
+      const handle = page.getByRole('dialog').getByRole('slider', { name: `${name} for Smooth Markers`, exact: true })
+      for (let step = 0; step < 6; step++) await handle.press(key)
+      for (const [index, browserPage] of [page, player].entries()) {
+        await expect.poll(() => browserPage.locator('[data-active="true"]').evaluate(
+          (media: HTMLMediaElement) => media.paused ? 0 : media.currentTime,
+        )).toBeGreaterThan(positions[index]! + 0.5)
+        expect(await observations[index]!.evaluate(observation => observation.seeks)).toBe(0)
+      }
+    }
+    await page.getByRole('button', { name: 'Close track controls', exact: true }).click()
+    await tile.getByRole('button', { name: 'Edit Smooth Markers' }).click()
+    await page.getByRole('button', { name: 'Remove from table', exact: true }).click()
+    await deleteLibraryTrack(page, 'Smooth Markers', 0)
+    for (const observation of observations) await observation.dispose()
+  } finally { await playerContext.close() }
+})
+
 test('GM auditions unsaved loop points in the library', async ({ page }) => {
   await login(page)
   await page.getByRole('link', { name: 'Library', exact: true }).click()

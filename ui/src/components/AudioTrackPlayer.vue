@@ -46,7 +46,7 @@ watch([
   () => audioStore.tracks[props.fileID]?.playback?.loopBackTime,
 ], () => {
   cancelOverlap()
-  syncPosition()
+  syncPosition(element(active.value)?.currentTime)
 })
 watch(() => audioStore.tracks[props.fileID]?.isRepeating, (isRepeating) => {
   cancelOverlap()
@@ -124,13 +124,14 @@ function syncPlaying() {
   tick()
 }
 
-function syncPosition() {
+function syncPosition(currentTime?: number) {
   const state = audioStore.tracks[props.fileID]
   const media = element(active.value)
   if (!state || !media) return
   const { start, end } = playbackRegion(state.playback, state.duration)
-  const time = Math.max(start, state.currentTime)
-  media.currentTime = end > start ? Math.min(time, end) : time
+  const time = Math.max(start, currentTime ?? state.currentTime)
+  const position = end > start ? Math.min(time, end) : time
+  if (media.currentTime !== position) media.currentTime = position
   updatePlaybackState({ currentTime: media.currentTime })
 }
 

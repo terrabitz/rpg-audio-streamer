@@ -223,6 +223,44 @@ it('applies edited boundaries and stops one-shots at the selected end without lo
   } finally { player.unmount() }
 })
 
+it.each([
+  ['startTime', 5],
+  ['endTime', 40],
+  ['loopBackTime', 8],
+] as const)('preserves the live playhead without seeking during repeated %s edits', async (point, time) => {
+  const { player, audio, primary } = await mountPlaying({})
+  try {
+    const seek = vi.spyOn(primary, 'currentTime', 'set')
+    for (let step = 0; step < 12; step++) {
+      // Media advances between the less frequent timeupdate reports.
+      primary.currentTime = 20 + step / 10
+      seek.mockClear()
+      const playback = { ...defaultPlayback(), [point]: time + step / 10 }
+      audio.updateTrackState('forest', { playback })
+      await nextTick()
+      expect(seek).not.toHaveBeenCalled()
+      expect(primary.currentTime).toBe(20 + step / 10)
+      expect(primary.paused).toBe(false)
+      expect(audio.tracks.forest?.currentTime).toBe(primary.currentTime)
+    }
+  } finally { player.unmount() }
+})
+
+it.each([
+  [{ startTime: 25 }, 25],
+  [{ endTime: 15 }, 15],
+])('moves an excluded live playhead to the edited boundary: %j', async (settings, position) => {
+  const { player, audio, primary } = await mountPlaying({})
+  try {
+    primary.currentTime = 20
+    audio.updateTrackState('forest', { playback: { ...defaultPlayback(), ...settings } })
+    await nextTick()
+    expect(primary.currentTime).toBe(position)
+    expect(primary.paused).toBe(false)
+    expect(audio.tracks.forest?.currentTime).toBe(position)
+  } finally { player.unmount() }
+})
+
 async function mountPlaying(settings: Partial<ReturnType<typeof defaultPlayback>>) {
   vi.useFakeTimers()
   const pinia = createPinia()
