@@ -462,15 +462,17 @@ to `discord/stream.mjs` relative to the server working directory. The Docker
 image includes Node and the locked worker dependencies, including a
 platform-matched native DAVE library.
 
-Each table's Currently playing sidebar (or mobile drawer) has a Connect to
-Discord button. Its dialog loads `GET /api/v1/discord/setup`, which obtains
-the application ID and the bot's installed servers from Discord. An
-installation link opens Discord's authorization page with only bot scope and
-View Channel, Connect, and Speak permissions. The user chooses an eligible
-server in Discord, approves installation, returns to the app, and refreshes
-the server list. No callback URL or OAuth client secret is needed. The app's
-single configured GM account is authorized to select any server that has
-installed this configured bot.
+Each table's Currently playing sidebar (or mobile drawer) has a Connect or
+Disconnect button with the Discord logo. When connected, hovering over
+Disconnect reveals the destination server and voice channel. Its setup dialog
+loads `GET /api/v1/discord/setup`, which obtains the application ID and the
+bot's installed servers from Discord. The server dropdown ends with an
+`+ Add to server` option that opens Discord's authorization page with only bot
+scope and View Channel, Connect, and Speak permissions. The user approves
+installation in Discord, returns to the app, and refreshes the server list
+using the adjacent refresh icon. No callback URL or OAuth client secret is
+needed. The app's single configured GM account is authorized to select any
+server that has installed this configured bot.
 
 The dialog prompts for a server and a regular voice channel. The GM-only
 `GET /api/v1/discord/servers/{guildID}/channels` endpoint lists channels.

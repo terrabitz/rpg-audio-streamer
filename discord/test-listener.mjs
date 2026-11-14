@@ -10,18 +10,21 @@ export async function startTestListener({ guildID, channelID, streamerID, listen
   let connection
   let input
   let decoder
+  let closed = false
   let phase = 'login'
   const states = []
   let pending = Buffer.alloc(0)
+  let consecutiveDecodeErrors = 0
   let audio = { low: 0, high: 0, rms: 0, frames: 0, last: 0, present: false, error: '' }
-  const fail = () => { audio = { ...audio, error: 'Discord listener or audio decoder failed' } }
+  const fail = source => () => { audio = { ...audio, error: `Discord ${source} failed` } }
   const close = () => {
+    closed = true
     input?.destroy()
     decoder?.destroy()
     if (connection && connection.state.status !== VoiceConnectionStatus.Destroyed) connection.destroy()
     client.destroy()
   }
-  client.on('error', fail)
+  client.on('error', fail('client'))
   client.on('voiceStateUpdate', (_, state) => {
     if (state.id === streamerID && state.guild.id === guildID) {
       audio = { ...audio, present: state.channelId === channelID }
@@ -41,25 +44,38 @@ export async function startTestListener({ guildID, channelID, streamerID, listen
       selfMute: true,
       daveEncryption: true,
     })
-    connection.on('error', fail)
+    connection.on('error', fail('voice connection'))
     connection.on('stateChange', (_, state) => { states.push(state.status) })
     await entersState(connection, VoiceConnectionStatus.Ready, 20_000)
     phase = 'audio subscription'
     audio.present = guild.voiceStates.cache.get(streamerID)?.channelId === channelID
     input = connection.receiver.subscribe(streamerID, { end: { behavior: EndBehaviorType.Manual } })
-    decoder = new prism.opus.Decoder({ rate: sampleRate, channels: 2, frameSize: 960 })
-    input.on('error', fail)
-    decoder.on('error', fail)
+    input.on('error', fail('audio receiver'))
     input.on('data', () => { audio.last = Date.now() })
-    decoder.on('data', chunk => {
-      pending = Buffer.concat([pending, chunk])
-      while (pending.length >= windowBytes) {
-        const signal = analyzeAudio(pending.subarray(0, windowBytes))
-        pending = pending.subarray(windowBytes)
-        audio = { ...audio, ...signal, frames: audio.frames + sampleRate }
-      }
-    })
-    input.pipe(decoder)
+    const decodeNextPacket = () => {
+      decoder = new prism.opus.Decoder({ rate: sampleRate, channels: 2, frameSize: 960 })
+      decoder.on('data', chunk => {
+        consecutiveDecodeErrors = 0
+        pending = Buffer.concat([pending, chunk])
+        while (pending.length >= windowBytes) {
+          const signal = analyzeAudio(pending.subarray(0, windowBytes))
+          pending = pending.subarray(windowBytes)
+          audio = { ...audio, ...signal, frames: audio.frames + sampleRate }
+        }
+      })
+      decoder.on('error', () => {
+        input.unpipe(decoder)
+        decoder.destroy()
+        consecutiveDecodeErrors++
+        if (consecutiveDecodeErrors >= 100) {
+          audio = { ...audio, error: 'Repeated Discord Opus decode failures' }
+          return
+        }
+        if (!closed) decodeNextPacket()
+      })
+      input.pipe(decoder)
+    }
+    decodeNextPacket()
     return { latest: () => ({ ...audio }), close }
   } catch {
     close()
