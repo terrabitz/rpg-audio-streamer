@@ -4,6 +4,9 @@ import { expect, test } from './fixtures'
 
 test('GM can recover from invalid credentials, keep a session, and log out', async ({ page }) => {
   await page.goto('/')
+  await expect(page.getByRole('banner').getByRole('link', { name: 'Login', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Toggle navigation' })).toHaveCount(0)
+  await expect(page.getByRole('navigation', { name: 'Navigation' })).toHaveCount(0)
   await page.getByRole('link', { name: 'GM Login' }).click()
   await page.getByLabel('Username').fill('e2e-gm')
   await page.getByLabel('Password', { exact: true }).fill('wrong-password')
@@ -17,16 +20,82 @@ test('GM can recover from invalid credentials, keep a session, and log out', asy
   await expect(page.getByRole('button', { name: 'Add Track', exact: true })).toBeVisible()
   await page.reload()
   await expect(page.getByRole('button', { name: 'Add Track', exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'Toggle navigation' }).click()
   await page.getByRole('button', { name: 'Logout' }).click()
   await expect(page.getByRole('link', { name: 'GM Login' })).toBeVisible()
   await page.reload()
   await expect(page.getByRole('link', { name: 'GM Login' })).toBeVisible()
 })
 
+test('GM navigates and adjusts master volume in the now-playing sidebar', async ({ page }) => {
+  await login(page)
+  const navigation = page.getByLabel('Navigation', { exact: true })
+  const sidebar = page.getByRole('complementary', { name: 'Currently playing', exact: true })
+  const master = sidebar.getByRole('slider', { name: 'Master volume', exact: true })
+  const toggle = page.getByRole('button', { name: 'Toggle navigation' })
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false')
+  const grid = page.locator('.table-track-grid')
+  const originalGrid = await grid.boundingBox()
+  await toggle.click()
+  await expect(navigation.getByRole('link', { name: 'Library', exact: true })).toBeVisible()
+  await expect(navigation.getByRole('slider', { name: 'Master volume', exact: true })).toHaveCount(0)
+  await expect.poll(async () => {
+    const bounds = await grid.boundingBox()
+    return bounds && originalGrid && bounds.x === originalGrid.x && bounds.width === originalGrid.width
+  }).toBe(true)
+  const logout = navigation.getByRole('button', { name: 'Logout' })
+  await expect(logout).toHaveCSS('color', 'rgb(207, 102, 121)')
+  await expect.poll(async () => {
+    const drawerBounds = await navigation.boundingBox()
+    const logoutBounds = await logout.boundingBox()
+    return drawerBounds && logoutBounds && drawerBounds.y + drawerBounds.height - (logoutBounds.y + logoutBounds.height) < 30
+  }).toBe(true)
+  await page.keyboard.press('Escape')
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false')
+  await expect(master).toBeVisible()
+  await expect(sidebar.getByText('Master volume', { exact: true })).toHaveCount(0)
+  await master.press('Home')
+  await expect(master).toHaveAttribute('aria-valuenow', '0')
+  await master.press('End')
+  await navigate(page, 'Library')
+  await expect(page.getByRole('slider', { name: 'Master volume', exact: true })).toHaveCount(0)
+})
+
+test('GM uses mobile table options and navigation', async ({ page, context }) => {
+  await page.setViewportSize({ width: 375, height: 812 })
+  await context.grantPermissions(['clipboard-read', 'clipboard-write'])
+  await login(page)
+  const banner = page.getByRole('banner')
+  await expect(banner.getByRole('slider', { name: 'Master volume', exact: true })).toHaveCount(0)
+  await page.getByRole('button', { name: 'Now playing (0)', exact: true }).click()
+  const drawer = page.getByRole('dialog', { name: 'Currently playing', exact: true })
+  const master = drawer.getByRole('slider', { name: 'Master volume', exact: true })
+  await expect(master).toBeVisible()
+  await expect(drawer.getByText('Master volume', { exact: true })).toHaveCount(0)
+  await master.press('Home')
+  await expect(master).toHaveAttribute('aria-valuenow', '0')
+  await page.getByRole('button', { name: 'Close now playing' }).click()
+  await page.getByRole('button', { name: 'Now playing (0)', exact: true }).click()
+  await expect(master).toHaveAttribute('aria-valuenow', '0')
+  await master.press('End')
+  await page.getByRole('button', { name: 'Close now playing' }).click()
+  await expect(banner.getByRole('button', { name: 'Add Track', exact: true })).toHaveCount(0)
+  await expect(banner.getByRole('button', { name: 'Copy invite link', exact: true })).toHaveCount(0)
+  await page.getByRole('button', { name: 'Table options' }).click()
+  await page.getByRole('menuitem', { name: 'Add Track', exact: true }).click()
+  await expect(page.getByRole('dialog')).toBeVisible()
+  await page.getByRole('button', { name: 'Cancel', exact: true }).click()
+  await page.getByRole('button', { name: 'Table options' }).click()
+  await page.getByRole('menuitem', { name: 'Copy invite link', exact: true }).click()
+  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toContain('/table/')
+  await navigate(page, 'Library')
+  await expect(page.getByRole('button', { name: 'Toggle navigation' })).toHaveAttribute('aria-expanded', 'false')
+})
+
 test('GM selects a required track type and receives a bottom upload toast on mobile', async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 812 })
   await login(page)
-  await page.getByRole('link', { name: 'Library', exact: true }).click()
+  await navigate(page, 'Library')
   let uploads = 0
   page.on('request', request => {
     if (request.method() === 'POST' && new URL(request.url()).pathname === '/api/v1/files') uploads += 1
@@ -44,7 +113,7 @@ test('GM selects a required track type and receives a bottom upload toast on mob
 
 test('GM uploads, renames, persists, and deletes an audio track', async ({ page }) => {
   await login(page)
-  await page.getByRole('link', { name: 'Library', exact: true }).click()
+  await navigate(page, 'Library')
   await uploadTrack(page, 'Forest')
   const row = page.getByRole('row').filter({ hasText: 'Forest' })
   await expect(row).toBeVisible()
@@ -84,7 +153,7 @@ test('GM uploads, renames, persists, and deletes an audio track', async ({ page 
 test('GM configures and persists track loop points', async ({ page }) => {
   test.slow()
   await login(page)
-  await page.getByRole('link', { name: 'Library', exact: true }).click()
+  await navigate(page, 'Library')
   await uploadTrack(page, 'Looping Forest')
   const row = page.getByRole('row').filter({ hasText: 'Looping Forest' })
   await row.getByRole('button', { name: 'Edit Looping Forest' }).click()
@@ -224,9 +293,308 @@ test('GM previews loop edits live for listeners before saving them', async ({ pa
   await deleteLibraryTrack(page, 'Live Loop', 1)
 })
 
+test('GM adjusts waveform markers without interrupting playback for listeners', async ({ page, browser }) => {
+  test.slow()
+  await login(page)
+  await uploadTrack(page, 'Smooth Markers')
+  const tile = page.locator('.file-tile').filter({ hasText: 'Smooth Markers' })
+  await tile.locator('.track-heading').click()
+  const playerContext = await browser.newContext()
+  try {
+    const player = await playerContext.newPage()
+    await player.goto('/table/e2e-invite')
+    await player.getByRole('button', { name: 'Connect Audio', exact: true }).click()
+    for (const browserPage of [page, player]) {
+      await expect.poll(() => browserPage.locator('[data-active="true"]').evaluate(
+        (media: HTMLMediaElement) => !media.paused && media.currentTime > 3,
+      )).toBe(true)
+    }
+    await tile.getByRole('button', { name: 'Edit Smooth Markers' }).click()
+    const observations = await Promise.all([page, player].map(browserPage =>
+      browserPage.locator('[data-active="true"]').evaluateHandle((media: HTMLMediaElement) => {
+        const observation = { seeks: 0 }
+        media.addEventListener('seeking', () => { observation.seeks++ })
+        return observation
+      }),
+    ))
+    for (const [name, key] of [
+      ['Beginning', 'ArrowRight'],
+      ['End', 'ArrowLeft'],
+      ['Loop-back point', 'ArrowRight'],
+    ]) {
+      const positions = await Promise.all([page, player].map(browserPage =>
+        browserPage.locator('[data-active="true"]').evaluate((media: HTMLMediaElement) => media.currentTime),
+      ))
+      const handle = page.getByRole('dialog').getByRole('slider', { name: `${name} for Smooth Markers`, exact: true })
+      for (let step = 0; step < 6; step++) await handle.press(key)
+      for (const [index, browserPage] of [page, player].entries()) {
+        await expect.poll(() => browserPage.locator('[data-active="true"]').evaluate(
+          (media: HTMLMediaElement) => media.paused ? 0 : media.currentTime,
+        )).toBeGreaterThan(positions[index]! + 0.5)
+        expect(await observations[index]!.evaluate(observation => observation.seeks)).toBe(0)
+      }
+    }
+    await page.getByRole('button', { name: 'Close track controls', exact: true }).click()
+    await tile.getByRole('button', { name: 'Edit Smooth Markers' }).click()
+    await page.getByRole('button', { name: 'Remove from table', exact: true }).click()
+    await deleteLibraryTrack(page, 'Smooth Markers', 0)
+    for (const observation of observations) await observation.dispose()
+  } finally { await playerContext.close() }
+})
+
+test('GM drags waveform markers continuously without stuttering for listeners', async ({ page, browser }, testInfo) => {
+  test.slow()
+  await login(page)
+  await uploadTrack(page, 'Continuous Drag')
+  const tile = page.locator('.file-tile').filter({ hasText: 'Continuous Drag' })
+  await tile.locator('.track-heading').click()
+  const playerContext = await browser.newContext()
+  try {
+    const player = await playerContext.newPage()
+    await player.goto('/table/e2e-invite')
+    await player.getByRole('button', { name: 'Connect Audio', exact: true }).click()
+    await tile.getByRole('button', { name: 'Edit Continuous Drag', exact: true }).click()
+    for (const [point, toTime] of [
+      ['Beginning', 2],
+      ['End', 26],
+      ['Loop-back point', 4],
+    ] as const) {
+      const seek = page.getByRole('dialog').getByRole('slider', { name: 'Playback position for Continuous Drag', exact: true })
+      await seek.press('Home')
+      await seek.press('PageUp')
+      const target = Number(await page.getByRole('slider', { name: 'Beginning for Continuous Drag', exact: true })
+        .getAttribute('aria-valuenow')) + 5
+      for (const browserPage of [page, player]) {
+        await expect.poll(() => browserPage.locator('[data-active="true"]').evaluate(
+          (media: HTMLMediaElement, position: number) => !media.paused && !media.seeking &&
+            media.readyState >= 3 && media.currentTime >= position && media.currentTime < position + 3,
+          target,
+        )).toBe(true)
+      }
+      const handle = page.getByRole('dialog').getByRole('slider', { name: `${point} for Continuous Drag`, exact: true })
+      await handle.hover()
+      const source = await handle.boundingBox()
+      const axis = await page.getByRole('dialog').locator('.timeline-axis').boundingBox()
+      const duration = Number(await page.getByRole('slider', { name: 'End for Continuous Drag', exact: true })
+        .getAttribute('aria-valuemax'))
+      const fromTime = Number(await handle.getAttribute('aria-valuenow'))
+      if (!source || !axis) throw new Error('The waveform marker and axis must be visible')
+      const start = source.x + source.width / 2
+      const end = start + (toTime - fromTime) / duration * axis.width
+      const y = source.y + source.height / 2
+      await page.mouse.move(start, y)
+      await page.mouse.down()
+      const observations = await Promise.all([page, player].map(browserPage =>
+        browserPage.locator('[data-active="true"]').evaluateHandle((media: HTMLMediaElement) => {
+          const samples: { elapsed: number, position: number, paused: boolean, seeking: boolean }[] = []
+          const started = performance.now()
+          let seeks = 0
+          const onSeeking = () => { seeks++ }
+          media.addEventListener('seeking', onSeeking)
+          const sample = () => samples.push({
+            elapsed: (performance.now() - started) / 1000,
+            position: media.currentTime, paused: media.paused, seeking: media.seeking,
+          })
+          sample()
+          const timer = setInterval(sample, 50)
+          return {
+            finish() {
+              clearInterval(timer)
+              media.removeEventListener('seeking', onSeeking)
+              sample()
+              return { seeks, samples }
+            },
+          }
+        }),
+      ))
+      try {
+        const deadline = Date.now() + 6000
+        let direction = true
+        do {
+          await page.mouse.move(direction ? end : start, y, { steps: 30 })
+          direction = !direction
+        } while (Date.now() < deadline)
+      } finally { await page.mouse.up() }
+      for (const [index, observation] of observations.entries()) {
+        const result = await observation.evaluate(value => value.finish())
+        await testInfo.attach(`${point}-${index === 0 ? 'GM' : 'listener'}-playback.json`, {
+          body: JSON.stringify(result), contentType: 'application/json',
+        })
+        expect(result.seeks, `${point}: no seek events during an in-bounds marker drag`).toBe(0)
+        for (const [sampleIndex, sample] of result.samples.entries()) {
+          expect(sample.paused, `${point}: playback stays unpaused throughout the gesture`).toBe(false)
+          expect(sample.seeking, `${point}: playback does not seek during the gesture`).toBe(false)
+          const earlier = result.samples.slice(0, sampleIndex).findLast(previous => sample.elapsed - previous.elapsed >= 0.5)
+          if (!earlier) continue
+          expect(sample.position - earlier.position, `${point}: every half-second window advances smoothly`)
+            .toBeGreaterThanOrEqual((sample.elapsed - earlier.elapsed) * 0.8)
+        }
+        await observation.dispose()
+      }
+    }
+    await page.getByRole('button', { name: 'Remove from table', exact: true }).click()
+  } finally { await playerContext.close() }
+  await deleteLibraryTrack(page, 'Continuous Drag', 0)
+})
+
+test('GM continuously drags markers through short natural loops without audio stalls', async ({ page, browser }, testInfo) => {
+  test.slow()
+  await login(page)
+  await uploadTrack(page, 'Natural Loop Drag', 'Music', 12)
+  const tile = page.locator('.file-tile').filter({ hasText: 'Natural Loop Drag' })
+  await tile.getByRole('button', { name: 'Edit Natural Loop Drag', exact: true }).click()
+  await dragTimelinePoint(page, 'Loop-back point for Natural Loop Drag', 9)
+  await page.getByRole('dialog').getByRole('button', { name: 'Play Natural Loop Drag', exact: true }).click()
+  const playerContext = await browser.newContext()
+  try {
+    const player = await playerContext.newPage()
+    await player.goto('/table/e2e-invite')
+    await player.getByRole('button', { name: 'Connect Audio', exact: true }).click()
+    for (const browserPage of [page, player]) {
+      await expect.poll(() => browserPage.locator('[data-active="true"]').evaluate(
+        (media: HTMLMediaElement) => !media.paused && !media.seeking && media.currentTime > 9,
+      )).toBe(true)
+    }
+    for (const [point, low, high] of [
+      ['Beginning', 2, 11],
+      ['End', 11.5, 12],
+      ['Loop-back point', 9, 11],
+    ] as const) {
+      const handle = page.getByRole('dialog').getByRole('slider', { name: `${point} for Natural Loop Drag`, exact: true })
+      await handle.hover()
+      const source = await handle.boundingBox()
+      const axis = await page.getByRole('dialog').locator('.timeline-axis').boundingBox()
+      const duration = Number(await page.getByRole('slider', { name: 'End for Natural Loop Drag', exact: true })
+        .getAttribute('aria-valuemax'))
+      const current = Number(await handle.getAttribute('aria-valuenow'))
+      if (!source || !axis) throw new Error('The waveform marker and axis must be visible')
+      const start = source.x + source.width / 2
+      const x = (time: number) => start + (time - current) / duration * axis.width
+      const y = source.y + source.height / 2
+      await page.mouse.move(start, y)
+      await page.mouse.down()
+      const observations = await Promise.all([page, player].map(browserPage =>
+        browserPage.evaluateHandle(() => {
+          const media = Array.from(document.querySelectorAll<HTMLMediaElement>('video, audio'))
+          const read = () => media.map(source => ({
+            position: source.currentTime, volume: source.volume, paused: source.paused,
+            seeking: source.seeking, readyState: source.readyState,
+          }))
+          const started = performance.now()
+          let lastTime = started
+          let previous = read()
+          let advanced = 0
+          const samples: { elapsed: number, advanced: number, sources: ReturnType<typeof read> }[] = []
+          const sample = () => {
+            const now = performance.now()
+            const elapsed = (now - lastTime) / 1000
+            const sources = read()
+            const progress = Math.max(0, ...sources.map((source, index) => {
+              const before = previous[index]!
+              if (source.paused || source.seeking || Math.max(source.volume, before.volume) < 0.05) return 0
+              return Math.min(elapsed, Math.max(0, source.position - before.position))
+            }))
+            advanced += progress
+            samples.push({ elapsed: (now - started) / 1000, advanced, sources })
+            previous = sources
+            lastTime = now
+          }
+          sample()
+          const timer = setInterval(sample, 25)
+          return {
+            finish() { clearInterval(timer); sample(); return samples },
+          }
+        }),
+      ))
+      try {
+        const deadline = Date.now() + 6000
+        let direction = true
+        do {
+          await page.mouse.move(x(direction ? low : high), y, { steps: 30 })
+          direction = !direction
+        } while (Date.now() < deadline)
+      } finally { await page.mouse.up() }
+      for (const [index, observation] of observations.entries()) {
+        const samples = await observation.evaluate(value => value.finish())
+        await testInfo.attach(`${point}-${index === 0 ? 'GM' : 'listener'}-loop-progress.json`, {
+          body: JSON.stringify(samples), contentType: 'application/json',
+        })
+        for (const [sampleIndex, sample] of samples.entries()) {
+          const earlier = samples.slice(0, sampleIndex).findLast(previous => sample.elapsed - previous.elapsed >= 0.5)
+          if (!earlier) continue
+          expect(sample.advanced - earlier.advanced, `${point}: audible playback advances through every loop and drag`)
+            .toBeGreaterThanOrEqual((sample.elapsed - earlier.elapsed) * 0.8)
+        }
+        await observation.dispose()
+      }
+    }
+    await page.getByRole('button', { name: 'Remove from table', exact: true }).click()
+  } finally { await playerContext.close() }
+  await deleteLibraryTrack(page, 'Natural Loop Drag', 0)
+})
+
+for (const point of ['Loop-back point', 'End']) {
+  test(`GM keeps looping while adjusting the ${point.toLowerCase()} marker`, async ({ page, browser }) => {
+    test.slow()
+    await login(page)
+    await uploadTrack(page, 'Editing Loop')
+    const tile = page.locator('.file-tile').filter({ hasText: 'Editing Loop' })
+    await tile.getByRole('button', { name: 'Edit Editing Loop', exact: true }).click()
+    await dragTimelinePoint(page, 'End for Editing Loop', 4)
+    await dragTimelinePoint(page, 'Loop-back point for Editing Loop', 1)
+    await page.getByRole('dialog').getByRole('button', { name: 'Play Editing Loop', exact: true }).click()
+    const playerContext = await browser.newContext()
+    try {
+      const player = await playerContext.newPage()
+      await player.goto('/table/e2e-invite')
+      await player.getByRole('button', { name: 'Connect Audio', exact: true }).click()
+      for (const browserPage of [page, player]) {
+        await expect.poll(() => browserPage.locator('[data-active="true"]').evaluate(
+          (media: HTMLMediaElement) => !media.paused && media.currentTime > 0,
+        )).toBe(true)
+      }
+      const observations = await Promise.all([page, player].map(browserPage =>
+        browserPage.evaluateHandle(() => {
+          const observation = { handoffs: 0 }
+          let active = document.querySelector('[data-active="true"]')
+          const observer = new MutationObserver(() => {
+            const next = document.querySelector('[data-active="true"]')
+            if (next && next !== active) observation.handoffs++
+            active = next
+          })
+          for (const media of document.querySelectorAll('video, audio')) {
+            observer.observe(media, { attributes: true, attributeFilter: ['data-active'] })
+          }
+          return observation
+        }),
+      ))
+      let edits = 0
+      const handle = page.getByRole('dialog').getByRole('slider', { name: `${point} for Editing Loop`, exact: true })
+      await expect.poll(async () => {
+        await handle.press(edits++ % 2 === 0 ? 'ArrowRight' : 'ArrowLeft')
+        return Math.min(...await Promise.all(observations.map(observation =>
+          observation.evaluate(value => value.handoffs),
+        )))
+      }, { timeout: 30_000, intervals: [100] }).toBeGreaterThanOrEqual(4)
+      for (const browserPage of [page, player]) {
+        const position = await browserPage.locator('[data-active="true"]').evaluate(
+          (media: HTMLMediaElement) => media.currentTime,
+        )
+        await expect.poll(() => browserPage.locator('[data-active="true"]').evaluate(
+          (media: HTMLMediaElement, previous: number) => !media.paused && Math.abs(media.currentTime - previous) > 0.25,
+          position,
+        )).toBe(true)
+      }
+      for (const observation of observations) await observation.dispose()
+      await page.getByRole('button', { name: 'Remove from table', exact: true }).click()
+    } finally { await playerContext.close() }
+    await deleteLibraryTrack(page, 'Editing Loop', 0)
+  })
+}
+
 test('GM auditions unsaved loop points in the library', async ({ page }) => {
   await login(page)
-  await page.getByRole('link', { name: 'Library', exact: true }).click()
+  await navigate(page, 'Library')
   await uploadTrack(page, 'Draft Preview')
   const row = page.getByRole('row').filter({ hasText: 'Draft Preview' })
   await row.getByRole('button', { name: 'Edit Draft Preview', exact: true }).click()
@@ -432,7 +800,7 @@ test('GM crossfades a repeating track at its configured loop point', async ({ pa
 
 test('GM creates, renames, opens, and deletes tables', async ({ page }) => {
   await login(page)
-  await page.getByRole('link', { name: 'Tables', exact: true }).click()
+  await navigate(page, 'Tables')
   await createTable(page, 'Friday')
   const options = page.getByRole('button', { name: 'Options for Friday', exact: true })
   await options.focus()
@@ -452,7 +820,7 @@ test('GM creates, renames, opens, and deletes tables', async ({ page }) => {
   await expect(page.getByRole('banner')).toContainText('Friday group')
   await expect(page.getByRole('heading', { name: 'Friday group', exact: true })).toHaveCount(0)
   await expect(page.locator('.file-tile')).toHaveCount(0)
-  await page.getByRole('link', { name: 'Tables', exact: true }).click()
+  await navigate(page, 'Tables')
   await deleteTable(page, 'Friday group')
   await page.reload()
   await expect(page.getByRole('link', { name: 'Open Friday group', exact: true })).toHaveCount(0)
@@ -462,13 +830,13 @@ test('GM creates, renames, opens, and deletes tables', async ({ page }) => {
 test('GM keeps track ordering independent for each table', async ({ page, browser }) => {
   test.slow()
   await login(page)
-  await page.getByRole('link', { name: 'Library', exact: true }).click()
+  await navigate(page, 'Library')
   await uploadTrack(page, 'Library only')
-  await page.getByRole('link', { name: 'Tables', exact: true }).click()
+  await navigate(page, 'Tables')
   await page.getByRole('link', { name: 'Open My Table', exact: true }).click()
   await uploadTrack(page, 'Ordered Forest')
   await uploadTrack(page, 'Ordered Rain')
-  await page.getByRole('link', { name: 'Tables', exact: true }).click()
+  await navigate(page, 'Tables')
   await createTable(page, 'Ordered table')
   await page.getByRole('link', { name: 'Open Ordered table', exact: true }).click()
   await addExistingTrack(page, 'Ordered Forest')
@@ -485,26 +853,26 @@ test('GM keeps track ordering independent for each table', async ({ page, browse
   const freshGM = await freshContext.newPage()
   try {
     await login(freshGM)
-    await freshGM.getByRole('link', { name: 'Tables', exact: true }).click()
+    await navigate(freshGM, 'Tables')
     await freshGM.getByRole('link', { name: 'Open Ordered table', exact: true }).click()
     await expect(freshGM.locator('.file-tile .track-heading > span')).toHaveText(['Ordered Rain', 'Ordered Forest'])
   } finally {
     await freshContext.close()
   }
-  await page.getByRole('link', { name: 'Tables', exact: true }).click()
+  await navigate(page, 'Tables')
   await page.getByRole('link', { name: 'Open My Table', exact: true }).click()
   await expect(headings).toHaveText(['Ordered Forest', 'Ordered Rain'])
   await deleteLibraryTrack(page, 'Ordered Forest', 2)
   await deleteLibraryTrack(page, 'Ordered Rain', 2)
   await deleteLibraryTrack(page, 'Library only', 0)
-  await page.getByRole('link', { name: 'Tables', exact: true }).click()
+  await navigate(page, 'Tables')
   await deleteTable(page, 'Ordered table')
 })
 
 test('GM recovers a table mix and live playback in a fresh browser', async ({ page, browser }) => {
   test.slow()
   await login(page)
-  await page.getByRole('link', { name: 'Tables', exact: true }).click()
+  await navigate(page, 'Tables')
   await createTable(page, 'Saved mix')
   await page.getByRole('link', { name: 'Open Saved mix', exact: true }).click()
   await uploadTrack(page, 'Mixed Forest')
@@ -524,14 +892,14 @@ test('GM recovers a table mix and live playback in a fresh browser', async ({ pa
   for (let i = 0; i < 4; i++) await master.press('PageUp')
   await expect(master).toHaveAttribute('aria-valuenow', '40')
   await savedMix
-  await page.getByRole('link', { name: 'Tables', exact: true }).click()
+  await navigate(page, 'Tables')
   await page.getByRole('link', { name: 'Open My Table', exact: true }).click()
   await expect(page.getByRole('slider', { name: 'Master volume', exact: true })).toHaveAttribute('aria-valuenow', '100')
   const freshContext = await browser.newContext()
   const freshGM = await freshContext.newPage()
   try {
     await login(freshGM)
-    await freshGM.getByRole('link', { name: 'Tables', exact: true }).click()
+    await navigate(freshGM, 'Tables')
     await freshGM.getByRole('link', { name: 'Open Saved mix', exact: true }).click()
     const restored = freshGM.getByRole('group', { name: 'Mixed Forest', exact: true })
     await restored.hover()
@@ -547,16 +915,16 @@ test('GM recovers a table mix and live playback in a fresh browser', async ({ pa
     await freshContext.close()
   }
   await deleteLibraryTrack(page, 'Mixed Forest', 1)
-  await page.getByRole('link', { name: 'Tables', exact: true }).click()
+  await navigate(page, 'Tables')
   await deleteTable(page, 'Saved mix')
 })
 
 test('GM adds library tracks or new uploads to a table from one dialog', async ({ page }) => {
   test.slow()
   await login(page)
-  await page.getByRole('link', { name: 'Library', exact: true }).click()
+  await navigate(page, 'Library')
   await uploadTrack(page, 'Shared Forest')
-  await page.getByRole('link', { name: 'Tables', exact: true }).click()
+  await navigate(page, 'Tables')
   await createTable(page, 'Friday')
   await page.getByRole('link', { name: 'Open Friday', exact: true }).click()
   await expect(page.getByRole('combobox', { name: 'Library track', exact: true })).toHaveCount(0)
@@ -575,10 +943,10 @@ test('GM adds library tracks or new uploads to a table from one dialog', async (
   await uploadTrack(page, 'Friday Only')
   await page.reload()
   await expect(page.locator('.file-tile')).toHaveCount(2)
-  await page.getByRole('link', { name: 'Library', exact: true }).click()
+  await navigate(page, 'Library')
   await expect(page.getByRole('row').filter({ hasText: 'Friday Only' })).toBeVisible()
   await expect(page.getByRole('row').filter({ hasText: 'Shared Forest' })).toBeVisible()
-  await page.getByRole('link', { name: 'Tables', exact: true }).click()
+  await navigate(page, 'Tables')
   await deleteTable(page, 'Friday')
   await deleteLibraryTrack(page, 'Shared Forest', 0)
   await deleteLibraryTrack(page, 'Friday Only', 0)
@@ -590,9 +958,9 @@ test('deleting a shared library track confirms affected tables in a follow-up di
 }) => {
   test.slow()
   await login(page)
-  await page.getByRole('link', { name: 'Library', exact: true }).click()
+  await navigate(page, 'Library')
   await uploadTrack(page, 'Shared Forest')
-  await page.getByRole('link', { name: 'Tables', exact: true }).click()
+  await navigate(page, 'Tables')
   await createTable(page, 'Friday')
   await createTable(page, 'Sunday')
   await page.getByRole('link', { name: 'Open Friday', exact: true }).click()
@@ -602,7 +970,7 @@ test('deleting a shared library track confirms affected tables in a follow-up di
     await sundayGM.goto('/tables')
     await sundayGM.getByRole('link', { name: 'Open Sunday', exact: true }).click()
 
-    await page.getByRole('link', { name: 'Library', exact: true }).click()
+    await navigate(page, 'Library')
     const row = page.getByRole('row').filter({ hasText: 'Shared Forest' })
     await row.getByRole('button', { name: 'Edit Shared Forest', exact: true }).click()
     const editor = page.getByRole('dialog').filter({ has: page.getByLabel('Track Name', { exact: true }) })
@@ -632,7 +1000,7 @@ test('deleting a shared library track confirms affected tables in a follow-up di
   } finally {
     await sundayGM.close()
   }
-  await page.getByRole('link', { name: 'Tables', exact: true }).click()
+  await navigate(page, 'Tables')
   await deleteTable(page, 'Friday')
   await deleteTable(page, 'Sunday')
 })
@@ -691,7 +1059,7 @@ test('library row previews stay local while a table is streaming', async ({ page
     await expect.poll(() => player.locator('video').evaluate(
       (el: HTMLVideoElement) => !el.paused && el.currentTime > 0,
     )).toBe(true)
-    await library.getByRole('link', { name: 'Tables', exact: true }).click()
+    await navigate(library, 'Tables')
     await expect(library.locator('video')).toHaveCount(0)
     await library.getByRole('link', { name: 'Open My Table', exact: true }).click()
     await expect(library.locator('.file-tile')).toHaveCount(1)
@@ -744,8 +1112,8 @@ test('GM controls desktop playback from a phone and recovers after every GM leav
       .getByRole('slider', { name: 'Volume for Remote Music', exact: true })).toHaveAttribute('aria-valuenow', '0')
     await expect.poll(() => player.locator('video').evaluate((el: HTMLVideoElement) => el.volume)).toBe(0)
     await phone.getByRole('button', { name: 'Close now playing', exact: true }).tap()
-    await phone.getByRole('link', { name: 'Tables', exact: true }).click()
-    await page.getByRole('link', { name: 'Tables', exact: true }).click()
+    await navigate(phone, 'Tables')
+    await navigate(page, 'Tables')
     const before = await player.locator('video').evaluate((el: HTMLVideoElement) => el.currentTime)
     await expect.poll(() => player.locator('video').evaluate((el: HTMLVideoElement) => el.currentTime)).toBeGreaterThan(before + 1)
     await page.getByRole('link', { name: 'Open My Table', exact: true }).click()
@@ -787,6 +1155,7 @@ test.describe('drag-handle reordering', () => {
   test('GM drags handles, keeps the order, and uses inline playback controls', async ({
     page,
   }, testInfo) => {
+    testInfo.setTimeout(Math.max(testInfo.timeout, 60_000))
     await login(page)
     for (const name of ['Forest', 'Rain', 'Tavern']) await uploadTrack(page, name)
     const tiles = page.locator('.track-item:not([data-dnd-dragging]) > .file-tile')
@@ -1205,6 +1574,9 @@ test('invited player receives live playback, late-join state, and pause', async 
     const player = await playerContext.newPage()
     await player.goto('/table/e2e-invite')
     await expect(player.getByText('Volume Mixer', { exact: true })).toBeVisible()
+    await expect(player.getByRole('button', { name: 'Toggle navigation' })).toHaveCount(0)
+    await expect(player.getByRole('navigation', { name: 'Navigation' })).toHaveCount(0)
+    await expect(player.getByRole('banner').getByRole('link', { name: 'Login', exact: true })).toHaveCount(0)
     await expect(player.getByRole('button', { name: 'Add Track', exact: true })).toHaveCount(0)
     await expect(player.getByRole('banner')).toContainText('My Table')
     await expect(player.getByRole('heading', { name: 'My Table', exact: true })).toHaveCount(0)
@@ -1489,8 +1861,8 @@ async function expectEdgeToEdgeTable(page: Page, sidebar: Locator) {
     const banner = await page.getByRole('banner').boundingBox()
     const viewport = page.viewportSize()
     if (!panel || !grid || !card || !banner || !viewport) return false
-    return grid.x === 0 && card.x === 10 && card.y === grid.y + 10
-      && panel.x === grid.width
+    return grid.x === 0 && card.x === grid.x + 10 && card.y === grid.y + 10
+      && panel.x === grid.x + grid.width
       && panel.x + panel.width === viewport.width
       && panel.y === banner.y + banner.height
       && panel.y + panel.height === viewport.height
@@ -1613,9 +1985,9 @@ test('tables share a library but isolate invitations, playback, removal, and del
   test.slow()
   await context.grantPermissions(['clipboard-read', 'clipboard-write'])
   await login(page)
-  await page.getByRole('link', { name: 'Library', exact: true }).click()
+  await navigate(page, 'Library')
   await uploadTrack(page, 'Shared Forest')
-  await page.getByRole('link', { name: 'Tables', exact: true }).click()
+  await navigate(page, 'Tables')
   await createTable(page, 'Friday')
   await createTable(page, 'Sunday')
   await page.getByRole('link', { name: 'Open Friday', exact: true }).click()
@@ -1675,11 +2047,11 @@ test('tables share a library but isolate invitations, playback, removal, and del
     await expect.poll(() => sundayPlayer.locator('video').evaluate(
       (el: HTMLVideoElement) => !el.paused,
     )).toBe(true)
-    await page.getByRole('link', { name: 'Library', exact: true }).click()
+    await navigate(page, 'Library')
     await deleteLibraryTrack(page, 'Shared Forest', 1)
     await expect(sundayTile).toHaveCount(0)
     await expect(sundayPlayer.locator('video')).toHaveCount(0)
-    await page.getByRole('link', { name: 'Tables', exact: true }).click()
+    await navigate(page, 'Tables')
     await deleteTable(page, 'Friday')
     await expect(fridayPlayer.getByText('This table has been deleted.', { exact: true })).toBeVisible()
     await fridayPlayer.reload()
@@ -1739,7 +2111,13 @@ async function login(page: Page) {
   await page.getByRole('button', { name: 'Login', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'Tables', exact: true })).toBeVisible()
   await page.getByRole('link', { name: 'Open My Table', exact: true }).click()
-  await expect(page.getByRole('button', { name: 'Add Track', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: page.viewportSize()!.width < 960 ? 'Table options' : 'Add Track', exact: true })).toBeVisible()
+}
+
+async function navigate(page: Page, destination: 'Library' | 'Tables') {
+  const toggle = page.getByRole('button', { name: 'Toggle navigation' })
+  if (await toggle.getAttribute('aria-expanded') !== 'true') await toggle.click()
+  await page.getByRole('link', { name: destination, exact: true }).click()
 }
 
 async function createTable(page: Page, name: string) {
@@ -1769,7 +2147,7 @@ async function deleteTable(page: Page, name: string) {
 }
 
 async function deleteLibraryTrack(page: Page, name: string, tableCount: number) {
-  await page.getByRole('link', { name: 'Library', exact: true }).click()
+  await navigate(page, 'Library')
   const row = page.getByRole('row').filter({ hasText: name })
   await row.getByRole('button', { name: `Edit ${name}` }).click()
   await page.getByRole('button', { name: 'Delete track', exact: true }).click()
@@ -1782,14 +2160,14 @@ async function deleteLibraryTrack(page: Page, name: string, tableCount: number) 
   await expect(row).toHaveCount(0)
 }
 
-async function uploadTrack(page: Page, name: string, typeName = 'Music') {
+async function uploadTrack(page: Page, name: string, typeName = 'Music', duration = 30) {
   const audio = execFileSync('ffmpeg', [
     '-v',
     'error',
     '-f',
     'lavfi',
     '-i',
-    'sine=frequency=440:duration=30',
+    `sine=frequency=440:duration=${duration}`,
     '-f',
     'mp3',
     'pipe:1',
@@ -1824,6 +2202,13 @@ async function uploadTrack(page: Page, name: string, typeName = 'Music') {
 }
 
 async function openUploadDialog(page: Page) {
+  const options = page.getByRole('button', { name: 'Table options', exact: true })
+  if (await options.isVisible()) {
+    await options.click()
+    await page.getByRole('menuitem', { name: 'Add Track', exact: true }).click()
+    await page.getByRole('tab', { name: 'Upload new', exact: true }).click()
+    return
+  }
   const addTrack = page.getByRole('button', { name: 'Add Track', exact: true })
   if (await addTrack.count()) {
     await addTrack.click()

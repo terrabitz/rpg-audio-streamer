@@ -152,8 +152,14 @@ metadata management), `/tables/:tableID` (GM table), and `/table/:token?`
 table management. Table views show associated tracks only; GMs can add an
 existing library track or upload a new one directly into the table.
 To preserve space during play, the table name appears only in the app bar.
-Its **Add Track** action opens a dialog with library selection and new-upload
-tabs; neither workflow adds a permanent control row to the track grid.
+Authenticated navigation lives in a left sidebar that is closed by default and
+overlays the page when opened, with logout at the bottom. Logged-out visitors
+see a login button in the app bar; player views show neither navigation nor login.
+On GM tables, the master-volume control appears in the desktop now-playing
+sidebar and the mobile now-playing drawer. Mobile table actions are grouped in
+the app bar's options menu; on desktop they remain in the app bar. **Add Track** opens a dialog with
+library selection and new-upload tabs; neither workflow adds a permanent
+control row to the track grid.
 Uploads require a file, a nonblank name, and a valid library track type before
 the Upload action is enabled.
 Upload results appear as compact, auto-dismissing bottom-center toasts attached
@@ -194,6 +200,13 @@ duration restores the full track without separate reset controls. Point edits
 immediately update live playback (including listening players at the current
 table), but shared library metadata is only persisted on Save. Closing without
 saving restores the saved region in playback; invalid drafts are not applied.
+Region edits preserve each listener's live playhead without seeking to a reported
+position; only a playhead outside the edited region is moved to its nearest boundary.
+An in-flight loop crossfade keeps its incoming source playing through marker edits,
+preserving its position when valid and moving it into the edited region otherwise.
+Shortening the end can complete that handoff early; extending it applies to the next
+loop. A source that reaches its end without a prepared crossfade starts the next
+loop from the configured loop-back point.
 These settings are stored with the shared library track and apply in every table.
 Opening library controls loads audio metadata without starting playback or
 sending synchronization messages.
@@ -240,7 +253,8 @@ on hover, focus, and touch. Playing tiles have a saturated background mixed from
 their track-type color; paused tiles retain the neutral surface. Tile names stay
 on one line with ellipsis overflow and a full-name hover title.
 A currently-playing sidebar lists active table tracks
-with volume, playback-position, elapsed/total time, pause, and restart controls.
+with volume, playback-position, elapsed/total time, pause, and restart controls,
+and provides master volume even when no tracks are playing.
 The sidebar timer and seek bar's accessible value text measure elapsed time from
 the configured beginning and total time to the configured end. Seeking still
 uses absolute positions within the source audio.
@@ -320,6 +334,9 @@ one-shot completion without browser time-update messages. Browsers supply media
 duration as metadata becomes available; the server does not decode audio.
 Active tables receive a snapshot each second, keeping control-only browsers
 and completion state current even when local audio cannot autoplay.
+Explicit seek and play/pause commands advance a position version. Running media
+uses that version to distinguish commanded position changes from clock snapshots,
+preserving local loop handoffs during live marker edits.
 GM snapshots carry unscaled track volume and saved table settings. Successful
 settings patches update connected GM mixes and listener playback without
 echoing remote changes back into another settings save. Player snapshots apply

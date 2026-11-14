@@ -82,6 +82,14 @@ func TestSharedPlaybackAndRecovery(t *testing.T) {
 	if snapshot.Tracks[0].CurrentTime != 12 || snapshot.Tracks[0].IsPlaying {
 		t.Fatalf("paused seek = %+v", snapshot)
 	}
+	if snapshot.Tracks[0].PositionVersion != 3 {
+		t.Fatalf("seek command version = %d", snapshot.Tracks[0].PositionVersion)
+	}
+	h.handleSyncTrack(json.RawMessage(fmt.Sprintf(`{"fileID":%q,"playback":{"startTime":1}}`, testTrackID)), clients["otherGM"])
+	snapshot = readPlayback(t, clients["otherGM"])
+	if snapshot.Tracks[0].PositionVersion != 3 {
+		t.Fatal("marker edits must not issue a seek command")
+	}
 }
 
 func TestPlaybackCommandsAreAtomicAndAuthorized(t *testing.T) {

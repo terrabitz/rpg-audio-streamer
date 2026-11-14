@@ -12,6 +12,7 @@ export interface AudioTrack {
   duration: number
   trackType: string
   playback?: PlaybackSettings
+  positionVersion?: number
 }
 
 interface FadeStatus {

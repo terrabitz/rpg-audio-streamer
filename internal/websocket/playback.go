@@ -21,17 +21,18 @@ type PlaybackStore interface {
 }
 
 type playingTrack struct {
-	FileID      string                  `json:"fileID"`
-	Name        string                  `json:"name"`
-	IsPlaying   bool                    `json:"isPlaying"`
-	Volume      float64                 `json:"volume"`
-	IsRepeating bool                    `json:"isRepeating"`
-	CurrentTime float64                 `json:"currentTime"`
-	Duration    float64                 `json:"duration"`
-	TrackType   string                  `json:"trackType"`
-	Playback    server.PlaybackSettings `json:"playback"`
-	typeID      uuid.UUID
-	updatedAt   time.Time
+	FileID          string                  `json:"fileID"`
+	Name            string                  `json:"name"`
+	IsPlaying       bool                    `json:"isPlaying"`
+	Volume          float64                 `json:"volume"`
+	IsRepeating     bool                    `json:"isRepeating"`
+	CurrentTime     float64                 `json:"currentTime"`
+	Duration        float64                 `json:"duration"`
+	TrackType       string                  `json:"trackType"`
+	Playback        server.PlaybackSettings `json:"playback"`
+	PositionVersion uint64                  `json:"positionVersion"`
+	typeID          uuid.UUID
+	updatedAt       time.Time
 }
 
 type playbackPatch struct {
@@ -135,6 +136,9 @@ func (h *Hub) updatePlayback(payload json.RawMessage, c *Client) {
 	}
 	if patch.IsPlaying != nil {
 		state.IsPlaying = *patch.IsPlaying
+	}
+	if patch.CurrentTime != nil || patch.IsPlaying != nil {
+		state.PositionVersion++
 	}
 	if err := state.validate(); err != nil {
 		h.playbackError(c, err)

@@ -32,6 +32,10 @@
     <div v-else class="table-playback-layout" :class="{ 'is-mobile': smAndDown }">
       <aside v-if="!smAndDown" class="playing-sidebar" aria-label="Currently playing">
         <h2 class="now-playing-heading mb-2">Currently playing</h2>
+        <div class="master-volume">
+          <VolumeSlider :model-value="audioStore.mixMasterVolume" aria-label="Master volume"
+            @update:model-value="audioStore.setMasterVolume($event)" />
+        </div>
         <PlayingTrackList :tracks="playingTracks" @play="handlePlay" @volume="handleVolume" @seek="handleSeek" />
       </aside>
       <template v-else>
@@ -49,6 +53,10 @@
               <h2 class="now-playing-heading">Currently playing ({{ playingTracks.length }})</h2>
               <v-btn icon="$close" size="small" variant="text" aria-label="Close now playing"
                 @click="showNowPlaying = false" />
+            </div>
+            <div class="master-volume mx-3">
+              <VolumeSlider :model-value="audioStore.mixMasterVolume" aria-label="Master volume"
+                @update:model-value="audioStore.setMasterVolume($event)" />
             </div>
             <div class="now-playing-drawer-tracks">
               <PlayingTrackList :tracks="playingTracks" @play="handlePlay" @volume="handleVolume" @seek="handleSeek" />
@@ -106,6 +114,7 @@ import AudioControls from './AudioControls.vue'
 import SortableTrack from './SortableTrack.vue'
 import AudioPlayer from './AudioPlayer.vue'
 import PlayingTrackList from './PlayingTrackList.vue'
+import VolumeSlider from './VolumeSlider.vue'
 
 const fileStore = useFileStore()
 const audioStore = useAudioStore()
@@ -290,11 +299,10 @@ function previewTrack(fileID: string) {
 function handleSettings(fileID: string, playback: PlaybackSettings) {
   const state = audioStore.tracks[fileID]
   if (!state) return
-  const currentTime = Math.max(playback.startTime, Math.min(state.currentTime, playback.endTime ?? Infinity))
-  audioStore.updateTrackState(fileID, { playback, currentTime })
+  audioStore.updateTrackState(fileID, { playback })
   if (!props.library && wsStore.isConnected) {
     wsStore.sendMessage('syncTrack', {
-      fileID, playback, currentTime, duration: state.duration,
+      fileID, playback, duration: state.duration,
     })
   }
 }
@@ -350,6 +358,10 @@ onUnmounted(() => {
   font-size: 1rem;
   font-weight: 500;
   line-height: 24px;
+}
+
+.master-volume {
+  margin-bottom: 12px;
 }
 
 .now-playing-bar {
