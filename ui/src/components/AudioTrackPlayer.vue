@@ -44,10 +44,7 @@ watch([
   () => audioStore.tracks[props.fileID]?.playback?.startTime,
   () => audioStore.tracks[props.fileID]?.playback?.endTime,
   () => audioStore.tracks[props.fileID]?.playback?.loopBackTime,
-], () => {
-  cancelOverlap()
-  syncPosition()
-})
+], syncRegion)
 watch(() => audioStore.tracks[props.fileID]?.isRepeating, (isRepeating) => {
   cancelOverlap()
   if (isRepeating && audioStore.tracks[props.fileID]?.isPlaying) bindHLS(1)
@@ -124,13 +121,31 @@ function syncPlaying() {
   tick()
 }
 
-function syncPosition() {
+function syncRegion() {
+  const state = audioStore.tracks[props.fileID]
+  const media = element(active.value)
+  if (!state || !media) return
+  const { start, end, loop } = playbackRegion(state.playback, state.duration)
+  if (overlap) {
+    // An in-flight handoff must survive edits, even if the outgoing source has ended.
+    overlap.end = Math.min(overlap.end, end)
+    const incoming = element(overlap.incoming)
+    if (incoming) {
+      const position = incoming.currentTime >= end ? loop : Math.max(start, incoming.currentTime)
+      if (incoming.currentTime !== position) incoming.currentTime = position
+    }
+  }
+  syncPosition(media.currentTime)
+}
+
+function syncPosition(currentTime?: number) {
   const state = audioStore.tracks[props.fileID]
   const media = element(active.value)
   if (!state || !media) return
   const { start, end } = playbackRegion(state.playback, state.duration)
-  const time = Math.max(start, state.currentTime)
-  media.currentTime = end > start ? Math.min(time, end) : time
+  const time = Math.max(start, currentTime ?? state.currentTime)
+  const position = end > start ? Math.min(time, end) : time
+  if (media.currentTime !== position) media.currentTime = position
   updatePlaybackState({ currentTime: media.currentTime })
 }
 
@@ -157,11 +172,12 @@ function tick() {
     reportPlaybackError(new Error(error))
     return
   }
-  if (state.isRepeating && !overlap && ready[1 - active.value] && !media.paused &&
-      media.currentTime >= region.end - region.fade) {
+  if (state.isRepeating && !overlap && ready[1 - active.value] &&
+      (media.ended || media.currentTime >= region.end ||
+        !media.paused && media.currentTime >= region.end - region.fade)) {
     startOverlap(region.loop, region.end)
   }
-  if (overlap && media.currentTime >= overlap.end) finishOverlap()
+  if (overlap && (media.ended || media.currentTime >= overlap.end)) finishOverlap()
   else if (!state.isRepeating && media.currentTime >= region.end) finishTrack()
   applyVolumes()
   if (audioStore.tracks[props.fileID]) audioStore.setFading(props.fileID, !!fade || !!overlap || !!volumeFade)

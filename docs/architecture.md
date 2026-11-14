@@ -198,6 +198,13 @@ duration restores the full track without separate reset controls. Point edits
 immediately update live playback (including listening players at the current
 table), but shared library metadata is only persisted on Save. Closing without
 saving restores the saved region in playback; invalid drafts are not applied.
+Region edits preserve each listener's live playhead without seeking to a reported
+position; only a playhead outside the edited region is moved to its nearest boundary.
+An in-flight loop crossfade keeps its incoming source playing through marker edits,
+preserving its position when valid and moving it into the edited region otherwise.
+Shortening the end can complete that handoff early; extending it applies to the next
+loop. A source that reaches its end without a prepared crossfade starts the next
+loop from the configured loop-back point.
 These settings are stored with the shared library track and apply in every table.
 Opening library controls loads audio metadata without starting playback or
 sending synchronization messages.

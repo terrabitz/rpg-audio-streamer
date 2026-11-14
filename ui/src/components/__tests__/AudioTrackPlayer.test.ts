@@ -204,6 +204,71 @@ it('cancels overlap on seek or pause, fades to silence, and resumes without an o
   expect(vi.getTimerCount()).toBe(0)
 })
 
+it.each([
+  { loopBackTime: 10 },
+  { endTime: 59 },
+])('keeps a pending loop handoff alive when markers change after the source ends: %j', async (settings) => {
+  const { player, audio, primary, secondary } = await mountPlaying({})
+  try {
+    primary.currentTime = 58
+    await player.get('video').trigger('timeupdate')
+    secondary.currentTime = 1
+    Object.defineProperty(secondary, 'readyState', { configurable: true, value: 1 })
+    primary.currentTime = 60
+    primary.pause()
+    vi.spyOn(primary, 'ended', 'get').mockReturnValue(true)
+    await player.get('video').trigger('ended')
+    audio.updateTrackState('forest', { playback: { ...defaultPlayback(), ...settings } })
+    await nextTick()
+    expect(secondary.paused).toBe(false)
+    expect(secondary.currentTime).toBe(1)
+    Object.defineProperty(secondary, 'readyState', { configurable: true, value: 4 })
+    await vi.advanceTimersByTimeAsync(16)
+    expect(player.get('audio').attributes('data-active')).toBe('true')
+    expect(secondary.paused).toBe(false)
+    expect(secondary.volume).toBe(1)
+    expect(audio.tracks.forest?.currentTime).toBe(1)
+    expect(audio.tracks.forest?.isPlaying).toBe(true)
+  } finally { player.unmount() }
+})
+
+it('loops an ended source even when no crossfade started before its final event', async () => {
+  const { player, audio, primary, secondary } = await mountPlaying({ loopBackTime: 10 })
+  try {
+    primary.currentTime = 60
+    primary.pause()
+    vi.spyOn(primary, 'ended', 'get').mockReturnValue(true)
+    await player.get('video').trigger('ended')
+    expect(primary.paused).toBe(true)
+    expect(secondary.paused).toBe(false)
+    expect(secondary.currentTime).toBe(10)
+    expect(player.get('audio').attributes('data-active')).toBe('true')
+    expect(audio.tracks.forest?.isPlaying).toBe(true)
+  } finally { player.unmount() }
+})
+
+it.each([
+  [{ startTime: 2, endTime: 58.5, loopBackTime: 10 }, 2],
+  [{ endTime: 0.5 }, 0],
+])('retargets a crossfade and keeps the closest valid incoming position: %j', async (settings, position) => {
+  const { player, audio, primary, secondary } = await mountPlaying({})
+  try {
+    primary.currentTime = 58
+    await player.get('video').trigger('timeupdate')
+    primary.currentTime = 59
+    secondary.currentTime = 1
+    await player.get('video').trigger('timeupdate')
+    audio.updateTrackState('forest', { playback: { ...defaultPlayback(), ...settings } })
+    await nextTick()
+    await vi.advanceTimersByTimeAsync(16)
+    expect(secondary.currentTime).toBe(position)
+    expect(secondary.paused).toBe(false)
+    expect(primary.paused).toBe(true)
+    expect(player.get('audio').attributes('data-active')).toBe('true')
+    expect(audio.tracks.forest?.currentTime).toBe(position)
+  } finally { player.unmount() }
+})
+
 it('applies edited boundaries and stops one-shots at the selected end without looping', async () => {
   const { player, audio, primary, secondary } = await mountPlaying({})
   try {
@@ -220,6 +285,44 @@ it('applies edited boundaries and stops one-shots at the selected end without lo
     expect(primary.currentTime).toBe(10)
     expect(audio.tracks.forest?.isPlaying).toBe(false)
     expect(audio.tracks.forest?.currentTime).toBe(10)
+  } finally { player.unmount() }
+})
+
+it.each([
+  ['startTime', 5],
+  ['endTime', 40],
+  ['loopBackTime', 8],
+] as const)('preserves the live playhead without seeking during repeated %s edits', async (point, time) => {
+  const { player, audio, primary } = await mountPlaying({})
+  try {
+    const seek = vi.spyOn(primary, 'currentTime', 'set')
+    for (let step = 0; step < 12; step++) {
+      // Media advances between the less frequent timeupdate reports.
+      primary.currentTime = 20 + step / 10
+      seek.mockClear()
+      const playback = { ...defaultPlayback(), [point]: time + step / 10 }
+      audio.updateTrackState('forest', { playback })
+      await nextTick()
+      expect(seek).not.toHaveBeenCalled()
+      expect(primary.currentTime).toBe(20 + step / 10)
+      expect(primary.paused).toBe(false)
+      expect(audio.tracks.forest?.currentTime).toBe(primary.currentTime)
+    }
+  } finally { player.unmount() }
+})
+
+it.each([
+  [{ startTime: 25 }, 25],
+  [{ endTime: 15 }, 15],
+])('moves an excluded live playhead to the edited boundary: %j', async (settings, position) => {
+  const { player, audio, primary } = await mountPlaying({})
+  try {
+    primary.currentTime = 20
+    audio.updateTrackState('forest', { playback: { ...defaultPlayback(), ...settings } })
+    await nextTick()
+    expect(primary.currentTime).toBe(position)
+    expect(primary.paused).toBe(false)
+    expect(audio.tracks.forest?.currentTime).toBe(position)
   } finally { player.unmount() }
 })
 
