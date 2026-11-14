@@ -152,8 +152,12 @@ metadata management), `/tables/:tableID` (GM table), and `/table/:token?`
 table management. Table views show associated tracks only; GMs can add an
 existing library track or upload a new one directly into the table.
 To preserve space during play, the table name appears only in the app bar.
-Its **Add Track** action opens a dialog with library selection and new-upload
-tabs; neither workflow adds a permanent control row to the track grid.
+Navigation and authentication controls live in a collapsible left sidebar.
+On GM tables, the master-volume control appears in the desktop now-playing
+sidebar and the mobile now-playing drawer. Mobile table actions are grouped in
+the app bar's options menu; on desktop they remain in the app bar. **Add Track** opens a dialog with
+library selection and new-upload tabs; neither workflow adds a permanent
+control row to the track grid.
 Uploads require a file, a nonblank name, and a valid library track type before
 the Upload action is enabled.
 Upload results appear as compact, auto-dismissing bottom-center toasts attached
@@ -238,7 +242,8 @@ on hover, focus, and touch. Playing tiles have a saturated background mixed from
 their track-type color; paused tiles retain the neutral surface. Tile names stay
 on one line with ellipsis overflow and a full-name hover title.
 A currently-playing sidebar lists active table tracks
-with volume, playback-position, elapsed/total time, pause, and restart controls.
+with volume, playback-position, elapsed/total time, pause, and restart controls,
+and provides master volume even when no tracks are playing.
 The sidebar timer and seek bar's accessible value text measure elapsed time from
 the configured beginning and total time to the configured end. Seeking still
 uses absolute positions within the source audio.

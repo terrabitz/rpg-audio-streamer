@@ -2,9 +2,11 @@
   <div>
     <v-dialog persistent v-model="showModal" max-width="600px">
       <template v-slot:activator="{ props: activatorProps }">
-        <v-btn v-bind="activatorProps" :prepend-icon="props.tableID ? '$add' : '$upload'">
-          {{ props.tableID ? 'Add Track' : 'Upload Track' }}
-        </v-btn>
+        <slot name="activator" :props="activatorProps">
+          <v-btn v-bind="activatorProps" :prepend-icon="props.tableID ? '$add' : '$upload'">
+            {{ props.tableID ? 'Add Track' : 'Upload Track' }}
+          </v-btn>
+        </slot>
       </template>
       <v-card>
         <v-card-title>
