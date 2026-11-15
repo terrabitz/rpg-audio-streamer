@@ -14,7 +14,6 @@ COPY scripts/install-libdave.sh scripts/install-libdave.sh
 RUN sh scripts/install-libdave.sh /opt/libdave
 ENV PKG_CONFIG_PATH=/opt/libdave/lib/pkgconfig
 COPY go.mod go.sum ./
-COPY third_party/godave-libdave third_party/godave-libdave
 RUN go mod download
 
 COPY main.go .

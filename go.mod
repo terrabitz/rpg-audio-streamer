@@ -38,5 +38,3 @@ require (
 	modernc.org/memory v1.11.0 // indirect
 	modernc.org/sqlite v1.40.1 // indirect
 )
-
-replace github.com/disgoorg/godave/libdave => ./third_party/godave-libdave

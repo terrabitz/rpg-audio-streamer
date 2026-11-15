@@ -529,10 +529,7 @@ PCM into Opus and sends it over Discord's DAVE-encrypted voice connection.
 It reannounces the speaking source when participants join and periodically
 so late listeners can associate incoming packets with the bot.
 DAVE uses Discord's native libdave through the `godave/golibdave` Go bindings
-in the server process. A small local copy of the `godave/libdave` binding
-keeps retained callback userdata in C-owned memory; its README documents the
-patch and upstream provenance. MLS itself is implemented by native libdave,
-not a Go fork. The Linux image uses glibc and includes the pinned libdave shared
+in the server process; MLS itself is implemented by native libdave. The Linux image uses glibc and includes the pinned libdave shared
 library and its licenses. Development and CI install the same verified upstream
 release; a C compiler and pkg-config are needed to build.
 The stream bot joins self-deafened and does not receive participants' audio.
