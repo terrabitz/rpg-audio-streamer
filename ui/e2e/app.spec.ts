@@ -21,7 +21,7 @@ test('GM controls real Discord audio and reconnects the saved channel', async ({
     await uploadTrack(page, 'Discord High', 'Music', 880, 120)
     await uploadTrack(page, 'Discord Replacement', 'Music', 440, 120)
     await chooseDiscordDestination(page)
-    await expect(page.getByRole('button', { name: 'Disconnect', exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Connected', exact: true })).toBeVisible()
     listener = await startTestListener(config)
     const current = () => {
       const audio = listener!.latest()
@@ -57,7 +57,7 @@ test('GM controls real Discord audio and reconnects the saved channel', async ({
     frames = current().frames
     await waitAudio(audio => audio.frames >= frames + 96000 && audio.low > 0.05 && audio.high < 0.003)
     await expect(high).toHaveCount(0)
-    await page.getByRole('button', { name: 'Disconnect', exact: true }).click()
+    await page.getByRole('button', { name: 'Connected', exact: true }).click()
     await waitAudio(audio => !audio.present)
     await chooseDiscordDestination(page, true)
     await waitAudio(audio => audio.present)
@@ -68,7 +68,7 @@ test('GM controls real Discord audio and reconnects the saved channel', async ({
       .toBe('disconnected')
     await waitAudio(audio => !audio.present)
     await page.getByRole('link', { name: 'Open Discord audio', exact: true }).click()
-    await expect(page.getByRole('button', { name: 'Disconnect', exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Connected', exact: true })).toBeVisible()
     await waitAudio(audio => audio.present)
     frames = current().frames
     await waitAudio(audio => audio.frames >= frames + 96000 && audio.low > 0.05 && audio.high < 0.003)
@@ -99,7 +99,9 @@ async function chooseDiscordDestination(page: Page, saved = false) {
   const channels = await channelsResponse.json()
   const channel = channels.find((item: { id: string }) => item.id === target.channelID)
   if (!guild || !channel) throw new Error('Isolated test server and voice channel must be installed and visible to the bot')
-  await page.getByRole('button', { name: 'Connect', exact: true }).click()
+  const connectButton = page.getByRole('button', { name: 'Connect', exact: true })
+  await expect(connectButton).toHaveClass(/text-grey/)
+  await connectButton.click()
   const dialog = page.getByRole('dialog', { name: 'Discord setup' })
   await expect(dialog).toBeVisible()
   const refresh = dialog.getByRole('button', { name: 'Refresh Discord servers', exact: true })
@@ -123,8 +125,14 @@ async function chooseDiscordDestination(page: Page, saved = false) {
   await expect(dialog.getByRole('button', { name: 'Connect', exact: true })).toBeEnabled()
   await dialog.getByRole('button', { name: 'Connect', exact: true }).click()
   await expect(dialog).toBeHidden()
-  const disconnectButton = page.getByRole('button', { name: 'Disconnect', exact: true })
+  const disconnectButton = page.getByRole('button', { name: 'Connected', exact: true })
   await expect(disconnectButton).toBeVisible()
+  await expect(disconnectButton).toHaveClass(/text-success/)
+  await expect.poll(async () => {
+    const sidebar = await page.getByRole('complementary', { name: 'Currently playing' }).boundingBox()
+    const button = await disconnectButton.boundingBox()
+    return sidebar && button && Math.abs(sidebar.y + sidebar.height - button.y - button.height - 8) < 1
+  }).toBe(true)
   await expect(page.getByText(`${guild.name} / ${channel.name}`, { exact: true })).toHaveCount(0)
   await disconnectButton.hover()
   await expect(page.getByRole('tooltip')).toContainText(`${guild.name} / ${channel.name}`)

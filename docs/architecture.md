@@ -500,9 +500,11 @@ The server uses its configured bot identity; the GM's existing app login
 authorizes controls. This path does not link a Discord user account or use
 OAuth client secrets. Voice transport runs in the Go API process.
 
-Each table's Currently playing sidebar (or mobile drawer) has a Connect or
-Disconnect button with the Discord logo. When connected, hovering over
-Disconnect reveals the destination server and voice channel. Its setup dialog
+Each table has a Discord control at the bottom of its desktop Currently playing
+sidebar, or above the tracks in its mobile drawer. It shows a grey Connect button
+when disconnected, a loading spinner while connecting, and a green Connected
+button while streaming. Clicking Connected disconnects; hovering reveals the
+destination server and voice channel. The button uses the Discord logo. Its setup dialog
 loads `GET /api/v1/discord/setup`, which obtains the application ID and the
 bot's installed servers from Discord. The server dropdown ends with an
 `+ Add to server` option that opens Discord's authorization page with only bot

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted } from 'vue'
 import { useDiscord } from '@/composables/discord'
+import discordLogo from '@/assets/discord.svg'
 
 const props = defineProps<{ tableID: string }>()
 const {
@@ -36,21 +37,20 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div v-if="status.enabled" class="mb-3">
+  <div v-if="status.enabled">
     <v-tooltip
       :text="`Streaming to ${status.guildName || 'Discord'} / ${status.channelName || status.channelID}`"
       :disabled="status.state !== 'connected'"
     >
       <template #activator="{ props: tooltipProps }">
-        <v-btn v-bind="tooltipProps" block variant="tonal" :loading="loading && !dialog" @click="toggle">
-          {{ status.state === 'connected' ? 'Disconnect' :
-            status.state === 'connecting' ? 'Cancel connection' : 'Connect' }}
+        <v-btn v-bind="tooltipProps" block variant="tonal"
+          :color="status.state === 'connected' ? 'success' : 'grey'"
+          :loading="status.state === 'connecting' || (loading && !dialog)"
+          :disabled="status.state === 'connecting'"
+          :aria-label="status.state === 'connecting' ? 'Connecting to Discord' : undefined" @click="toggle">
+          {{ status.state === 'connected' ? 'Connected' : 'Connect' }}
           <template #append>
-            <svg class="discord-logo" viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M19.7 5.2a18.6 18.6 0 0 0-4.6-1.4l-.6 1.2a17.3 17.3 0 0 0-5 0L9 3.8a18.5 18.5 0 0 0-4.6 1.4C1.5 9.5.7 13.7 1.1 17.8a18.6 18.6 0 0 0 5.7 2.9l1.2-2a12.1 12.1 0 0 1-1.9-.9l.5-.4a13.3 13.3 0 0 0 11 0l.5.4a12.1 12.1 0 0 1-1.9.9l1.2 2a18.6 18.6 0 0 0 5.7-2.9c.5-4.8-.8-8.9-3.4-12.6Z" />
-              <circle cx="9" cy="12" r="1.25" />
-              <circle cx="15" cy="12" r="1.25" />
-            </svg>
+            <img class="discord-logo" :src="discordLogo" alt="" />
           </template>
         </v-btn>
       </template>
@@ -86,14 +86,13 @@ onUnmounted(() => {
         </v-card-actions>
       </v-card>
     </v-dialog>
+    <v-alert v-if="error && !dialog" type="error" density="compact" class="mt-3">{{ error }}</v-alert>
   </div>
-  <v-alert v-if="status.enabled && error && !dialog" type="error" density="compact" class="mb-3">{{ error }}</v-alert>
 </template>
 
 <style scoped>
 .discord-logo {
   width: 18px;
   height: 18px;
-  fill: currentColor;
 }
 </style>

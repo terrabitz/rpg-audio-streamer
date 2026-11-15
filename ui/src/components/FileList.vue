@@ -32,12 +32,14 @@
     <div v-else class="table-playback-layout" :class="{ 'is-mobile': smAndDown }">
       <aside v-if="!smAndDown" class="playing-sidebar" aria-label="Currently playing">
         <h2 class="now-playing-heading mb-2">Currently playing</h2>
-        <DiscordControl v-if="tables.current" :tableID="tables.current.externalID" />
         <div class="master-volume">
           <VolumeSlider :model-value="audioStore.mixMasterVolume" aria-label="Master volume"
             @update:model-value="audioStore.setMasterVolume($event)" />
         </div>
-        <PlayingTrackList :tracks="playingTracks" @play="handlePlay" @volume="handleVolume" @seek="handleSeek" />
+        <div class="playing-sidebar-tracks">
+          <PlayingTrackList :tracks="playingTracks" @play="handlePlay" @volume="handleVolume" @seek="handleSeek" />
+        </div>
+        <DiscordControl v-if="tables.current" :tableID="tables.current.externalID" class="playing-sidebar-discord" />
       </aside>
       <template v-else>
         <v-bottom-sheet v-model="showNowPlaying" max-height="70dvh" aria-label="Currently playing">
@@ -60,7 +62,7 @@
                 @update:model-value="audioStore.setMasterVolume($event)" />
             </div>
             <div class="now-playing-drawer-tracks">
-              <DiscordControl v-if="tables.current" :tableID="tables.current.externalID" />
+              <DiscordControl v-if="tables.current" :tableID="tables.current.externalID" class="mb-3" />
               <PlayingTrackList :tracks="playingTracks" @play="handlePlay" @volume="handleVolume" @seek="handleSeek" />
             </div>
           </v-card>
@@ -351,14 +353,27 @@ onUnmounted(() => {
 }
 
 .playing-sidebar {
+  display: flex;
+  flex-direction: column;
   grid-column: 2;
   position: sticky;
   top: var(--v-layout-top, 64px);
   height: calc(100dvh - var(--v-layout-top, 64px));
-  overflow-y: auto;
+  overflow: hidden;
   padding: 8px;
   background: rgb(var(--v-theme-surface));
   border-left: 1px solid rgba(var(--v-theme-on-surface), 0.12);
+}
+
+.playing-sidebar-tracks {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.playing-sidebar-discord {
+  flex-shrink: 0;
+  padding-top: 12px;
 }
 
 .now-playing-heading {
