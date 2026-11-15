@@ -32,7 +32,11 @@
     <div v-else class="table-playback-layout" :class="{ 'is-mobile': smAndDown }">
       <aside v-if="!smAndDown" class="playing-sidebar" aria-label="Currently playing">
         <h2 class="now-playing-heading mb-2">Currently playing</h2>
-        <DiscordControl v-if="tables.current" :tableID="tables.current.id" />
+        <DiscordControl v-if="tables.current" :tableID="tables.current.externalID" />
+        <div class="master-volume">
+          <VolumeSlider :model-value="audioStore.mixMasterVolume" aria-label="Master volume"
+            @update:model-value="audioStore.setMasterVolume($event)" />
+        </div>
         <PlayingTrackList :tracks="playingTracks" @play="handlePlay" @volume="handleVolume" @seek="handleSeek" />
       </aside>
       <template v-else>
@@ -51,8 +55,12 @@
               <v-btn icon="$close" size="small" variant="text" aria-label="Close now playing"
                 @click="showNowPlaying = false" />
             </div>
+            <div class="master-volume mx-3">
+              <VolumeSlider :model-value="audioStore.mixMasterVolume" aria-label="Master volume"
+                @update:model-value="audioStore.setMasterVolume($event)" />
+            </div>
             <div class="now-playing-drawer-tracks">
-              <DiscordControl v-if="tables.current" :tableID="tables.current.id" />
+              <DiscordControl v-if="tables.current" :tableID="tables.current.externalID" />
               <PlayingTrackList :tracks="playingTracks" @play="handlePlay" @volume="handleVolume" @seek="handleSeek" />
             </div>
           </v-card>
@@ -97,13 +105,10 @@ import { defaultPlayback } from '@/composables/playback'
 import { defaultPreset, Feedback, PointerActivationConstraints, PointerSensor } from '@dnd-kit/dom'
 import { DragDropProvider, type DragEndEvent } from '@dnd-kit/vue'
 import { isSortable } from '@dnd-kit/vue/sortable'
-import { patchObject } from '@/composables/util'
 import { useFileStore } from '@/stores/files'
 import { useTrackTypeStore } from '@/stores/trackTypes'
 import { useTableStore } from '@/stores/tables'
 import { useWebSocketStore } from '@/stores/websocket'
-import debounce from 'lodash.debounce'
-import { createTrackSync } from '@/composables/trackSync'
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useDisplay } from 'vuetify'
 import { useAudioStore } from '../stores/audio'
@@ -112,6 +117,7 @@ import SortableTrack from './SortableTrack.vue'
 import AudioPlayer from './AudioPlayer.vue'
 import PlayingTrackList from './PlayingTrackList.vue'
 import DiscordControl from './DiscordControl.vue'
+import VolumeSlider from './VolumeSlider.vue'
 
 const fileStore = useFileStore()
 const audioStore = useAudioStore()
@@ -154,7 +160,7 @@ onMounted(async () => {
   try {
     await trackTypeStore.fetchTrackTypes()
     await fileStore.fetchFiles()
-    if (!props.library && tables.current) await tables.fetchTracks(tables.current.id)
+    if (!props.library && tables.current) await tables.fetchTracks(tables.current.externalID)
   } catch (e) {
     console.error('Failed to load tracks:', e)
     error.value = 'Failed to load tracks.'
@@ -223,18 +229,15 @@ function announceMove(name: string, index: number) {
 }
 
 async function deleteFile(file: Track, expectedTableCount: number | null) {
-  trackSync.remove(file.id)
   if (props.library) {
     if (expectedTableCount === null) throw new Error('Missing track usage count')
     await fileStore.deleteFile(file.id, expectedTableCount)
   } else {
     if (!tables.current) throw new Error('No current table')
-    await tables.removeTrack(tables.current.id, file.id)
+    await tables.removeTrack(tables.current.externalID, file.id)
   }
   audioStore.removeTrack(file.id)
 }
-
-const trackSync = createTrackSync((method, payload) => wsStore.sendMessage(method, payload))
 
 function libraryRowProps({ item }: { item: Track }) {
   return {
@@ -266,45 +269,11 @@ const handlePlay = (fileID: string) => {
   const state = audioStore.tracks[fileID]
   if (!state) return
 
-  trackSync.flush()
-  const newState = {
+  wsStore.sendMessage('syncTrack', {
+    fileID,
     isPlaying: !state.isPlaying,
-    trackType: trackType.name,
-    name: track.name
-  }
-
-  // If we're starting playback and the track type doesn't allow simultaneous play
-  if (newState.isPlaying && !trackType.allowSimultaneousPlay) {
-    // Find all other playing tracks of the same type
-    Object.entries(audioStore.tracks).forEach(([otherID, otherTrack]) => {
-      if (otherID !== fileID && otherTrack.isPlaying) {
-        // Check if other track is of the same type
-        const otherTrackData = fileStore.getTrackById(otherID)
-        if (otherTrackData && otherTrackData.typeID === track.typeID) {
-          // Stop the other track
-          audioStore.updateTrackState(otherID, { isPlaying: false })
-          wsStore.sendMessage('syncTrack', {
-            fileID: otherID,
-            isPlaying: false
-          })
-        }
-      }
-    })
-  }
-
-  // Update the current track's state
-  audioStore.updateTrackState(fileID, newState)
-  if (newState.isPlaying) {
-    const state = audioStore.tracks[fileID]
-    if (!state) return
-    const stateToSend = patchObject(
-      state,
-      { volume: state.volume * audioStore.mixMasterVolume / 100 },
-    )
-    trackSync.send({ ...stateToSend })
-  } else {
-    trackSync.send({ fileID: fileID, ...newState })
-  }
+    duration: state.duration,
+  })
 }
 
 function previewTrack(fileID: string) {
@@ -336,46 +305,29 @@ function handleSettings(fileID: string, playback: PlaybackSettings) {
   const currentTime = Math.max(playback.startTime, Math.min(state.currentTime, playback.endTime ?? Infinity))
   audioStore.updateTrackState(fileID, { playback, currentTime })
   if (!props.library && wsStore.isConnected) {
-    trackSync.flush()
     wsStore.sendMessage('syncTrack', {
-      ...audioStore.tracks[fileID], volume: state.volume * audioStore.mixMasterVolume / 100,
+      fileID, playback, duration: state.duration,
     })
   }
 }
 
 const handleVolume = (fileID: string, volume: number) => {
   audioStore.updateTrackState(fileID, { volume })
-  if (audioStore.tracks[fileID]?.isPlaying) {
-    trackSync.send({ fileID, volume: volume * audioStore.mixMasterVolume / 100 })
+  const state = audioStore.tracks[fileID]
+  if (!props.library && wsStore.isConnected && state?.isPlaying) {
+    wsStore.sendMessage('syncTrack', { fileID, volume, duration: state.duration })
   }
 }
 
 const handleSeek = (fileID: string, time: number) => {
   audioStore.updateTrackState(fileID, { currentTime: time })
-  if (!props.library && audioStore.tracks[fileID]?.isPlaying) {
-    trackSync.send({ fileID, currentTime: time })
+  if (!props.library && wsStore.isConnected) {
+    wsStore.sendMessage('syncTrack', { fileID, currentTime: time, duration: audioStore.tracks[fileID]?.duration })
   }
 }
 
-const updateAllTrackVolumes = debounce(() => {
-  Object.entries(audioStore.tracks).forEach(([fileID, track]) => {
-    if (track.isPlaying) {
-      wsStore.sendMessage('syncTrack', {
-        fileID,
-        volume: track.volume * audioStore.mixMasterVolume / 100
-      })
-    }
-  })
-}, 100)
-
-watch(() => audioStore.mixMasterVolume, () => {
-  if (!props.library) updateAllTrackVolumes()
-})
-
 onUnmounted(() => {
   if (props.library) audioStore.clearTracks()
-  trackSync.cancel()
-  updateAllTrackVolumes.cancel()
 })
 </script>
 
@@ -414,6 +366,10 @@ onUnmounted(() => {
   font-size: 1rem;
   font-weight: 500;
   line-height: 24px;
+}
+
+.master-volume {
+  margin-bottom: 12px;
 }
 
 .now-playing-bar {

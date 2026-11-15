@@ -41,6 +41,7 @@ func (s *Server) handleTableSettings(w http.ResponseWriter, r *http.Request, tok
 			s.tableError(w, err)
 			return
 		}
+		s.hub.SyncSettings(id.String(), *patch)
 		respondJSON(w, http.StatusOK, settings)
 	default:
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)

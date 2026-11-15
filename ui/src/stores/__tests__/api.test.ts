@@ -2,7 +2,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { useAuthStore } from '../auth'
 import { TrackUsageChangedError, useFileStore } from '../files'
-import { useJoinStore } from '../join'
 import { useTrackTypeStore } from '../trackTypes'
 
 const api = vi.hoisted(() => ({
@@ -15,7 +14,6 @@ const api = vi.hoisted(() => ({
   postApiV1Files: vi.fn(),
   deleteApiV1FilesByTrackId: vi.fn(),
   putApiV1FilesByTrackId: vi.fn(),
-  getApiV1JoinToken: vi.fn(),
   getApiV1TrackTypes: vi.fn(),
 }))
 vi.mock('@/client/apiClient', () => api)
@@ -62,14 +60,8 @@ describe('authentication', () => {
     expect(auth.role).toBeNull()
   })
 
-  it('checks invite tokens and clears unauthenticated or failed status', async () => {
+  it('clears unauthenticated or failed status', async () => {
     const auth = useAuthStore()
-    api.getApiV1AuthStatus.mockResolvedValue({ data: { authenticated: true, role: 'player' } })
-    await auth.checkAuthStatus('invite')
-    expect(api.getApiV1AuthStatus).toHaveBeenCalledWith({
-      headers: { Authorization: 'Bearer invite' },
-    })
-    expect(auth.role).toBe('player')
     api.getApiV1AuthStatus.mockResolvedValue({ data: { authenticated: false } })
     await auth.checkAuthStatus()
     expect(auth.authenticated).toBe(false)
@@ -203,43 +195,12 @@ describe('file library', () => {
   })
 })
 
-describe('invites and track types', () => {
-  it('loads and clears an invite', async () => {
-    const join = useJoinStore()
-    api.getApiV1JoinToken.mockResolvedValue({ data: { token: 'invite' } })
-    const pending = join.fetchToken()
-    expect(join.loading).toBe(true)
-    await pending
-    expect(join.token).toBe('invite')
-    expect(join.loading).toBe(false)
-    join.clearToken()
-    expect(join.token).toBeNull()
-    expect(join.error).toBeNull()
-  })
-
-  it('clears stale invites on failure and recovers on retry', async () => {
-    const join = useJoinStore()
-    join.token = 'stale'
-    api.getApiV1JoinToken.mockRejectedValue(new Error('offline'))
-    await join.fetchToken()
-    expect(join.token).toBeNull()
-    expect(join.error).toBe('Failed to fetch join token')
-    expect(join.loading).toBe(false)
-    api.getApiV1JoinToken.mockResolvedValue({ data: { token: 'new' } })
-    await join.fetchToken()
-    expect(join.token).toBe('new')
-    expect(join.error).toBeNull()
-  })
-
-  it('loads track types using cookie or invite authentication', async () => {
+describe('track types', () => {
+  it('loads track types without a player session', async () => {
     const types = useTrackTypeStore()
     api.getApiV1TrackTypes.mockResolvedValue({ data: [trackType] })
     await types.fetchTrackTypes()
-    expect(api.getApiV1TrackTypes).toHaveBeenLastCalledWith(undefined)
-    await types.fetchTrackTypes('invite')
-    expect(api.getApiV1TrackTypes).toHaveBeenLastCalledWith({
-      headers: { Authorization: 'Bearer invite' },
-    })
+    expect(api.getApiV1TrackTypes).toHaveBeenLastCalledWith()
     expect(types.getTypeById('ambiance')).toEqual(trackType)
     expect(types.getTypeById('missing')).toBeUndefined()
     api.getApiV1TrackTypes.mockRejectedValue(new Error('offline'))

@@ -5,6 +5,8 @@ import TableViewGM from '../TableViewGM.vue'
 import { useAudioStore } from '@/stores/audio'
 import { useTableStore } from '@/stores/tables'
 import { useWebSocketStore, type WebSocketMessage } from '@/stores/websocket'
+import { useFileStore } from '@/stores/files'
+import { useTrackTypeStore } from '@/stores/trackTypes'
 import type { TableSettings } from '@/client/apiClient'
 
 const api = vi.hoisted(() => ({ load: vi.fn(), save: vi.fn() }))
@@ -24,9 +26,51 @@ beforeEach(() => {
     data: { masterVolume: 45, typeVolumes: { Music: 0 }, trackVolumes: { forest: 30 }, trackOrder: ['forest'] },
   })
   api.save.mockResolvedValue({})
-  useTableStore().current = { id: 'friday', name: 'Friday' }
+  useTableStore().current = { id: 'friday-internal', externalID: 'friday', name: 'Friday' }
+  vi.spyOn(useFileStore(), 'fetchFiles').mockResolvedValue()
+  vi.spyOn(useTrackTypeStore(), 'fetchTrackTypes').mockResolvedValue()
+  vi.spyOn(useTableStore(), 'fetchTracks').mockResolvedValue()
   vi.spyOn(useWebSocketStore(), 'connect').mockResolvedValue()
   vi.spyOn(useWebSocketStore(), 'disconnect').mockImplementation(() => {})
+})
+
+it('restores GM playback from the server without echoing remote mix changes or stopping on departure', async () => {
+  const ws = useWebSocketStore()
+  let receive!: Parameters<typeof ws.addMessageHandler>[0]
+  vi.spyOn(ws, 'addMessageHandler').mockImplementation(handler => { receive = handler })
+  const send = vi.spyOn(ws, 'sendMessage').mockImplementation(() => {})
+  const wrapper = shallowMount(TableViewGM)
+  try {
+    await flushPromises()
+    ws.isConnected = true
+    await flushPromises()
+    expect(send).toHaveBeenCalledExactlyOnceWith('syncRequest', {})
+    receive({ method: 'mixerReady', payload: {} })
+    expect(send).not.toHaveBeenCalledWith('mixSync', expect.anything())
+    receive({
+      method: 'syncAll',
+      payload: {
+        tracks: [{ fileID: 'forest', name: 'Forest', isPlaying: true, currentTime: 12, volume: 20 }],
+        settings: { masterVolume: 80, typeVolumes: { Music: 30 }, trackVolumes: { forest: 20 }, trackOrder: ['forest'] },
+      },
+    })
+    expect(useAudioStore().tracks.forest).toMatchObject({ isPlaying: true, currentTime: 12, volume: 20 })
+    expect(send).toHaveBeenCalledWith('mixSync', {
+      tracks: [expect.objectContaining({ fileID: 'forest', currentTime: 12, volume: 20 })],
+      typeVolumes: { Music: 30 },
+    })
+    expect(useAudioStore().mixMasterVolume).toBe(80)
+    await vi.advanceTimersByTimeAsync(250)
+    expect(api.save).not.toHaveBeenCalled()
+    ws.isConnected = false
+    await flushPromises()
+    ws.isConnected = true
+    await flushPromises()
+    expect(send).toHaveBeenCalledTimes(3)
+  } finally {
+    wrapper.unmount()
+  }
+  expect(send.mock.calls.map(([method]) => method)).toEqual(['syncRequest', 'mixSync', 'syncRequest'])
 })
 
 afterEach(() => {
@@ -44,7 +88,7 @@ it('loads the mix before playback, saves volumes but not playback, and flushes o
     expect(audio.mixMasterVolume).toBe(45)
     expect(audio.getTypeVolume('Music')).toBe(0)
     expect(useTableStore().trackOrders.friday).toEqual(['forest'])
-    expect(useWebSocketStore().connect).toHaveBeenCalledWith(undefined, 'friday')
+    expect(useWebSocketStore().connect).toHaveBeenCalledWith('friday')
     audio.initTrack('forest', 'Forest')
     audio.updateTrackState('forest', { currentTime: 12, duration: 30, isPlaying: true })
     await vi.advanceTimersByTimeAsync(250)
@@ -109,8 +153,14 @@ it('bootstraps the opt-in mixer, sends live type volumes, and surfaces mixer fai
     }
     receive('mixerReady')
     await flushPromises()
+    expect(send).not.toHaveBeenCalledWith('mixSync', expect.anything())
+    receive('syncAll', {
+      tracks: [{ fileID: 'forest', name: 'Forest', isPlaying: true, currentTime: 3, volume: 40 }],
+      settings: { masterVolume: 45, typeVolumes: { Music: 0 }, trackVolumes: { forest: 40 }, trackOrder: ['forest'] },
+    })
+    await flushPromises()
     expect(send).toHaveBeenCalledWith('mixSync', {
-      tracks: [expect.objectContaining({ fileID: 'forest', currentTime: 3, volume: 18 })],
+      tracks: [expect.objectContaining({ fileID: 'forest', currentTime: 3, volume: 40 })],
       typeVolumes: { Music: 0 },
     })
     audio.setTypeVolume('Music', 25)
@@ -120,6 +170,10 @@ it('bootstraps the opt-in mixer, sends live type volumes, and surfaces mixer fai
     await flushPromises()
     expect(wrapper.text()).toContain('Unable to decode audio.')
     receive('mixerReady')
+    receive('syncAll', {
+      tracks: [{ fileID: 'forest', name: 'Forest', isPlaying: true, currentTime: 3, volume: 40 }],
+      settings: { masterVolume: 45, typeVolumes: { Music: 0 }, trackVolumes: { forest: 40 }, trackOrder: ['forest'] },
+    })
     await flushPromises()
     receive('mixerAck', { command: 'mixSync' })
     await flushPromises()

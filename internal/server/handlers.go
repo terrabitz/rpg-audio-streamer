@@ -315,30 +315,57 @@ func (s *Server) handleFileDelete(w http.ResponseWriter, r *http.Request, token 
 }
 
 func (s *Server) streamDirectory(w http.ResponseWriter, r *http.Request, token *auth.Token) {
-	relativePath := strings.TrimPrefix(r.URL.Path, "/api/v1/stream/")
-	if token.Role == auth.RolePlayer {
-		tableID, err := uuid.Parse(token.TableID)
-		if err != nil {
-			http.Error(w, "Invalid table session", http.StatusUnauthorized)
-			return
-		}
-		parts := strings.Split(relativePath, "/")
-		trackID, err := uuid.Parse(parts[0])
-		if err != nil {
-			http.Error(w, "Invalid track ID", http.StatusBadRequest)
-			return
-		}
-		allowed, err := s.store.HasTableTrack(r.Context(), tableID, trackID)
+	relativePath := r.PathValue("path")
+	tableIDValue := r.PathValue("tableID")
+	if tableIDValue != "" {
+		table, err := s.store.GetTableByExternalID(r.Context(), tableIDValue)
 		if err != nil {
 			s.tableError(w, err)
 			return
 		}
-		if !allowed {
-			http.Error(w, "Track not found", http.StatusNotFound)
-			return
+		if token.Role == auth.RolePlayer {
+			if token.TableID != table.ID.String() {
+				http.Error(w, "Forbidden", http.StatusForbidden)
+				return
+			}
+			parts := strings.Split(relativePath, "/")
+			trackID, err := uuid.Parse(parts[0])
+			if err != nil {
+				http.Error(w, "Invalid track ID", http.StatusBadRequest)
+				return
+			}
+			allowed, err := s.store.HasTableTrack(r.Context(), table.ID, trackID)
+			if err != nil {
+				s.tableError(w, err)
+				return
+			}
+			if !allowed {
+				http.Error(w, "Track not found", http.StatusNotFound)
+				return
+			}
 		}
+	} else if token.Role != auth.RoleGM {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
 	}
 	filePath := filepath.Join(s.cfg.UploadDir, relativePath)
+	uploadPath, err := filepath.Abs(s.cfg.UploadDir)
+	if err != nil {
+		s.logger.Error("failed to resolve upload directory", "error", err)
+		http.Error(w, "Failed to stream file", http.StatusInternalServerError)
+		return
+	}
+	absolutePath, err := filepath.Abs(filePath)
+	if err != nil {
+		s.logger.Error("failed to resolve stream path", "error", err)
+		http.Error(w, "Failed to stream file", http.StatusInternalServerError)
+		return
+	}
+	relativeToUpload, err := filepath.Rel(uploadPath, absolutePath)
+	if err != nil || relativeToUpload == ".." || strings.HasPrefix(relativeToUpload, ".."+string(filepath.Separator)) {
+		http.Error(w, "Invalid stream path", http.StatusBadRequest)
+		return
+	}
 	http.ServeFile(w, r, filePath)
 }
 
@@ -347,16 +374,12 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request, token *
 	if token.Role == auth.RoleGM {
 		id := DefaultTableID
 		if value := r.URL.Query().Get("tableID"); value != "" {
-			var err error
-			id, err = uuid.Parse(value)
+			table, err := s.store.GetTableByExternalID(r.Context(), value)
 			if err != nil {
-				http.Error(w, "Invalid table ID", http.StatusBadRequest)
+				s.tableError(w, err)
 				return
 			}
-		}
-		if _, err := s.store.GetTable(r.Context(), id); err != nil {
-			s.tableError(w, err)
-			return
+			id = table.ID
 		}
 		scoped.TableID = id.String()
 	}
@@ -447,28 +470,6 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, loginResponse{
 		Success: true,
 	})
-}
-
-type joinTokenResponse struct {
-	Token string `json:"token"`
-}
-
-func (s *Server) handleGetJoinToken(w http.ResponseWriter, r *http.Request, token *auth.Token) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	if _, err := s.store.GetTable(r.Context(), DefaultTableID); err != nil {
-		s.tableError(w, err)
-		return
-	}
-
-	resp := joinTokenResponse{
-		Token: s.auth.GetJoinToken(),
-	}
-
-	respondJSON(w, http.StatusOK, resp)
 }
 
 func (s *Server) handleTrackTypes(w http.ResponseWriter, r *http.Request, token *auth.Token) {

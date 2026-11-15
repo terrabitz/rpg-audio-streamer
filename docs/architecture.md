@@ -2,9 +2,9 @@
 
 RPG Audio Streamer (also labeled Skald Bot in the UI) is a multi-table audio
 library and synchronized listening app for tabletop games. One configured Game
-Master account manages named tables and a shared track library. Each table
-has its own track associations and invite URL. Players see their table's name,
-opt in to that table's playback, and adjust their local volume mix.
+Master account manages named tables and a shared track library. Each table has
+its own track associations and public table URL. Players see their table's
+name, opt in to that table's playback, and adjust their local volume mix.
 
 ## Runtime and boundaries
 
@@ -14,7 +14,7 @@ flowchart LR
   Player[Player browser] --> UI
   UI -->|HTTP via generated SDK| API[Go HTTP server]
   UI <-->|WebSocket sync| Hub[Go WebSocket hub]
-  UI -->|Authenticated HLS requests| API
+  UI -->|Table-scoped HLS requests| API
   API --> Auth[Authentication service]
   API --> Store[SQLite datastore adapter]
   Store --> Queries[Generated sqlc queries]
@@ -47,7 +47,7 @@ the API and Vite to loopback on automatically selected ports. Each invocation
 builds the real API into a unique temporary directory and creates a fresh
 SQLite database, upload directory, and Vite cache. It uses public fixture GM
 credentials, freshly salted native Argon2id password hashes, and per-instance
-random signing/invite tokens. Nine generated audio fixtures (three per default
+random signing keys. Nine generated audio fixtures (three per default
 track type) use ordinary display names and are uploaded into the default table
 through authenticated HTTP. Music fixtures use short original note sequences;
 seeded ambiance noise gently swells over time so loop crossfades are audible.
@@ -69,7 +69,7 @@ cannot guarantee cleanup. Procedures live in the local-dev skill.
 | Package | Responsibility |
 | --- | --- |
 | `internal/auth` | Argon2id credential checks, signed JWTs, GM/player roles |
-| `internal/server` | HTTP handlers, cookies/middleware, table invite resolution, track/table contracts, datastore and hub interfaces |
+| `internal/server` | HTTP handlers, cookies/middleware, public table access, track/table contracts, datastore and hub interfaces |
 | `internal/middlewares` | API request logging and CORS |
 | `internal/mixer` | Standalone deterministic stereo PCM mixing, transport, loop overlap, and gain envelopes |
 | `internal/livemixer` | Serialized live commands, table-scoped PCM engines, rendering lifecycle, and diagnostics |
@@ -78,7 +78,7 @@ cannot guarantee cleanup. Procedures live in the local-dev skill.
 | `e2e/` | Opt-in Go server-to-Discord integration harness, listener bot, Opus decoding, and tone analysis |
 | `internal/sqlitedatastore` | Domain-to-SQLite mapping, migrations, context-aware datastore implementation |
 | `internal/sqlitedatastore/sqlitedb` | Generated sqlc models and query implementations |
-| `internal/websocket` | Connected clients, message dispatch, recipient filters, read/write pumps |
+| `internal/websocket` | Authoritative live table playback, connected clients, message dispatch, recipient filters, read/write pumps |
 
 Authentication rules live in `auth`; synchronization authorization/routing lives in `websocket`; the
 track/table models and store interfaces live in `server`. The datastore implements
@@ -92,21 +92,19 @@ GM login compares the configured username and Argon2id password hash, then
 sets an HTTP-only `auth_token` cookie containing a signed JWT. Cookies are
 secure outside development mode. Logout expires the cookie.
 
-Players authenticate with a table-specific, randomly generated invite token,
-not a GM cookie. The configured static invite token remains an alias for the
-migrated default table; deleting that table invalidates the alias.
-HTTP accepts that token as a bearer token; WebSockets use a `token` query
-parameter because browser socket APIs cannot set Authorization headers.
-Authentication resolves a cookie first, then the query token, then the bearer
-token. Player authentication resolves the invite against SQLite on each request
-and carries its table ID into streaming and WebSocket authorization. A GM
-opening an invite URL retains their GM role but opens the invited table.
-The auth-status endpoint returns the authenticated state and role.
+Each table has a database UUID and a separate, randomly generated Base64URL
+external ID. Anyone with `/tables/<external-id>` can read that table's name
+and associated tracks, stream those tracks, and connect to its WebSocket
+without signing in or exchanging credentials. API stream URLs and WebSocket
+connections carry the external ID; the server resolves it to the internal UUID
+for table-scoped playback and track access. There is no player session, so each
+tab can open a different table independently. A valid GM cookie on the same
+URL selects the GM controls; it does not change the URL. GMs can rotate the
+external ID; this invalidates the old URL and disconnects connected players.
 
-Only GMs can manage tables, associate tracks, manage the shared library, or
-retrieve invite tokens. Players can fetch their table's name, fetch track types,
-stream HLS files associated with their table, and open authenticated WebSockets.
-They cannot access other tables or list the library.
+Only GMs can create, rename, or delete tables, associate tracks, manage the
+shared library, or change table settings. The auth-status endpoint reports GM
+authentication only.
 
 ### Library and persistence
 
@@ -116,7 +114,9 @@ SQLite stores metadata, not media bytes:
   and shared playback-region points (beginning, optional end, optional loop-back).
 - `track_types`: UUID ID, name, color, repeat policy, simultaneous-play policy,
   and creation timestamp.
-- `game_tables`: UUID ID, name, unique invite token, and JSON GM mixing/ordering settings.
+- `game_tables`: UUID ID, unique random Base64URL external ID, name, and JSON GM
+  mixing/ordering settings. The external ID is the public table identifier
+  used in player URLs; the UUID remains the internal database identity.
 - `table_tracks`: many-to-many table/track associations.
 
 UUIDs are stored as BLOBs. Track creation timestamps are serialized as RFC3339
@@ -135,8 +135,8 @@ volume and creation-time track order. Playback position, play/pause state,
 duration, and fades are not part of stored settings.
 
 The table migration seeds "My Table" and associates all pre-existing tracks
-with it, preserving the existing invite URL. New tables start empty. Removing
-a track association or deleting a table never deletes library audio. Deleting
+with it. New tables start empty. Removing a track association or deleting a
+table never deletes library audio. Deleting
 a library track removes its associations everywhere. Cleanup triggers enforce
 association removal even on SQLite connections without foreign keys enabled.
 
@@ -159,22 +159,36 @@ queries and the TypeScript SDK are adapters, not handwritten business logic.
 ## Frontend
 
 The Vue 3 application uses Vue Router, Vuetify, and Pinia. Routes are `/`
-(landing), `/login` (GM credentials), `/join` (invite instructions), `/tables`
-(GM table creation, renaming, and deletion), `/library` (shared uploads and
-metadata management), `/tables/:tableID` (GM table), and `/table/:token?`
-(invited table, or legacy default table for a GM without a token). Login opens
-table management. Table views show associated tracks only; GMs can add an
-existing library track or upload a new one directly into the table.
+(landing), `/login` (GM credentials), `/join` (player invite-URL guidance),
+`/tables` (GM table creation, renaming, and deletion), `/library` (shared
+uploads and metadata management), and `/tables/:externalID` (the shared
+GM/player table URL). GM login opens table management. Join as Player opens a
+small information page explaining that players need the full
+`/tables/:externalID` URL from their GM; it creates no player session. Table
+views show associated tracks only; GMs can add an existing library track or
+upload a new one directly into the table.
 To preserve space during play, the table name appears only in the app bar.
-Its **Add Track** action opens a dialog with library selection and new-upload
-tabs; neither workflow adds a permanent control row to the track grid.
+Authenticated navigation lives in a left sidebar that is closed by default and
+overlays the page when opened, with logout at the bottom. Logged-out visitors
+see a login button in the app bar; player views show neither navigation nor login.
+On GM tables, the master-volume control appears in the desktop now-playing
+sidebar and the mobile now-playing drawer. **Add Track** and **Copy invite link**
+appear at the top-right of the app bar on desktop and in its three-dot options
+menu on smaller screens. **Rotate invite link** is always a red item in that
+menu. Its confirmation dialog warns that active players will be disconnected
+and the GM must reshare the new link; cancellation leaves the link unchanged.
+After rotation, the GM's table URL updates to the new invite code.
+**Add Track** opens a dialog with library selection and new-upload tabs;
+neither workflow adds a permanent control row to the track grid.
 Uploads require a file, a nonblank name, and a valid library track type before
 the Upload action is enabled.
 Upload results appear as compact, auto-dismissing bottom-center toasts attached
 to the document body, independent of the uploader's app-bar or library placement;
 upload failures remain inline while the dialog is open.
-The table-management list opens a table when its row is clicked; rename and
-delete live in each row's three-dot menu.
+The table-management list opens a table when its row is clicked. Each row's
+three-dot menu copies the invite code and also contains rename, delete, and
+red invite-link rotation actions. Rotation uses the same confirmation dialog
+as the app bar.
 
 The shared library uses a sortable, paginated metadata table showing each
 track's name, type, and creation time. Row clicks (or keyboard
@@ -208,19 +222,25 @@ duration restores the full track without separate reset controls. Point edits
 immediately update live playback (including listening players at the current
 table), but shared library metadata is only persisted on Save. Closing without
 saving restores the saved region in playback; invalid drafts are not applied.
+Region edits preserve each listener's live playhead without seeking to a reported
+position; only a playhead outside the edited region is moved to its nearest boundary.
+An in-flight loop crossfade keeps its incoming source playing through marker edits,
+preserving its position when valid and moving it into the edited region otherwise.
+Shortening the end can complete that handoff early; extending it applies to the next
+loop. A source that reaches its end without a prepared crossfade starts the next
+loop from the configured loop-back point.
 These settings are stored with the shared library track and apply in every table.
 Opening library controls loads audio metadata without starting playback or
 sending synchronization messages.
 
-The table route resolves authentication before mounting a role-specific view.
-The application shell checks authentication on non-table initial navigation;
-table authentication is owned by the table view, not repeated in the player
-view. This prevents competing status requests and logout-triggered player
-reauthentication.
+The table route checks for an optional GM cookie and loads by public external ID.
+It mounts the GM controls for a logged-in GM and the player view otherwise.
+Players need no session, so switching links or opening multiple table tabs
+requires no authentication exchange.
 
 | Surface | Responsibility |
 | --- | --- |
-| `stores/auth.ts`, `stores/join.ts` | Session role, credentials, logout, invite retrieval |
+| `stores/auth.ts` | GM session role, credentials, and logout |
 | `stores/files.ts`, `stores/trackTypes.ts`, `stores/tables.ts` | Library, track-type, table, and association metadata through the generated SDK |
 | `stores/audio.ts` | Per-file playback state, synchronization reconciliation, fades, master/type volumes |
 | `stores/websocket.ts` | Socket connection/reconnection, message handlers and history |
@@ -236,9 +256,11 @@ controls become available. They do not inherit browser-local mixer preferences.
 Mix edits are debounced and flushed when leaving the table; saves are serialized
 with ordering edits, and failures show an explicit retry action. Table metadata,
 GM settings, and playback state are not persisted in browser storage.
-Playback is keyed by file UUID within the active table and
+Browser playback is keyed by file UUID within the active table and
 cleared on table changes, so even the same library track cannot inherit another
-table's playback. Local browser state is not authoritative for stored metadata.
+table's playback. GM controls wait for the server's playback snapshot before
+becoming available. Local browser state is not authoritative for stored metadata
+or table playback.
 Players must explicitly connect audio; full-state synchronization is ignored
 while listening is disabled.
 Associated entries initialize GM playback state as they load. Removing a table
@@ -252,7 +274,8 @@ on hover, focus, and touch. Playing tiles have a saturated background mixed from
 their track-type color; paused tiles retain the neutral surface. Tile names stay
 on one line with ellipsis overflow and a full-name hover title.
 A currently-playing sidebar lists active table tracks
-with volume, playback-position, elapsed/total time, pause, and restart controls.
+with volume, playback-position, elapsed/total time, pause, and restart controls,
+and provides master volume even when no tracks are playing.
 The sidebar timer and seek bar's accessible value text measure elapsed time from
 the configured beginning and total time to the configured end. Seeking still
 uses absolute positions within the source audio.
@@ -302,27 +325,45 @@ playback state or player mixes.
 
 ### Playback synchronization
 
-The server routes messages rather than storing authoritative playback state.
+The WebSocket hub owns authoritative live playback state in memory, keyed by
+table and track UUID. Its datastore boundary reads track membership, library
+metadata, track-type policies, and saved mixing settings through the existing
+store interfaces.
 Each connection has a server-validated table scope: the GM selects an existing
-table ID, while players inherit the table from their invite. All routing filters,
+table by its external ID, while players supply that public external ID from the
+URL. All routing filters,
 including targeted full syncs and sync requests, also require a matching table.
-The GM browser owns current track state. On player connection, `syncRequest`
-is forwarded to GM clients; a GM responds with `syncAll`, targeting the
-requesting client. A full synchronization without a target goes to all players
-at that table.
-`syncTrack` carries incremental state from GMs to players. Players cannot issue
-GM broadcasts, full-sync responses, or incremental sync commands.
+Every GM and listening player requests a snapshot with `syncRequest` on
+connection and reconnection. The server replies directly with `syncAll`,
+including paused tracks and their positions; it does not need a connected GM.
+GMs submit partial `syncTrack` commands for play/pause, seek, volume, duration,
+and live playback-region edits. The server validates table membership and
+regions, applies commands serially, and broadcasts canonical snapshots to both
+roles, including the commanding GM. Omitted fields retain their current server
+values rather than being replaced by a stale browser snapshot. Players cannot
+change playback, and client-originated `syncAll` messages are not accepted.
 
-Leaving a GM table sends an empty full sync to its players before disconnecting.
+Leaving a GM table disconnects that browser without changing table playback.
 Deleting a table notifies and disconnects its active clients. Server-originated
 `removeTrack` messages stop removed/deleted tracks for both roles. Socket
 reconnects preserve table scope; leaving or switching tables cancels old retries
 and ignores stale socket callbacks.
 
-The GM enforces track-type exclusivity in the UI: starting Music stops other
-Music tracks, while Ambiance and One-Shot can overlap. GM master volume is
-applied to outgoing synchronization. Each listener applies its own master
-and per-type multipliers to incoming volume.
+The server enforces track-type exclusivity atomically: starting Music stops other
+Music tracks, while Ambiance and One-Shot can overlap. Snapshot positions advance
+from server timestamps, accounting for repeating-region crossfade overlap and
+one-shot completion without browser time-update messages. Browsers supply media
+duration as metadata becomes available; the server does not decode audio.
+Active tables receive a snapshot each second, keeping control-only browsers
+and completion state current even when local audio cannot autoplay.
+Explicit seek and play/pause commands advance a position version. Running media
+uses that version to distinguish commanded position changes from clock snapshots,
+preserving local loop handoffs during live marker edits.
+GM snapshots carry unscaled track volume and saved table settings. Successful
+settings patches update connected GM mixes and listener playback without
+echoing remote changes back into another settings save. Player snapshots apply
+the table master volume once; each listener then applies their own master and
+per-type multipliers. Local autoplay failures do not pause the shared table.
 
 HLS.js binds authenticated playlists to hidden media elements. Track state
 controls play/pause, seeking, looping, and volume. Playback starts at the
@@ -335,9 +376,11 @@ seconds independently of play/pause fades and loop crossfades. A new adjustment
 starts from the current interpolated gain, including mute and non-repeating
 tracks. Removing a media component destroys its HLS instances and clears
 playback timers; queued media events cannot recreate deleted track state.
-Playback is ephemeral browser state, not persisted in SQLite or recovered by
-the server after every GM disconnect. Opening a table restores its saved mix
-and layout with every track stopped at the beginning.
+Live playback survives every GM disconnect, table navigation, and browser
+refresh for the lifetime of the server process. Reopening a table restores its
+saved mix and layout together with the server's current playing/paused state
+and positions. A server restart clears live playback; SQLite persists library
+regions and table mixing/ordering settings, not the live playback clock.
 
 ### Standalone PCM mixer
 
@@ -511,10 +554,12 @@ ends the subscription and voice worker. Worker failures and slow PCM consumers
 become observable error states. Startup has a
 20-second deadline, and worker cancellation sends SIGTERM with a bounded
 forced-exit fallback. The first successful mixer sync of a GM table session
-attempts the saved destination once. Repeated syncs and status polling do not
-reconnect a manually disconnected bot. Leaving a table or closing its last GM
-tab cancels pending reconnection and disconnects the worker; returning creates
-a new session and attempts reconnection. Multiple GM tabs keep the bot active
+follows an authoritative playback snapshot, so a reconnect sync includes the
+table's active tracks before attempting the saved destination once. Repeated
+syncs and status polling do not reconnect a manually disconnected bot. Leaving
+a table or closing its last GM tab cancels pending reconnection and disconnects
+the worker. Returning creates a new session and attempts reconnection. Multiple
+GM tabs keep the bot active
 until the last one closes. A lost network connection is detected by the
 WebSocket heartbeat. Reconnection conflicts and failures are visible and
 require an explicit retry or destination change within that session.
@@ -542,12 +587,16 @@ Release notes live in GitHub releases.
 
 Release runs are serialized to avoid competing version calculations. When no
 release is needed, publication and image building are skipped. After successful
-publication, the Docker job builds Linux amd64/arm64 images and pushes `latest`,
-full-version, major, and major.minor tags to GHCR.
+publication, the shared `docker-build` workflow builds the Linux amd64 and
+arm64 images natively on matching GitHub-hosted runners, pushes each by digest
+to GHCR, and combines them into a multi-arch manifest tagged `latest`,
+full-version, major.minor, and major. Each architecture keeps its own Buildx
+GitHub Actions cache scope.
 
-Pull requests that touch any image input build the same multi-arch image and
-check that the Dockerfile's Go and Node base images match `go.mod` and
-`ui/.nvmrc`, since dependency bumps do not update the Dockerfile.
+Pull requests that touch any image input run the same per-architecture builds
+without pushing or publishing a manifest, and check that the Dockerfile's Go
+and Node base images match `go.mod` and `ui/.nvmrc`, since dependency bumps do
+not update the Dockerfile.
 
 All pull requests run the `pr-checks` workflow. `dorny/paths-filter` selects Go
 tests for backend inputs, frontend lint/build/domain checks for UI, development

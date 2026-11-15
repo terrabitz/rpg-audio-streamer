@@ -126,4 +126,14 @@ describe('audio session state', () => {
     audio.setTypeVolume('Ambiance', 55)
     expect(audio.getTypeVolume('Ambiance')).toBe(55)
   })
+
+  it('keeps idle GM library entries when restoring server playback', () => {
+    const audio = useAudioStore()
+    audio.enabled = true
+    audio.initTrack('idle', 'Idle')
+    audio.updateTrackState('idle', { isPlaying: true, volume: 30 })
+    audio.syncTracks([{ fileID: 'remote', name: 'Remote', isPlaying: true, currentTime: 12 }], true)
+    expect(audio.tracks.idle).toMatchObject({ isPlaying: false, volume: 30, name: 'Idle' })
+    expect(audio.tracks.remote).toMatchObject({ isPlaying: true, currentTime: 12 })
+  })
 })

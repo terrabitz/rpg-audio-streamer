@@ -5,10 +5,12 @@ import (
 	"fmt"
 	"log/slog"
 	"sync"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	"github.com/terrabitz/rpg-audio-streamer/internal/auth"
+	"github.com/terrabitz/rpg-audio-streamer/internal/server"
 )
 
 type Hub struct {
@@ -19,18 +21,13 @@ type Hub struct {
 	unregister chan *Client
 	logger     *slog.Logger
 	handlers   map[string]HandlerFunc
-	mixer      Mixer
+	mixer      server.Mixer
+	stateMu    sync.Mutex
+	playback   map[string]map[string]playingTrack
+	store      PlaybackStore
 }
 
-type Mixer interface {
-	Update(tableID string, payload json.RawMessage) error
-	Sync(tableID string, payload json.RawMessage) error
-	Volumes(tableID string, payload json.RawMessage) error
-	CloseTable(tableID string)
-	RemoveTrack(tableID, trackID string)
-}
-
-func NewHub(logger *slog.Logger) *Hub {
+func NewHub(logger *slog.Logger, store PlaybackStore) *Hub {
 	hub := &Hub{
 		clients:    make(map[*Client]bool),
 		broadcast:  make(chan []byte),
@@ -38,12 +35,13 @@ func NewHub(logger *slog.Logger) *Hub {
 		unregister: make(chan *Client),
 		logger:     logger,
 		handlers:   make(map[string]HandlerFunc),
+		playback:   make(map[string]map[string]playingTrack),
+		store:      store,
 	}
 
 	hub.HandleFunc("ping", hub.handlePing)
 	hub.HandleFunc("broadcast", hub.handleBroadcast)
 	hub.HandleFunc("syncRequest", hub.handleSyncRequest)
-	hub.HandleFunc("syncAll", hub.handleSyncAll)
 	hub.HandleFunc("syncTrack", hub.handleSyncTrack)
 	hub.HandleFunc("mixSync", hub.handleMixSync)
 	hub.HandleFunc("mixVolumes", hub.handleMixVolumes)
@@ -52,13 +50,17 @@ func NewHub(logger *slog.Logger) *Hub {
 }
 
 // SetMixer installs the optional consumer before the hub accepts connections.
-func (h *Hub) SetMixer(mixer Mixer) {
+func (h *Hub) SetMixer(mixer server.Mixer) {
 	h.mixer = mixer
 }
 
 func (h *Hub) Run() {
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
 	for {
 		select {
+		case <-ticker.C:
+			h.refreshPlayback()
 		case client := <-h.register:
 			h.clientsMu.Lock()
 			h.clients[client] = true
@@ -148,6 +150,9 @@ func (h *Hub) CloseTable(tableID string) {
 	if h.mixer != nil {
 		h.mixer.CloseTable(tableID)
 	}
+	h.stateMu.Lock()
+	delete(h.playback, tableID)
+	h.stateMu.Unlock()
 	h.Broadcast(Message{Method: "tableDeleted", Payload: json.RawMessage(`{}`)}, ToTable(tableID))
 	h.clientsMu.Lock()
 	defer h.clientsMu.Unlock()
@@ -160,10 +165,31 @@ func (h *Hub) CloseTable(tableID string) {
 	}
 }
 
+func (h *Hub) RevokePlayerAccess(tableID string) {
+	h.clientsMu.Lock()
+	defer h.clientsMu.Unlock()
+	for client := range h.clients {
+		if client.Token.TableID == tableID && client.Token.Role == auth.RolePlayer {
+			client.closed = true
+			close(client.send)
+			delete(h.clients, client)
+		}
+	}
+}
+
 func (h *Hub) RemoveTrack(tableID, trackID string) {
 	if h.mixer != nil {
 		h.mixer.RemoveTrack(tableID, trackID)
 	}
+	h.stateMu.Lock()
+	if tableID == "" {
+		for _, tracks := range h.playback {
+			delete(tracks, trackID)
+		}
+	} else {
+		delete(h.playback[tableID], trackID)
+	}
+	h.stateMu.Unlock()
 	payload, _ := json.Marshal(struct {
 		FileID string `json:"fileID"`
 	}{FileID: trackID})
@@ -171,6 +197,7 @@ func (h *Hub) RemoveTrack(tableID, trackID string) {
 	if tableID != "" {
 		opts = append(opts, ToTable(tableID))
 	}
+
 	h.Broadcast(Message{Method: "removeTrack", Payload: payload}, opts...)
 }
 

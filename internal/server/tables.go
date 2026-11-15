@@ -20,9 +20,6 @@ func (s *Server) handleTables(w http.ResponseWriter, r *http.Request, token *aut
 			s.tableError(w, err)
 			return
 		}
-		for i := range tables {
-			tables[i] = s.tableResponse(tables[i], token)
-		}
 		respondJSON(w, http.StatusOK, tables)
 	case http.MethodPost:
 		name, ok := readTableName(w, r)
@@ -30,48 +27,34 @@ func (s *Server) handleTables(w http.ResponseWriter, r *http.Request, token *aut
 			return
 		}
 		table, err := s.store.CreateTable(r.Context(), Table{
-			ID: uuid.New(), Name: name, InviteToken: uuid.NewString(),
+			ID: uuid.New(), Name: name,
 		})
 		if err != nil {
 			s.tableError(w, err)
 			return
 		}
-		respondJSON(w, http.StatusCreated, s.tableResponse(table, token))
+		respondJSON(w, http.StatusCreated, table)
 	default:
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 	}
 }
 
-func (s *Server) handleSessionTable(w http.ResponseWriter, r *http.Request, token *auth.Token) {
-	if r.Method != http.MethodGet {
+func (s *Server) handleRotateTableExternalID(w http.ResponseWriter, r *http.Request, token *auth.Token) {
+	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	id := DefaultTableID
-	if token.Role == auth.RoleGM {
-		if invite, err := getAuthorizationBearerToken(r); err == nil {
-			invited, err := s.playerToken(r, invite)
-			if err != nil {
-				http.Error(w, "Invalid table invite", http.StatusNotFound)
-				return
-			}
-			id = uuid.MustParse(invited.TableID)
-		}
+	id, ok := s.tableID(w, r, token)
+	if !ok {
+		return
 	}
-	if token.Role == auth.RolePlayer {
-		var err error
-		id, err = uuid.Parse(token.TableID)
-		if err != nil {
-			http.Error(w, "Invalid table session", http.StatusUnauthorized)
-			return
-		}
-	}
-	table, err := s.store.GetTable(r.Context(), id)
+	table, err := s.store.RotateTableExternalID(r.Context(), id)
 	if err != nil {
 		s.tableError(w, err)
 		return
 	}
-	respondJSON(w, http.StatusOK, s.tableResponse(table, token))
+	s.hub.RevokePlayerAccess(id.String())
+	respondJSON(w, http.StatusOK, table)
 }
 
 func (s *Server) handleTable(w http.ResponseWriter, r *http.Request, token *auth.Token) {
@@ -86,7 +69,7 @@ func (s *Server) handleTable(w http.ResponseWriter, r *http.Request, token *auth
 			s.tableError(w, err)
 			return
 		}
-		respondJSON(w, http.StatusOK, s.tableResponse(table, token))
+		respondJSON(w, http.StatusOK, table)
 	case http.MethodPut:
 		if token.Role != auth.RoleGM {
 			http.Error(w, "Forbidden", http.StatusForbidden)
@@ -101,7 +84,7 @@ func (s *Server) handleTable(w http.ResponseWriter, r *http.Request, token *auth
 			s.tableError(w, err)
 			return
 		}
-		respondJSON(w, http.StatusOK, s.tableResponse(table, token))
+		respondJSON(w, http.StatusOK, table)
 	case http.MethodDelete:
 		if token.Role != auth.RoleGM {
 			http.Error(w, "Forbidden", http.StatusForbidden)
@@ -165,31 +148,16 @@ func (s *Server) handleTableTrack(w http.ResponseWriter, r *http.Request, token 
 }
 
 func (s *Server) tableID(w http.ResponseWriter, r *http.Request, token *auth.Token) (uuid.UUID, bool) {
-	id, err := uuid.Parse(r.PathValue("tableID"))
+	table, err := s.store.GetTableByExternalID(r.Context(), r.PathValue("tableID"))
 	if err != nil {
-		http.Error(w, "Invalid table ID", http.StatusBadRequest)
-		return uuid.Nil, false
-	}
-	if token.Role == auth.RolePlayer && token.TableID != id.String() {
-		http.Error(w, "Forbidden", http.StatusForbidden)
-		return uuid.Nil, false
-	}
-	if _, err := s.store.GetTable(r.Context(), id); err != nil {
 		s.tableError(w, err)
 		return uuid.Nil, false
 	}
-	return id, true
-}
-
-func (s *Server) tableResponse(table Table, token *auth.Token) Table {
-	if token.Role != auth.RoleGM {
-		table.InviteToken = ""
-		return table
+	if token.Role == auth.RolePlayer && token.TableID != table.ID.String() {
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return uuid.Nil, false
 	}
-	if table.ID == DefaultTableID && table.InviteToken == "" {
-		table.InviteToken = s.auth.GetJoinToken()
-	}
-	return table
+	return table.ID, true
 }
 
 func (s *Server) tableError(w http.ResponseWriter, err error) {

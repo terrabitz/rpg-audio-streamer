@@ -1,50 +1,65 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { onUnmounted, ref } from 'vue'
+import { useDisplay } from 'vuetify'
+import type { Table } from '@/client/apiClient'
 import { useBaseUrl } from '../composables/useBaseUrl'
-import { useAudioStore } from '../stores/audio'
-import { useAuthStore } from '../stores/auth'
 import { useTableStore } from '../stores/tables'
 import AudioUploader from './AudioUploader.vue'
-import VolumeSlider from './VolumeSlider.vue'
+import InviteLinkRotationDialog from './InviteLinkRotationDialog.vue'
 
-const auth = useAuthStore()
 const tables = useTableStore()
-const audioStore = useAudioStore();
-
+const { mobile } = useDisplay()
 const { getBaseUrl } = useBaseUrl()
-const isCopied = ref(false)
+const menuOpen = ref(false)
+const rotating = ref<Table | null>(null)
+const copied = ref(false)
 const error = ref('')
+let copiedTimer: ReturnType<typeof setTimeout> | undefined
 
-async function copyToClipboard(text: string) {
-  await navigator.clipboard.writeText(text)
-}
-
-async function handleGetJoinToken() {
+async function copyInviteLink() {
   error.value = ''
   try {
-    if (!tables.current?.inviteToken) throw new Error('Missing invite token')
-    const url = `${getBaseUrl()}/table/${encodeURIComponent(tables.current.inviteToken)}`
-    await copyToClipboard(url)
-    isCopied.value = true
-    setTimeout(() => {
-      isCopied.value = false
-    }, 2000)
+    const externalID = tables.current?.externalID
+    if (!externalID) throw new Error('Missing table invite code')
+    await navigator.clipboard.writeText(`${getBaseUrl()}/tables/${encodeURIComponent(externalID)}`)
+    copied.value = true
+    clearTimeout(copiedTimer)
+    copiedTimer = setTimeout(() => { copied.value = false }, 2000)
   } catch (e) {
-    console.error('Failed to copy invite:', e)
+    console.error('Failed to copy invite link:', e)
     error.value = 'Unable to copy invite link.'
   }
 }
+
+onUnmounted(() => clearTimeout(copiedTimer))
 </script>
 
 <template>
-  <template v-if="auth.authenticated">
-    <v-btn v-if="auth.role === 'gm'" @click="handleGetJoinToken" :active="isCopied"
-      active-color="green" :prepend-icon="isCopied ? '' : '$copy'" class="mr-2">
-      {{ isCopied ? 'Copied to clipboard' : 'Copy invite link' }}
-    </v-btn>
-    <AudioUploader class="mr-4" :tableID="tables.current?.id" />
-    <VolumeSlider :model-value="audioStore.mixMasterVolume" aria-label="Master volume"
-      @update:model-value="audioStore.setMasterVolume($event)" />
-    <v-snackbar :model-value="!!error" @update:model-value="error = ''">{{ error }}</v-snackbar>
-  </template>
+  <AudioUploader :tableID="tables.current?.id">
+    <template #activator="{ props: uploaderProps }">
+      <div class="d-flex align-center">
+        <template v-if="!mobile">
+          <v-btn :active="copied" active-color="green" :prepend-icon="copied ? '' : '$copy'"
+            @click="copyInviteLink">{{ copied ? 'Copied to clipboard' : 'Copy invite link' }}</v-btn>
+          <v-btn v-bind="uploaderProps" prepend-icon="$add">Add Track</v-btn>
+        </template>
+        <v-menu v-model="menuOpen">
+          <template #activator="{ props: menuProps }">
+            <v-btn v-bind="menuProps" icon="$dotsVertical" aria-label="Table options" />
+          </template>
+          <v-list>
+            <template v-if="mobile">
+              <v-list-item v-bind="uploaderProps" title="Add Track" role="menuitem" @click="menuOpen = false" />
+              <v-list-item :title="copied ? 'Copied to clipboard' : 'Copy invite link'" role="menuitem"
+                @click="copyInviteLink" />
+            </template>
+            <v-list-item title="Rotate invite link" role="menuitem" base-color="error"
+              @click="rotating = tables.current" />
+          </v-list>
+        </v-menu>
+      </div>
+    </template>
+  </AudioUploader>
+  <InviteLinkRotationDialog :table="rotating" @close="rotating = null" />
+  <v-snackbar :model-value="!!error" @update:model-value="error = ''">{{ error }}</v-snackbar>
 </template>

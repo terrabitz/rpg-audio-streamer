@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io/fs"
 	"log/slog"
@@ -15,7 +16,6 @@ import (
 	"github.com/terrabitz/rpg-audio-streamer/internal/discord"
 	"github.com/terrabitz/rpg-audio-streamer/internal/livemixer"
 	"github.com/terrabitz/rpg-audio-streamer/internal/middlewares"
-	ws "github.com/terrabitz/rpg-audio-streamer/internal/websocket"
 )
 
 const (
@@ -26,12 +26,20 @@ const (
 type Authenticator interface {
 	ValidateCredentials(creds auth.Credentials) (*auth.Token, error)
 	ValidateToken(tokenStr string) (*auth.Token, error)
-	GetJoinToken() string
-	ValidateJoinToken(joinToken string) (*auth.Token, error)
 }
 
 type WSRegisterer interface {
 	Register(conn *websocket.Conn, token *auth.Token)
+	CloseTable(tableID string)
+	RevokePlayerAccess(tableID string)
+	RemoveTrack(tableID, trackID string)
+	SyncSettings(tableID string, patch TableSettingsPatch)
+}
+
+type Mixer interface {
+	Update(tableID string, payload json.RawMessage) error
+	Sync(tableID string, payload json.RawMessage) error
+	Volumes(tableID string, payload json.RawMessage) error
 	CloseTable(tableID string)
 	RemoveTrack(tableID, trackID string)
 }
@@ -87,7 +95,7 @@ func New(cfg Config, logger *slog.Logger, auth Authenticator, store Store, hub W
 	}
 
 	if cfg.ExperimentalMixer || cfg.Discord.Token != "" {
-		consumer, ok := hub.(interface{ SetMixer(ws.Mixer) })
+		consumer, ok := hub.(interface{ SetMixer(Mixer) })
 		if !ok {
 			return nil, fmt.Errorf("experimental mixing requires a mixer-capable WebSocket hub")
 		}
@@ -105,7 +113,7 @@ func New(cfg Config, logger *slog.Logger, auth Authenticator, store Store, hub W
 		}
 		srv.discord = bot
 		srv.discordMix = newDiscordMixer(srv.mixer, srv)
-		hub.(interface{ SetMixer(ws.Mixer) }).SetMixer(srv.discordMix)
+		hub.(interface{ SetMixer(Mixer) }).SetMixer(srv.discordMix)
 	}
 
 	return srv, nil
@@ -151,7 +159,7 @@ func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	// NOTE, we want to register this separately, because we don't want to apply
 	// the same default middleware we apply to the API routes.
-	mux.HandleFunc("/api/v1/ws", s.authMiddleware(s.handleWebSocket))
+	mux.HandleFunc("/api/v1/ws", s.tableWebSocketMiddleware(s.handleWebSocket))
 	mux.Handle("/", apiHandler)
 
 	return mux
@@ -170,18 +178,18 @@ func (s *Server) registerHandlers() *http.ServeMux {
 	mux.HandleFunc("/api/v1/files/{trackID}", s.gmOnlyMiddleware(s.handleFile))
 	mux.HandleFunc("/api/v1/files/{trackID}/usage", s.gmOnlyMiddleware(s.handleFileUsage))
 	mux.HandleFunc("/api/v1/files/{trackID}/waveform", s.gmOnlyMiddleware(s.handleFileWaveform))
-	mux.HandleFunc("/api/v1/joinToken", s.gmOnlyMiddleware(s.handleGetJoinToken))
-	mux.HandleFunc("/api/v1/stream/", s.authMiddleware(s.streamDirectory))
-	mux.HandleFunc("/api/v1/trackTypes", s.authMiddleware(s.handleTrackTypes))
+	mux.HandleFunc("/api/v1/stream/{path...}", s.gmOnlyMiddleware(s.streamDirectory))
+	mux.HandleFunc("/api/v1/trackTypes", s.publicMiddleware(s.handleTrackTypes))
 	mux.HandleFunc("/api/v1/tables", s.gmOnlyMiddleware(s.handleTables))
-	mux.HandleFunc("/api/v1/tables/current", s.authMiddleware(s.handleSessionTable))
-	mux.HandleFunc("/api/v1/tables/{tableID}", s.authMiddleware(s.handleTable))
+	mux.HandleFunc("/api/v1/tables/{tableID}", s.tableAccessMiddleware(s.handleTable))
+	mux.HandleFunc("/api/v1/tables/{tableID}/external-id", s.gmOnlyMiddleware(s.handleRotateTableExternalID))
 	mux.HandleFunc("/api/v1/tables/{tableID}/settings", s.gmOnlyMiddleware(s.handleTableSettings))
 	mux.HandleFunc("/api/v1/tables/{tableID}/mix", s.gmOnlyMiddleware(s.handleMixerStatus))
 	mux.HandleFunc("/api/v1/tables/{tableID}/discord", s.gmOnlyMiddleware(s.handleDiscord))
 	mux.HandleFunc("/api/v1/discord/setup", s.gmOnlyMiddleware(s.handleDiscordSetup))
 	mux.HandleFunc("/api/v1/discord/servers/{guildID}/channels", s.gmOnlyMiddleware(s.handleDiscordSetup))
-	mux.HandleFunc("/api/v1/tables/{tableID}/tracks", s.gmOnlyMiddleware(s.handleTableTracks))
+	mux.HandleFunc("/api/v1/tables/{tableID}/tracks", s.tableAccessMiddleware(s.handleTableTracks))
+	mux.HandleFunc("/api/v1/tables/{tableID}/stream/{path...}", s.tableAccessMiddleware(s.streamDirectory))
 	mux.HandleFunc("/api/v1/tables/{tableID}/tracks/{trackID}", s.gmOnlyMiddleware(s.handleTableTrack))
 
 	return mux

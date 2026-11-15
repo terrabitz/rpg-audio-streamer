@@ -1,7 +1,15 @@
 <script setup lang="ts">
-import { useBaseUrl } from '../composables/useBaseUrl'
-const { getBaseUrl } = useBaseUrl()
+import { onMounted } from 'vue'
+import { useAppBar } from '@/composables/useAppBar'
+import { useBaseUrl } from '@/composables/useBaseUrl'
 
+const { getBaseUrl } = useBaseUrl()
+const { setTitle, setActions } = useAppBar()
+
+onMounted(() => {
+  setTitle('RPG Audio Streamer')
+  setActions([])
+})
 </script>
 
 <template>
@@ -11,10 +19,11 @@ const { getBaseUrl } = useBaseUrl()
       <v-card>
         <v-card-text>
           <p>Ask your GM to share their invite link with you</p>
-          <p class="mt-4">The link will look like this:
+          <p class="mt-4">
+            The link will look like this:
             <code class="px-2 py-1 rounded bg-primary-lighten-5 text-secondary">
-                {{ getBaseUrl() }}/table/abc123...
-              </code>
+              {{ getBaseUrl() }}/tables/&lt;invite-code&gt;
+            </code>
           </p>
         </v-card-text>
       </v-card>

@@ -36,15 +36,12 @@ onMounted(() => {
       </p>
 
       <div class="d-flex flex-wrap justify-center gap-4">
-
         <v-btn to="/login" color="secondary" size="large" variant="elevated" prepend-icon="$login">
           GM Login
         </v-btn>
-
         <v-btn class="ml-4" to="/join" color="primary" size="large" variant="elevated" prepend-icon="$accountMusic">
           Join as Player
         </v-btn>
-
       </div>
     </div>
   </v-container>

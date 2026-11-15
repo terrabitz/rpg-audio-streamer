@@ -28,7 +28,13 @@ export const test = base.extend<{ recorder: void }>({
           const pageLabel = count > 1 ? `${label} (tab ${count})` : label
           const offsetMs = Date.now() - started
           void page.addInitScript(showInteractions, pageLabel)
-          pages.push({ page, label: pageLabel, offsetMs })
+          const tracked = { page, label: pageLabel, offsetMs }
+          page.on('framenavigated', frame => {
+            if (frame === page.mainFrame() && isGMPath(new URL(frame.url()).pathname)) {
+              tracked.label = gmLabel(pageLabel)
+            }
+          })
+          pages.push(tracked)
         })
       }
       track(context, 'GM')
@@ -74,11 +80,20 @@ export function slugify(title: string) {
   return title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
 }
 
+function isGMPath(pathname: string) {
+  return /^\/(login|tables|library)(\/|$)/.test(pathname)
+}
+
+function gmLabel(label: string) {
+  return label.replace(/^Player (\d+)/, 'GM (device $1)')
+}
+
 // Playwright videos omit the pointer, so recordings draw one plus a page label.
 function showInteractions(label: string) {
   const install = () => {
     const badge = document.createElement('div')
-    badge.textContent = label
+    badge.textContent = /^\/(login|tables|library)(\/|$)/.test(location.pathname)
+      ? label.replace(/^Player (\d+)/, 'GM (device $1)') : label
     badge.setAttribute('aria-hidden', 'true')
     Object.assign(badge.style, {
       position: 'fixed', left: '8px', bottom: '8px', zIndex: '2147483647', pointerEvents: 'none',

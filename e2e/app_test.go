@@ -33,8 +33,9 @@ const (
 )
 
 type app struct {
-	baseURL string
-	config  liveConfig
+	baseURL         string
+	tableExternalID string
+	config          liveConfig
 }
 
 type gmClient struct {
@@ -78,7 +79,6 @@ func startApp(t *testing.T, root string, config liveConfig) *app {
 		"--root-username", gmUsername,
 		"--root-password-hash", gmPasswordHash,
 		"--token-secret", "public-e2e-signing-key-not-for-production",
-		"--join-token", "e2e-invite",
 		"--db-path", filepath.Join(scratch, "app.db"),
 		"--upload-dir", filepath.Join(scratch, "uploads"),
 	)
@@ -130,6 +130,20 @@ func (a *app) login(t *testing.T) *gmClient {
 	gm := &gmClient{app: a, http: &http.Client{Jar: jar, Timeout: 2 * time.Minute}}
 	body, _ := json.Marshal(map[string]string{"username": gmUsername, "password": gmPassword})
 	gm.do(t, http.MethodPost, "/api/v1/login", "application/json", bytes.NewReader(body), nil)
+	var tables []struct {
+		ID         string `json:"id"`
+		ExternalID string `json:"externalID"`
+	}
+	gm.do(t, http.MethodGet, "/api/v1/tables", "", nil, &tables)
+	for _, table := range tables {
+		if table.ID == defaultTableID {
+			gm.app.tableExternalID = table.ExternalID
+			break
+		}
+	}
+	if gm.app.tableExternalID == "" {
+		t.Fatal("default table has no external ID")
+	}
 	return gm
 }
 
@@ -184,7 +198,7 @@ func (gm *gmClient) trackTypeID(t *testing.T, name string) string {
 func (gm *gmClient) mixer(t *testing.T) *mixerSocket {
 	t.Helper()
 	base, _ := url.Parse(gm.app.baseURL)
-	socketURL := "ws://" + base.Host + "/api/v1/ws?tableID=" + defaultTableID
+	socketURL := "ws://" + base.Host + "/api/v1/ws"
 	header := http.Header{"Cookie": {cookieHeader(gm.http.Jar.Cookies(base))}}
 	conn, _, err := websocket.DefaultDialer.DialContext(t.Context(), socketURL, header)
 	if err != nil {
@@ -238,7 +252,7 @@ func (gm *gmClient) connectDiscord(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	gm.do(t, http.MethodPost, "/api/v1/tables/"+defaultTableID+"/discord", "application/json", bytes.NewReader(body), nil)
+	gm.do(t, http.MethodPost, "/api/v1/tables/"+gm.app.tableExternalID+"/discord", "application/json", bytes.NewReader(body), nil)
 	gm.waitDiscord(t, "connected")
 }
 
@@ -250,7 +264,7 @@ func (gm *gmClient) waitDiscord(t *testing.T, want string) {
 			State string `json:"state"`
 			Error string `json:"error"`
 		}
-		gm.do(t, http.MethodGet, "/api/v1/tables/"+defaultTableID+"/discord", "", nil, &status)
+		gm.do(t, http.MethodGet, "/api/v1/tables/"+gm.app.tableExternalID+"/discord", "", nil, &status)
 		if status.State == want {
 			return
 		}
@@ -263,7 +277,7 @@ func (gm *gmClient) waitDiscord(t *testing.T, want string) {
 
 func (gm *gmClient) disconnectDiscord(t *testing.T) {
 	t.Helper()
-	gm.do(t, http.MethodDelete, "/api/v1/tables/"+defaultTableID+"/discord", "", nil, nil)
+	gm.do(t, http.MethodDelete, "/api/v1/tables/"+gm.app.tableExternalID+"/discord", "", nil, nil)
 }
 
 func (gm *gmClient) do(t *testing.T, method, path, contentType string, body io.Reader, out any) {

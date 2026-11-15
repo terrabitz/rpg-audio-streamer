@@ -12,6 +12,7 @@ export interface AudioTrack {
   duration: number
   trackType: string
   playback?: PlaybackSettings
+  positionVersion?: number
 }
 
 interface FadeStatus {
@@ -87,7 +88,7 @@ export const useAudioStore = defineStore('audio', {
       return Object.values(this.tracks)
         .filter(track => track.isPlaying)
     },
-    syncTracks(tracks: Partial<AudioTrack>[]) {
+    syncTracks(tracks: Partial<AudioTrack>[], preserveIdle = false) {
       // Only sync tracks if audio is enabled
       if (!this.enabled) return
 
@@ -97,7 +98,8 @@ export const useAudioStore = defineStore('audio', {
       // Remove tracks that aren't in the sync payload
       Object.keys(this.tracks).forEach(fileID => {
         if (!syncedTrackNames.has(fileID)) {
-          this.removeTrack(fileID)
+          if (preserveIdle) this.updateTrackState(fileID, { isPlaying: false })
+          else this.removeTrack(fileID)
         }
       })
 

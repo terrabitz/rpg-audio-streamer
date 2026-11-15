@@ -5,9 +5,11 @@ import (
 	"os/exec"
 	"path/filepath"
 	"testing"
-
-	"github.com/terrabitz/rpg-audio-streamer/internal/websocket"
 )
+
+type mixerTestHub struct{ mockWSRegisterer }
+
+func (*mixerTestHub) SetMixer(Mixer) {}
 
 func TestMixerPCMDecodesHLS(t *testing.T) {
 	ts := setupTestServer(t)
@@ -47,7 +49,7 @@ func TestMixerPCMDecodesHLS(t *testing.T) {
 func TestMixerStatusDisabledAndUnauthorized(t *testing.T) {
 	ts := setupTestServer(t)
 	defer ts.cleanup(t)
-	path := "/api/v1/tables/" + DefaultTableID.String() + "/mix"
+	path := "/api/v1/tables/" + testDefaultExternalID + "/mix"
 	for _, tc := range []struct {
 		method string
 		gm     bool
@@ -66,11 +68,11 @@ func TestMixerStatusDisabledAndUnauthorized(t *testing.T) {
 func TestMixerStatusEnabled(t *testing.T) {
 	ts := setupTestServer(t)
 	defer ts.cleanup(t)
-	srv, err := New(Config{ExperimentalMixer: true}, ts.logger, ts.auth, ts.store, websocket.NewHub(ts.logger))
+	srv, err := New(Config{ExperimentalMixer: true}, ts.logger, ts.auth, ts.store, &mixerTestHub{mockWSRegisterer{t: t}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	rec := routedRequest(srv.Handler(), "GET", "/api/v1/tables/"+DefaultTableID.String()+"/mix", "", true)
+	rec := routedRequest(srv.Handler(), "GET", "/api/v1/tables/"+testDefaultExternalID+"/mix", "", true)
 	if rec.Code != 200 || rec.Header().Get("Cache-Control") != "no-store" {
 		t.Fatalf("mixer status: %d: %s", rec.Code, rec.Body)
 	}

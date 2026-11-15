@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"bytes"
 	"errors"
 	"log/slog"
 	"testing"
@@ -184,8 +185,14 @@ func TestTokenValidation(t *testing.T) {
 			name: "Tampered signature",
 			setup: func() string {
 				token, _ := auth.NewToken("test-user", RoleGM)
-				tokenStr := token.String()
-				return tokenStr[:len(tokenStr)-2] + "00"
+				tokenBytes := []byte(token.String())
+				signatureStart := bytes.LastIndexByte(tokenBytes, '.') + 1
+				if tokenBytes[signatureStart] == 'A' {
+					tokenBytes[signatureStart] = 'B'
+				} else {
+					tokenBytes[signatureStart] = 'A'
+				}
+				return string(tokenBytes)
 			},
 			wantErr: jwt.ErrTokenSignatureInvalid,
 		},

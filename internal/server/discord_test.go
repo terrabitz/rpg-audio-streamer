@@ -53,7 +53,7 @@ func TestDiscordRoutesRequireGMAndControlOnlyRequestedTable(t *testing.T) {
 	defer ts.cleanup(t)
 	bot := &testDiscord{}
 	ts.discord = bot
-	path := "/api/v1/tables/" + DefaultTableID.String() + "/discord"
+	path := "/api/v1/tables/" + testDefaultExternalID + "/discord"
 	for _, method := range []string{"GET", "POST", "DELETE"} {
 		if rec := routedRequest(ts.Handler(), method, path, "", false); rec.Code != http.StatusUnauthorized {
 			t.Fatalf("unauthenticated %s: %d", method, rec.Code)
@@ -91,7 +91,7 @@ func TestDiscordRoutesRequireGMAndControlOnlyRequestedTable(t *testing.T) {
 			t.Fatalf("failed connect: %d, want %d", rec.Code, failure.code)
 		}
 	}
-	if rec := routedRequest(ts.Handler(), "POST", "/api/v1/tables/not-an-id/discord", "", true); rec.Code != 400 {
+	if rec := routedRequest(ts.Handler(), "POST", "/api/v1/tables/not-an-id/discord", "", true); rec.Code != 404 {
 		t.Fatalf("invalid table: %d", rec.Code)
 	}
 }
@@ -99,7 +99,7 @@ func TestDiscordRoutesRequireGMAndControlOnlyRequestedTable(t *testing.T) {
 func TestDiscordRoutesExposeDisabledConfiguration(t *testing.T) {
 	ts := setupTestServer(t)
 	defer ts.cleanup(t)
-	path := "/api/v1/tables/" + DefaultTableID.String() + "/discord"
+	path := "/api/v1/tables/" + testDefaultExternalID + "/discord"
 	rec := routedRequest(ts.Handler(), "GET", path, "", true)
 	if rec.Code != 200 || !json.Valid(rec.Body.Bytes()) {
 		t.Fatalf("disabled status: %d %s", rec.Code, rec.Body)

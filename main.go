@@ -155,12 +155,6 @@ func main() {
 						Usage:       "Audience for JWT tokens",
 						Destination: &cfg.Auth.TokenAudience,
 					},
-					&cli.StringFlag{
-						Name:        "join-token",
-						EnvVars:     []string{"JOIN_TOKEN"},
-						Usage:       "The static join token to use",
-						Destination: &cfg.Auth.JoinToken,
-					},
 					&cli.BoolFlag{
 						Name:        "dev-mode",
 						EnvVars:     []string{"DEV_MODE"},
@@ -350,7 +344,7 @@ func startServer(cfg Config) error {
 
 	authService := auth.New(cfg.Auth, logger)
 
-	hub := ws.NewHub(logger)
+	hub := ws.NewHub(logger, db)
 
 	srv, err := server.New(cfg.Server, logger, authService, db, hub)
 	if err != nil {

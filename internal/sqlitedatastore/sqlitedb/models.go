@@ -11,8 +11,8 @@ import (
 type GameTable struct {
 	ID                 []byte
 	Name               string
-	InviteToken        string
 	Settings           string
+	ExternalID         string
 	DiscordDestination string
 }
 

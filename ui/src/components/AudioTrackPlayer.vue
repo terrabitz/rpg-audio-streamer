@@ -8,12 +8,13 @@
 </template>
 
 <script setup lang="ts">
-import Hls, { type HlsConfig } from 'hls.js'
+import Hls from 'hls.js'
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { defaultPlayback, playbackError, playbackRegion } from '@/composables/playback'
 import { useAudioStore, type AudioTrack } from '../stores/audio'
+import { useWebSocketStore } from '../stores/websocket'
 
-const props = defineProps<{ fileID: string, token?: string }>()
+const props = defineProps<{ fileID: string, tableID?: string }>()
 const emit = defineEmits<{ error: [message: string] }>()
 const audioStore = useAudioStore()
 const primary = ref<HTMLVideoElement | null>(null)
@@ -29,12 +30,20 @@ let envelope = 0
 let fade: { from: number, to: number, start: number } | undefined
 let mixedVolume = targetVolume()
 let volumeFade: { from: number, to: number, start: number } | undefined
+let positionVersion = audioStore.tracks[props.fileID]?.positionVersion
 
 watch(() => audioStore.tracks[props.fileID]?.isPlaying, syncPlaying)
-watch(() => audioStore.tracks[props.fileID]?.currentTime, () => {
+watch([
+  () => audioStore.tracks[props.fileID]?.currentTime,
+  () => audioStore.tracks[props.fileID]?.positionVersion,
+], () => {
   const state = audioStore.tracks[props.fileID]
   const media = element(active.value)
   if (!state || !media || !ready[active.value]) return
+  const commanded = state.positionVersion !== positionVersion
+  positionVersion = state.positionVersion
+  // Running media owns its handoff timing; only an explicit command may interrupt it.
+  if (!commanded && state.positionVersion !== undefined && state.isPlaying && !media.paused) return
   if (Math.abs(media.currentTime - state.currentTime) > 0.5) {
     cancelOverlap()
     media.currentTime = state.currentTime
@@ -44,10 +53,7 @@ watch([
   () => audioStore.tracks[props.fileID]?.playback?.startTime,
   () => audioStore.tracks[props.fileID]?.playback?.endTime,
   () => audioStore.tracks[props.fileID]?.playback?.loopBackTime,
-], () => {
-  cancelOverlap()
-  syncPosition()
-})
+], syncRegion)
 watch(() => audioStore.tracks[props.fileID]?.isRepeating, (isRepeating) => {
   cancelOverlap()
   if (isRepeating && audioStore.tracks[props.fileID]?.isPlaying) bindHLS(1)
@@ -85,13 +91,13 @@ function bindHLS(index: number) {
   const media = element(index)
   if (!media) return
   bound[index] = true
-  const options: Partial<HlsConfig> = props.token ? {
-    xhrSetup(xhr) { xhr.setRequestHeader('Authorization', `Bearer ${props.token}`) },
-  } : {}
-  const player = new Hls(options)
+  const player = new Hls()
   players.push(player)
   media.volume = 0
-  player.loadSource(`/api/v1/stream/${props.fileID}/index.m3u8`)
+  const streamURL = props.tableID
+    ? `/api/v1/tables/${props.tableID}/stream/${props.fileID}/index.m3u8`
+    : `/api/v1/stream/${props.fileID}/index.m3u8`
+  player.loadSource(streamURL)
   player.attachMedia(media)
   player.on(Hls.Events.MANIFEST_PARSED, () => {
     if (disposed) return
@@ -124,13 +130,31 @@ function syncPlaying() {
   tick()
 }
 
-function syncPosition() {
+function syncRegion() {
+  const state = audioStore.tracks[props.fileID]
+  const media = element(active.value)
+  if (!state || !media) return
+  const { start, end, loop } = playbackRegion(state.playback, state.duration)
+  if (overlap) {
+    // An in-flight handoff must survive edits, even if the outgoing source has ended.
+    overlap.end = Math.min(overlap.end, end)
+    const incoming = element(overlap.incoming)
+    if (incoming) {
+      const position = incoming.currentTime >= end ? loop : Math.max(start, incoming.currentTime)
+      if (incoming.currentTime !== position) incoming.currentTime = position
+    }
+  }
+  syncPosition(media.currentTime)
+}
+
+function syncPosition(currentTime?: number) {
   const state = audioStore.tracks[props.fileID]
   const media = element(active.value)
   if (!state || !media) return
   const { start, end } = playbackRegion(state.playback, state.duration)
-  const time = Math.max(start, state.currentTime)
-  media.currentTime = end > start ? Math.min(time, end) : time
+  const time = Math.max(start, currentTime ?? state.currentTime)
+  const position = end > start ? Math.min(time, end) : time
+  if (media.currentTime !== position) media.currentTime = position
   updatePlaybackState({ currentTime: media.currentTime })
 }
 
@@ -157,11 +181,12 @@ function tick() {
     reportPlaybackError(new Error(error))
     return
   }
-  if (state.isRepeating && !overlap && ready[1 - active.value] && !media.paused &&
-      media.currentTime >= region.end - region.fade) {
+  if (state.isRepeating && !overlap && ready[1 - active.value] &&
+      (media.ended || media.currentTime >= region.end ||
+        !media.paused && media.currentTime >= region.end - region.fade)) {
     startOverlap(region.loop, region.end)
   }
-  if (overlap && media.currentTime >= overlap.end) finishOverlap()
+  if (overlap && (media.ended || media.currentTime >= overlap.end)) finishOverlap()
   else if (!state.isRepeating && media.currentTime >= region.end) finishTrack()
   applyVolumes()
   if (audioStore.tracks[props.fileID]) audioStore.setFading(props.fileID, !!fade || !!overlap || !!volumeFade)
@@ -259,7 +284,12 @@ function handleMetadata(index: number) {
 }
 
 function updateDuration(duration: number) {
-  if (Number.isFinite(duration) && duration > 0) updatePlaybackState({ duration })
+  if (!Number.isFinite(duration) || duration <= 0 || duration === audioStore.tracks[props.fileID]?.duration) return
+  updatePlaybackState({ duration })
+  const ws = useWebSocketStore()
+  if (audioStore.tableMix && audioStore.tracks[props.fileID]?.isPlaying && ws.isConnected) {
+    ws.sendMessage('syncTrack', { fileID: props.fileID, duration })
+  }
 }
 
 function element(index: number): HTMLMediaElement | null {
@@ -281,7 +311,7 @@ function reportPlaybackError(cause: unknown) {
   envelope = 0
   primary.value?.pause()
   secondary.value?.pause()
-  updatePlaybackState({ isPlaying: false })
+  if (!audioStore.tableMix) updatePlaybackState({ isPlaying: false })
   emit('error', 'Unable to play track. Try again or choose another track.')
 }
 </script>
