@@ -2108,7 +2108,7 @@ async function expectEdgeToEdgeTable(page: Page, sidebar: Locator) {
       && panel.y + panel.height === viewport.height
   }).toBe(true)
   await expect(sidebar).toHaveCSS('border-left-width', '1px')
-  await expect(sidebar).toHaveCSS('overflow-y', 'auto')
+  await expect(sidebar.locator('.playing-sidebar-tracks')).toHaveCSS('overflow-y', 'auto')
   const background = await page.locator('.table-track-grid').evaluate(el => getComputedStyle(el).backgroundColor)
   await expect(sidebar).not.toHaveCSS('background-color', background)
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
