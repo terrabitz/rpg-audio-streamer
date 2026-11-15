@@ -66,8 +66,8 @@ COPY docker/s6-rc.d /etc/s6-overlay/s6-rc.d
 # Create directories and set permissions
 RUN mkdir -p /app/data/uploads \
   && mkdir -p /caddy/data \
-  && chown -R nobody:nobody /app \
-  && chown -R nobody:nobody /caddy
+  && chown -R nobody:nogroup /app \
+  && chown -R nobody:nogroup /caddy
 
 # Set default env vars for Docker layout
 ENV DB_PATH=/app/data/skaldbot.db \
