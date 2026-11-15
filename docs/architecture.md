@@ -441,6 +441,10 @@ the separately supplied type multiplier and caps effective gain at unity,
 matching browser per-track gain clamping. The GM sends `mixVolumes` for live
 type-volume changes. Master changes use the existing per-track volume updates.
 Paused seeks and volumes are supplied by the full track state on resume.
+When an exclusive track starts, the hub also sends pause commands for the
+displaced tracks to the mixer. These commands use the core's playback envelopes
+and are serialized with the accepted playback update, so Discord fades out
+the previous Music track while simultaneous track types continue playing.
 Frontend partial updates coalesce by track ID, preserving independent fields
 and updates to different tracks in the same debounce window. Immediate
 exclusivity and region changes flush queued commands first.

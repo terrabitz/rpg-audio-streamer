@@ -3,6 +3,7 @@ package websocket
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -13,14 +14,16 @@ import (
 
 	gorilla "github.com/gorilla/websocket"
 	"github.com/terrabitz/rpg-audio-streamer/internal/auth"
+	"github.com/terrabitz/rpg-audio-streamer/internal/server"
 )
 
 func TestMixerReceivesOnlyTableScopedGMCommands(t *testing.T) {
 	hub, clients := testHub()
 	mix := &testMixer{}
 	hub.SetMixer(mix)
-	clients["gm"].Token.TableID = "friday"
-	clients["player"].Token.TableID = "friday"
+	tableID := server.DefaultTableID.String()
+	clients["gm"].Token.TableID = tableID
+	clients["player"].Token.TableID = tableID
 	send := func(sender, method, payload string) {
 		t.Helper()
 		input, err := json.Marshal(Message{Method: method, Payload: json.RawMessage(payload)})
@@ -36,11 +39,11 @@ func TestMixerReceivesOnlyTableScopedGMCommands(t *testing.T) {
 	if len(mix.calls) != 0 {
 		t.Fatal("player or targeted listener sync changed mixer")
 	}
-	send("gm", "syncTrack", `{"fileID":"rain","volume":0}`)
+	send("gm", "syncTrack", fmt.Sprintf(`{"fileID":%q,"volume":0}`, testTrackID))
 	send("gm", "mixVolumes", `{"typeVolumes":{"Music":0}}`)
 	send("gm", "mixSync", `{"tracks":[]}`)
 	send("gm", "syncAll", `{"tracks":[]}`)
-	want := []string{"update:friday", "volumes:friday", "sync:friday"}
+	want := []string{"update:" + tableID, "volumes:" + tableID, "sync:" + tableID}
 	if len(mix.calls) != len(want) {
 		t.Fatalf("calls: %v", mix.calls)
 	}
@@ -50,7 +53,7 @@ func TestMixerReceivesOnlyTableScopedGMCommands(t *testing.T) {
 		}
 	}
 	mix.err = errors.New("invalid seek")
-	send("gm", "syncTrack", `{"fileID":"rain","currentTime":-1}`)
+	send("gm", "syncTrack", fmt.Sprintf(`{"fileID":%q,"currentTime":1}`, testTrackID))
 	var last Message
 	for len(clients["gm"].send) > 0 {
 		if err := json.Unmarshal(<-clients["gm"].send, &last); err != nil {
@@ -60,9 +63,9 @@ func TestMixerReceivesOnlyTableScopedGMCommands(t *testing.T) {
 	if last.Method != "mixerError" {
 		t.Fatalf("failed command was not reported: %+v", last)
 	}
-	hub.RemoveTrack("friday", "rain")
-	hub.CloseTable("friday")
-	if got := mix.calls[len(mix.calls)-2:]; got[0] != "remove:friday:rain" || got[1] != "close:friday" {
+	hub.RemoveTrack(tableID, testTrackID.String())
+	hub.CloseTable(tableID)
+	if got := mix.calls[len(mix.calls)-2:]; got[0] != "remove:"+tableID+":"+testTrackID.String() || got[1] != "close:"+tableID {
 		t.Fatalf("cleanup: %v", got)
 	}
 }

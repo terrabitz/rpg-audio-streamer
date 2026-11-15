@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/terrabitz/rpg-audio-streamer/internal/livemixer"
+	"github.com/terrabitz/rpg-audio-streamer/internal/mixer"
 	"github.com/terrabitz/rpg-audio-streamer/internal/server"
 )
 
@@ -119,6 +121,8 @@ func TestPlaybackCommandsAreAtomicAndAuthorized(t *testing.T) {
 			t.Fatalf("exclusive commands diverged: %+v", snapshot)
 		}
 	}
+	mix := &testMixer{}
+	h.SetMixer(mix)
 	for _, command := range []string{
 		fmt.Sprintf(`{"fileID":%q,"volume":-1}`, testTrackID),
 		fmt.Sprintf(`{"fileID":%q,"playback":{"startTime":20,"endTime":10}}`, testTrackID),
@@ -135,6 +139,9 @@ func TestPlaybackCommandsAreAtomicAndAuthorized(t *testing.T) {
 	if len(clients["gm"].send) != 0 {
 		t.Fatal("player changed shared playback")
 	}
+	if len(mix.calls) != 0 {
+		t.Fatalf("rejected playback commands reached the mixer: %v", mix.calls)
+	}
 	h.RemoveTrack(server.DefaultTableID.String(), testTrackID.String())
 	if _, ok := h.playback[server.DefaultTableID.String()][testTrackID.String()]; ok {
 		t.Fatal("removed track survives recovery")
@@ -143,6 +150,83 @@ func TestPlaybackCommandsAreAtomicAndAuthorized(t *testing.T) {
 	if _, ok := h.playback[server.DefaultTableID.String()]; ok {
 		t.Fatal("deleted table survives recovery")
 	}
+}
+
+func TestPlaybackExclusivityFadesMixerAudio(t *testing.T) {
+	for _, simultaneous := range []bool{false, true} {
+		t.Run(fmt.Sprintf("simultaneous=%v", simultaneous), func(t *testing.T) {
+			h, clients := testHub()
+			h.store = playbackTypeTestStore{simultaneous: simultaneous}
+			tableID := server.DefaultTableID.String()
+			for _, client := range clients {
+				client.Token.TableID = tableID
+			}
+			mix, err := livemixer.New(6, func(_ context.Context, _, fileID string) (livemixer.Clip, error) {
+				sample := mixer.Frame{Left: 0.5}
+				if fileID == testOtherID.String() {
+					sample = mixer.Frame{Right: 0.5}
+				}
+				frames := make([]mixer.Frame, 360)
+				for i := range frames {
+					frames[i] = sample
+				}
+				return livemixer.Clip{Frames: frames, Type: "Music", Repeating: true}, nil
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			h.SetMixer(mix)
+			play := func(id uuid.UUID) {
+				t.Helper()
+				h.handleSyncTrack(json.RawMessage(fmt.Sprintf(
+					`{"fileID":%q,"isPlaying":true,"isRepeating":true,"duration":60}`, id)), clients["gm"])
+				for _, client := range clients {
+					readPlayback(t, client)
+				}
+				var response Message
+				if err := json.Unmarshal(<-clients["gm"].send, &response); err != nil || response.Method != "mixerAck" {
+					t.Fatalf("mixer response = %+v, %v", response, err)
+				}
+			}
+			play(testTrackID)
+			mix.Render(tableID, 12)
+			play(testOtherID)
+			frames := mix.Render(tableID, 13)
+			if frames[0] != (mixer.Frame{Left: 0.5}) {
+				t.Fatalf("switch cut off outgoing audio: %+v", frames[0])
+			}
+			want := mixer.Frame{Left: 0.25, Right: 0.25}
+			if simultaneous {
+				want.Left = 0.5
+			}
+			if frames[6] != want {
+				t.Fatalf("mid-transition audio = %+v; want %+v", frames[6], want)
+			}
+			want = mixer.Frame{Right: 0.5}
+			if simultaneous {
+				want.Left = 0.5
+			}
+			if frames[12] != want {
+				t.Fatalf("settled audio = %+v; want %+v", frames[12], want)
+			}
+			for _, frame := range mix.Render(tableID, 12) {
+				if frame != want {
+					t.Fatalf("old track resumed after transition: %+v; want %+v", frame, want)
+				}
+			}
+		})
+	}
+}
+
+type playbackTypeTestStore struct {
+	playbackTestStore
+	simultaneous bool
+}
+
+func (s playbackTypeTestStore) GetTrackTypeByID(context.Context, uuid.UUID) (server.TrackType, error) {
+	return server.TrackType{
+		ID: testTypeID, Name: "Music", IsRepeating: true, AllowSimultaneousPlay: s.simultaneous,
+	}, nil
 }
 
 func TestPlaybackClock(t *testing.T) {

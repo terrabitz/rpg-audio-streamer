@@ -51,9 +51,6 @@ func (h *Hub) handleSyncTrack(payload json.RawMessage, c *Client) {
 		return
 	}
 	h.updatePlayback(payload, c)
-	if h.mixer != nil {
-		h.applyMixer(c, "syncTrack", func() error { return h.mixer.Update(c.Token.TableID, payload) })
-	}
 }
 
 func (h *Hub) handleMixSync(payload json.RawMessage, c *Client) {

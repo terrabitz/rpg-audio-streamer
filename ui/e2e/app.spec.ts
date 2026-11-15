@@ -18,7 +18,8 @@ test('GM controls real Discord audio and reconnects the saved channel', async ({
   let listener: Awaited<ReturnType<typeof startTestListener>> | undefined
   try {
     await uploadTrack(page, 'Discord Low', 'Ambiance', 440, 120)
-    await uploadTrack(page, 'Discord High', 'Ambiance', 880, 120)
+    await uploadTrack(page, 'Discord High', 'Music', 880, 120)
+    await uploadTrack(page, 'Discord Replacement', 'Music', 440, 120)
     await chooseDiscordDestination(page)
     await expect(page.getByRole('button', { name: 'Disconnect', exact: true })).toBeVisible()
     listener = await startTestListener(config)
@@ -52,12 +53,16 @@ test('GM controls real Discord audio and reconnects the saved channel', async ({
     await page.getByRole('group', { name: 'Discord High', exact: true }).locator('.track-heading > span').click()
     frames = current().frames
     await waitAudio(audio => audio.frames >= frames + 96000 && audio.high > 0.05)
+    await page.getByRole('group', { name: 'Discord Replacement', exact: true }).locator('.track-heading > span').click()
+    frames = current().frames
+    await waitAudio(audio => audio.frames >= frames + 96000 && audio.low > 0.05 && audio.high < 0.003)
+    await expect(high).toHaveCount(0)
     await page.getByRole('button', { name: 'Disconnect', exact: true }).click()
     await waitAudio(audio => !audio.present)
     await chooseDiscordDestination(page, true)
     await waitAudio(audio => audio.present)
     frames = current().frames
-    await waitAudio(audio => audio.frames >= frames + 96000 && audio.high > 0.05)
+    await waitAudio(audio => audio.frames >= frames + 96000 && audio.low > 0.05 && audio.high < 0.003)
     await page.goto('/tables')
     await expect.poll(async () => (await (await page.request.get(`/api/v1/tables/${tableID}/discord`)).json()).state)
       .toBe('disconnected')
@@ -66,7 +71,7 @@ test('GM controls real Discord audio and reconnects the saved channel', async ({
     await expect(page.getByRole('button', { name: 'Disconnect', exact: true })).toBeVisible()
     await waitAudio(audio => audio.present)
     frames = current().frames
-    await waitAudio(audio => audio.frames >= frames + 96000 && audio.high > 0.05)
+    await waitAudio(audio => audio.frames >= frames + 96000 && audio.low > 0.05 && audio.high < 0.003)
   } finally {
     listener?.close()
     const cleanup = await page.request.delete(`/api/v1/tables/${tableID}`)
@@ -74,7 +79,8 @@ test('GM controls real Discord audio and reconnects the saved channel', async ({
     const response = await page.request.get('/api/v1/files')
     expect(response.ok(), await response.text()).toBe(true)
     const tracks: { id: string, name: string }[] = await response.json()
-    for (const track of tracks.filter(item => item.name === 'Discord Low' || item.name === 'Discord High')) {
+    for (const track of tracks.filter(item =>
+      ['Discord Low', 'Discord High', 'Discord Replacement'].includes(item.name))) {
       const deleted = await page.request.delete(`/api/v1/files/${track.id}`)
       expect(deleted.ok(), await deleted.text()).toBe(true)
     }
