@@ -31,6 +31,7 @@ jobs:
               - '**/*.go'
               - 'go.mod'
               - 'go.sum'
+              - 'third_party/**'
               - 'sql/**'
               - 'sqlc.yaml'
               - 'Makefile'
@@ -38,7 +39,6 @@ jobs:
             frontend:
               - 'ui/**'
               - 'scripts/**'
-              - 'discord/**'
               - 'openapi.yaml'
               - 'Makefile'
               - '.github/workflows/pr-checks.yaml'
@@ -49,9 +49,9 @@ jobs:
               - 'go.sum'
               - 'main.go'
               - 'internal/**'
+              - 'third_party/**'
               - 'sql/**'
               - 'ui/**'
-              - 'discord/**'
               - '.github/workflows/pr-checks.yaml'
               - '.github/workflows/docker-build.yaml'
 
@@ -124,10 +124,11 @@ jobs:
           cache: npm
           cache-dependency-path: ui/package-lock.json
       - run: npm ci
+      - run: node --test e2e/discord-config.test.ts e2e/discord-listener.test.ts
       - run: npm run test:coverage
 
-  e2e:
-    name: Full App UX
+  dev:
+    name: Seeded Development Tests
     needs: changes
     if: ${{ !cancelled() && (github.event_name == 'workflow_dispatch' || needs.changes.outputs.backend == 'true' || needs.changes.outputs.frontend == 'true') }}
     runs-on: ubuntu-latest
@@ -147,39 +148,9 @@ jobs:
       - name: Install FFmpeg
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
       - run: npm ci
-      - run: npx playwright install --with-deps chromium
       - name: Verify seeded dev instances
         run: make test-dev
         working-directory: .
-      - run: npm run test:e2e
-      - name: Verify experimental server mixing
-        run: npm run test:e2e -- --grep 'experimental server mix|browser playback without a server mix'
-        env:
-          E2E_EXPERIMENTAL_MIXER: "1"
-      - name: Preserve browser failure evidence
-        if: failure()
-        uses: actions/upload-artifact@v6
-        with:
-          name: playwright-results
-          path: |
-            ui/playwright-report/
-            ui/test-results/
-          retention-days: 7
-
-  discord:
-    name: Discord Transport Tests
-    needs: changes
-    if: ${{ !cancelled() && (github.event_name == 'workflow_dispatch' || needs.changes.outputs.frontend == 'true') }}
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
-        with:
-          node-version-file: ./ui/.nvmrc
-          cache: npm
-          cache-dependency-path: discord/package-lock.json
-      - run: npm ci --prefix discord
-      - run: make test-discord
 
   toolchains:
     name: Check Docker Toolchains
@@ -217,7 +188,7 @@ jobs:
   pr-checks:
     name: PR Checks
     if: ${{ always() }}
-    needs: [changes, go, lint, build, unit, e2e, toolchains, docker]
+    needs: [changes, go, lint, build, unit, dev, toolchains, docker]
     runs-on: ubuntu-latest
     steps:
       - name: Require all selected checks to pass

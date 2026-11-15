@@ -7,6 +7,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"sync"
 	"time"
 
@@ -24,7 +25,6 @@ type Config struct {
 	Token     string
 	GuildID   string
 	ChannelID string
-	Worker    string
 }
 
 type Destination struct {
@@ -54,7 +54,7 @@ type Service struct {
 	mix       *livemixer.Service
 	active    map[string]*session
 	status    map[string]Status
-	open      func(context.Context, Config) (*worker, error)
+	open      func(context.Context, Config) (*transport, error)
 	apiURL    string
 	http      *http.Client
 	apiMu     sync.Mutex
@@ -72,7 +72,7 @@ type session struct {
 	started sync.Once
 }
 
-type worker struct {
+type transport struct {
 	input io.WriteCloser
 	done  <-chan struct{}
 	err   error
@@ -82,11 +82,8 @@ func New(cfg Config, mix *livemixer.Service) (*Service, error) {
 	if cfg.Token == "" || mix == nil {
 		return nil, fmt.Errorf("discord requires a bot token and the live mixer")
 	}
-	if cfg.Worker == "" {
-		cfg.Worker = "discord/stream.mjs"
-	}
 	return &Service{
-		cfg: cfg, mix: mix, open: startWorker,
+		cfg: cfg, mix: mix, open: startVoice,
 		active: make(map[string]*session), status: make(map[string]Status),
 		apiURL: "https://discord.com/api/v10", http: &http.Client{Timeout: 15 * time.Second},
 	}, nil
@@ -216,12 +213,12 @@ func (s *Service) run(current *session) {
 func (s *Service) stream(current *session) error {
 	cfg := s.cfg
 	cfg.GuildID, cfg.ChannelID = current.target.GuildID, current.target.ChannelID
-	process, err := s.open(current.ctx, cfg)
-	if process != nil {
+	voiceTransport, err := s.open(current.ctx, cfg)
+	if voiceTransport != nil {
 		defer func() {
 			current.cancel()
-			_ = process.input.Close()
-			<-process.done
+			_ = voiceTransport.input.Close()
+			<-voiceTransport.done
 		}()
 	}
 	if err != nil {
@@ -245,14 +242,14 @@ func (s *Service) stream(current *session) error {
 		select {
 		case <-current.ctx.Done():
 			return current.ctx.Err()
-		case <-process.done:
+		case <-voiceTransport.done:
 			if current.ctx.Err() != nil {
 				return current.ctx.Err()
 			}
-			if process.err == nil {
-				return fmt.Errorf("Discord voice worker stopped unexpectedly")
+			if voiceTransport.err == nil {
+				return fmt.Errorf("Discord voice transport stopped unexpectedly")
 			}
-			return process.err
+			return voiceTransport.err
 		case frames, open := <-sub.Frames():
 			if !open {
 				if errors.Is(sub.Err(), livemixer.ErrSessionClosed) || errors.Is(sub.Err(), livemixer.ErrRendererStopped) {
@@ -261,7 +258,7 @@ func (s *Service) stream(current *session) error {
 				return sub.Err()
 			}
 			timeout := time.AfterFunc(2*time.Second, current.cancel)
-			_, err := process.input.Write(mixer.EncodeFloat32(frames))
+			_, err := voiceTransport.input.Write(mixer.EncodeFloat32(frames))
 			stopped := timeout.Stop()
 			if !stopped {
 				return fmt.Errorf("Discord PCM transport stalled")
@@ -285,5 +282,6 @@ func snowflake(value string) bool {
 			return false
 		}
 	}
-	return true
+	_, err := strconv.ParseUint(value, 10, 64)
+	return err == nil
 }

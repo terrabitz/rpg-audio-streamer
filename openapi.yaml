@@ -11,44 +11,6 @@ components:
       in: cookie
       name: auth_token
   schemas:
-    MixerStatus:
-      type: object
-      required: [revision, framesRendered, peak, tracks]
-      properties:
-        revision:
-          type: integer
-          minimum: 0
-          description: Number of accepted mixer commands and removals in this session.
-        framesRendered:
-          type: integer
-          minimum: 0
-        peak:
-          type: number
-          minimum: 0
-          maximum: 1
-          description: Absolute peak of the latest rendered stereo PCM block.
-        tracks:
-          type: array
-          items:
-            type: object
-            required: [fileID, currentTime, isPlaying, gain]
-            properties:
-              fileID:
-                type: string
-                format: uuid
-              currentTime:
-                type: number
-                minimum: 0
-                description: Absolute source position in seconds.
-              isPlaying:
-                type: boolean
-                description: Requested playback state; pause fades may still be audible.
-              gain:
-                type: number
-                minimum: 0
-                maximum: 1
-                description: Target track/master/type gain, not the current envelope.
-
     Table:
       type: object
       required: [id, externalID, name]
@@ -420,30 +382,6 @@ paths:
           description: Bot reserved by another session
         "502":
           description: Disconnect failed
-
-  /api/v1/tables/{tableID}/mix:
-    get:
-      summary: Inspect experimental server-side mixing (GM only)
-      security:
-        - cookieAuth: []
-      parameters:
-        - name: tableID
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      responses:
-        "200":
-          description: Current PCM rendering and command state
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/MixerStatus"
-        "401":
-          description: GM authentication required
-        "404":
-          description: Experimental mixer disabled or table not found
 
   /api/v1/tables/{tableID}/settings:
     parameters:

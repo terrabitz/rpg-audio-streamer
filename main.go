@@ -57,21 +57,15 @@ func main() {
 				Usage:   "Start the audio streaming server",
 				Flags: []cli.Flag{
 					&cli.StringFlag{
-						Name: "discord-bot-token", EnvVars: []string{"DISCORD_BOT_TOKEN"},
-						Usage:       "Bot token for optional server-mix voice streaming; prefer the environment variable",
+						Name: "discord-streaming-bot-token", EnvVars: []string{"DISCORD_STREAMING_BOT_TOKEN"},
+						Usage:       "Bot token for Discord voice streaming; prefer the environment variable",
 						Destination: &cfg.Server.Discord.Token,
 					},
-					&cli.StringFlag{
-						Name: "discord-worker", EnvVars: []string{"DISCORD_WORKER"},
-						Value:       "discord/stream.mjs",
-						Usage:       "Path to the Node Discord voice worker",
-						Destination: &cfg.Server.Discord.Worker,
-					},
 					&cli.BoolFlag{
-						Name:        "experimental-mixer",
-						EnvVars:     []string{"EXPERIMENTAL_MIXER"},
-						Usage:       "Render GM playback in the experimental server-side PCM mixer",
-						Destination: &cfg.Server.ExperimentalMixer,
+						Name:        "discord-streaming-enabled",
+						EnvVars:     []string{"DISCORD_STREAMING_ENABLED"},
+						Usage:       "Enable Discord voice streaming",
+						Destination: &cfg.Server.DiscordStreamingEnabled,
 					},
 					&cli.StringFlag{
 						Name:        "host",

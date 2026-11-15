@@ -69,13 +69,13 @@ type Server struct {
 }
 
 type Config struct {
-	Host              string
-	Port              int
-	UploadDir         string
-	DevMode           bool
-	CORS              middlewares.CorsConfig
-	ExperimentalMixer bool
-	Discord           discord.Config
+	Host                    string
+	Port                    int
+	UploadDir               string
+	DevMode                 bool
+	CORS                    middlewares.CorsConfig
+	DiscordStreamingEnabled bool
+	Discord                 discord.Config
 }
 
 func New(cfg Config, logger *slog.Logger, auth Authenticator, store Store, hub WSRegisterer) (*Server, error) {
@@ -94,26 +94,26 @@ func New(cfg Config, logger *slog.Logger, auth Authenticator, store Store, hub W
 		},
 	}
 
-	if cfg.ExperimentalMixer || cfg.Discord.Token != "" {
+	if cfg.DiscordStreamingEnabled {
+		if cfg.Discord.Token == "" {
+			return nil, fmt.Errorf("Discord streaming requires DISCORD_STREAMING_BOT_TOKEN")
+		}
 		consumer, ok := hub.(interface{ SetMixer(Mixer) })
 		if !ok {
-			return nil, fmt.Errorf("experimental mixing requires a mixer-capable WebSocket hub")
+			return nil, fmt.Errorf("Discord streaming requires a mixer-capable WebSocket hub")
 		}
 		mix, err := livemixer.New(mixerSampleRate, srv.mixerSource)
 		if err != nil {
 			return nil, fmt.Errorf("initialize live mixer: %w", err)
 		}
 		srv.mixer = mix
-		consumer.SetMixer(mix)
-	}
-	if cfg.Discord.Token != "" {
 		bot, err := discord.New(cfg.Discord, srv.mixer)
 		if err != nil {
 			return nil, err
 		}
 		srv.discord = bot
 		srv.discordMix = newDiscordMixer(srv.mixer, srv)
-		hub.(interface{ SetMixer(Mixer) }).SetMixer(srv.discordMix)
+		consumer.SetMixer(srv.discordMix)
 	}
 
 	return srv, nil
@@ -184,7 +184,6 @@ func (s *Server) registerHandlers() *http.ServeMux {
 	mux.HandleFunc("/api/v1/tables/{tableID}", s.tableAccessMiddleware(s.handleTable))
 	mux.HandleFunc("/api/v1/tables/{tableID}/external-id", s.gmOnlyMiddleware(s.handleRotateTableExternalID))
 	mux.HandleFunc("/api/v1/tables/{tableID}/settings", s.gmOnlyMiddleware(s.handleTableSettings))
-	mux.HandleFunc("/api/v1/tables/{tableID}/mix", s.gmOnlyMiddleware(s.handleMixerStatus))
 	mux.HandleFunc("/api/v1/tables/{tableID}/discord", s.gmOnlyMiddleware(s.handleDiscord))
 	mux.HandleFunc("/api/v1/discord/setup", s.gmOnlyMiddleware(s.handleDiscordSetup))
 	mux.HandleFunc("/api/v1/discord/servers/{guildID}/channels", s.gmOnlyMiddleware(s.handleDiscordSetup))

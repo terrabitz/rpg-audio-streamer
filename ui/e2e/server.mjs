@@ -3,12 +3,13 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { discordTestConfig } from '../../scripts/discord-env.mjs'
+import { discordTestConfig } from './discord-config.ts'
 
 const root = fileURLToPath(new URL('../..', import.meta.url))
-const discord = process.env.E2E_DISCORD === '1'
-  ? { DISCORD_BOT_TOKEN: discordTestConfig(root).streamerToken }
-  : {}
+const discord = {
+  DISCORD_STREAMING_ENABLED: 'true',
+  DISCORD_STREAMING_BOT_TOKEN: discordTestConfig(root).streamerToken,
+}
 const scratch = mkdtempSync(join(tmpdir(), 'rpg-audio-e2e-'))
 const binary = join(scratch, 'server')
 
@@ -30,8 +31,6 @@ const server = spawn(
     '--port',
     process.env.E2E_API_PORT ?? '18080',
     '--dev-mode',
-    ...(process.env.E2E_EXPERIMENTAL_MIXER === '1' ? ['--experimental-mixer'] : []),
-    ...(discord.DISCORD_BOT_TOKEN ? ['--discord-worker', join(root, 'discord/stream.mjs')] : []),
     '--root-username',
     'e2e-gm',
     '--root-password-hash',

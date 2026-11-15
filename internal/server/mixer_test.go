@@ -7,10 +7,6 @@ import (
 	"testing"
 )
 
-type mixerTestHub struct{ mockWSRegisterer }
-
-func (*mixerTestHub) SetMixer(Mixer) {}
-
 func TestMixerPCMDecodesHLS(t *testing.T) {
 	ts := setupTestServer(t)
 	defer ts.cleanup(t)
@@ -46,37 +42,23 @@ func TestMixerPCMDecodesHLS(t *testing.T) {
 	}
 }
 
-func TestMixerStatusDisabledAndUnauthorized(t *testing.T) {
+func TestDiscordStreamingConfiguration(t *testing.T) {
 	ts := setupTestServer(t)
 	defer ts.cleanup(t)
-	path := "/api/v1/tables/" + testDefaultExternalID + "/mix"
-	for _, tc := range []struct {
-		method string
-		gm     bool
-		want   int
-	}{
-		{"GET", false, 401}, {"GET", true, 404}, {"POST", true, 405},
-	} {
-		rec := routedRequest(ts.Handler(), tc.method, path, "", tc.gm)
-		if rec.Code != tc.want {
-			t.Fatalf("status: %d, want %d: %s", rec.Code, tc.want, rec.Body)
-		}
-
+	if _, err := New(Config{DiscordStreamingEnabled: true}, ts.logger, ts.auth, ts.store, ts.hub); err == nil {
+		t.Fatal("enabled Discord streaming accepted a missing token")
 	}
-}
-
-func TestMixerStatusEnabled(t *testing.T) {
-	ts := setupTestServer(t)
-	defer ts.cleanup(t)
-	srv, err := New(Config{ExperimentalMixer: true}, ts.logger, ts.auth, ts.store, &mixerTestHub{mockWSRegisterer{t: t}})
+	cfg := Config{}
+	cfg.Discord.Token = "test-token"
+	srv, err := New(cfg, ts.logger, ts.auth, ts.store, ts.hub)
 	if err != nil {
 		t.Fatal(err)
 	}
-	rec := routedRequest(srv.Handler(), "GET", "/api/v1/tables/"+testDefaultExternalID+"/mix", "", true)
-	if rec.Code != 200 || rec.Header().Get("Cache-Control") != "no-store" {
-		t.Fatalf("mixer status: %d: %s", rec.Code, rec.Body)
+	if srv.discord != nil || srv.mixer != nil {
+		t.Fatal("token alone enabled Discord streaming")
 	}
-	if _, err := New(Config{ExperimentalMixer: true}, ts.logger, ts.auth, ts.store, ts.hub); err == nil {
-		t.Fatal("enabled mixer accepted an incompatible hub")
+	cfg.DiscordStreamingEnabled = true
+	if _, err := New(cfg, ts.logger, ts.auth, ts.store, ts.hub); err == nil {
+		t.Fatal("enabled Discord streaming accepted an incompatible hub")
 	}
 }

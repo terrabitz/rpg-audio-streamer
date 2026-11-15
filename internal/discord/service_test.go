@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"math"
+	"sync"
 	"testing"
 	"time"
 
@@ -20,14 +21,14 @@ func TestConnectionStreamsExistingMixAndReservesBotUntilDisconnect(t *testing.T)
 		t.Fatal(err)
 	}
 	read, write := io.Pipe()
-	service.open = func(ctx context.Context, _ Config) (*worker, error) {
+	service.open = func(ctx context.Context, _ Config) (*transport, error) {
 		done := make(chan struct{})
 		go func() {
 			<-ctx.Done()
 			write.Close()
 			close(done)
 		}()
-		return &worker{input: write, done: done}, nil
+		return &transport{input: write, done: done}, nil
 	}
 	defer read.Close()
 	defer service.Close()
@@ -70,7 +71,7 @@ func TestConnectionStreamsExistingMixAndReservesBotUntilDisconnect(t *testing.T)
 func TestConnectionFailureAndCancelledSetupAreObservable(t *testing.T) {
 	service, _ := New(Config{Token: "test-only"}, testMix(t))
 	defer service.Close()
-	service.open = func(context.Context, Config) (*worker, error) {
+	service.open = func(context.Context, Config) (*transport, error) {
 		return nil, errors.New("voice unavailable")
 	}
 	if err := service.Connect(context.Background(), "missing", Destination{GuildID: "1", ChannelID: "2"}); !errors.Is(err, ErrNotReady) {
@@ -83,7 +84,7 @@ func TestConnectionFailureAndCancelledSetupAreObservable(t *testing.T) {
 		t.Fatalf("failure lost: %+v", state)
 	}
 	entered := make(chan struct{})
-	service.open = func(ctx context.Context, _ Config) (*worker, error) {
+	service.open = func(ctx context.Context, _ Config) (*transport, error) {
 		close(entered)
 		<-ctx.Done()
 		return nil, ctx.Err()
@@ -105,22 +106,22 @@ func TestConnectionFailureAndCancelledSetupAreObservable(t *testing.T) {
 	waitState(t, service, "disconnected")
 }
 
-func TestWorkerExitRestoresReconnectableErrorState(t *testing.T) {
+func TestTransportExitRestoresReconnectableErrorState(t *testing.T) {
 	service, _ := New(Config{Token: "test-only"}, testMix(t))
 	defer service.Close()
 	read, write := io.Pipe()
 	defer read.Close()
 	done := make(chan struct{})
-	process := &worker{input: write, done: done}
-	service.open = func(context.Context, Config) (*worker, error) { return process, nil }
+	voiceTransport := &transport{input: write, done: done}
+	service.open = func(context.Context, Config) (*transport, error) { return voiceTransport, nil }
 	if err := service.Connect(context.Background(), "table", Destination{GuildID: "1", ChannelID: "2"}); err != nil {
 		t.Fatal(err)
 	}
-	process.err = errors.New("voice lost")
+	voiceTransport.err = errors.New("voice lost")
 	close(done)
 	waitState(t, service, "error")
 	if service.Status("table").Error != "voice lost" {
-		t.Fatal("worker failure was hidden")
+		t.Fatal("transport failure was hidden")
 	}
 }
 
@@ -132,7 +133,7 @@ func TestConfigurationNeedsOnlyBotTokenAndDestinationMustBeValid(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, target := range []Destination{{}, {GuildID: "1", ChannelID: "invalid"}, {GuildID: "0", ChannelID: "2"}} {
+	for _, target := range []Destination{{}, {GuildID: "1", ChannelID: "invalid"}, {GuildID: "0", ChannelID: "2"}, {GuildID: "18446744073709551616", ChannelID: "2"}} {
 		if err := service.Connect(context.Background(), "table", target); err == nil {
 			t.Fatal("invalid destination accepted")
 		}
@@ -149,10 +150,10 @@ func TestTablesCanStreamToDifferentServersWithoutStealingConnections(t *testing.
 		t.Fatal(err)
 	}
 	defer service.Close()
-	service.open = func(ctx context.Context, cfg Config) (*worker, error) {
+	service.open = func(ctx context.Context, cfg Config) (*transport, error) {
 		done := make(chan struct{})
 		go func() { <-ctx.Done(); close(done) }()
-		return &worker{input: discardWriter{}, done: done}, nil
+		return &transport{input: discardWriter{}, done: done}, nil
 	}
 	first := Destination{GuildID: "1", ChannelID: "2"}
 	second := Destination{GuildID: "3", ChannelID: "4"}
@@ -169,6 +170,91 @@ func TestTablesCanStreamToDifferentServersWithoutStealingConnections(t *testing.
 	}
 	if service.Status("table").State != "connected" || service.Status("table").GuildID != "1" {
 		t.Fatal("disconnect affected another server")
+	}
+}
+
+// skewedVoiceOutput models live Discord timing: per-packet UDP jitter, a DAVE
+// key rotation holding the encrypt lock, and a speaking refresh waiting on the
+// voice gateway lock while a listener joins.
+type skewedVoiceOutput struct {
+	mu       sync.Mutex
+	packets  int
+	speaking int
+}
+
+func (*skewedVoiceOutput) Ready() bool { return true }
+
+func (o *skewedVoiceOutput) Speaking(ctx context.Context) error {
+	o.mu.Lock()
+	o.speaking++
+	refresh := o.speaking > 1
+	o.mu.Unlock()
+	if refresh {
+		select {
+		case <-time.After(300 * time.Millisecond):
+		case <-ctx.Done():
+		}
+	}
+	return nil
+}
+
+func (o *skewedVoiceOutput) Write(packet []byte) error {
+	o.mu.Lock()
+	sent := o.packets
+	if len(packet) > 0 {
+		o.packets++
+	}
+	o.mu.Unlock()
+	delay := time.Duration(sent%7) * time.Millisecond
+	if sent == 40 {
+		delay = 250 * time.Millisecond
+	}
+	time.Sleep(delay)
+	return nil
+}
+
+func (o *skewedVoiceOutput) sent() uint64 {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	return uint64(o.packets)
+}
+
+func TestTransportSustainsRealTimeMixThroughSendStalls(t *testing.T) {
+	mix := testMix(t)
+	renderCtx, stopRender := context.WithCancel(context.Background())
+	rendered := make(chan struct{})
+	go func() { mix.Run(renderCtx); close(rendered) }()
+	defer func() { stopRender(); <-rendered }()
+	service, err := New(Config{Token: "test-only"}, mix)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer service.Close()
+	output := &skewedVoiceOutput{}
+	refresh := make(chan struct{}, 1)
+	service.open = func(ctx context.Context, _ Config) (*transport, error) {
+		return startTransport(ctx, output, nil, refresh, func() {})
+	}
+	if err := service.Connect(context.Background(), "table", Destination{GuildID: "1", ChannelID: "2"}); err != nil {
+		t.Fatal(err)
+	}
+	start := mix.Status("table").FramesRendered
+	time.Sleep(time.Second)
+	refresh <- struct{}{}
+	time.Sleep(1500 * time.Millisecond)
+	if state := service.Status("table"); state.State != "connected" {
+		t.Fatalf("stream did not survive send stalls: %+v", state)
+	}
+	want := (mix.Status("table").FramesRendered - start) / opusSamples
+	if want < 100 {
+		t.Fatalf("mixer rendered only %d blocks", want)
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	for output.sent() < want {
+		if time.Now().After(deadline) {
+			t.Fatalf("sent %d of %d rendered blocks", output.sent(), want)
+		}
+		time.Sleep(5 * time.Millisecond)
 	}
 }
 

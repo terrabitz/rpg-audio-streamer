@@ -22,10 +22,10 @@ flowchart LR
   API --> FFmpeg[FFmpeg conversion]
   FFmpeg --> Uploads[HLS files on disk]
   API --> Uploads
-  Hub -.->|Experimental GM commands| Mix[Live table mixer]
+  Hub -.->|GM playback commands| Mix[Live table mixer]
   Mix --> PCM[Standalone PCM core]
   Mix -->|Decode stored HLS| FFmpeg
-  Mix -.->|Optional PCM subscription| Voice[Node Discord voice worker]
+  Mix -.->|PCM subscription| Voice[Go Discord voice transport]
   Voice -->|DAVE-encrypted Opus| Discord[Table-selected Discord voice channel]
 ```
 
@@ -73,9 +73,8 @@ cannot guarantee cleanup. Procedures live in the local-dev skill.
 | `internal/middlewares` | API request logging and CORS |
 | `internal/mixer` | Standalone deterministic stereo PCM mixing, transport, loop overlap, and gain envelopes |
 | `internal/livemixer` | Serialized live commands, table-scoped PCM engines, rendering lifecycle, and diagnostics |
-| `internal/discord` | Bot installation/server discovery, table-bound voice connections, per-server reservations, bounded PCM transport, and worker lifecycle |
-| `discord/` | DAVE-compatible Discord voice worker, PCM conversion, and Opus transport |
-| `e2e/` | Opt-in Go server-to-Discord integration harness, listener bot, Opus decoding, and tone analysis |
+| `internal/discord` | Bot discovery, table-bound voice connections, per-server reservations, Opus encoding, and DAVE transport |
+| `ui/e2e` | Full-app browser journeys and Discord listener audio validation |
 | `internal/sqlitedatastore` | Domain-to-SQLite mapping, migrations, context-aware datastore implementation |
 | `internal/sqlitedatastore/sqlitedb` | Generated sqlc models and query implementations |
 | `internal/websocket` | Authoritative live table playback, connected clients, message dispatch, recipient filters, read/write pumps |
@@ -426,13 +425,11 @@ The core stores complete decoded clips in memory (about 44 MiB per minute at
 source buffering, playback-state adapters, real-time scheduling, encoding,
 and external audio delivery are outside this package.
 
-### Experimental live server mixing
+### Discord live mixing
 
-The `--experimental-mixer` / `EXPERIMENTAL_MIXER` server flag enables an
-isolated `internal/livemixer` service inside the Go API process. It is disabled
-by default. Browser HLS playback and player synchronization remain the normal
-listening path; the experimental service does not replace them. Its rendered
-audio is available to the optional Discord transport.
+Discord streaming enables an `internal/livemixer` service inside the Go API
+process. Browser HLS playback and player synchronization remain available
+independently; the mixer supplies audio to Discord.
 
 For an enabled service, the hub sends `mixerReady` to each authenticated GM
 connection. The GM answers with `mixSync`: a full snapshot of playing tracks
@@ -472,10 +469,6 @@ Commands are serialized while a separate lock protects PCM rendering.
 Validation and decoding precede mutation, so invalid patches and snapshots
 do not partially alter a mix, and decoding does not hold the render lock.
 The service renders 960-frame blocks every 20 ms with a cancellable loop.
-The latest block's peak, cumulative frame count, command revision, and track
-positions/target gains are available at the GM-only
-`GET /api/v1/tables/{tableID}/mix` diagnostic endpoint. Disabled mixing or an
-unknown table returns 404.
 
 Rendered PCM blocks are published to internal subscriptions for Discord
 streaming. Subscribing observes the existing timeline and never starts or
@@ -491,19 +484,17 @@ in-flight decode cannot recreate it. Multiple GMs share a table's mixer with
 last-accepted-command semantics. Mixer state is ephemeral, not stored in SQLite.
 Domain tests assert rendered samples after partial updates and snapshots,
 table isolation, rejection without mutation, and nonblocking rendering/closure.
-The opt-in full-app browser journey drives real GM controls and checks the
-resulting rendered PCM telemetry, seeks, loop-back transitions, and cleanup.
+The full-app browser journey drives real GM controls and checks audio received
+by a separate Discord bot.
 
 ### Optional Discord voice streaming
 
-Configuring `DISCORD_BOT_TOKEN` enables Discord setup and the live mixer.
-With no token, the UI hides all Discord controls.
+Set `DISCORD_STREAMING_ENABLED` and `DISCORD_STREAMING_BOT_TOKEN` to enable
+Discord setup and the live mixer. When disabled, the UI hides Discord controls;
+enabling it without a token fails startup.
 The server uses its configured bot identity; the GM's existing app login
 authorizes controls. This path does not link a Discord user account or use
-OAuth client secrets. `DISCORD_WORKER` selects the Node worker path and defaults
-to `discord/stream.mjs` relative to the server working directory. The Docker
-image includes Node and the locked worker dependencies, including a
-platform-matched native DAVE library.
+OAuth client secrets. Voice transport runs in the Go API process.
 
 Each table's Currently playing sidebar (or mobile drawer) has a Connect or
 Disconnect button with the Discord logo. When connected, hovering over
@@ -530,50 +521,37 @@ responses, and displays failures.
 
 `internal/discord` reserves one voice connection per Discord server. Tables
 can stream concurrently in different servers, but another table in the same
-server receives a conflict and cannot take over the connection. Each table
-owns a separate Node worker. Voice startup does not hold the rendering lock;
+server receives a conflict and cannot take over the connection. Voice startup
+does not hold the rendering lock;
 the PCM subscription is created only once voice is ready, avoiding a full
-subscriber queue during the handshake. PCM travels over a child-process pipe
-as 48 kHz stereo float samples. A blocked write has a two-second deadline and
-cancels the worker rather than stalling indefinitely.
-
-The worker uses `discord.js` and `@discordjs/voice` with DAVE encryption
-enabled and only Guilds/GuildVoiceStates intents. It validates the configured
-channel's server, regular-voice type, and effective bot permissions before
-joining. `PCMTransform` validates stereo frames across arbitrary pipe chunks
-and converts float samples to signed 16-bit PCM. The voice library encodes
-20 ms Opus frames and sends them over Discord's encrypted voice connection.
-The player pauses during temporary voice transitions and tolerates short PCM
-delivery gaps instead of ending the stream immediately.
-The stream bot joins self-deafened and does not receive other participants'
-audio. Bot credentials reach only the worker environment, not process
-arguments, browser payloads, or logs.
+subscriber queue during the handshake. The transport encodes 48 kHz stereo
+PCM into Opus and sends it over Discord's DAVE-encrypted voice connection.
+It reannounces the speaking source when participants join and periodically
+so late listeners can associate incoming packets with the bot.
+The MIT-licensed MLS implementation in `third_party/mls-go` keeps GroupInfo
+extensions separate from GroupContext extensions for DAVE interoperability.
+The stream bot joins self-deafened and does not receive participants' audio.
+Bot credentials are not passed in process arguments, browser payloads, or logs.
 
 Disconnecting, closing the table mix, loss of its last GM, or renderer shutdown
-ends the subscription and voice worker. Worker failures and slow PCM consumers
-become observable error states. Startup has a
-20-second deadline, and worker cancellation sends SIGTERM with a bounded
-forced-exit fallback. The first successful mixer sync of a GM table session
+ends the subscription and voice connection. Transport failures and slow PCM
+consumers become observable error states. The first successful mixer sync of a
+GM table session
 follows an authoritative playback snapshot, so a reconnect sync includes the
 table's active tracks before attempting the saved destination once. Repeated
 syncs and status polling do not reconnect a manually disconnected bot. Leaving
 a table or closing its last GM tab cancels pending reconnection and disconnects
-the worker. Returning creates a new session and attempts reconnection. Multiple
-GM tabs keep the bot active
-until the last one closes. A lost network connection is detected by the
+the connection. Returning creates a new session and attempts reconnection.
+Multiple GM tabs keep the bot active until the last one closes. A lost network connection is detected by the
 WebSocket heartbeat. Reconnection conflicts and failures are visible and
 require an explicit retry or destination change within that session.
 
-The opt-in Go integration test starts the server, drives the GM API and mixer
-WebSocket, and checks a decoded tone using a second bot with pure-Go DAVE.
-Its listener defers group commits until ready so the streamer's DAVE
-implementation admits it by Welcome. The Playwright live journey drives the
+The Playwright journey drives the
 real UI and uses a separate Node listener bot with `@discordjs/voice` DAVE
 decryption and Opus decoding. It measures the two generated tones and silence
-after playback, volume, pause, disconnect, and reconnect controls. Both tests
-verify delivery through Discord rather than trusting sender-side telemetry.
-Voice receiving is not a stable, documented Discord API contract; live tests
-are separate from deterministic transport tests.
+after playback, volume, pause, disconnect, and reconnect controls. It verifies
+delivery through Discord rather than trusting sender-side telemetry.
+Voice receiving is not a stable, documented Discord API contract.
 
 ## Release pipeline
 

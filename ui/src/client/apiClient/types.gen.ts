@@ -4,33 +4,6 @@ export type ClientOptions = {
     baseUrl: `${string}://${string}` | (string & {});
 };
 
-export type MixerStatus = {
-    /**
-     * Number of accepted mixer commands and removals in this session.
-     */
-    revision: number;
-    framesRendered: number;
-    /**
-     * Absolute peak of the latest rendered stereo PCM block.
-     */
-    peak: number;
-    tracks: Array<{
-        fileID: string;
-        /**
-         * Absolute source position in seconds.
-         */
-        currentTime: number;
-        /**
-         * Requested playback state; pause fades may still be audible.
-         */
-        isPlaying: boolean;
-        /**
-         * Target track/master/type gain, not the current envelope.
-         */
-        gain: number;
-    }>;
-};
-
 export type Table = {
     id: string;
     /**
@@ -342,35 +315,6 @@ export type PostApiV1TablesByTableIdDiscordResponses = {
 };
 
 export type PostApiV1TablesByTableIdDiscordResponse = PostApiV1TablesByTableIdDiscordResponses[keyof PostApiV1TablesByTableIdDiscordResponses];
-
-export type GetApiV1TablesByTableIdMixData = {
-    body?: never;
-    path: {
-        tableID: string;
-    };
-    query?: never;
-    url: '/api/v1/tables/{tableID}/mix';
-};
-
-export type GetApiV1TablesByTableIdMixErrors = {
-    /**
-     * GM authentication required
-     */
-    401: unknown;
-    /**
-     * Experimental mixer disabled or table not found
-     */
-    404: unknown;
-};
-
-export type GetApiV1TablesByTableIdMixResponses = {
-    /**
-     * Current PCM rendering and command state
-     */
-    200: MixerStatus;
-};
-
-export type GetApiV1TablesByTableIdMixResponse = GetApiV1TablesByTableIdMixResponses[keyof GetApiV1TablesByTableIdMixResponses];
 
 export type GetApiV1TablesByTableIdSettingsData = {
     body?: never;

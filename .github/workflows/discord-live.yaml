@@ -28,16 +28,15 @@ jobs:
         with:
           node-version-file: ./ui/.nvmrc
           cache: npm
-          cache-dependency-path: |
-            ui/package-lock.json
-            discord/package-lock.json
+          cache-dependency-path: ui/package-lock.json
       - name: Install FFmpeg
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
       - run: npm ci --prefix ui
-      - run: npm ci --prefix discord
       - run: cd ui && npx playwright install --with-deps chromium
-      - name: Verify live Discord integration and browser audio
-        run: make test-e2e-discord
+      - name: Verify live Discord connection and browser audio
+        run: |
+          DISCORD_LIVE_INTEGRATION=1 go test ./internal/discord -run '^TestLiveVoiceConnection$' -count=1 -timeout=90s
+          make test-e2e
         env:
           INTEGRATION_TEST_DISCORD_SERVER_ID: ${{ secrets.INTEGRATION_TEST_DISCORD_SERVER_ID }}
           INTEGRATION_TEST_DISCORD_VOICE_CHANNEL_ID: ${{ secrets.INTEGRATION_TEST_DISCORD_VOICE_CHANNEL_ID }}

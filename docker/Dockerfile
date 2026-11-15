@@ -5,18 +5,12 @@ WORKDIR /ui
 COPY ui .
 RUN npm ci && npm run build
 
-# Discord's native DAVE dependency must match the runtime's musl platform.
-FROM node:24-alpine AS voice-builder
-WORKDIR /discord
-COPY discord/package.json discord/package-lock.json ./
-RUN npm ci --omit=dev
-COPY discord/*.mjs ./
-
 # Stage 2: Build Go backend
 FROM golang:1.26-alpine AS backend-builder
 
 WORKDIR /app
 COPY go.mod go.sum ./
+COPY third_party third_party
 RUN go mod download
 
 COPY main.go .
@@ -26,7 +20,7 @@ COPY internal internal
 RUN CGOENABLED=1 go build -o backend main.go
 
 # Stage 3: Create the final runtime image
-FROM node:24-alpine
+FROM alpine:3.23
 
 ARG TARGETARCH
 
@@ -53,7 +47,6 @@ WORKDIR /app
 # Copy built backend, frontend and docs
 COPY --from=backend-builder /app/backend /app/backend
 COPY --from=frontend-builder /ui/dist /app/frontend
-COPY --from=voice-builder /discord /app/discord
 
 # Copy Caddy and s6 configurations
 COPY docker/Caddyfile /etc/caddy/Caddyfile

@@ -83,7 +83,6 @@ async function main() {
       'pretty',
       '--log-level',
       'warn',
-      ...(discord.DISCORD_BOT_TOKEN ? ['--discord-worker', join(root, 'discord/stream.mjs')] : []),
     ],
     scratch,
     false,

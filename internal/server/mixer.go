@@ -6,38 +6,15 @@ import (
 	"encoding/binary"
 	"fmt"
 	"math"
-	"net/http"
 	"os/exec"
 	"path/filepath"
 
 	"github.com/google/uuid"
-	"github.com/terrabitz/rpg-audio-streamer/internal/auth"
 	"github.com/terrabitz/rpg-audio-streamer/internal/livemixer"
 	"github.com/terrabitz/rpg-audio-streamer/internal/mixer"
 )
 
 const mixerSampleRate = 48000
-
-func (s *Server) handleMixerStatus(w http.ResponseWriter, r *http.Request, token *auth.Token) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-	if s.mixer == nil {
-		http.Error(w, "Experimental mixer is disabled", http.StatusNotFound)
-		return
-	}
-	id, ok := s.tableID(w, r, token)
-	if !ok {
-		return
-	}
-	if _, err := s.store.GetTable(r.Context(), id); err != nil {
-		s.tableError(w, err)
-		return
-	}
-	w.Header().Set("Cache-Control", "no-store")
-	respondJSON(w, http.StatusOK, s.mixer.Status(id.String()))
-}
 
 // RunMixer is separate from Handler so integration servers can own its cancellation.
 func (s *Server) RunMixer(ctx context.Context) {

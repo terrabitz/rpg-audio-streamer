@@ -24,9 +24,7 @@ Vue tooling.
 | `make test` | Go race detection, SQLite integration, and frontend domain coverage |
 | `make test-go` | All Go tests; enforce 80% internal statement coverage |
 | `make test-ui` | Vitest domain coverage; enforce 80% statements, branches, functions, and lines |
-| `make test-discord` | PCM conversion, real Opus round trip, and isolated credential loading |
-| `make test-e2e-discord` | Opt-in Go server-mix integration, then live browser audio journey |
-| `make test-e2e` | Production UI build and real full-app Chromium journeys |
+| `make test-e2e` | Production UI build and real full-app Chromium journeys including live Discord |
 | `make test-dev` | Seeded local dev startup, isolation, media fixtures, and cleanup |
 | `cd ui && npm run build` | Vue/TypeScript checking, including tests, and production bundle |
 | `cd ui && npm run lint:check` | Read-only frontend lint |
@@ -36,19 +34,14 @@ For focused iteration, use `go test ./internal/websocket -run TestMessageRouting
 `cd ui && npm run test:e2e -- --grep 'invited player'`. Run the affected coverage
 gate after focused checks. No documentation-only validation is needed.
 
-The opt-in server mixer journeys use
-`cd ui && E2E_EXPERIMENTAL_MIXER=1 npm run test:e2e -- --grep 'experimental server mix|browser playback without a server mix'`.
-The ordinary browser suite keeps mixing disabled; CI runs these journeys separately
-with the flag enabled. Assert rendered PCM telemetry as well as GM control state.
 Mixer domain tests render known PCM buffers without sleeps; live-service tests
 own the render loop's context and bound waits for decoding and cancellation.
 
 ### Live Discord tests
 
-Install the worker dependencies with `npm ci --prefix discord`. Run
-`make test-e2e-discord` only against an isolated, regular voice channel with
+Run `make test-e2e` only against an isolated, regular voice channel with
 two distinct bot accounts already installed in that server. Configuration is
-read in increasing precedence from the worktree `.env`, `.env.test`, the
+read in increasing precedence from the worktree `.env.test`, the
 persistent `~/.config/rpg-audio-streamer/discord-test.env`, and the environment.
 `DISCORD_TEST_ENV_FILE` replaces the persistent file path and must exist when
 specified. Never copy secrets into a worktree. The required names are:
@@ -60,35 +53,28 @@ specified. Never copy secrets into a worktree. The required names are:
 - `INTEGRATION_TEST_DISCORD_BOT_LISTENER_TOKEN`
 
 Server/channel IDs are fixture inputs for explicit UI selection, not server
-configuration. The Go suite passes only the streamer token to the server it
-starts. OAuth client secrets are not used. Never
+configuration. The application server receives only the streamer token.
+OAuth client secrets are not used. Never
 print tokens, embed them in URLs, or pass them through command arguments.
 The streamer needs View Channel, Connect, and Speak; the listener needs View
 Channel and Connect and joins with deafening disabled. Neither needs privileged
 Gateway intents.
 
-`TestDiscordStreamsServerMix` in `e2e/` (`E2E_DISCORD=1 go test ./e2e/ -run
-TestDiscord -v`) starts the real server, drives the GM API and mixer socket,
-and runs a Go listener bot in-process. The listener joins after the streamer
-connects, subscribes only to the configured streamer, decrypts and decodes
-received Opus with FFmpeg, and measures a generated 440 Hz tone. Both
-connections are cleaned up on success and failure; server logs print only on
-failure and redact credentials and configured IDs. Do not run multiple copies
-against the same bots or while a local preview holds the
-streamer. The `e2e` package's offline signal, decoding, monitor, configuration,
-and DAVE tests run in ordinary `go test ./...` and need FFmpeg with libopus.
-Playwright covers the real installation link, server/channel selection,
+Do not run multiple copies against the same bots or while a local preview holds
+the streamer. Playwright covers server/channel selection,
 playback, mute, pause/resume, disconnect, and reconnect. Its separate Node bot
 decrypts and decodes real voice audio, checks fresh 440/880 Hz tone windows,
 and accepts decoded silence or packet inactivity on pause before requiring
 fresh audio on resume. Live runs disable recordings, browser traces,
-screenshots, page snapshots, and the HTML report.
+screenshots and the HTML report. Recording mode is unavailable for the
+Discord journey; unrelated flows may be recorded individually.
 Installation approval is interactive in Discord and is not automated.
 Offline Go HTTP tests use a local fake Discord API for discovery, filtering,
 and failure handling.
 The `discord-live` workflow runs on pushes to main, nightly, and manual
 dispatch from main. Configure the five names above as repository secrets.
-Its shared concurrency group serializes both live tests across workflow runs.
+Its shared concurrency group serializes the Go connection integration test
+and Playwright suite across live runs.
 Live Discord tests never run on pull requests or untrusted branch dispatches.
 
 ## Coverage policy
@@ -172,9 +158,8 @@ and import `test` and `expect` from `ui/e2e/fixtures.ts` rather than
 instead of fixed `test.setTimeout()` values so recording mode's longer limits
 still apply.
 
-Failures preserve screenshots and traces in `ui/test-results/` and an HTML
-report in `ui/playwright-report/`; CI uploads both. Inspect traces with
-`cd ui && npx playwright show-trace <trace.zip>`. Diagnose the underlying
+Browser traces, screenshots, and the HTML report are disabled to protect live
+configuration. Diagnose the underlying
 behavior before changing selectors, timeouts, or assertions. Do not bypass
 failed app paths with mocked responses or injected Pinia/localStorage state.
 
