@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 )
 
 func TestSetupDiscoversInstallationAndOnlyRegularVoiceChannels(t *testing.T) {
@@ -72,8 +73,12 @@ func TestDiscordDiscoveryHonorsRateLimits(t *testing.T) {
 	service, _ := New(Config{Token: "test-only"}, testMix(t))
 	defer service.Close()
 	service.apiURL = api.URL
+	start := time.Now()
 	channels, err := service.Channels(context.Background(), "1")
 	if err != nil || len(channels) != 1 || attempts.Load() != 2 {
 		t.Fatalf("rate-limited discovery = %+v, %v, attempts %d", channels, err, attempts.Load())
+	}
+	if elapsed := time.Since(start); elapsed < 900*time.Millisecond {
+		t.Fatalf("retried fractional rate limit too early after %s", elapsed)
 	}
 }

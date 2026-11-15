@@ -8,6 +8,7 @@ import (
 	"io"
 	"log/slog"
 	"math"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -16,9 +17,10 @@ import (
 	"github.com/disgoorg/disgo/events"
 	"github.com/disgoorg/disgo/gateway"
 	"github.com/disgoorg/disgo/voice"
+	"github.com/disgoorg/godave"
+	"github.com/disgoorg/godave/golibdave"
 	discordid "github.com/disgoorg/snowflake/v2"
 	"github.com/pion/opus"
-	davesession "github.com/thomas-vilte/dave-go/session"
 )
 
 const opusSamples = 960
@@ -100,7 +102,7 @@ func startVoice(ctx context.Context, cfg Config) (*transport, error) {
 			gateway.WithCloseHandler(func(gateway.Gateway, error, bool) { fail() }),
 		),
 		bot.WithVoiceManagerConfigOpts(
-			voice.WithDaveSessionCreateFunc(davesession.CreateFunc()),
+			voice.WithDaveSessionCreateFunc(newDaveSession),
 			voice.WithDaveSessionLogger(logger),
 			voice.WithConnConfigOpts(
 				voice.WithConnGatewayConfigOpts(voice.WithGatewayCloseObserver(func(error) { fail() })),
@@ -151,6 +153,63 @@ func startVoice(ctx context.Context, cfg Config) (*transport, error) {
 	return startTransport(ctx, discordOutput{conn}, voiceErrors, refreshSpeaking, closeClient)
 }
 
+func newDaveSession(logger *slog.Logger, userID godave.UserID, callbacks godave.Callbacks) godave.Session {
+	return &daveSession{Session: golibdave.NewSession(logger, userID, callbacks), transitions: make(map[uint16]uint16)}
+}
+
+// The released binding does not report disabled DAVE as ready. Track that
+// state separately so it cannot remain ready during a new encrypted handshake.
+type daveSession struct {
+	godave.Session
+	disabled    atomic.Bool
+	mu          sync.Mutex
+	transitions map[uint16]uint16
+}
+
+func (s *daveSession) Ready() bool {
+	return s.disabled.Load() || s.Session.Ready()
+}
+
+func (s *daveSession) OnSelectProtocolAck(version uint16) {
+	s.disabled.Store(false)
+	s.Session.OnSelectProtocolAck(version)
+	s.disabled.Store(version == 0)
+}
+
+func (s *daveSession) OnDavePrepareEpoch(epoch int, version uint16) {
+	if version != 0 {
+		s.disabled.Store(false)
+	}
+	s.Session.OnDavePrepareEpoch(epoch, version)
+}
+
+func (s *daveSession) OnDavePrepareTransition(id, version uint16) {
+	if id == 0 {
+		s.disabled.Store(false)
+		s.Session.OnDavePrepareTransition(id, version)
+		s.disabled.Store(version == 0)
+		return
+	}
+	s.mu.Lock()
+	s.transitions[id] = version
+	s.mu.Unlock()
+	s.Session.OnDavePrepareTransition(id, version)
+}
+
+func (s *daveSession) OnDaveExecuteTransition(id uint16) {
+	s.mu.Lock()
+	version, found := s.transitions[id]
+	delete(s.transitions, id)
+	s.mu.Unlock()
+	if found {
+		s.disabled.Store(false)
+	}
+	s.Session.OnDaveExecuteTransition(id)
+	if found {
+		s.disabled.Store(version == 0)
+	}
+}
+
 // startTransport paces sends from the mixer subscription itself: each encoded
 // packet is sent as soon as it is produced, so no second clock can drift
 // against the mixer's 20 ms renderer.
@@ -182,9 +241,6 @@ type voiceOutput interface {
 type discordOutput struct{ voice.Conn }
 
 func (d discordOutput) Ready() bool {
-	if state, ok := d.DAVE().(interface{ ShouldHoldFrames() bool }); ok {
-		return !state.ShouldHoldFrames()
-	}
 	return d.DAVE().Ready()
 }
 func (d discordOutput) Speaking(ctx context.Context) error {

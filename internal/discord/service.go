@@ -85,7 +85,10 @@ func New(cfg Config, mix *livemixer.Service) (*Service, error) {
 	return &Service{
 		cfg: cfg, mix: mix, open: startVoice,
 		active: make(map[string]*session), status: make(map[string]Status),
-		apiURL: "https://discord.com/api/v10", http: &http.Client{Timeout: 15 * time.Second},
+		apiURL: "https://discord.com/api/v10", http: &http.Client{
+			Timeout:   15 * time.Second,
+			Transport: discordRateLimitTransport{http.DefaultTransport},
+		},
 	}, nil
 }
 

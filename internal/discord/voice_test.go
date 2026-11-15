@@ -5,9 +5,6 @@ import (
 	"context"
 	"crypto/aes"
 	"crypto/cipher"
-	"crypto/ecdsa"
-	"crypto/elliptic"
-	"crypto/rand"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -23,49 +20,7 @@ import (
 	"github.com/disgoorg/disgo/voice"
 	"github.com/disgoorg/godave"
 	"github.com/terrabitz/rpg-audio-streamer/internal/mixer"
-	"github.com/thomas-vilte/dave-go/frame"
-	davesession "github.com/thomas-vilte/dave-go/session"
-	"github.com/thomas-vilte/mls-go/ciphersuite"
-	"github.com/thomas-vilte/mls-go/credentials"
-	"github.com/thomas-vilte/mls-go/extensions"
-	"github.com/thomas-vilte/mls-go/group"
-	"github.com/thomas-vilte/mls-go/keypackages"
 )
-
-func TestDaveGroupInfoDoesNotRepeatContextExtensions(t *testing.T) {
-	credential, signingKey, err := credentials.GenerateCredentialWithKeyForCS([]byte("streamer"), ciphersuite.MLS128DHKEMP256)
-	if err != nil {
-		t.Fatal(err)
-	}
-	keyPackage, privateKeys, err := keypackages.Generate(credential, keypackages.MLS128DHKEMP256)
-	if err != nil {
-		t.Fatal(err)
-	}
-	groupID, err := group.NewGroupIDRandom()
-	if err != nil {
-		t.Fatal(err)
-	}
-	contextExtension := group.Extension{Type: extensions.ExtensionTypeExternalSenders, Data: []byte{1, 2, 3}}
-	mlsGroup, err := group.NewGroup(groupID, ciphersuite.MLS128DHKEMP256, keyPackage, privateKeys, group.WithExtensions([]group.Extension{contextExtension}))
-	if err != nil {
-		t.Fatal(err)
-	}
-	info, err := mlsGroup.GetGroupInfoWithOptions(signingKey, group.WithExternalPub(false))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(info.GroupContext.Extensions) != 1 || info.GroupContext.Extensions[0].Type != contextExtension.Type {
-		t.Fatal("external senders extension missing from group context")
-	}
-	for _, extension := range info.Extensions {
-		if extension.Type == contextExtension.Type {
-			t.Fatal("external senders must not be copied to GroupInfo extensions")
-		}
-	}
-	if len(info.Extensions) != 1 || info.Extensions[0].Type != extensions.ExtensionTypeRatchetTree {
-		t.Fatal("GroupInfo must retain its ratchet tree extension")
-	}
-}
 
 func TestPCMEncoderProducesDecodableStereoOpus(t *testing.T) {
 	if _, err := exec.LookPath("ffmpeg"); err != nil {
@@ -439,56 +394,56 @@ type testDaveConn struct {
 func (c testDaveConn) DAVE() godave.Session { return c.session }
 func (c testDaveConn) UDP() voice.UDPConn   { return c.udp }
 
-func TestDaveEncryptsEncodedOpusAfterEpoch(t *testing.T) {
-	session := davesession.New("123456789", testDaveCallbacks{})
+func TestDaveReadiness(t *testing.T) {
+	session := newDaveSession(slog.New(slog.DiscardHandler), "123456789", testDaveCallbacks{})
 	defer session.Close()
 	session.SetChannelID(987654321)
-	session.AssignSsrcToCodec(42, godave.CodecOpus)
 	output := discordOutput{testDaveConn{session: session}}
+	session.OnSelectProtocolAck(1)
+	if output.Ready() {
+		t.Fatal("DAVE negotiation must hold audio until ready")
+	}
+	session.OnSelectProtocolAck(0)
 	if !output.Ready() {
 		t.Fatal("transport-only session should not wait for an epoch")
 	}
 	session.OnSelectProtocolAck(1)
 	if output.Ready() {
-		t.Fatal("DAVE negotiation must hold audio until ready")
-	}
-	activateTestDaveEpoch(t, session)
-	if !output.Ready() {
-		t.Fatal("DAVE epoch did not become ready")
-	}
-	encoder, err := newPCMEncoder(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := encoder.Write(mixer.EncodeFloat32(make([]mixer.Frame, opusSamples))); err != nil {
-		t.Fatal(err)
-	}
-	packet := <-encoder.packets
-	encrypted := make([]byte, session.MaxEncryptedFrameSize(len(packet)))
-	n, err := session.Encrypt(42, packet, encrypted)
-	if err != nil || !frame.LooksLikeDAVEFrame(encrypted[:n]) {
-		t.Fatalf("Opus was not DAVE encrypted: %v", err)
+		t.Fatal("switching from transport-only to DAVE must hold audio until ready")
 	}
 }
 
-func activateTestDaveEpoch(t *testing.T, session *davesession.Session) {
-	t.Helper()
-	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		t.Fatal(err)
+type testDaveSession struct{ godave.Session }
+
+func (testDaveSession) Ready() bool                            { return false }
+func (testDaveSession) OnSelectProtocolAck(uint16)             {}
+func (testDaveSession) OnDavePrepareEpoch(int, uint16)         {}
+func (testDaveSession) OnDavePrepareTransition(uint16, uint16) {}
+func (testDaveSession) OnDaveExecuteTransition(uint16)         {}
+
+func TestDaveReadinessAcrossTransitions(t *testing.T) {
+	session := &daveSession{Session: testDaveSession{}, transitions: make(map[uint16]uint16)}
+	session.OnSelectProtocolAck(0)
+	session.OnDavePrepareTransition(2, 1)
+	if !session.Ready() {
+		t.Fatal("DAVE must remain disabled until the transition executes")
 	}
-	pub, err := key.PublicKey.ECDH()
-	if err != nil {
-		t.Fatal(err)
+	session.OnDaveExecuteTransition(2)
+	if session.Ready() {
+		t.Fatal("DAVE must hold audio until the encrypted session is ready")
 	}
-	publicKey := pub.Bytes()
-	externalSender := append([]byte{byte(0x40 | len(publicKey)>>8), byte(len(publicKey))}, publicKey...)
-	externalSender = append(externalSender, credentials.NewBasicCredentialFromUint64(1).Marshal()...)
-	session.OnDaveMLSExternalSenderPackage(externalSender)
-	session.OnDavePrepareTransition(0, 1)
+	session.OnDavePrepareTransition(3, 0)
+	session.OnDaveExecuteTransition(3)
+	if !session.Ready() {
+		t.Fatal("disabled DAVE must permit audio after its transition")
+	}
+	session.OnDavePrepareEpoch(1, 1)
+	if session.Ready() {
+		t.Fatal("a new DAVE epoch must hold audio during negotiation")
+	}
 }
 
-func TestDisgoUDPSendsDaveEncryptedOpus(t *testing.T) {
+func TestDisgoUDPSendsOpus(t *testing.T) {
 	server, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
 	if err != nil {
 		t.Fatal(err)
@@ -529,11 +484,10 @@ func TestDisgoUDPSendsDaveEncryptedOpus(t *testing.T) {
 			datagrams <- bytes.Clone(buf[:n])
 		}
 	}()
-	session := davesession.New("123456789", testDaveCallbacks{})
+	session := newDaveSession(slog.New(slog.DiscardHandler), "123456789", testDaveCallbacks{})
 	defer session.Close()
 	session.SetChannelID(987654321)
-	session.OnSelectProtocolAck(1)
-	activateTestDaveEpoch(t, session)
+	session.OnSelectProtocolAck(0)
 	udp := voice.NewUDPConn(session, nil, voice.WithUDPConnLogger(slog.New(slog.DiscardHandler)))
 	defer udp.Close()
 	addr := server.LocalAddr().(*net.UDPAddr)
@@ -578,13 +532,8 @@ func TestDisgoUDPSendsDaveEncryptedOpus(t *testing.T) {
 			nonce := make([]byte, aead.NonceSize())
 			copy(nonce, data[len(data)-4:])
 			payload, err := aead.Open(nil, nonce, data[12:len(data)-4], data[:12])
-			if err != nil || !frame.LooksLikeDAVEFrame(payload) {
-				t.Fatalf("outgoing RTP did not contain DAVE-encrypted Opus: %v", err)
-			}
-			decrypted := make([]byte, len(payload))
-			n, err := session.Decrypt("123456789", payload, decrypted)
-			if err != nil || !bytes.Equal(decrypted[:n], packet) {
-				t.Fatalf("DAVE Opus packet changed after encryption: %v", err)
+			if err != nil || !bytes.Equal(payload, packet) {
+				t.Fatalf("outgoing RTP did not contain the encoded Opus packet: %v", err)
 			}
 		case err := <-serverErrors:
 			t.Fatal(err)

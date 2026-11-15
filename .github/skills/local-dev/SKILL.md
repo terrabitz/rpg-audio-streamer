@@ -11,7 +11,8 @@ production or the empty-library browser test suite.
 ## Start
 
 1. Use the Go version in `go.mod`, Node in `ui/.nvmrc` (24.7+ for native Argon2),
-   and FFmpeg on `PATH`.
+   and FFmpeg on `PATH`. Install libdave and configure its library paths as
+   described in the testing skill before starting the Go server.
    Run `make dev` from the worktree root. If Vite is missing, install the
    locked UI dependencies with `cd ui && npm ci`, then retry.
    For Discord streaming, run

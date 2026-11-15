@@ -13,6 +13,18 @@ Keep root `AGENTS.md` short.
 ## Setup and commands
 
 Use the Go version in `go.mod`, Node in `ui/.nvmrc`, and FFmpeg on `PATH`.
+Building and running Go also requires a C compiler, pkg-config, and Discord
+libdave 1.1.0. On glibc Linux or macOS, install the verified official binary
+and configure the current shell:
+
+```sh
+sh scripts/install-libdave.sh "$HOME/.local/libdave"
+export PKG_CONFIG_PATH="$HOME/.local/libdave/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
+export LD_LIBRARY_PATH="$HOME/.local/libdave/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+```
+
+On macOS, set `DYLD_LIBRARY_PATH` instead of `LD_LIBRARY_PATH`. The Linux
+release requires glibc 2.38 or newer; it does not support Alpine's musl.
 Install frontend dependencies with `cd ui && npm ci`. Install Chromium once
 with `cd ui && npx playwright install chromium` (Linux CI also uses `--with-deps`).
 The UI compiler must remain compatible with `vue-tsc`; TypeScript 7's native
@@ -70,12 +82,16 @@ screenshots and the HTML report. Recording mode is unavailable for the
 Discord journey; unrelated flows may be recorded individually.
 Installation approval is interactive in Discord and is not automated.
 Offline Go HTTP tests use a local fake Discord API for discovery, filtering,
-and failure handling.
-The `discord-live` workflow runs on pushes to main, nightly, and manual
-dispatch from main. Configure the five names above as repository secrets.
-Its shared concurrency group serializes the Go connection integration test
-and Playwright suite across live runs.
-Live Discord tests never run on pull requests or untrusted branch dispatches.
+and failure handling. Set `DISCORD_LIVE_INTEGRATION=1` and provide the
+streamer token, server ID and voice channel ID as environment variables to
+include the Go connection integration test in `make test-go`. Missing values
+fail the test.
+
+The `pr-checks` workflow runs the Go suite and full Playwright suite on pull
+requests, pushes to main, nightly, and manual dispatch. Configure the five
+names above as repository secrets. A shared concurrency group serializes both
+live tests across runs. Fork and Dependabot pull requests cannot access these
+secrets and fail the live check rather than running untrusted code with them.
 
 ## Coverage policy
 

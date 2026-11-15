@@ -6,9 +6,11 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"math"
 	"net/http"
 	"net/url"
 	"sort"
+	"strconv"
 
 	"github.com/disgoorg/disgo/rest"
 )
@@ -132,4 +134,22 @@ func (s *Service) get(ctx context.Context, path string, out any) error {
 		return fmt.Errorf("discord setup request failed; check network access and try again")
 	}
 	return nil
+}
+
+type discordRateLimitTransport struct {
+	http.RoundTripper
+}
+
+func (t discordRateLimitTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	response, err := t.RoundTripper.RoundTrip(req)
+	if err != nil {
+		return nil, err
+	}
+	if response.StatusCode == http.StatusTooManyRequests {
+		// Disgo parses Retry-After as integer seconds; Discord can send fractions.
+		if seconds, err := strconv.ParseFloat(response.Header.Get("Retry-After"), 64); err == nil && seconds >= 0 && !math.IsInf(seconds, 0) {
+			response.Header.Set("Retry-After", strconv.FormatFloat(math.Ceil(seconds), 'f', 0, 64))
+		}
+	}
+	return response, nil
 }

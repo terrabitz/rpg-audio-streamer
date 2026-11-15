@@ -528,8 +528,13 @@ subscriber queue during the handshake. The transport encodes 48 kHz stereo
 PCM into Opus and sends it over Discord's DAVE-encrypted voice connection.
 It reannounces the speaking source when participants join and periodically
 so late listeners can associate incoming packets with the bot.
-The MIT-licensed MLS implementation in `third_party/mls-go` keeps GroupInfo
-extensions separate from GroupContext extensions for DAVE interoperability.
+DAVE uses Discord's native libdave through the `godave/golibdave` Go bindings
+in the server process. A small local copy of the `godave/libdave` binding
+keeps retained callback userdata in C-owned memory; its README documents the
+patch and upstream provenance. MLS itself is implemented by native libdave,
+not a Go fork. The Linux image uses glibc and includes the pinned libdave shared
+library and its licenses. Development and CI install the same verified upstream
+release; a C compiler and pkg-config are needed to build.
 The stream bot joins self-deafened and does not receive participants' audio.
 Bot credentials are not passed in process arguments, browser payloads, or logs.
 
@@ -576,10 +581,13 @@ without pushing or publishing a manifest, and check that the Dockerfile's Go
 and Node base images match `go.mod` and `ui/.nvmrc`, since dependency bumps do
 not update the Dockerfile.
 
-All pull requests run the `pr-checks` workflow. `dorny/paths-filter` selects Go
-tests for backend inputs, frontend lint/build/domain checks for UI, development
-scripts, or OpenAPI inputs, full-app browser and seeded development instance
-tests for either, and Docker checks for image inputs.
+All pull requests run the Go tests, frontend domain tests, seeded development
+tests, and full-app browser suite in `pr-checks`. The Go and browser suites
+include live Discord validation for trusted same-repository pull requests.
+Fork and Dependabot pull requests fail that credentialed check without access
+to repository secrets. A shared concurrency queue serializes live runs.
+`dorny/paths-filter` selects frontend lint/build and Docker checks for their
+inputs. Pushes to main, scheduled runs, and manual dispatch also run live tests.
 Changes to the workflow select every check; manual runs also execute every
 check. The final `PR Checks` job depends on path detection and all check jobs,
 accepts successful or skipped jobs, and fails on failed or cancelled jobs.

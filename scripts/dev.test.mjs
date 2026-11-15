@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { spawn } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import { once } from 'node:events'
 import { access, mkdtemp, rm, symlink } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -142,17 +142,14 @@ test(
   'startup failure removes instance state and exits nonzero',
   { timeout: 120_000 },
   async (t) => {
-    // Only Go is available to children, so sample generation must fail without FFmpeg.
+    // Keep the Go and CGO toolchain available while excluding FFmpeg.
     const path = await mkdtemp(join(tmpdir(), 'rpg-dev-test-path-'))
     t.after(() => rm(path, { recursive: true, force: true }))
-    const go = spawn('which', ['go'])
-    let executable = ''
-    go.stdout.on('data', (data) => {
-      executable += data
-    })
-    assert.equal((await once(go, 'exit'))[0], 0)
-    await symlink(executable.trim(), join(path, 'go'))
-    const instance = launch(t, { PATH: path })
+    for (const command of ['go', 'gcc', 'cc', 'clang', 'as', 'ld', 'pkg-config', 'xcrun']) {
+      const executable = spawnSync('which', [command], { encoding: 'utf8' })
+      if (executable.status === 0) await symlink(executable.stdout.trim(), join(path, command))
+    }
+    const instance = launch(t, { PATH: path, CGO_ENABLED: '1' })
     await assert.rejects(instance.ready, /Dev instance failed/)
     const [code] = await instance.exited
     assert.equal(code, 1)
