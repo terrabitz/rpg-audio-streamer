@@ -583,9 +583,10 @@ not update the Dockerfile.
 
 All pull requests run the Go tests, frontend domain tests, seeded development
 tests, and full-app browser suite in `pr-checks`. The Go and browser suites
-include live Discord validation for trusted same-repository pull requests.
-Fork and Dependabot pull requests fail that credentialed check without access
-to repository secrets. A shared concurrency queue serializes live runs.
+include live Discord validation in separate jobs for trusted same-repository
+pull requests. Fork and Dependabot pull requests fail those credentialed checks
+without access to repository secrets. A shared concurrency queue serializes
+the jobs across runs.
 `dorny/paths-filter` selects frontend lint/build and Docker checks for their
 inputs. Pushes to main, scheduled runs, and manual dispatch also run live tests.
 Changes to the workflow select every check; manual runs also execute every

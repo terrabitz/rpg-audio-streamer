@@ -61,7 +61,40 @@ jobs:
               - '.github/workflows/docker-build.yaml'
 
   go:
-    name: Go Tests and Full App UX
+    name: Go Tests and Integration
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    concurrency:
+      group: discord-live
+      queue: max
+    steps:
+      - name: Require a trusted PR
+        if: ${{ github.event_name == 'pull_request' && (github.event.pull_request.head.repo.full_name != github.repository || github.event.pull_request.user.login == 'dependabot[bot]') }}
+        run: |
+          echo "::error::Live Discord tests require repository secrets and cannot run on fork or Dependabot pull requests."
+          exit 1
+      - uses: actions/checkout@v7
+      - name: Install FFmpeg
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Install libdave
+        run: |
+          sh scripts/install-libdave.sh "$RUNNER_TEMP/libdave"
+          printf 'PKG_CONFIG_PATH=%s/lib/pkgconfig\nLD_LIBRARY_PATH=%s/lib\n' "$RUNNER_TEMP/libdave" "$RUNNER_TEMP/libdave" >> "$GITHUB_ENV"
+      - name: Install dependencies
+        run: go mod download
+      - name: Run Go tests and live connection integration
+        run: make test-go
+        env:
+          DISCORD_LIVE_INTEGRATION: '1'
+          INTEGRATION_TEST_DISCORD_SERVER_ID: ${{ secrets.INTEGRATION_TEST_DISCORD_SERVER_ID }}
+          INTEGRATION_TEST_DISCORD_VOICE_CHANNEL_ID: ${{ secrets.INTEGRATION_TEST_DISCORD_VOICE_CHANNEL_ID }}
+          INTEGRATION_TEST_DISCORD_BOT_STREAMER_TOKEN: ${{ secrets.INTEGRATION_TEST_DISCORD_BOT_STREAMER_TOKEN }}
+
+  e2e:
+    name: Full App UX
     runs-on: ubuntu-latest
     timeout-minutes: 45
     concurrency:
@@ -93,16 +126,7 @@ jobs:
           go mod download
           npm ci --prefix ui
           cd ui && npx playwright install --with-deps chromium
-      - name: Run Go tests and live connection integration
-        id: go_tests
-        run: make test-go
-        env:
-          DISCORD_LIVE_INTEGRATION: '1'
-          INTEGRATION_TEST_DISCORD_SERVER_ID: ${{ secrets.INTEGRATION_TEST_DISCORD_SERVER_ID }}
-          INTEGRATION_TEST_DISCORD_VOICE_CHANNEL_ID: ${{ secrets.INTEGRATION_TEST_DISCORD_VOICE_CHANNEL_ID }}
-          INTEGRATION_TEST_DISCORD_BOT_STREAMER_TOKEN: ${{ secrets.INTEGRATION_TEST_DISCORD_BOT_STREAMER_TOKEN }}
       - name: Run full app UX suite
-        if: ${{ !cancelled() && (steps.go_tests.outcome == 'success' || steps.go_tests.outcome == 'failure') }}
         run: make test-e2e
         env:
           INTEGRATION_TEST_DISCORD_SERVER_ID: ${{ secrets.INTEGRATION_TEST_DISCORD_SERVER_ID }}
@@ -232,7 +256,7 @@ jobs:
   pr-checks:
     name: PR Checks
     if: ${{ always() }}
-    needs: [changes, go, lint, build, unit, dev, toolchains, docker]
+    needs: [changes, go, e2e, lint, build, unit, dev, toolchains, docker]
     runs-on: ubuntu-latest
     steps:
       - name: Require all selected checks to pass
