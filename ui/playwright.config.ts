@@ -1,8 +1,6 @@
 import { defineConfig, devices } from '@playwright/test'
 import { recording, recordingViewport } from './e2e/fixtures'
 
-const apiPort = process.env.E2E_API_PORT ?? '18080'
-const uiPort = process.env.E2E_UI_PORT ?? '15173'
 process.env.PLAYWRIGHT_NO_COPY_PROMPT = '1'
 
 // Recording mode slows interactions so per-flow GIFs are watchable.
@@ -13,37 +11,39 @@ const recordingOptions = recording
       launchOptions: { slowMo: 600 },
     }
   : {}
+const failureArtifacts = { trace: 'retain-on-failure' as const, screenshot: 'only-on-failure' as const }
 
 export default defineConfig({
   testDir: './e2e',
   testMatch: '**/*.spec.ts',
-  fullyParallel: false,
+  fullyParallel: true,
+  globalSetup: './e2e/global-setup.ts',
   forbidOnly: !!process.env.CI,
   retries: 0,
-  workers: 1,
+  workers: recording ? 1 : 2,
   timeout: recording ? 300_000 : 60_000,
   expect: { timeout: recording ? 30_000 : 10_000 },
   reporter: [['list']],
   use: {
-    baseURL: `http://127.0.0.1:${uiPort}`,
     trace: 'off',
     screenshot: 'off',
   },
-  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'], ...recordingOptions } }],
-  webServer: [
+  projects: [
     {
-      command: 'node e2e/server.mjs',
-      url: `http://127.0.0.1:${apiPort}/api/v1/auth/status`,
-      reuseExistingServer: false,
-      timeout: 120_000,
-      gracefulShutdown: { signal: 'SIGTERM', timeout: 5_000 },
+      name: 'chromium',
+      grepInvert: recording ? /@discord|@timing|@infrastructure/ : /@discord|@timing/,
+      use: { ...devices['Desktop Chrome'], ...failureArtifacts, ...recordingOptions },
     },
     {
-      command: `npm run build && npm run preview -- --host 127.0.0.1 --port ${uiPort} --strictPort`,
-      url: `http://127.0.0.1:${uiPort}`,
-      env: { API_PROXY_TARGET: `http://127.0.0.1:${apiPort}` },
-      reuseExistingServer: false,
-      timeout: 120_000,
+      name: 'chromium-timing', grep: /@timing/, workers: 1,
+      use: {
+        ...devices['Desktop Chrome'], ...failureArtifacts, ...recordingOptions,
+        // Avoid platform audio-device timing while retaining real media playback.
+        launchOptions: { args: ['--disable-audio-output'], ...(recording ? { slowMo: 600 } : {}) },
+      },
     },
+    ...(recording ? [] : [
+      { name: 'chromium-discord', grep: /@discord/, workers: 1, use: { ...devices['Desktop Chrome'] } },
+    ]),
   ],
 })

@@ -145,27 +145,29 @@ injection.
 
 ## Full-app browser tests
 
-`ui/playwright.config.ts` owns both processes and refuses to reuse running
-servers. Ports **15173** (production Vite preview) and **18080** (Go API) must
-be free. `API_PROXY_TARGET` directs the preview proxy to the isolated API;
-ordinary development still defaults to port 8080.
-
-`ui/e2e/server.mjs` builds the real Go executable into a unique temporary
-directory, starts it with public test-only credentials, and removes its SQLite
-database, uploads, and executable after the child exits. Except for the explicit
-live Discord configuration described above, no developer `.env`,
-database, uploads, or existing server is used. Do not point these tests at a
+Playwright builds the Go executable and production UI once per run. Each test
+attempt starts its own API and Vite preview on loopback ports, with a temporary
+SQLite database, upload directory, and WebSocket hub. Its fixture closes browser
+contexts, stops the API and preview, and removes temporary state even when a
+test fails. Except for the explicit live Discord configuration described above,
+no existing server, database, or uploads are used. Do not point these tests at a
 production environment. Public fixture credentials are `e2e-gm` /
-`e2e-password`, with invite `e2e-invite`.
+`e2e-password`.
 
-The browser suite uses one worker because the running app has one shared
-library. Each test has a fresh browser session; use a separate browser context
-for players so a GM cookie cannot masquerade as player authentication. Generate
-audio using FFmpeg instead of committing media fixtures. Drive setup and edits
+The suite uses two workers; the timing-sensitive and live Discord projects each
+have a one-worker limit. Only the live Discord journey loads credentials or
+connects the bots; do not run multiple suite invocations against the same bots.
+The timing project disables Chromium audio output so its media clock does not
+depend on the host audio device; it still checks real media playback.
+Recording mode uses one worker and excludes infrastructure and live Discord
+tests. Each test has a fresh browser session; use a
+separate browser context for players so a GM cookie cannot masquerade as player
+authentication. Generate audio using FFmpeg instead of committing media fixtures. Drive setup and edits
 through the UI. Assert real media `paused` and `currentTime` properties for
 playback, not just CSS classes or socket receipt. Use accessible names for
 controls, keyboard selection for Vuetify selects, and retrying assertions
-instead of fixed sleeps. Ensure added fixtures are removed through the UI.
+instead of fixed sleeps. Exercise deletion through the UI when it is part of the
+flow, rather than relying on it for test isolation.
 
 Each browser test covers one user-visible flow, because every test doubles as a
 pull request recording (see `.github/skills/pr-recordings/SKILL.md`). Name the
@@ -175,8 +177,9 @@ and import `test` and `expect` from `ui/e2e/fixtures.ts` rather than
 instead of fixed `test.setTimeout()` values so recording mode's longer limits
 still apply.
 
-Browser traces, screenshots, and the HTML report are disabled to protect live
-configuration. Diagnose the underlying
+Failed non-Discord tests retain browser traces, screenshots, and bounded server
+logs in `ui/test-results/`. Live Discord tests disable these artifacts and the
+HTML report to protect credentials. Diagnose the underlying
 behavior before changing selectors, timeouts, or assertions. Do not bypass
 failed app paths with mocked responses or injected Pinia/localStorage state.
 
