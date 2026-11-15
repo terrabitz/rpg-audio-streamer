@@ -26,8 +26,8 @@ import (
 const opusSamples = 960
 
 // packetQueue absorbs transient UDP, DAVE key-rotation, and gateway lock
-// stalls so the mixer's small subscription buffer never overflows; the
-// encoder applies backpressure beyond it rather than dropping audio.
+// stalls ahead of the mixer's subscription backlog; the encoder applies
+// backpressure beyond it rather than dropping audio.
 const packetQueue = 25
 
 // pcmEncoder accepts the mixer's interleaved float32 stereo PCM and retains

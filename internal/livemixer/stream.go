@@ -15,6 +15,11 @@ var (
 	ErrRendererStopped = errors.New("mixer renderer stopped")
 )
 
+// monitorBacklog holds one second of 20 ms blocks so that scheduler or GC
+// pauses in a monitor do not end its stream; it only fills while the monitor
+// is behind, so it adds no latency in steady state.
+const monitorBacklog = 50
+
 type Subscription struct {
 	frames chan []mixer.Frame
 	mu     sync.Mutex
@@ -28,7 +33,7 @@ func (s *Service) Subscribe(tableID string) (*Subscription, func(), error) {
 	if s.tables[tableID] == nil {
 		return nil, nil, fmt.Errorf("mix session is not ready")
 	}
-	sub := &Subscription{frames: make(chan []mixer.Frame, 2)}
+	sub := &Subscription{frames: make(chan []mixer.Frame, monitorBacklog)}
 	if s.listeners[tableID] == nil {
 		s.listeners[tableID] = make(map[*Subscription]bool)
 	}

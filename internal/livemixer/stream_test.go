@@ -36,13 +36,29 @@ func TestMonitorReceivesImmutableTablePCMAndSurvivesSnapshots(t *testing.T) {
 	}
 }
 
-func TestSlowMonitorIsDisconnectedWithoutBlockingRendering(t *testing.T) {
+func TestBriefMonitorPauseKeepsEveryBlock(t *testing.T) {
 	s := testService(t)
 	update(t, s, "table", `{"fileID":"tone","isPlaying":true}`)
 	sub, cancel, err := s.Subscribe("table")
 	must(t, err)
 	defer cancel()
 	for i := 0; i < 10; i++ {
+		s.Render("table", 1)
+	}
+	for i := 0; i < 10; i++ {
+		if _, open := <-sub.Frames(); !open {
+			t.Fatalf("monitor ended after %d blocks: %v", i, sub.Err())
+		}
+	}
+}
+
+func TestSlowMonitorIsDisconnectedWithoutBlockingRendering(t *testing.T) {
+	s := testService(t)
+	update(t, s, "table", `{"fileID":"tone","isPlaying":true}`)
+	sub, cancel, err := s.Subscribe("table")
+	must(t, err)
+	defer cancel()
+	for i := 0; i <= monitorBacklog; i++ {
 		s.Render("table", 1)
 	}
 	for range sub.Frames() {
