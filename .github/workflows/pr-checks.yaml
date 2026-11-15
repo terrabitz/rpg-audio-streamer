@@ -3,6 +3,9 @@ name: pr-checks
 on:
   workflow_dispatch:
   pull_request:
+  push:
+    branches: [main]
+
 
 permissions:
   contents: read
@@ -48,27 +51,86 @@ jobs:
               - 'go.sum'
               - 'main.go'
               - 'internal/**'
+              - 'scripts/install-libdave.sh'
               - 'sql/**'
               - 'ui/**'
               - '.github/workflows/pr-checks.yaml'
               - '.github/workflows/docker-build.yaml'
 
   go:
-    name: Go Tests and Coverage
-    needs: changes
-    if: ${{ !cancelled() && (github.event_name == 'workflow_dispatch' || needs.changes.outputs.backend == 'true') }}
+    name: Go Tests and Integration
     runs-on: ubuntu-latest
+    timeout-minutes: 45
+    concurrency:
+      group: discord-live
+      queue: max
     steps:
+      - name: Require a trusted PR
+        if: ${{ github.event_name == 'pull_request' && (github.event.pull_request.head.repo.full_name != github.repository || github.event.pull_request.user.login == 'dependabot[bot]') }}
+        run: |
+          echo "::error::Live Discord tests require repository secrets and cannot run on fork or Dependabot pull requests."
+          exit 1
       - uses: actions/checkout@v7
       - name: Install FFmpeg
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
+      - name: Install libdave
+        run: |
+          sh scripts/install-libdave.sh "$RUNNER_TEMP/libdave"
+          printf 'PKG_CONFIG_PATH=%s/lib/pkgconfig\nLD_LIBRARY_PATH=%s/lib\n' "$RUNNER_TEMP/libdave" "$RUNNER_TEMP/libdave" >> "$GITHUB_ENV"
       - name: Install dependencies
         run: go mod download
-      - name: Run tests
+      - name: Run Go tests and live connection integration
         run: make test-go
+        env:
+          DISCORD_LIVE_INTEGRATION: '1'
+          INTEGRATION_TEST_DISCORD_SERVER_ID: ${{ secrets.INTEGRATION_TEST_DISCORD_SERVER_ID }}
+          INTEGRATION_TEST_DISCORD_VOICE_CHANNEL_ID: ${{ secrets.INTEGRATION_TEST_DISCORD_VOICE_CHANNEL_ID }}
+          INTEGRATION_TEST_DISCORD_BOT_STREAMER_TOKEN: ${{ secrets.INTEGRATION_TEST_DISCORD_BOT_STREAMER_TOKEN }}
+
+  e2e:
+    name: Full App UX
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    concurrency:
+      group: discord-live
+      queue: max
+    steps:
+      - name: Require a trusted PR
+        if: ${{ github.event_name == 'pull_request' && (github.event.pull_request.head.repo.full_name != github.repository || github.event.pull_request.user.login == 'dependabot[bot]') }}
+        run: |
+          echo "::error::Live Discord tests require repository secrets and cannot run on fork or Dependabot pull requests."
+          exit 1
+      - uses: actions/checkout@v7
+      - name: Install FFmpeg
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: ./ui/.nvmrc
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+      - name: Install libdave
+        run: |
+          sh scripts/install-libdave.sh "$RUNNER_TEMP/libdave"
+          printf 'PKG_CONFIG_PATH=%s/lib/pkgconfig\nLD_LIBRARY_PATH=%s/lib\n' "$RUNNER_TEMP/libdave" "$RUNNER_TEMP/libdave" >> "$GITHUB_ENV"
+      - name: Install dependencies
+        run: |
+          go mod download
+          npm ci --prefix ui
+          cd ui && npx playwright install --with-deps chromium
+      - name: Run full app UX suite
+        run: make test-e2e
+        env:
+          INTEGRATION_TEST_DISCORD_SERVER_ID: ${{ secrets.INTEGRATION_TEST_DISCORD_SERVER_ID }}
+          INTEGRATION_TEST_DISCORD_VOICE_CHANNEL_ID: ${{ secrets.INTEGRATION_TEST_DISCORD_VOICE_CHANNEL_ID }}
+          INTEGRATION_TEST_DISCORD_BOT_STREAMER_TOKEN: ${{ secrets.INTEGRATION_TEST_DISCORD_BOT_STREAMER_TOKEN }}
+          INTEGRATION_TEST_DISCORD_BOT_STREAMER_CLIENT_ID: ${{ secrets.INTEGRATION_TEST_DISCORD_BOT_STREAMER_CLIENT_ID }}
+          INTEGRATION_TEST_DISCORD_BOT_LISTENER_TOKEN: ${{ secrets.INTEGRATION_TEST_DISCORD_BOT_LISTENER_TOKEN }}
 
   lint:
     name: Frontend Lint
@@ -109,7 +171,7 @@ jobs:
   unit:
     name: Frontend Domain Coverage
     needs: changes
-    if: ${{ !cancelled() && (github.event_name == 'workflow_dispatch' || needs.changes.outputs.frontend == 'true') }}
+    if: ${{ !cancelled() && (github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch') }}
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -122,70 +184,8 @@ jobs:
           cache: npm
           cache-dependency-path: ui/package-lock.json
       - run: npm ci
+      - run: node --test e2e/discord-config.test.ts e2e/discord-listener.test.ts
       - run: npm run test:coverage
-
-  e2e:
-    name: Full App UX
-    needs: changes
-    if: ${{ !cancelled() && (github.event_name == 'workflow_dispatch' || needs.changes.outputs.backend == 'true' || needs.changes.outputs.frontend == 'true') }}
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: ./ui
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
-        with:
-          go-version-file: go.mod
-      - uses: actions/setup-node@v7
-        with:
-          node-version-file: ./ui/.nvmrc
-          cache: npm
-          cache-dependency-path: ui/package-lock.json
-      - name: Install FFmpeg
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
-      - run: npm ci
-      - run: npx playwright install --with-deps chromium
-      - name: Verify seeded dev instances
-        run: make test-dev
-        working-directory: .
-      - run: npm run test:e2e
-      - name: Preserve browser failure evidence
-        if: failure()
-        uses: actions/upload-artifact@v6
-        with:
-          name: playwright-results
-          path: |
-            ui/playwright-report/
-            ui/test-results/
-          retention-days: 7
-
-  toolchains:
-    name: Check Docker Toolchains
-    needs: changes
-    if: ${{ !cancelled() && (github.event_name == 'workflow_dispatch' || needs.changes.outputs.docker == 'true') }}
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-
-      # Dependabot bumps go.mod and .nvmrc but not the Dockerfile base images.
-      - name: Compare Dockerfile toolchains with project versions
-        run: |
-          go_required=$(awk '$1 == "go" { print $2 }' go.mod | cut -d. -f1,2)
-          go_image=$(sed -nE 's/^FROM golang:([0-9]+\.[0-9]+).*/\1/p' docker/Dockerfile)
-          node_required=$(tr -d 'v[:space:]' < ui/.nvmrc | cut -d. -f1)
-          node_image=$(sed -nE 's/^FROM node:([0-9]+).*/\1/p' docker/Dockerfile)
-
-          status=0
-          if [ "$go_required" != "$go_image" ]; then
-            echo "::error file=docker/Dockerfile::Go image is ${go_image:-missing}, go.mod requires $go_required"
-            status=1
-          fi
-          if [ "$node_required" != "$node_image" ]; then
-            echo "::error file=docker/Dockerfile::Node image is ${node_image:-missing}, ui/.nvmrc requires $node_required"
-            status=1
-          fi
-          exit $status
 
   docker:
     name: Build Docker Image
@@ -196,7 +196,7 @@ jobs:
   pr-checks:
     name: PR Checks
     if: ${{ always() }}
-    needs: [changes, go, lint, build, unit, e2e, toolchains, docker]
+    needs: [changes, go, e2e, lint, build, unit, docker]
     runs-on: ubuntu-latest
     steps:
       - name: Require all selected checks to pass

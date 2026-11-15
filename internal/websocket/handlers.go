@@ -52,3 +52,34 @@ func (h *Hub) handleSyncTrack(payload json.RawMessage, c *Client) {
 	}
 	h.updatePlayback(payload, c)
 }
+
+func (h *Hub) handleMixSync(payload json.RawMessage, c *Client) {
+	if c.Token.Role != auth.RoleGM || h.mixer == nil {
+		return
+	}
+	h.applyMixer(c, "mixSync", func() error { return h.mixer.Sync(c.Token.TableID, payload) })
+}
+
+func (h *Hub) handleMixVolumes(payload json.RawMessage, c *Client) {
+	if c.Token.Role != auth.RoleGM || h.mixer == nil {
+		return
+	}
+	h.applyMixer(c, "mixVolumes", func() error { return h.mixer.Volumes(c.Token.TableID, payload) })
+}
+
+func (h *Hub) applyMixer(c *Client, command string, apply func() error) {
+	method := "mixerAck"
+	message := ""
+	if err := apply(); err != nil {
+		h.logger.Error("mixer command failed", "command", command, "tableID", c.Token.TableID, "error", err)
+		method = "mixerError"
+		message = "Server mixing failed. Check the server logs and reconnect to retry."
+	}
+	payload, _ := json.Marshal(struct {
+		Command string `json:"command"`
+		Message string `json:"message,omitempty"`
+	}{Command: command, Message: message})
+	if err := c.Send(Message{Method: method, Payload: payload}); err != nil {
+		h.logger.Error("failed to report mixer command result", "error", err)
+	}
+}

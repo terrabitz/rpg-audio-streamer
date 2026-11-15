@@ -86,6 +86,19 @@ func (h *Hub) SyncSettings(tableID string, patch server.TableSettingsPatch) {
 		if track, ok := h.playback[tableID][id]; ok {
 			track.Volume = settings.TrackVolumes[id]
 			h.playback[tableID][id] = track
+			if h.mixer != nil && track.IsPlaying {
+				payload, err := json.Marshal(struct {
+					FileID string  `json:"fileID"`
+					Volume float64 `json:"volume"`
+				}{FileID: id, Volume: track.Volume})
+				if err != nil {
+					h.logger.Error("failed to encode mixer track volume", "error", err, "tableID", tableID)
+					continue
+				}
+				if err := h.mixer.Update(tableID, payload); err != nil {
+					h.logger.Error("failed to update mixer track volume", "error", err, "tableID", tableID, "fileID", id)
+				}
+			}
 		}
 	}
 	h.sendState(tableID, settings, "")
@@ -153,18 +166,35 @@ func (h *Hub) updatePlayback(payload json.RawMessage, c *Client) {
 		}
 	}
 	state.updatedAt = now
+	var stopped []string
 	if state.IsPlaying && !trackType.AllowSimultaneousPlay {
 		for id, other := range states {
-			if id != state.FileID && other.typeID == state.typeID {
+			if id != state.FileID && other.typeID == state.typeID && other.IsPlaying {
 				other = other.at(now)
 				other.IsPlaying = false
 				states[id] = other
+				stopped = append(stopped, id)
 			}
 		}
 	}
 	states[state.FileID] = state
 	h.playback[c.Token.TableID] = states
 	h.sendState(c.Token.TableID, settings, "")
+	if h.mixer != nil {
+		h.applyMixer(c, "syncTrack", func() error {
+			paused := false
+			for _, id := range stopped {
+				stop, err := json.Marshal(playbackPatch{FileID: id, IsPlaying: &paused})
+				if err != nil {
+					return err
+				}
+				if err := h.mixer.Update(c.Token.TableID, stop); err != nil {
+					return err
+				}
+			}
+			return h.mixer.Update(c.Token.TableID, payload)
+		})
+	}
 }
 
 func (h *Hub) resolvePlayback(tableID, fileID string) (server.Track, server.TrackType, server.TableSettings, error) {

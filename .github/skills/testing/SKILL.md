@@ -13,6 +13,18 @@ Keep root `AGENTS.md` short.
 ## Setup and commands
 
 Use the Go version in `go.mod`, Node in `ui/.nvmrc`, and FFmpeg on `PATH`.
+Building and running Go also requires a C compiler, pkg-config, and Discord
+libdave 1.1.0. On glibc Linux or macOS, install the verified official binary
+and configure the current shell:
+
+```sh
+sh scripts/install-libdave.sh "$HOME/.local/libdave"
+export PKG_CONFIG_PATH="$HOME/.local/libdave/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
+export LD_LIBRARY_PATH="$HOME/.local/libdave/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+```
+
+On macOS, set `DYLD_LIBRARY_PATH` instead of `LD_LIBRARY_PATH`. The Linux
+release requires glibc 2.38 or newer; it does not support Alpine's musl.
 Install frontend dependencies with `cd ui && npm ci`. Install Chromium once
 with `cd ui && npx playwright install chromium` (Linux CI also uses `--with-deps`).
 The UI compiler must remain compatible with `vue-tsc`; TypeScript 7's native
@@ -24,7 +36,7 @@ Vue tooling.
 | `make test` | Go race detection, SQLite integration, and frontend domain coverage |
 | `make test-go` | All Go tests; enforce 80% internal statement coverage |
 | `make test-ui` | Vitest domain coverage; enforce 80% statements, branches, functions, and lines |
-| `make test-e2e` | Production UI build and real full-app Chromium journeys |
+| `make test-e2e` | Production UI build and real full-app Chromium journeys including live Discord |
 | `make test-dev` | Seeded local dev startup, isolation, media fixtures, and cleanup |
 | `cd ui && npm run build` | Vue/TypeScript checking, including tests, and production bundle |
 | `cd ui && npm run lint:check` | Read-only frontend lint |
@@ -33,6 +45,54 @@ For focused iteration, use `go test ./internal/websocket -run TestMessageRouting
 `cd ui && npm run test:unit -- run src/stores/__tests__/audio.test.ts`, or
 `cd ui && npm run test:e2e -- --grep 'invited player'`. Run the affected coverage
 gate after focused checks. No documentation-only validation is needed.
+
+Mixer domain tests render known PCM buffers without sleeps; live-service tests
+own the render loop's context and bound waits for decoding and cancellation.
+
+### Live Discord tests
+
+Run `make test-e2e` only against an isolated, regular voice channel with
+two distinct bot accounts already installed in that server. Configuration is
+read in increasing precedence from the worktree `.env.test`, the
+persistent `~/.config/rpg-audio-streamer/discord-test.env`, and the environment.
+`DISCORD_TEST_ENV_FILE` replaces the persistent file path and must exist when
+specified. Never copy secrets into a worktree. The required names are:
+
+- `INTEGRATION_TEST_DISCORD_SERVER_ID`
+- `INTEGRATION_TEST_DISCORD_VOICE_CHANNEL_ID`
+- `INTEGRATION_TEST_DISCORD_BOT_STREAMER_TOKEN`
+- `INTEGRATION_TEST_DISCORD_BOT_STREAMER_CLIENT_ID`
+- `INTEGRATION_TEST_DISCORD_BOT_LISTENER_TOKEN`
+
+Server/channel IDs are fixture inputs for explicit UI selection, not server
+configuration. The application server receives only the streamer token.
+OAuth client secrets are not used. Never
+print tokens, embed them in URLs, or pass them through command arguments.
+The streamer needs View Channel, Connect, and Speak; the listener needs View
+Channel and Connect and joins with deafening disabled. Neither needs privileged
+Gateway intents.
+
+Do not run multiple copies against the same bots or while a local preview holds
+the streamer. Playwright covers server/channel selection,
+playback, mute, pause/resume, disconnect, and reconnect. Its separate Node bot
+decrypts and decodes real voice audio, checks fresh 440/880 Hz tone windows,
+and accepts decoded silence or packet inactivity on pause before requiring
+fresh audio on resume. Live runs disable recordings, browser traces,
+screenshots and the HTML report. Recording mode is unavailable for the
+Discord journey; unrelated flows may be recorded individually.
+Installation approval is interactive in Discord and is not automated.
+Offline Go HTTP tests use a local fake Discord API for discovery, filtering,
+and failure handling. Set `DISCORD_LIVE_INTEGRATION=1` and provide the
+streamer token, server ID and voice channel ID as environment variables to
+include the Go connection integration test in `make test-go`. Missing values
+fail the test.
+
+The `pr-checks` workflow runs the Go suite and full Playwright suite in separate
+jobs on pull requests, pushes to main, nightly, and manual dispatch. Configure
+the five names above as repository secrets. A shared concurrency group
+serializes both live tests across jobs and runs. Fork and Dependabot pull
+requests cannot access these secrets and fail the live checks rather than
+running untrusted code with them.
 
 ## Coverage policy
 
@@ -92,7 +152,8 @@ ordinary development still defaults to port 8080.
 
 `ui/e2e/server.mjs` builds the real Go executable into a unique temporary
 directory, starts it with public test-only credentials, and removes its SQLite
-database, uploads, and executable after the child exits. No developer `.env`,
+database, uploads, and executable after the child exits. Except for the explicit
+live Discord configuration described above, no developer `.env`,
 database, uploads, or existing server is used. Do not point these tests at a
 production environment. Public fixture credentials are `e2e-gm` /
 `e2e-password`, with invite `e2e-invite`.
@@ -114,9 +175,8 @@ and import `test` and `expect` from `ui/e2e/fixtures.ts` rather than
 instead of fixed `test.setTimeout()` values so recording mode's longer limits
 still apply.
 
-Failures preserve screenshots and traces in `ui/test-results/` and an HTML
-report in `ui/playwright-report/`; CI uploads both. Inspect traces with
-`cd ui && npx playwright show-trace <trace.zip>`. Diagnose the underlying
+Browser traces, screenshots, and the HTML report are disabled to protect live
+configuration. Diagnose the underlying
 behavior before changing selectors, timeouts, or assertions. Do not bypass
 failed app paths with mocked responses or injected Pinia/localStorage state.
 

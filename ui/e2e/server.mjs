@@ -3,8 +3,13 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { discordTestConfig } from './discord-config.ts'
 
 const root = fileURLToPath(new URL('../..', import.meta.url))
+const discord = {
+  DISCORD_STREAMING_ENABLED: 'true',
+  DISCORD_STREAMING_BOT_TOKEN: discordTestConfig(root).streamerToken,
+}
 const scratch = mkdtempSync(join(tmpdir(), 'rpg-audio-e2e-'))
 const binary = join(scratch, 'server')
 
@@ -37,7 +42,15 @@ const server = spawn(
     '--upload-dir',
     join(scratch, 'uploads'),
   ],
-  { cwd: scratch, stdio: 'inherit' },
+  {
+    cwd: scratch,
+    stdio: 'inherit',
+    env: {
+      ...Object.fromEntries(Object.entries(process.env).filter(([name]) =>
+        !name.startsWith('DISCORD_') && !name.startsWith('INTEGRATION_TEST_DISCORD_'))),
+      ...discord,
+    },
+  },
 )
 
 server.on('error', (error) => {

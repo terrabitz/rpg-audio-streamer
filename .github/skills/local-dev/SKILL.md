@@ -11,9 +11,18 @@ production or the empty-library browser test suite.
 ## Start
 
 1. Use the Go version in `go.mod`, Node in `ui/.nvmrc` (24.7+ for native Argon2),
-   and FFmpeg on `PATH`.
+   and FFmpeg on `PATH`. Install libdave and configure its library paths as
+   described in the testing skill before starting the Go server.
    Run `make dev` from the worktree root. If Vite is missing, install the
    locked UI dependencies with `cd ui && npm ci`, then retry.
+   For Discord streaming, run
+   `DEV_DISCORD=1 make dev`. The bot token can come from the process
+   environment, the worktree `.env`, or `~/.config/rpg-audio-streamer/.env`
+   (in that precedence order); ordinary `make dev` ignores Discord
+   credentials. The user-level file may contain `DISCORD_STREAMING_BOT_TOKEN` and should
+   be private. Only a bot token is needed. Use Connect to Discord at a table
+   to install the bot if needed and choose a server/voice channel. Keep test
+   previews in an isolated channel and disconnect before running live tests.
 2. Keep the launcher alive for the entire preview. For an agent-managed preview,
    use a detached long-lived shell only when the execution environment permits
    it; retain its exact shell ID so it can be stopped later.

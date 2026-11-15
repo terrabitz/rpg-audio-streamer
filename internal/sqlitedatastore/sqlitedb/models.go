@@ -9,10 +9,11 @@ import (
 )
 
 type GameTable struct {
-	ID         []byte
-	Name       string
-	Settings   string
-	ExternalID string
+	ID                 []byte
+	Name               string
+	Settings           string
+	ExternalID         string
+	DiscordDestination string
 }
 
 type TableTrack struct {

@@ -16,6 +16,9 @@ const audioStore = useAudioStore()
 const wsStore = useWebSocketStore()
 const tables = useTableStore()
 const error = ref('')
+const mixerError = ref('')
+const mixerEnabled = ref(false)
+let mixerSyncPending = false
 const ready = ref(false)
 const synchronized = ref(false)
 const externalID = computed(() => tables.current!.externalID)
@@ -36,13 +39,34 @@ watch(snapshotMix, (mix, previous) => {
   if (mix.masterVolume !== previous.masterVolume) pendingMix.masterVolume = mix.masterVolume
   pendingMix.typeVolumes = { ...pendingMix.typeVolumes, ...changedVolumes(mix.typeVolumes, previous.typeVolumes) }
   pendingMix.trackVolumes = { ...pendingMix.trackVolumes, ...changedVolumes(mix.trackVolumes, previous.trackVolumes) }
+  if (mixerEnabled.value && wsStore.isConnected &&
+      (mix.masterVolume !== previous.masterVolume ||
+        JSON.stringify(mix.typeVolumes) !== JSON.stringify(previous.typeVolumes))) {
+    wsStore.sendMessage('mixVolumes', { typeVolumes: effectiveTypeVolumes() })
+  }
   saveMix()
 }, { flush: 'sync' })
 
 const { setTitle, setActions } = useAppBar()
 
-
 function handlePlayback(message: WebSocketMessage) {
+  if (message.method === 'mixerReady') {
+    mixerEnabled.value = true
+    mixerSyncPending = true
+    return
+  }
+  if (message.method === 'mixerError') {
+    const payload = message.payload
+    mixerError.value = payload && typeof payload === 'object' &&
+      'message' in payload && typeof payload.message === 'string'
+      ? payload.message : 'Server mixing failed. Reconnect to retry.'
+    return
+  }
+  if (message.method === 'mixerAck' && message.payload && typeof message.payload === 'object' &&
+      'command' in message.payload && message.payload.command === 'mixSync') {
+    mixerError.value = ''
+    return
+  }
   if (message.method === 'playbackError') {
     error.value = 'Unable to synchronize playback. Reload the table and try again.'
     return
@@ -70,9 +94,20 @@ function handlePlayback(message: WebSocketMessage) {
     applyingRemote = false
   }
   synchronized.value = true
+  if (mixerSyncPending) {
+    mixerSyncPending = false
+    wsStore.sendMessage('mixSync', {
+      tracks: adjustedTracks(),
+      typeVolumes: effectiveTypeVolumes(),
+    })
+  }
   if (payload.tracks.some(track => !tables.tracks.some(file => file.id === track.fileID))) {
     void refreshTracks()
   }
+}
+
+function adjustedTracks() {
+  return audioStore.getPlayingTracks()
 }
 
 async function refreshTracks() {
@@ -143,10 +178,20 @@ function snapshotMix() {
 function changedVolumes(current: Record<string, number>, previous: Record<string, number>) {
   return Object.fromEntries(Object.entries(current).filter(([id, volume]) => volume !== previous[id]))
 }
+
+function effectiveTypeVolumes() {
+  const master = audioStore.mixMasterVolume / 100
+  const volumes = { ...audioStore.mixTypeVolumes }
+  for (const type of useTrackTypeStore().trackTypes) {
+    volumes[type.name] = audioStore.getTypeVolume(type.name) * master
+  }
+  return volumes
+}
 </script>
 
 <template>
   <v-alert v-if="error" type="error">{{ error }}</v-alert>
+  <v-alert v-if="mixerError" type="error">{{ mixerError }}</v-alert>
   <v-alert v-if="tables.settingsError" type="error" class="mb-4">
     {{ tables.settingsError }}
     <v-btn variant="text" @click="tables.saveSettings(externalID, {})">Retry saving</v-btn>

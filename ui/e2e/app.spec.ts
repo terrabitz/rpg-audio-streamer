@@ -1,6 +1,144 @@
 import { execFileSync } from 'node:child_process'
+import { fileURLToPath } from 'node:url'
 import { devices, type Locator, type Page } from '@playwright/test'
-import { expect, test } from './fixtures'
+import { expect, recording, test } from './fixtures'
+import { discordTestConfig } from './discord-config'
+import { startTestListener, type ListenerAudio } from './discord-listener'
+
+test('GM controls real Discord audio and reconnects the saved channel', async ({ page }) => {
+  if (recording) throw new Error('The Discord journey cannot run in recording mode')
+  test.slow()
+  const config = discordTestConfig(fileURLToPath(new URL('../../', import.meta.url)))
+  await login(page)
+  await page.goto('/tables')
+  await createTable(page, 'Discord audio')
+  await page.getByRole('link', { name: 'Open Discord audio', exact: true }).click()
+  await expect(page).toHaveURL(/\/tables\/[A-Za-z0-9_-]+$/)
+  const tableID = new URL(page.url()).pathname.split('/').pop()!
+  let listener: Awaited<ReturnType<typeof startTestListener>> | undefined
+  try {
+    await uploadTrack(page, 'Discord Low', 'Ambiance', 440, 120)
+    await uploadTrack(page, 'Discord High', 'Music', 880, 120)
+    await uploadTrack(page, 'Discord Replacement', 'Music', 440, 120)
+    await chooseDiscordDestination(page)
+    await expect(page.getByRole('button', { name: 'Connected', exact: true })).toBeVisible()
+    listener = await startTestListener(config)
+    const current = () => {
+      const audio = listener!.latest()
+      if (audio.error) throw new Error(audio.error)
+      return audio
+    }
+    const waitAudio = async (check: (audio: ListenerAudio) => boolean) => {
+      try {
+        await expect.poll(() => check(current()), { timeout: 45_000 }).toBe(true)
+      } catch (error) {
+        throw new Error(`Discord audio did not match: ${JSON.stringify(current())}`, { cause: error })
+      }
+    }
+    await waitAudio(audio => audio.present)
+    await page.getByRole('group', { name: 'Discord Low', exact: true }).locator('.track-heading > span').click()
+    await page.getByRole('group', { name: 'Discord High', exact: true }).locator('.track-heading > span').click()
+    await expect(page.getByRole('group', { name: 'Playing Discord Low', exact: true })).toBeVisible()
+    await expect(page.getByRole('group', { name: 'Playing Discord High', exact: true })).toBeVisible()
+    await waitAudio(audio => audio.low > 0.05 && audio.high > 0.05)
+    const low = page.getByRole('group', { name: 'Playing Discord Low', exact: true })
+    const high = page.getByRole('group', { name: 'Playing Discord High', exact: true })
+    await low.getByRole('slider', { name: 'Volume for Discord Low' }).press('Home')
+    let frames = current().frames
+    await waitAudio(audio => audio.frames >= frames + 96000 && audio.low < 0.003 && audio.high > 0.05)
+    await high.getByRole('button', { name: 'Pause Discord High', exact: true }).click()
+    frames = current().frames
+    await waitAudio(audio => audio.present && (
+      (audio.frames >= frames + 96000 && audio.rms < 0.003) ||
+      (audio.last > 0 && Date.now() - audio.last > 2000)
+    ))
+    await page.getByRole('group', { name: 'Discord High', exact: true }).locator('.track-heading > span').click()
+    frames = current().frames
+    await waitAudio(audio => audio.frames >= frames + 96000 && audio.high > 0.05)
+    await page.getByRole('group', { name: 'Discord Replacement', exact: true }).locator('.track-heading > span').click()
+    frames = current().frames
+    await waitAudio(audio => audio.frames >= frames + 96000 && audio.low > 0.05 && audio.high < 0.003)
+    await expect(high).toHaveCount(0)
+    await page.getByRole('button', { name: 'Connected', exact: true }).click()
+    await waitAudio(audio => !audio.present)
+    await chooseDiscordDestination(page, true)
+    await waitAudio(audio => audio.present)
+    frames = current().frames
+    await waitAudio(audio => audio.frames >= frames + 96000 && audio.low > 0.05 && audio.high < 0.003)
+    await page.goto('/tables')
+    await expect.poll(async () => (await (await page.request.get(`/api/v1/tables/${tableID}/discord`)).json()).state)
+      .toBe('disconnected')
+    await waitAudio(audio => !audio.present)
+    await page.getByRole('link', { name: 'Open Discord audio', exact: true }).click()
+    await expect(page.getByRole('button', { name: 'Connected', exact: true })).toBeVisible()
+    await waitAudio(audio => audio.present)
+    frames = current().frames
+    await waitAudio(audio => audio.frames >= frames + 96000 && audio.low > 0.05 && audio.high < 0.003)
+  } finally {
+    listener?.close()
+    const cleanup = await page.request.delete(`/api/v1/tables/${tableID}`)
+    expect(cleanup.ok(), await cleanup.text()).toBe(true)
+    const response = await page.request.get('/api/v1/files')
+    expect(response.ok(), await response.text()).toBe(true)
+    const tracks: { id: string, name: string }[] = await response.json()
+    for (const track of tracks.filter(item =>
+      ['Discord Low', 'Discord High', 'Discord Replacement'].includes(item.name))) {
+      const deleted = await page.request.delete(`/api/v1/files/${track.id}`)
+      expect(deleted.ok(), await deleted.text()).toBe(true)
+    }
+  }
+})
+
+async function chooseDiscordDestination(page: Page, saved = false) {
+  const target = discordTestConfig(fileURLToPath(new URL('../../', import.meta.url)))
+  const setupResponse = await page.request.get('/api/v1/discord/setup')
+  expect(setupResponse.ok(), 'Discord setup request failed').toBe(true)
+  const setup = await setupResponse.json()
+  const guild = setup.guilds.find((item: { id: string }) => item.id === target.guildID)
+  const channelsResponse = await page.request.get(`/api/v1/discord/servers/${target.guildID}/channels`)
+    .catch(() => { throw new Error('Discord channel request failed') })
+  expect(channelsResponse.ok(), 'Discord channel request failed').toBe(true)
+  const channels = await channelsResponse.json()
+  const channel = channels.find((item: { id: string }) => item.id === target.channelID)
+  if (!guild || !channel) throw new Error('Isolated test server and voice channel must be installed and visible to the bot')
+  const connectButton = page.getByRole('button', { name: 'Connect', exact: true })
+  await expect(connectButton).toHaveClass(/text-grey/)
+  await connectButton.click()
+  const dialog = page.getByRole('dialog', { name: 'Discord setup' })
+  await expect(dialog).toBeVisible()
+  const refresh = dialog.getByRole('button', { name: 'Refresh Discord servers', exact: true })
+  await expect(refresh).toBeVisible()
+  const serverSelect = dialog.getByRole('combobox', { name: 'Discord server', exact: true })
+  await expect(serverSelect).toBeEnabled()
+  await refresh.click()
+  await expect(serverSelect).toBeEnabled()
+  await serverSelect.press('ArrowDown')
+  const addServerOption = page.getByRole('option', { name: '+ Add to server', exact: true })
+  await expect(addServerOption).toBeVisible()
+  await expect(addServerOption).toHaveClass(/text-primary/)
+  expect((await page.getByRole('option').allTextContents()).at(-1)?.trim()).toBe('+ Add to server')
+  await serverSelect.press('Escape')
+  if (!saved) {
+    await serverSelect.press('ArrowDown')
+    await page.getByRole('option', { name: guild.name, exact: true }).click()
+    await dialog.getByRole('combobox', { name: 'Voice channel', exact: true }).press('ArrowDown')
+    await page.getByRole('option', { name: channel.name, exact: true }).click()
+  }
+  await expect(dialog.getByRole('button', { name: 'Connect', exact: true })).toBeEnabled()
+  await dialog.getByRole('button', { name: 'Connect', exact: true }).click()
+  await expect(dialog).toBeHidden()
+  const disconnectButton = page.getByRole('button', { name: 'Connected', exact: true })
+  await expect(disconnectButton).toBeVisible()
+  await expect(disconnectButton).toHaveClass(/text-success/)
+  await expect.poll(async () => {
+    const sidebar = await page.getByRole('complementary', { name: 'Currently playing' }).boundingBox()
+    const button = await disconnectButton.boundingBox()
+    return sidebar && button && Math.abs(sidebar.y + sidebar.height - button.y - button.height - 8) < 1
+  }).toBe(true)
+  await expect(page.getByText(`${guild.name} / ${channel.name}`, { exact: true })).toHaveCount(0)
+  await disconnectButton.hover()
+  await expect(page.getByRole('tooltip')).toContainText(`${guild.name} / ${channel.name}`)
+}
 
 test('GM can recover from invalid credentials, keep a session, and log out', async ({ page }) => {
   await page.goto('/')
@@ -397,7 +535,11 @@ test('GM drags waveform markers continuously without stuttering for listeners', 
       await page.mouse.down()
       const observations = await Promise.all([page, player].map(browserPage =>
         browserPage.locator('[data-active="true"]').evaluateHandle((media: HTMLMediaElement) => {
-          const samples: { elapsed: number, position: number, paused: boolean, seeking: boolean }[] = []
+          const samples: {
+            elapsed: number, position: number, paused: boolean, seeking: boolean,
+            readyState: number, bufferedEnd: number, playbackRate: number,
+            visibility: DocumentVisibilityState,
+          }[] = []
           const started = performance.now()
           let seeks = 0
           const onSeeking = () => { seeks++ }
@@ -405,6 +547,10 @@ test('GM drags waveform markers continuously without stuttering for listeners', 
           const sample = () => samples.push({
             elapsed: (performance.now() - started) / 1000,
             position: media.currentTime, paused: media.paused, seeking: media.seeking,
+            readyState: media.readyState,
+            bufferedEnd: media.buffered.length ? media.buffered.end(media.buffered.length - 1) : 0,
+            playbackRate: media.playbackRate,
+            visibility: document.visibilityState,
           })
           sample()
           const timer = setInterval(sample, 50)
@@ -437,7 +583,8 @@ test('GM drags waveform markers continuously without stuttering for listeners', 
           expect(sample.seeking, `${point}: playback does not seek during the gesture`).toBe(false)
           const earlier = result.samples.slice(0, sampleIndex).findLast(previous => sample.elapsed - previous.elapsed >= 0.5)
           if (!earlier) continue
-          expect(sample.position - earlier.position, `${point}: every half-second window advances smoothly`)
+          expect(sample.position - earlier.position,
+            `${point} ${index === 0 ? 'GM' : 'listener'}: every half-second window advances smoothly (${JSON.stringify({ earlier, sample })})`)
             .toBeGreaterThanOrEqual((sample.elapsed - earlier.elapsed) * 0.8)
         }
         await observation.dispose()
@@ -1972,7 +2119,7 @@ async function expectEdgeToEdgeTable(page: Page, sidebar: Locator) {
       && panel.y + panel.height === viewport.height
   }).toBe(true)
   await expect(sidebar).toHaveCSS('border-left-width', '1px')
-  await expect(sidebar).toHaveCSS('overflow-y', 'auto')
+  await expect(sidebar.locator('.playing-sidebar-tracks')).toHaveCSS('overflow-y', 'auto')
   const background = await page.locator('.table-track-grid').evaluate(el => getComputedStyle(el).backgroundColor)
   await expect(sidebar).not.toHaveCSS('background-color', background)
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
@@ -2268,14 +2415,16 @@ async function deleteLibraryTrack(page: Page, name: string, tableCount: number) 
   await expect(row).toHaveCount(0)
 }
 
-async function uploadTrack(page: Page, name: string, typeName = 'Music', duration = 30) {
+async function uploadTrack(page: Page, name: string, typeName = 'Music', frequencyOrDuration = 30, duration?: number) {
+  const frequency = duration === undefined ? 440 : frequencyOrDuration
+  const trackDuration = duration ?? frequencyOrDuration
   const audio = execFileSync('ffmpeg', [
     '-v',
     'error',
     '-f',
     'lavfi',
     '-i',
-    `sine=frequency=440:duration=${duration}`,
+    `sine=frequency=${frequency}:duration=${trackDuration}`,
     '-f',
     'mp3',
     'pipe:1',

@@ -10,7 +10,7 @@ dev:
 	node scripts/dev.mjs
 
 test-dev:
-	node --test scripts/dev.test.mjs
+	node --test scripts/dev.test.mjs scripts/discord-env.test.mjs
 
 test: test-go test-ui
 
@@ -19,6 +19,7 @@ test-go:
 	@go tool cover -func=coverage.out | awk '/^total:/ { print; found=1; if ($$3+0 < 80) { print "Internal Go coverage must be at least 80%"; exit 1 } } END { if (!found) exit 1 }'
 
 test-ui:
+	node --test ui/e2e/discord-config.test.ts ui/e2e/discord-listener.test.ts
 	cd ui && npm run test:coverage
 
 test-e2e:

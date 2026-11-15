@@ -36,7 +36,10 @@
           <VolumeSlider :model-value="audioStore.mixMasterVolume" aria-label="Master volume"
             @update:model-value="audioStore.setMasterVolume($event)" />
         </div>
-        <PlayingTrackList :tracks="playingTracks" @play="handlePlay" @volume="handleVolume" @seek="handleSeek" />
+        <div class="playing-sidebar-tracks">
+          <PlayingTrackList :tracks="playingTracks" @play="handlePlay" @volume="handleVolume" @seek="handleSeek" />
+        </div>
+        <DiscordControl v-if="tables.current" :tableID="tables.current.externalID" class="playing-sidebar-discord" />
       </aside>
       <template v-else>
         <v-bottom-sheet v-model="showNowPlaying" max-height="70dvh" aria-label="Currently playing">
@@ -59,6 +62,7 @@
                 @update:model-value="audioStore.setMasterVolume($event)" />
             </div>
             <div class="now-playing-drawer-tracks">
+              <DiscordControl v-if="tables.current" :tableID="tables.current.externalID" class="mb-3" />
               <PlayingTrackList :tracks="playingTracks" @play="handlePlay" @volume="handleVolume" @seek="handleSeek" />
             </div>
           </v-card>
@@ -114,6 +118,7 @@ import AudioControls from './AudioControls.vue'
 import SortableTrack from './SortableTrack.vue'
 import AudioPlayer from './AudioPlayer.vue'
 import PlayingTrackList from './PlayingTrackList.vue'
+import DiscordControl from './DiscordControl.vue'
 import VolumeSlider from './VolumeSlider.vue'
 
 const fileStore = useFileStore()
@@ -299,7 +304,8 @@ function previewTrack(fileID: string) {
 function handleSettings(fileID: string, playback: PlaybackSettings) {
   const state = audioStore.tracks[fileID]
   if (!state) return
-  audioStore.updateTrackState(fileID, { playback })
+  const currentTime = Math.max(playback.startTime, Math.min(state.currentTime, playback.endTime ?? Infinity))
+  audioStore.updateTrackState(fileID, { playback, currentTime })
   if (!props.library && wsStore.isConnected) {
     wsStore.sendMessage('syncTrack', {
       fileID, playback, duration: state.duration,
@@ -309,6 +315,10 @@ function handleSettings(fileID: string, playback: PlaybackSettings) {
 
 const handleVolume = (fileID: string, volume: number) => {
   audioStore.updateTrackState(fileID, { volume })
+  const state = audioStore.tracks[fileID]
+  if (!props.library && wsStore.isConnected && state?.isPlaying) {
+    wsStore.sendMessage('syncTrack', { fileID, volume, duration: state.duration })
+  }
 }
 
 const handleSeek = (fileID: string, time: number) => {
@@ -343,14 +353,27 @@ onUnmounted(() => {
 }
 
 .playing-sidebar {
+  display: flex;
+  flex-direction: column;
   grid-column: 2;
   position: sticky;
   top: var(--v-layout-top, 64px);
   height: calc(100dvh - var(--v-layout-top, 64px));
-  overflow-y: auto;
+  overflow: hidden;
   padding: 8px;
   background: rgb(var(--v-theme-surface));
   border-left: 1px solid rgba(var(--v-theme-on-surface), 0.12);
+}
+
+.playing-sidebar-tracks {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.playing-sidebar-discord {
+  flex-shrink: 0;
+  padding-top: 12px;
 }
 
 .now-playing-heading {

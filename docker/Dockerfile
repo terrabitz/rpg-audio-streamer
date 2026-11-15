@@ -6,9 +6,13 @@ COPY ui .
 RUN npm ci && npm run build
 
 # Stage 2: Build Go backend
-FROM golang:1.26-alpine AS backend-builder
+FROM golang:1.26-trixie AS backend-builder
 
 WORKDIR /app
+RUN apt-get update && apt-get install -y --no-install-recommends curl unzip pkg-config
+COPY scripts/install-libdave.sh scripts/install-libdave.sh
+RUN sh scripts/install-libdave.sh /opt/libdave
+ENV PKG_CONFIG_PATH=/opt/libdave/lib/pkgconfig
 COPY go.mod go.sum ./
 RUN go mod download
 
@@ -19,9 +23,18 @@ COPY internal internal
 RUN CGOENABLED=1 go build -o backend main.go
 
 # Stage 3: Create the final runtime image
-FROM alpine:3
+FROM debian:trixie-slim
 
 ARG TARGETARCH
+
+# Install OS packages
+RUN apt-get update && apt-get install -y --no-install-recommends \
+  ca-certificates \
+  caddy \
+  ffmpeg \
+  libstdc++6 \
+  wget \
+  xz-utils
 
 # Add s6-overlay with architecture support
 RUN S6_ARCH=$(case ${TARGETARCH} in \
@@ -35,17 +48,15 @@ RUN S6_ARCH=$(case ${TARGETARCH} in \
   tar -C / -Jxpf /tmp/s6-overlay-arch.tar.xz && \
   rm /tmp/s6-overlay-*.tar.xz
 
-# Install OS packages
-RUN apk add --no-cache \
-  ffmpeg \
-  caddy
-
 # Set up directories
 WORKDIR /app
 
 # Copy built backend, frontend and docs
 COPY --from=backend-builder /app/backend /app/backend
 COPY --from=frontend-builder /ui/dist /app/frontend
+COPY --from=backend-builder /opt/libdave/lib/libdave.so /usr/local/lib/libdave.so
+COPY --from=backend-builder /opt/libdave/share/licenses/libdave /usr/share/licenses/libdave
+RUN ldconfig
 
 # Copy Caddy and s6 configurations
 COPY docker/Caddyfile /etc/caddy/Caddyfile
@@ -54,8 +65,8 @@ COPY docker/s6-rc.d /etc/s6-overlay/s6-rc.d
 # Create directories and set permissions
 RUN mkdir -p /app/data/uploads \
   && mkdir -p /caddy/data \
-  && chown -R nobody:nobody /app \
-  && chown -R nobody:nobody /caddy
+  && chown -R nobody:nogroup /app \
+  && chown -R nobody:nogroup /caddy
 
 # Set default env vars for Docker layout
 ENV DB_PATH=/app/data/skaldbot.db \

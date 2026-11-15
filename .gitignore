@@ -23,6 +23,8 @@ go.work.sum
 
 # env file
 .env
+.env.test
 tmp
 uploads
 *.db
+discord/node_modules/

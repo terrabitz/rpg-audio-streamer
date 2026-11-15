@@ -57,6 +57,17 @@ func main() {
 				Usage:   "Start the audio streaming server",
 				Flags: []cli.Flag{
 					&cli.StringFlag{
+						Name: "discord-streaming-bot-token", EnvVars: []string{"DISCORD_STREAMING_BOT_TOKEN"},
+						Usage:       "Bot token for Discord voice streaming; prefer the environment variable",
+						Destination: &cfg.Server.Discord.Token,
+					},
+					&cli.BoolFlag{
+						Name:        "discord-streaming-enabled",
+						EnvVars:     []string{"DISCORD_STREAMING_ENABLED"},
+						Usage:       "Enable Discord voice streaming",
+						Destination: &cfg.Server.DiscordStreamingEnabled,
+					},
+					&cli.StringFlag{
 						Name:        "host",
 						EnvVars:     []string{"HOST"},
 						Usage:       "Host to bind (empty listens on all interfaces)",

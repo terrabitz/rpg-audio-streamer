@@ -15,11 +15,19 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/gorilla/websocket"
 	"github.com/terrabitz/rpg-audio-streamer/internal/auth"
 	"github.com/terrabitz/rpg-audio-streamer/internal/server"
 	"github.com/terrabitz/rpg-audio-streamer/internal/sqlitedatastore"
-	"github.com/terrabitz/rpg-audio-streamer/internal/websocket"
 )
+
+type testWSRegisterer struct{}
+
+func (testWSRegisterer) Register(*websocket.Conn, *auth.Token)          {}
+func (testWSRegisterer) CloseTable(string)                              {}
+func (testWSRegisterer) RevokePlayerAccess(string)                      {}
+func (testWSRegisterer) RemoveTrack(string, string)                     {}
+func (testWSRegisterer) SyncSettings(string, server.TableSettingsPatch) {}
 
 func TestTableHTTP(t *testing.T) {
 	ctx := context.Background()
@@ -43,7 +51,7 @@ func TestTableHTTP(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	srv, err := server.New(server.Config{UploadDir: dir, DevMode: true}, logger, authenticator, db, websocket.NewHub(logger, db))
+	srv, err := server.New(server.Config{UploadDir: dir, DevMode: true}, logger, authenticator, db, testWSRegisterer{})
 	if err != nil {
 		t.Fatal(err)
 	}

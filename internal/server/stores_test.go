@@ -7,14 +7,30 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/terrabitz/rpg-audio-streamer/internal/discord"
 )
 
 type MockTrackStore struct {
 	TableStore
-	tracks     map[uuid.UUID]Track
-	trackTypes map[uuid.UUID]TrackType
+	tracks       map[uuid.UUID]Track
+	trackTypes   map[uuid.UUID]TrackType
+	destinations map[uuid.UUID]discord.Destination
 }
 
+func (m *MockTrackStore) GetTableDiscord(_ context.Context, id uuid.UUID) (*discord.Destination, error) {
+	if target, ok := m.destinations[id]; ok {
+		return &target, nil
+	}
+	return nil, nil
+}
+
+func (m *MockTrackStore) SaveTableDiscord(_ context.Context, id uuid.UUID, target discord.Destination) error {
+	if m.destinations == nil {
+		m.destinations = make(map[uuid.UUID]discord.Destination)
+	}
+	m.destinations[id] = target
+	return nil
+}
 func (m *MockTrackStore) GetTable(ctx context.Context, id uuid.UUID) (Table, error) {
 	if id != DefaultTableID {
 		return Table{}, sql.ErrNoRows

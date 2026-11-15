@@ -44,7 +44,7 @@ func (q *Queries) CountTrackTables(ctx context.Context, id []byte) (int64, error
 }
 
 const createTable = `-- name: CreateTable :one
-INSERT INTO game_tables (id, name, external_id) VALUES (?, ?, ?) RETURNING id, name, settings, external_id
+INSERT INTO game_tables (id, name, external_id) VALUES (?, ?, ?) RETURNING id, name, settings, external_id, discord_destination
 `
 
 type CreateTableParams struct {
@@ -61,6 +61,7 @@ func (q *Queries) CreateTable(ctx context.Context, arg CreateTableParams) (GameT
 		&i.Name,
 		&i.Settings,
 		&i.ExternalID,
+		&i.DiscordDestination,
 	)
 	return i, err
 }
@@ -78,7 +79,7 @@ func (q *Queries) DeleteTable(ctx context.Context, id []byte) (int64, error) {
 }
 
 const getTable = `-- name: GetTable :one
-SELECT id, name, settings, external_id FROM game_tables WHERE id = ?
+SELECT id, name, settings, external_id, discord_destination FROM game_tables WHERE id = ?
 `
 
 func (q *Queries) GetTable(ctx context.Context, id []byte) (GameTable, error) {
@@ -89,12 +90,13 @@ func (q *Queries) GetTable(ctx context.Context, id []byte) (GameTable, error) {
 		&i.Name,
 		&i.Settings,
 		&i.ExternalID,
+		&i.DiscordDestination,
 	)
 	return i, err
 }
 
 const getTableByExternalID = `-- name: GetTableByExternalID :one
-SELECT id, name, settings, external_id FROM game_tables WHERE external_id = ?
+SELECT id, name, settings, external_id, discord_destination FROM game_tables WHERE external_id = ?
 `
 
 func (q *Queries) GetTableByExternalID(ctx context.Context, externalID string) (GameTable, error) {
@@ -105,8 +107,20 @@ func (q *Queries) GetTableByExternalID(ctx context.Context, externalID string) (
 		&i.Name,
 		&i.Settings,
 		&i.ExternalID,
+		&i.DiscordDestination,
 	)
 	return i, err
+}
+
+const getTableDiscord = `-- name: GetTableDiscord :one
+SELECT discord_destination FROM game_tables WHERE id = ?
+`
+
+func (q *Queries) GetTableDiscord(ctx context.Context, id []byte) (string, error) {
+	row := q.db.QueryRowContext(ctx, getTableDiscord, id)
+	var discord_destination string
+	err := row.Scan(&discord_destination)
+	return discord_destination, err
 }
 
 const getTableSettings = `-- name: GetTableSettings :one
@@ -159,7 +173,7 @@ func (q *Queries) GetTableTracks(ctx context.Context, tableID []byte) ([]Track, 
 }
 
 const getTables = `-- name: GetTables :many
-SELECT id, name, settings, external_id FROM game_tables ORDER BY name, id
+SELECT id, name, settings, external_id, discord_destination FROM game_tables ORDER BY name, id
 `
 
 func (q *Queries) GetTables(ctx context.Context) ([]GameTable, error) {
@@ -176,6 +190,7 @@ func (q *Queries) GetTables(ctx context.Context) ([]GameTable, error) {
 			&i.Name,
 			&i.Settings,
 			&i.ExternalID,
+			&i.DiscordDestination,
 		); err != nil {
 			return nil, err
 		}
@@ -221,7 +236,7 @@ func (q *Queries) RemoveTableTrack(ctx context.Context, arg RemoveTableTrackPara
 }
 
 const rotateTableExternalID = `-- name: RotateTableExternalID :one
-UPDATE game_tables SET external_id = ? WHERE id = ? RETURNING id, name, settings, external_id
+UPDATE game_tables SET external_id = ? WHERE id = ? RETURNING id, name, settings, external_id, discord_destination
 `
 
 type RotateTableExternalIDParams struct {
@@ -237,12 +252,30 @@ func (q *Queries) RotateTableExternalID(ctx context.Context, arg RotateTableExte
 		&i.Name,
 		&i.Settings,
 		&i.ExternalID,
+		&i.DiscordDestination,
 	)
 	return i, err
 }
 
+const saveTableDiscord = `-- name: SaveTableDiscord :execrows
+UPDATE game_tables SET discord_destination = ? WHERE id = ?
+`
+
+type SaveTableDiscordParams struct {
+	DiscordDestination string
+	ID                 []byte
+}
+
+func (q *Queries) SaveTableDiscord(ctx context.Context, arg SaveTableDiscordParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, saveTableDiscord, arg.DiscordDestination, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const updateTable = `-- name: UpdateTable :one
-UPDATE game_tables SET name = ? WHERE id = ? RETURNING id, name, settings, external_id
+UPDATE game_tables SET name = ? WHERE id = ? RETURNING id, name, settings, external_id, discord_destination
 `
 
 type UpdateTableParams struct {
@@ -258,6 +291,7 @@ func (q *Queries) UpdateTable(ctx context.Context, arg UpdateTableParams) (GameT
 		&i.Name,
 		&i.Settings,
 		&i.ExternalID,
+		&i.DiscordDestination,
 	)
 	return i, err
 }
