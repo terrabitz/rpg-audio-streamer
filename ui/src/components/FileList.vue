@@ -298,6 +298,7 @@ function previewTrack(fileID: string) {
     isPlaying: true, isRepeating: trackType.isRepeating,
     playback: previousState?.playback ?? track.playback ?? defaultPlayback(),
     currentTime: previousState?.currentTime ?? track.playback?.startTime ?? 0,
+    duration: previousState?.duration ?? 0,
   })
 }
 

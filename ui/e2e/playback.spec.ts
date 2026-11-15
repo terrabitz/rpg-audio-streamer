@@ -1,0 +1,393 @@
+import { expect, test } from './fixtures'
+import { expectEdgeToEdgeTable, expectTrackGridSpacing, expectCompactPlayingCard, login, createTable, addExistingTrack, deleteTable, deleteLibraryTrack, uploadTrack, navigate } from './helpers'
+
+test('player receives live playback, late-join state, and pause', async ({
+  page,
+  browser,
+}) => {
+  await login(page)
+  const defaultTableURL = new URL(page.url()).pathname
+  await uploadTrack(page, 'Session Music')
+  const tile = page.locator('.file-tile').filter({ hasText: 'Session Music' })
+  await tile.click()
+  const sidebar = page.getByRole('complementary', { name: 'Currently playing' })
+  const gmAudio = page.locator('[data-active="true"]')
+  await expect
+    .poll(() => gmAudio.evaluate((el: HTMLVideoElement) => !el.paused && el.currentTime > 0))
+    .toBe(true)
+
+  const playerContext = await browser.newContext()
+  try {
+    const player = await playerContext.newPage()
+    await player.goto(defaultTableURL)
+    await expect(player.getByText('Volume Mixer', { exact: true })).toBeVisible()
+    await expect(player.getByRole('button', { name: 'Toggle navigation' })).toHaveCount(0)
+    await expect(player.getByRole('navigation', { name: 'Navigation' })).toHaveCount(0)
+    await expect(player.getByRole('banner').getByRole('link', { name: 'Login', exact: true })).toHaveCount(0)
+    await expect(player.getByRole('button', { name: 'Add Track', exact: true })).toHaveCount(0)
+    await expect(player.getByRole('banner')).toContainText('My Table')
+    await expect(player.getByRole('heading', { name: 'My Table', exact: true })).toHaveCount(0)
+    await player.getByRole('button', { name: 'Connect Audio', exact: true }).click()
+    await expect(player.getByText('Connected', { exact: true })).toBeVisible()
+    const playerAudio = player.locator('[data-active="true"]')
+    await expect(playerAudio).toHaveCount(1)
+    await expect
+      .poll(() => playerAudio.evaluate((el: HTMLVideoElement) => !el.paused && el.currentTime > 0))
+      .toBe(true)
+    await expect.poll(() => playerAudio.evaluate((el: HTMLMediaElement) => el.loop)).toBe(false)
+    const master = player.locator('.mixer-row').filter({ hasText: 'Master' }).getByRole('slider')
+    await master.press('Home')
+    await expect.poll(() => playerAudio.evaluate((el: HTMLVideoElement) => el.volume)).toBe(0)
+    await master.press('End')
+    await expect
+      .poll(() => playerAudio.evaluate((el: HTMLVideoElement) => el.volume))
+      .toBeGreaterThan(0)
+    const music = player.locator('.mixer-row').filter({ hasText: 'Music' }).getByRole('slider')
+    await music.press('Home')
+    await expect.poll(() => playerAudio.evaluate((el: HTMLVideoElement) => el.volume)).toBe(0)
+    await music.press('End')
+    await expect
+      .poll(() => playerAudio.evaluate((el: HTMLVideoElement) => el.volume))
+      .toBeGreaterThan(0)
+    const trackVolume = sidebar.getByRole('slider', { name: 'Volume for Session Music' })
+    await trackVolume.press('Home')
+    await expect.poll(() => gmAudio.evaluate((el: HTMLVideoElement) => el.volume)).toBe(0)
+    await expect.poll(() => playerAudio.evaluate((el: HTMLVideoElement) => el.volume)).toBe(0)
+    await expect.poll(() => gmAudio.evaluate((el: HTMLVideoElement) => el.paused)).toBe(false)
+    await trackVolume.press('End')
+    await expect
+      .poll(() => playerAudio.evaluate((el: HTMLVideoElement) => el.volume))
+      .toBeGreaterThan(0)
+    await expect
+      .poll(() => gmAudio.evaluate((el: HTMLVideoElement) => el.currentTime))
+      .toBeGreaterThan(4)
+    await expect
+      .poll(() => playerAudio.evaluate((el: HTMLVideoElement) => el.currentTime))
+      .toBeGreaterThan(4)
+    const seek = await sidebar.locator('.track-position .v-slider-track').boundingBox()
+    if (!seek) throw new Error('The playing track must expose a seek slider')
+    await page.mouse.click(seek.x + seek.width / 2, seek.y + seek.height / 2)
+    for (const media of [gmAudio, playerAudio]) {
+      await expect
+        .poll(() => media.evaluate((el: HTMLVideoElement) => el.currentTime))
+        .toBeGreaterThanOrEqual(14)
+      await expect
+        .poll(() => media.evaluate((el: HTMLVideoElement) => el.currentTime))
+        .toBeLessThan(18)
+      await expect.poll(() => media.evaluate((el: HTMLVideoElement) => el.paused)).toBe(false)
+    }
+    await sidebar.getByRole('button', { name: 'Restart Session Music' }).click()
+    await expect
+      .poll(() => gmAudio.evaluate((el: HTMLVideoElement) => el.currentTime))
+      .toBeLessThan(2)
+    await expect
+      .poll(() => playerAudio.evaluate((el: HTMLVideoElement) => el.currentTime))
+      .toBeLessThan(2)
+    await expect.poll(() => playerAudio.evaluate((el: HTMLVideoElement) => el.paused)).toBe(false)
+    await sidebar.getByRole('button', { name: 'Pause Session Music', exact: true }).click()
+    await expect.poll(() => playerAudio.evaluate((el: HTMLVideoElement) => el.paused)).toBe(true)
+    await tile.getByRole('button', { name: 'Edit Session Music', exact: true }).click()
+    await expect(page.getByRole('dialog').getByRole('button', { name: 'Restart Session Music' })).toHaveCount(0)
+    await page.getByRole('dialog').getByRole('slider', { name: 'Playback position for Session Music' }).press('Home')
+    await expect.poll(() => gmAudio.evaluate((el: HTMLVideoElement) => el.currentTime)).toBe(0)
+    await expect.poll(() => gmAudio.evaluate((el: HTMLVideoElement) => el.paused)).toBe(true)
+    await page.getByRole('button', { name: 'Close track controls' }).click()
+    await tile.click()
+    await expect.poll(() => playerAudio.evaluate((el: HTMLVideoElement) => !el.paused)).toBe(true)
+    await player.getByRole('button', { name: 'Disconnect Audio', exact: true }).click()
+    await expect(player.getByRole('button', { name: 'Connect Audio', exact: true })).toBeVisible()
+    await expect(player.locator('video')).toHaveCount(0)
+  } finally {
+    await playerContext.close()
+  }
+  await deleteLibraryTrack(page, 'Session Music', 1)
+})
+
+test('GM manages simultaneous tracks in the currently-playing sidebar', async ({ page }, testInfo) => {
+  test.slow()
+  await login(page)
+  await uploadTrack(page, 'Forest Ambiance', 'Ambiance')
+  await uploadTrack(page, 'Bell', 'One-Shot')
+  const forest = page.getByRole('group', { name: 'Forest Ambiance', exact: true })
+  const bell = page.getByRole('group', { name: 'Bell', exact: true })
+  const sidebar = page.getByRole('complementary', { name: 'Currently playing' })
+  await forest.click()
+  await bell.click()
+  await expect(sidebar.getByRole('group')).toHaveCount(2)
+  for (const card of await sidebar.getByRole('group').all()) await expectCompactPlayingCard(card)
+  for (const media of await page.locator('video').all()) {
+    await expect.poll(() => media.evaluate(
+      (el: HTMLVideoElement) => !el.paused && el.currentTime > 0,
+    )).toBe(true)
+  }
+  await sidebar.getByRole('slider', { name: 'Volume for Forest Ambiance' }).press('Home')
+  await expect.poll(() => page.locator('video').first().evaluate(
+    (el: HTMLVideoElement) => el.volume,
+  )).toBe(0)
+  await expect.poll(() => page.locator('video').last().evaluate(
+    (el: HTMLVideoElement) => !el.paused && el.volume > 0,
+  )).toBe(true)
+  await sidebar.getByRole('slider', { name: 'Volume for Forest Ambiance' }).press('End')
+  for (const width of [839, 840, 885, 959, 960, 1280, 1920, 840, 839]) {
+    await page.setViewportSize({ width, height: 720 })
+    if (width >= 840) {
+      await expectEdgeToEdgeTable(page, sidebar)
+      await expect(sidebar).toHaveCSS('width', '260px')
+      await expect(page.getByRole('button', { name: /^Now playing \(/ })).toHaveCount(0)
+    } else {
+      await expect(sidebar).toHaveCount(0)
+      await expect(page.getByRole('button', { name: 'Now playing (2)', exact: true })).toBeVisible()
+      await expect(page.locator('.table-track-grid')).toHaveCSS('width', `${width}px`)
+    }
+    await expectTrackGridSpacing(page)
+  }
+  await page.setViewportSize({ width: 1280, height: 720 })
+  await page.screenshot({ path: testInfo.outputPath('simultaneous-sidebar.png'), fullPage: true })
+  await bell.getByRole('button', { name: 'Edit Bell', exact: true }).click()
+  await page.getByRole('dialog').getByRole('slider', { name: 'Playback position for Bell' }).press('End')
+  await page.getByRole('button', { name: 'Close track controls' }).click()
+  await expect(sidebar.getByRole('group')).toHaveCount(1)
+  await expect(sidebar.getByRole('group')).toHaveAccessibleName('Playing Forest Ambiance')
+  await forest.getByRole('button', { name: 'Edit Forest Ambiance', exact: true }).click()
+  await page.getByRole('button', { name: 'Remove from table', exact: true }).click()
+  await expect(sidebar.getByRole('group')).toHaveCount(0)
+  await expect(sidebar).toContainText('No tracks playing.')
+  await expect(page.locator('video')).toHaveCount(1)
+  await deleteLibraryTrack(page, 'Forest Ambiance', 0)
+  await deleteLibraryTrack(page, 'Bell', 1)
+})
+
+test('GM opens compact now-playing controls from a mobile bottom drawer', async ({ page }, testInfo) => {
+  test.slow()
+  await page.setViewportSize({ width: 390, height: 667 })
+  await login(page)
+  const forestName = 'Forest at the edge of the ancient enchanted woodland'
+  const names = [forestName, 'Rain', 'Wind', 'River', 'Tavern']
+  for (const name of names) await uploadTrack(page, name, 'Ambiance')
+  const drawer = page.getByRole('dialog', { name: 'Currently playing', exact: true })
+  const toggle = page.getByRole('button', { name: /^Now playing \(\d+\)$/ })
+  await expect(toggle).toHaveAccessibleName('Now playing (0)')
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false')
+  await toggle.click()
+  await expect(drawer).toContainText('No tracks playing.')
+  await page.getByRole('button', { name: 'Close now playing' }).click()
+  for (const name of names) {
+    await page.getByRole('group', { name, exact: true }).locator('.track-heading > span').click()
+  }
+  await expect(toggle).toHaveAccessibleName('Now playing (5)')
+  await expect(drawer).toBeHidden()
+  await expect(page.getByRole('complementary', { name: 'Currently playing' })).toHaveCount(0)
+  await expect.poll(async () => {
+    const grid = await page.locator('.table-track-grid').boundingBox()
+    const card = await page.locator('.file-tile').first().boundingBox()
+    return grid?.x === 0 && grid.width === 390 && card?.x === 10
+  }).toBe(true)
+  await expectTrackGridSpacing(page, true)
+  await expect.poll(async () => {
+    const lastCard = await page.locator('.file-tile').nth(1).boundingBox()
+    return lastCard ? 390 - lastCard.x - lastCard.width : Infinity
+  }).toBeCloseTo(10, 1)
+  const forestTile = page.getByRole('group', { name: forestName, exact: true })
+  await expect(forestTile.locator('.track-heading > span')).toHaveCSS('white-space', 'nowrap')
+  await expect(forestTile.locator('.track-heading > span')).toHaveCSS('text-overflow', 'ellipsis')
+  await expect(forestTile.locator('.track-heading > span')).toHaveAttribute('title', forestName)
+  await expect.poll(() => forestTile.locator('.track-heading > span').evaluate(
+    el => el.scrollWidth > el.clientWidth,
+  )).toBe(true)
+  for (const tile of await page.locator('.file-tile').all()) {
+    await expect.poll(async () => (await tile.boundingBox())?.height).toBe(44)
+  }
+  await expect.poll(async () => (await page.locator('.track-list').boundingBox())?.y ?? Infinity)
+    .toBeLessThan(120)
+  await expect(toggle).toHaveCSS('height', '44px')
+  await expect.poll(async () => {
+    const bounds = await toggle.boundingBox()
+    return bounds ? Math.abs(bounds.y + bounds.height - 667) : Infinity
+  }).toBeLessThan(1)
+  await page.screenshot({ path: testInfo.outputPath('mobile-now-playing-collapsed.png'), fullPage: true })
+  await toggle.click()
+  await expect(drawer.getByRole('group')).toHaveCount(5)
+  const forest = drawer.getByRole('group', { name: `Playing ${forestName}`, exact: true })
+  await expectCompactPlayingCard(forest)
+  await expect(forest.locator('.playing-track-name')).toHaveAttribute('title', forestName)
+  await expect(drawer.locator('.now-playing-drawer')).toBeInViewport({ ratio: 1 })
+  await expect.poll(async () => (await drawer.locator('.now-playing-drawer').boundingBox())?.height ?? Infinity)
+    .toBeLessThanOrEqual(667 * 0.7 + 1)
+  await expect.poll(() => drawer.locator('.now-playing-drawer-tracks').evaluate(
+    el => el.scrollHeight > el.clientHeight,
+  )).toBe(true)
+  await forest.getByRole('slider', { name: `Volume for ${forestName}` }).press('Home')
+  await expect.poll(() => page.locator('video').first().evaluate(
+    (el: HTMLVideoElement) => el.volume === 0 && !el.paused,
+  )).toBe(true)
+  await forest.getByRole('slider', { name: `Playback position for ${forestName}` }).press('Home')
+  await forest.getByRole('slider', { name: `Playback position for ${forestName}` }).press('ArrowRight')
+  await expect.poll(() => page.locator('video').first().evaluate(
+    (el: HTMLVideoElement) => el.currentTime < 4 && !el.paused,
+  )).toBe(true)
+  await page.screenshot({ path: testInfo.outputPath('mobile-now-playing-open.png'), fullPage: true })
+  await drawer.getByRole('button', { name: 'Pause Tavern', exact: true }).click()
+  await expect(drawer.getByRole('group')).toHaveCount(4)
+  await page.getByRole('button', { name: 'Close now playing' }).click()
+  await expect(drawer).toBeHidden()
+  await expect(toggle).toHaveAccessibleName('Now playing (4)')
+  await toggle.click()
+  await expect(drawer.locator('.v-overlay__content')).toBeFocused()
+  await page.keyboard.press('Escape')
+  await expect(drawer).toBeHidden()
+  await expect(toggle).toBeFocused()
+  await toggle.click()
+  await page.mouse.click(10, 80)
+  await expect(drawer).toBeHidden()
+  await expect.poll(() => page.locator('video').first().evaluate(
+    (el: HTMLVideoElement) => !el.paused,
+  )).toBe(true)
+  await toggle.click()
+  await page.setViewportSize({ width: 1280, height: 720 })
+  const sidebar = page.getByRole('complementary', { name: 'Currently playing' })
+  await expect(sidebar.getByRole('group')).toHaveCount(4)
+  await expect(drawer).toHaveCount(0)
+  await expect(toggle).toHaveCount(0)
+  await page.setViewportSize({ width: 390, height: 667 })
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false')
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+  for (const name of names) await deleteLibraryTrack(page, name, 1)
+  await expect(toggle).toHaveCount(0)
+})
+
+test('starting another Music track stops the previous one', async ({ page }) => {
+  await login(page)
+  await uploadTrack(page, 'First Music')
+  await uploadTrack(page, 'Second Music')
+  const first = page.locator('.file-tile').filter({ hasText: 'First Music' })
+  const second = page.locator('.file-tile').filter({ hasText: 'Second Music' })
+  await first.locator('.track-heading').click()
+  const sidebar = page.getByRole('complementary', { name: 'Currently playing' })
+  await expect(sidebar.getByRole('group')).toHaveAccessibleName('Playing First Music')
+  await expect
+    .poll(() =>
+      page
+        .locator('video')
+        .first()
+        .evaluate((el: HTMLVideoElement) => !el.paused && el.currentTime > 0),
+    )
+    .toBe(true)
+  await second.locator('.track-heading').click()
+  await expect(sidebar.getByRole('group')).toHaveAccessibleName('Playing Second Music')
+  await expect
+    .poll(() =>
+      page
+        .locator('video')
+        .first()
+        .evaluate((el: HTMLVideoElement) => el.paused),
+    )
+    .toBe(true)
+  await expect
+    .poll(() =>
+      page
+        .locator('video')
+        .last()
+        .evaluate((el: HTMLVideoElement) => !el.paused && el.currentTime > 0),
+    )
+    .toBe(true)
+  for (const [tile, name] of [
+    [first, 'First Music'],
+    [second, 'Second Music'],
+  ] as const) {
+    await deleteLibraryTrack(page, name, 1)
+    await expect(tile).toHaveCount(0)
+  }
+  await expect(page.locator('video')).toHaveCount(0)
+})
+
+test('tables share a library but isolate playback, removal, and deletion', async ({
+  page, browser, context,
+}) => {
+  test.slow()
+  await context.grantPermissions(['clipboard-read', 'clipboard-write'])
+  await login(page)
+  await navigate(page, 'Library')
+  await uploadTrack(page, 'Shared Forest')
+  await navigate(page, 'Tables')
+  await createTable(page, 'Friday')
+  await createTable(page, 'Sunday')
+  await page.getByRole('link', { name: 'Open Friday', exact: true }).click()
+  await addExistingTrack(page, 'Shared Forest')
+  await navigate(page, 'Tables')
+  await page.getByRole('button', { name: 'Options for Friday', exact: true }).click()
+  await page.getByRole('menuitem', { name: 'Copy invite code for Friday', exact: true }).click()
+  await expect(page.getByText('Invite code copied to clipboard.', { exact: true })).toBeVisible()
+  const fridayLink = await page.evaluate(() => navigator.clipboard.readText())
+  await page.getByRole('link', { name: 'Open Friday', exact: true }).click()
+
+  const sundayGM = await context.newPage()
+  await sundayGM.goto('/tables')
+  await sundayGM.getByRole('link', { name: 'Open Sunday', exact: true }).click()
+  await addExistingTrack(sundayGM, 'Shared Forest')
+  await navigate(sundayGM, 'Tables')
+  await sundayGM.getByRole('button', { name: 'Options for Sunday', exact: true }).click()
+  await sundayGM.getByRole('menuitem', { name: 'Copy invite code for Sunday', exact: true }).click()
+  await expect(sundayGM.getByText('Invite code copied to clipboard.', { exact: true })).toBeVisible()
+  const sundayLink = await sundayGM.evaluate(() => navigator.clipboard.readText())
+  expect(sundayLink).not.toBe(fridayLink)
+  await sundayGM.getByRole('link', { name: 'Open Sunday', exact: true }).click()
+
+  const playerContext = await browser.newContext()
+  try {
+    const fridayPlayer = await playerContext.newPage()
+    const sundayPlayer = await playerContext.newPage()
+    await fridayPlayer.goto(fridayLink)
+    await sundayPlayer.goto(sundayLink)
+    await expect(fridayPlayer.getByRole('banner')).toContainText('Friday')
+    await expect(sundayPlayer.getByRole('banner')).toContainText('Sunday')
+    await expect(fridayPlayer.getByRole('link', { name: 'Library', exact: true })).toHaveCount(0)
+    await fridayPlayer.getByRole('button', { name: 'Connect Audio', exact: true }).click()
+    await sundayPlayer.getByRole('button', { name: 'Connect Audio', exact: true }).click()
+    await expect(fridayPlayer.getByText('Connected', { exact: true })).toBeVisible()
+    await expect(sundayPlayer.getByText('Connected', { exact: true })).toBeVisible()
+    const fridayTile = page.locator('.file-tile').filter({ hasText: 'Shared Forest' })
+    const sundayTile = sundayGM.locator('.file-tile').filter({ hasText: 'Shared Forest' })
+    await fridayTile.click()
+    await expect(fridayPlayer.locator('video')).toHaveCount(1)
+    await expect.poll(() => fridayPlayer.locator('video').evaluate(
+      (el: HTMLVideoElement) => !el.paused && el.currentTime > 0,
+    )).toBe(true)
+    await expect(sundayPlayer.locator('video')).toHaveCount(0)
+    await sundayTile.click()
+    await expect(sundayPlayer.locator('video')).toHaveCount(1)
+    await expect.poll(() => sundayPlayer.locator('video').evaluate(
+      (el: HTMLVideoElement) => !el.paused && el.currentTime > 0,
+    )).toBe(true)
+    await fridayTile.click()
+    await expect.poll(() => fridayPlayer.locator('video').evaluate(
+      (el: HTMLVideoElement) => el.paused,
+    )).toBe(true)
+    await expect.poll(() => sundayPlayer.locator('video').evaluate(
+      (el: HTMLVideoElement) => !el.paused,
+    )).toBe(true)
+    await fridayTile.getByRole('button', { name: 'Edit Shared Forest', exact: true }).click()
+    await page.getByRole('button', { name: 'Remove from table', exact: true }).click()
+    await expect(fridayTile).toHaveCount(0)
+    await expect(fridayPlayer.locator('video')).toHaveCount(0)
+    await expect(sundayTile).toBeVisible()
+    await expect.poll(() => sundayPlayer.locator('video').evaluate(
+      (el: HTMLVideoElement) => !el.paused,
+    )).toBe(true)
+    await navigate(page, 'Library')
+    await deleteLibraryTrack(page, 'Shared Forest', 1)
+    await expect(sundayTile).toHaveCount(0)
+    await expect(sundayPlayer.locator('video')).toHaveCount(0)
+    await navigate(page, 'Tables')
+    await deleteTable(page, 'Friday')
+    await expect(fridayPlayer.getByText('This table has been deleted.', { exact: true })).toBeVisible()
+    await fridayPlayer.reload()
+    await expect(fridayPlayer.getByText(
+      'This table is unavailable or has been deleted.', { exact: true },
+    )).toBeVisible()
+    await deleteTable(page, 'Sunday')
+    await expect(sundayPlayer.getByText('This table has been deleted.', { exact: true })).toBeVisible()
+  } finally {
+    await playerContext.close()
+    await sundayGM.close()
+  }
+})

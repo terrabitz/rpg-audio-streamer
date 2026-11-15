@@ -7,6 +7,7 @@ import vuetify from 'vite-plugin-vuetify'
 
 // https://vite.dev/config/
 export default defineConfig({
+  envDir: process.env.E2E_ENV_DIR,
   plugins: [
     vue(),
     vueDevTools(),

@@ -194,7 +194,8 @@ track's name, type, and creation time. Row clicks (or keyboard
 activation) toggle a local preview, with at most one preview playing at once.
 Resuming a paused preview continues from its current position.
 Library previews reuse the HLS player without opening a WebSocket or sending
-synchronization messages. Preview state is cleared on leaving the library;
+synchronization messages. Resuming a preview retains its loaded duration and
+playback region. Preview state is cleared on leaving the library;
 it cannot become a table's playback state. Track editing is shared with the
 table tiles through the audio-controls dialog's activator slot. Before deleting
 a library track, the GM-only usage endpoint counts its current table
@@ -620,6 +621,9 @@ Domain tests exercise authentication, routing policies, and frontend state
 transitions. SQLite integration tests use the real schema and adapter against
 isolated file-backed databases. Browser journeys run the built Vue app with
 the real Go server, database, FFmpeg, WebSockets, and HLS media playback.
+Each browser test attempt owns a separate server, datastore, upload directory,
+and WebSocket state; the built UI and server executable are shared as immutable
+artifacts. Live Discord validation uses a shared external voice channel.
 These layers cover different boundaries rather than substituting mocks for
 end-to-end behavior. Test execution and maintenance procedures live in the
 repository testing skill.

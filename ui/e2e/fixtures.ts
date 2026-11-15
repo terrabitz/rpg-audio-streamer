@@ -1,6 +1,7 @@
 import { mkdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { test as base, type BrowserContext, type Page } from '@playwright/test'
+import { startApp, type AppInstance } from './instance'
 
 export { expect } from '@playwright/test'
 
@@ -12,7 +13,27 @@ type TrackedPage = { page: Page; label: string; offsetMs: number }
 
 // In recording mode every page, including player pages from browser.newContext(),
 // is captured with its start offset so record.mjs can compose one time-aligned GIF per test.
-export const test = base.extend<{ recorder: void }>({
+export const test = base.extend<{ app: AppInstance; recorder: void }>({
+  app: [async ({ browser }, use, testInfo) => {
+    const existing = new Set(browser.contexts())
+    const liveDiscord = testInfo.tags.includes('@discord')
+    const app = await startApp(liveDiscord)
+    try {
+      await use(app)
+    } finally {
+      try {
+        await Promise.all(browser.contexts().filter(context => !existing.has(context)).map(context => context.close()))
+      } finally {
+        await app.stop()
+        if (!liveDiscord && testInfo.status !== testInfo.expectedStatus && app.logs()) {
+          await testInfo.attach('app.log', { body: app.logs(), contentType: 'text/plain' })
+        }
+      }
+    }
+  }, { timeout: 120_000 }],
+  baseURL: async ({ app }, use) => {
+    await use(app.url)
+  },
   recorder: [
     async ({ browser, context }, use, testInfo) => {
       if (!recording) {
