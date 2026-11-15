@@ -1,17 +1,13 @@
 package server
 
 import (
-	"bytes"
 	"context"
-	"encoding/binary"
 	"fmt"
 	"math"
-	"os/exec"
 	"path/filepath"
 
 	"github.com/google/uuid"
 	"github.com/terrabitz/rpg-audio-streamer/internal/livemixer"
-	"github.com/terrabitz/rpg-audio-streamer/internal/mixer"
 )
 
 const mixerSampleRate = 48000
@@ -47,53 +43,20 @@ func (s *Server) mixerSource(ctx context.Context, tableID, fileID string) (livem
 	if err != nil {
 		return livemixer.Clip{}, err
 	}
-	frames, err := decodeMixerPCM(ctx, filepath.Join(track.Path, "index.m3u8"))
+	playlist := filepath.Join(track.Path, "index.m3u8")
+	segments, duration, err := readHLSPlaylist(playlist)
+	if err != nil {
+		return livemixer.Clip{}, fmt.Errorf("inspect mixer audio: %w", err)
+	}
+	length := int(math.Round(duration * mixerSampleRate))
+	source, err := newWindowedPCMSource(mixerSampleRate, length, segments)
 	if err != nil {
 		return livemixer.Clip{}, err
 	}
 	return livemixer.Clip{
-		Frames: frames, Type: trackType.Name, Repeating: trackType.IsRepeating,
+		Source: source, Type: trackType.Name, Repeating: trackType.IsRepeating,
 		Playback: livemixer.Playback{
 			StartTime: track.Playback.StartTime, EndTime: track.Playback.EndTime, LoopBackTime: track.Playback.LoopBackTime,
 		},
 	}, nil
-}
-
-func decodeMixerPCM(ctx context.Context, path string) ([]mixer.Frame, error) {
-	var stdout, stderr limitedBuffer
-	stdout.limit = 64 << 20
-	stderr.limit = 64 << 10
-	cmd := exec.CommandContext(ctx, "ffmpeg", "-v", "error", "-i", path,
-		"-vn", "-ac", "2", "-ar", "48000", "-f", "f32le", "-")
-	cmd.Stdout, cmd.Stderr = &stdout, &stderr
-	if err := cmd.Run(); err != nil {
-		return nil, fmt.Errorf("decode mixer PCM: %w: %s", err, stderr.String())
-	}
-	if stdout.Len() == 0 || stdout.Len()%8 != 0 {
-		return nil, fmt.Errorf("decoder returned empty or incomplete stereo PCM")
-	}
-	data := stdout.Bytes()
-	frames := make([]mixer.Frame, len(data)/8)
-	for i := range frames {
-		left := float64(math.Float32frombits(binary.LittleEndian.Uint32(data[i*8:])))
-		right := float64(math.Float32frombits(binary.LittleEndian.Uint32(data[i*8+4:])))
-		if math.IsNaN(left) || math.IsInf(left, 0) || math.IsNaN(right) || math.IsInf(right, 0) {
-			return nil, fmt.Errorf("decoder returned non-finite PCM")
-		}
-		// AAC decoding can overshoot unity; normalize to the core's PCM range.
-		frames[i] = mixer.Frame{Left: max(-1, min(1, left)), Right: max(-1, min(1, right))}
-	}
-	return frames, nil
-}
-
-type limitedBuffer struct {
-	bytes.Buffer
-	limit int
-}
-
-func (b *limitedBuffer) Write(data []byte) (int, error) {
-	if len(data) > b.limit-b.Len() {
-		return 0, fmt.Errorf("decoder output exceeds %d byte limit", b.limit)
-	}
-	return b.Buffer.Write(data)
 }

@@ -26,7 +26,7 @@ type Subscription struct {
 	err    error
 }
 
-// Subscribe observes the existing timeline; it never starts or advances playback.
+// Subscribe observes the mix; it does not start tracks or change their positions.
 func (s *Service) Subscribe(tableID string) (*Subscription, func(), error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

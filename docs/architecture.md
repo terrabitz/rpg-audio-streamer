@@ -24,7 +24,7 @@ flowchart LR
   API --> Uploads
   Hub -.->|GM playback commands| Mix[Live table mixer]
   Mix --> PCM[Standalone PCM core]
-  Mix -->|Decode stored HLS| FFmpeg
+  Mix -->|Bounded HLS windows| FFmpeg
   Mix -.->|PCM subscription| Voice[Go Discord voice transport]
   Voice -->|DAVE-encrypted Opus| Discord[Table-selected Discord voice channel]
 ```
@@ -383,9 +383,10 @@ regions and table mixing/ordering settings, not the live playback clock.
 
 ### Standalone PCM mixer
 
-`internal/mixer` is an offline mixing core, not part of the HTTP, WebSocket,
-or browser playback path. It accepts decoded, normalized stereo PCM frames at
-one caller-selected sample rate. `Add` copies each clip and leaves it paused.
+`internal/mixer` is not part of the HTTP, WebSocket, or browser playback path.
+It accepts normalized stereo PCM frames at one caller-selected sample rate.
+`Add` copies an in-memory clip and leaves it paused; `AddSource` accepts a
+bounded indexed source whose reads never block rendering.
 `Play`, `Pause`, `Seek`, `SetRegion`, `SetRepeating`, `SetGain`, and `Remove`
 control tracks; `State` exposes their absolute frame position and requested
 playing state. `Render` overwrites a caller-owned output buffer and advances
@@ -419,9 +420,7 @@ saturated to `[-1, 1]`; there is no normalization or peak limiter.
 Tests use small known PCM arrays and exact sample positions to assert audible
 output, completion, crossfade boundaries, interruption, and silence. Rendering
 the same command timeline with single, irregular, or whole buffers produces
-the same samples and track state, including empty renders.
-The core stores complete decoded clips in memory (about 44 MiB per minute at
-48 kHz with float64 stereo samples). File decoding/resampling, bounded-memory
+the same samples and track state, including empty renders. File decoding,
 source buffering, playback-state adapters, real-time scheduling, encoding,
 and external audio delivery are outside this package.
 
@@ -461,30 +460,43 @@ so warming a decoder does not delay that broadcast.
 
 `internal/server` supplies the PCM source. It checks the track's association
 with the socket's table, loads track/type metadata through the datastore, and
-decodes the stored HLS playlist through FFmpeg to 48 kHz stereo float PCM.
-Each track is decoded on its first command in a session and cached for
-subsequent commands. Decoding has a ten-second deadline and a 64 MiB raw
-output limit; errors and oversized clips fail explicitly. PCM samples are
-clamped to unity to accommodate AAC decoding overshoot. Full clips and core
-copies are retained in memory, so this is not a bounded-memory streaming
-decoder.
+uses HLS segment durations to determine the indexed PCM length. FFmpeg decodes
+audio lazily in five-second windows at 48 kHz stereo float PCM. Each temporary
+window playlist references only the stored HLS segments needed for that range,
+so seeking does not decode the entire track from its beginning. The source
+keeps a three-window least-recently-used cache and requests the next window
+one second before playback reaches a boundary. This bounds PCM memory to
+roughly 11 MiB of cached frames plus one in-flight decode window per active
+track, regardless of track duration. Temporary manifests contain paths only
+and are removed after decoding; decoded audio is not written to disk.
+Each decode includes a 100 ms margin for AAC timestamp and frame rounding, then
+clips or zero-pads to the indexed window length; larger shortfalls fail.
+Crossfades and seeks access indexed windows, including loop-back windows.
+Decoded samples are clamped to unity to accommodate AAC decoding overshoot.
+FFmpeg failures are exposed on the corresponding live-mixer track status.
+If a requested window is still decoding, that track temporarily renders
+silence without advancing its playback cursor, so it resumes at the correct
+audio rather than skipping frames.
 
 Commands are serialized while a separate lock protects PCM rendering.
-Validation and decoding precede mutation, so invalid patches and snapshots
-do not partially alter a mix, and decoding does not hold the render lock.
+Validation precedes mutation, so invalid patches and snapshots do not
+partially alter a mix. FFmpeg work runs asynchronously and source reads on the
+render path are non-blocking.
 The service renders 960-frame blocks every 20 ms with a cancellable loop.
+It renders a table only while that table has a PCM subscriber, avoiding
+duplicate decoding while Discord is disconnected.
 
 Rendered PCM blocks are published to internal subscriptions for Discord
-streaming. Subscribing observes the existing timeline and never starts or
-advances playback. Each subscriber has a two-block buffer and is closed when
-it falls behind rather than delaying rendering. Closing the table session or
-stopping the renderer closes its subscriptions. GM browser audio continues
-through ordinary HLS playback; the server mix is audible through Discord.
+streaming. Subscribing does not start tracks or change their positions. Each
+subscriber has a one-second buffer and is closed when it falls further behind
+rather than delaying rendering. Closing the table session or stopping the
+renderer closes its subscriptions. GM browser audio continues through
+ordinary HLS playback; the server mix is audible through Discord.
 
 Track disassociation removes the track from its table's mix; library deletion
 removes it from all mixes. Table deletion and loss of its last GM connection
-discard the session. Closing a session does not wait for decoding, and an
-in-flight decode cannot recreate it. Multiple GMs share a table's mixer with
+discard the session and cancel its decoder processes; in-flight source
+preparation cannot recreate it. Multiple GMs share a table's mixer with
 last-accepted-command semantics. Mixer state is ephemeral, not stored in SQLite.
 Domain tests assert rendered samples after partial updates and snapshots,
 table isolation, rejection without mutation, and nonblocking rendering/closure.

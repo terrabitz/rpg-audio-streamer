@@ -29,6 +29,25 @@ func TestRenderContinuesAcrossBlocks(t *testing.T) {
 	assertFrames(t, out, []Frame{{0, 0}})
 }
 
+func TestSourceUnderflowPausesTrackPositionUntilPCMIsReady(t *testing.T) {
+	source := &delayedSource{frame: Frame{Left: 0.5}}
+	m := newMixer(t, 6)
+	must(t, m.AddSource("stream", source))
+	must(t, m.Play("stream"))
+	out := make([]Frame, 3)
+	m.Render(out)
+	assertFrames(t, out, []Frame{{}, {}, {}})
+	assertState(t, m, "stream", State{Position: 0, Playing: true})
+	source.ready = true
+	m.Render(out[:1])
+	assertFrames(t, out[:1], []Frame{{Left: 0.5}})
+	assertState(t, m, "stream", State{Position: 1, Playing: true})
+	m.Close()
+	if !source.closed {
+		t.Fatal("closing the mixer did not close its source")
+	}
+}
+
 func TestPlaybackControls(t *testing.T) {
 	m := newMixer(t, 6)
 	samples := []Frame{{0.1, 0.2}, {0.3, 0.4}, {0.5, 0.6}}
@@ -66,6 +85,26 @@ func TestPlaybackControls(t *testing.T) {
 	if _, err := m.State("music"); err == nil {
 		t.Fatal("removed track still exists")
 	}
+
+}
+
+type delayedSource struct {
+	frame  Frame
+	ready  bool
+	closed bool
+}
+
+func (*delayedSource) Len() int { return 12 }
+
+func (s *delayedSource) FrameAt(int) (Frame, bool) {
+	return s.frame, s.ready
+}
+
+func (*delayedSource) Err() error { return nil }
+
+func (s *delayedSource) Close() error {
+	s.closed = true
+	return nil
 }
 
 func TestPlaybackRegion(t *testing.T) {

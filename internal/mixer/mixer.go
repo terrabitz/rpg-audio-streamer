@@ -16,6 +16,14 @@ type State struct {
 	Playing  bool
 }
 
+// Source supplies indexed PCM without blocking the render loop.
+type Source interface {
+	Len() int
+	FrameAt(int) (Frame, bool)
+	Err() error
+	Close() error
+}
+
 // Region uses absolute frame offsets; End is exclusive.
 type Region struct {
 	Start, End, LoopBack int
@@ -30,6 +38,7 @@ type Mixer struct {
 type track struct {
 	id        string
 	samples   []Frame
+	source    Source
 	position  int
 	playing   bool
 	region    Region
@@ -37,6 +46,7 @@ type track struct {
 	overlap   *overlap
 	gain      ramp
 	envelope  ramp
+	sourceErr error
 }
 
 type overlap struct {
@@ -77,6 +87,22 @@ func (m *Mixer) Add(id string, samples []Frame) error {
 	return nil
 }
 
+// AddSource adds an indexed PCM source whose reads never block rendering.
+func (m *Mixer) AddSource(id string, source Source) error {
+	if id == "" || source == nil || source.Len() <= 0 {
+		return fmt.Errorf("track requires an ID and non-empty PCM source")
+	}
+	for _, t := range m.tracks {
+		if t.id == id {
+			return fmt.Errorf("track %q already exists", id)
+		}
+	}
+	m.tracks = append(m.tracks, &track{
+		id: id, source: source, region: Region{End: source.Len()}, gain: ramp{to: 1},
+	})
+	return nil
+}
+
 func (m *Mixer) Play(id string) error {
 	t, err := m.find(id)
 	if err != nil {
@@ -113,7 +139,7 @@ func (m *Mixer) SetRegion(id string, region Region) error {
 	if err != nil {
 		return err
 	}
-	if region.Start < 0 || region.End <= region.Start || region.End > len(t.samples) ||
+	if region.Start < 0 || region.End <= region.Start || region.End > t.length() ||
 		region.LoopBack < region.Start || region.LoopBack >= region.End {
 		return fmt.Errorf("invalid playback region for track %q", id)
 	}
@@ -146,7 +172,29 @@ func (m *Mixer) Remove(id string) error {
 	if err != nil {
 		return err
 	}
+	if t.source != nil {
+		_ = t.source.Close()
+	}
 	m.tracks = slices.DeleteFunc(m.tracks, func(candidate *track) bool { return candidate == t })
+	return nil
+}
+
+func (m *Mixer) Close() {
+	for _, t := range m.tracks {
+		if t.source != nil {
+			_ = t.source.Close()
+		}
+	}
+	m.tracks = nil
+}
+
+// DetachSource transfers a source to another mixer without closing it.
+func (m *Mixer) DetachSource(id string) error {
+	t, err := m.find(id)
+	if err != nil {
+		return err
+	}
+	t.source = nil
 	return nil
 }
 
@@ -174,6 +222,14 @@ func (m *Mixer) State(id string) (State, error) {
 	return State{Position: t.position, Playing: t.playing}, nil
 }
 
+func (m *Mixer) TrackError(id string) error {
+	t, err := m.find(id)
+	if err != nil {
+		return err
+	}
+	return t.sourceErr
+}
+
 // Render overwrites dst, advances by exactly len(dst) frames, and clips only the final sum.
 func (m *Mixer) Render(dst []Frame) {
 	clear(dst)
@@ -190,8 +246,7 @@ func (m *Mixer) Render(dst []Frame) {
 
 func (t *track) next(sampleRate int) Frame {
 	gain := t.gain.step()
-	envelope := t.envelope.step()
-	if !t.playing && envelope == 0 {
+	if !t.playing && t.envelope.value() == 0 {
 		return Frame{}
 	}
 	if t.position == t.region.End {
@@ -204,14 +259,21 @@ func (t *track) next(sampleRate int) Frame {
 	if t.playing && t.repeating && t.overlap == nil && fadeFrames > 0 && t.position >= t.region.End-fadeFrames {
 		t.overlap = &overlap{start: t.position, incoming: t.region.LoopBack}
 	}
-	frame := t.samples[t.position]
+	frame, ready := t.frameAt(t.position)
+	if !ready {
+		return t.stopOnSourceError()
+	}
 	if t.overlap != nil {
 		progress := float64(t.position-t.overlap.start) / float64(t.region.End-t.overlap.start)
-		head := t.samples[t.overlap.incoming]
+		head, headReady := t.frameAt(t.overlap.incoming)
+		if !headReady {
+			return t.stopOnSourceError()
+		}
 		frame.Left = frame.Left*(1-progress) + head.Left*progress
 		frame.Right = frame.Right*(1-progress) + head.Right*progress
 		t.overlap.incoming++
 	}
+	envelope := t.envelope.step()
 	t.position++
 	if t.position == t.region.End {
 		t.finish()
@@ -219,6 +281,41 @@ func (t *track) next(sampleRate int) Frame {
 	frame.Left *= gain * envelope
 	frame.Right *= gain * envelope
 	return frame
+}
+
+func (t *track) stopOnSourceError() Frame {
+	if t.sourceErr != nil {
+		t.playing = false
+		t.position = t.region.Start
+		t.envelope = ramp{}
+		t.overlap = nil
+	}
+	return Frame{}
+}
+
+func (t *track) length() int {
+	if t.source != nil {
+		return t.source.Len()
+	}
+	return len(t.samples)
+}
+
+func (t *track) frameAt(position int) (Frame, bool) {
+	if t.source == nil {
+		return t.samples[position], true
+	}
+	frame, ready := t.source.FrameAt(position)
+	if ready {
+		if !validSample(frame.Left) || !validSample(frame.Right) {
+			t.sourceErr = fmt.Errorf("source returned invalid PCM at frame %d", position)
+			return Frame{}, false
+		}
+		return frame, true
+	}
+	if err := t.source.Err(); err != nil {
+		t.sourceErr = err
+	}
+	return Frame{}, false
 }
 
 func (t *track) finish() {

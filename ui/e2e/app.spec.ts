@@ -38,6 +38,8 @@ test('GM controls real Discord audio and reconnects the saved channel', async ({
     await waitAudio(audio => audio.present)
     await page.getByRole('group', { name: 'Discord Low', exact: true }).locator('.track-heading > span').click()
     await page.getByRole('group', { name: 'Discord High', exact: true }).locator('.track-heading > span').click()
+    await expect(page.getByRole('group', { name: 'Playing Discord Low', exact: true })).toBeVisible()
+    await expect(page.getByRole('group', { name: 'Playing Discord High', exact: true })).toBeVisible()
     await waitAudio(audio => audio.low > 0.05 && audio.high > 0.05)
     const low = page.getByRole('group', { name: 'Playing Discord Low', exact: true })
     const high = page.getByRole('group', { name: 'Playing Discord High', exact: true })
@@ -533,7 +535,11 @@ test('GM drags waveform markers continuously without stuttering for listeners', 
       await page.mouse.down()
       const observations = await Promise.all([page, player].map(browserPage =>
         browserPage.locator('[data-active="true"]').evaluateHandle((media: HTMLMediaElement) => {
-          const samples: { elapsed: number, position: number, paused: boolean, seeking: boolean }[] = []
+          const samples: {
+            elapsed: number, position: number, paused: boolean, seeking: boolean,
+            readyState: number, bufferedEnd: number, playbackRate: number,
+            visibility: DocumentVisibilityState,
+          }[] = []
           const started = performance.now()
           let seeks = 0
           const onSeeking = () => { seeks++ }
@@ -541,6 +547,10 @@ test('GM drags waveform markers continuously without stuttering for listeners', 
           const sample = () => samples.push({
             elapsed: (performance.now() - started) / 1000,
             position: media.currentTime, paused: media.paused, seeking: media.seeking,
+            readyState: media.readyState,
+            bufferedEnd: media.buffered.length ? media.buffered.end(media.buffered.length - 1) : 0,
+            playbackRate: media.playbackRate,
+            visibility: document.visibilityState,
           })
           sample()
           const timer = setInterval(sample, 50)
@@ -573,7 +583,8 @@ test('GM drags waveform markers continuously without stuttering for listeners', 
           expect(sample.seeking, `${point}: playback does not seek during the gesture`).toBe(false)
           const earlier = result.samples.slice(0, sampleIndex).findLast(previous => sample.elapsed - previous.elapsed >= 0.5)
           if (!earlier) continue
-          expect(sample.position - earlier.position, `${point}: every half-second window advances smoothly`)
+          expect(sample.position - earlier.position,
+            `${point} ${index === 0 ? 'GM' : 'listener'}: every half-second window advances smoothly (${JSON.stringify({ earlier, sample })})`)
             .toBeGreaterThanOrEqual((sample.elapsed - earlier.elapsed) * 0.8)
         }
         await observation.dispose()

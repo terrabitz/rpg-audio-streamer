@@ -21,6 +21,7 @@ type Playback struct {
 
 type Clip struct {
 	Frames    []mixer.Frame
+	Source    mixer.Source
 	Type      string
 	Repeating bool
 	Playback  Playback
@@ -42,6 +43,7 @@ type TrackStatus struct {
 	CurrentTime float64 `json:"currentTime"`
 	IsPlaying   bool    `json:"isPlaying"`
 	Gain        float64 `json:"gain"`
+	Error       string  `json:"error,omitempty"`
 }
 
 type Status struct {
@@ -81,6 +83,7 @@ type track struct {
 type change struct {
 	patch Patch
 	track track
+	fresh bool
 }
 
 func New(sampleRate int, source Source) (*Service, error) {
@@ -112,10 +115,12 @@ func (s *Service) Update(tableID string, payload json.RawMessage) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.generations[tableID] != generation {
+		change.close()
 		return fmt.Errorf("mix session closed while loading audio")
 	}
 	session := s.get(tableID)
 	if err := session.apply(change); err != nil {
+		change.close()
 		return err
 	}
 	session.status.Revision++
@@ -150,35 +155,60 @@ func (s *Service) SyncContext(ctx context.Context, tableID string, payload json.
 		return err
 	}
 	changes := make([]change, 0, len(*snapshot.Tracks))
+	closeChanges := func() {
+		for _, change := range changes {
+			change.close()
+		}
+	}
 	seen := make(map[string]bool)
 	for _, patch := range *snapshot.Tracks {
 		if seen[patch.FileID] {
+			closeChanges()
 			return fmt.Errorf("duplicate track %q in snapshot", patch.FileID)
 		}
 		seen[patch.FileID] = true
 		change, err := s.prepare(tableID, patch)
 		if err != nil {
+			closeChanges()
 			return err
 		}
 		changes = append(changes, change)
 	}
 	replacement := s.newSession()
 	replacement.typeVolumes = snapshot.TypeVolumes
+	closeReplacement := func() {
+		for _, change := range changes {
+			if !change.fresh && change.track.clip.Source != nil {
+				_ = replacement.engine.DetachSource(change.patch.FileID)
+			}
+		}
+		replacement.engine.Close()
+		closeChanges()
+	}
 	for _, change := range changes {
 		if err := replacement.apply(change); err != nil {
+			closeReplacement()
 			return err
 		}
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if err := ctx.Err(); err != nil {
+		closeReplacement()
 		return err
 	}
 	if s.generations[tableID] != generation {
+		closeReplacement()
 		return fmt.Errorf("mix session closed while loading audio")
 	}
 	if old := s.tables[tableID]; old != nil {
 		replacement.status = old.status
+		for _, change := range changes {
+			if !change.fresh && change.track.clip.Source != nil {
+				_ = old.engine.DetachSource(change.patch.FileID)
+			}
+		}
+		old.engine.Close()
 	}
 	replacement.status.Revision++
 	replacement.status.Peak = 0
@@ -244,6 +274,9 @@ func (s *Service) CloseTable(tableID string) {
 	defer s.mu.Unlock()
 	s.generations[tableID]++
 	s.closeStreams(tableID, ErrSessionClosed)
+	if session := s.tables[tableID]; session != nil {
+		session.engine.Close()
+	}
 	delete(s.tables, tableID)
 }
 
@@ -257,6 +290,9 @@ func (s *Service) Run(ctx context.Context) {
 		for tableID := range s.listeners {
 			s.closeStreams(tableID, ErrRendererStopped)
 		}
+		for _, session := range s.tables {
+			session.engine.Close()
+		}
 	}()
 	for {
 		select {
@@ -265,6 +301,9 @@ func (s *Service) Run(ctx context.Context) {
 		case <-ticker.C:
 			s.mu.Lock()
 			for tableID, session := range s.tables {
+				if len(s.listeners[tableID]) == 0 {
+					continue
+				}
 				if session.buffer == nil {
 					session.buffer = make([]mixer.Frame, max(1, s.sampleRate/50))
 				}
@@ -306,10 +345,14 @@ func (s *Service) Status(tableID string) Status {
 	sort.Strings(ids)
 	for _, id := range ids {
 		state, _ := session.engine.State(id)
-		status.Tracks = append(status.Tracks, TrackStatus{
+		trackStatus := TrackStatus{
 			FileID: id, CurrentTime: float64(state.Position) / float64(s.sampleRate),
 			IsPlaying: state.Playing, Gain: session.gain(session.tracks[id]),
-		})
+		}
+		if err := session.engine.TrackError(id); err != nil {
+			trackStatus.Error = err.Error()
+		}
+		status.Tracks = append(status.Tracks, trackStatus)
 	}
 	return status
 }
@@ -318,9 +361,16 @@ func (s *Service) prepare(tableID string, patch Patch) (change, error) {
 	if tableID == "" || patch.FileID == "" {
 		return change{}, fmt.Errorf("table and track IDs are required")
 	}
+	fresh := false
+	keepSource := false
+	var current track
+	defer func() {
+		if fresh && current.clip.Source != nil && !keepSource {
+			_ = current.clip.Source.Close()
+		}
+	}()
 	s.mu.Lock()
 	session := s.tables[tableID]
-	var current track
 	var exists bool
 	if session != nil {
 		current, exists = session.tracks[patch.FileID]
@@ -333,12 +383,16 @@ func (s *Service) prepare(tableID string, patch Patch) (change, error) {
 		if err != nil {
 			return change{}, fmt.Errorf("load track %q: %w", patch.FileID, err)
 		}
+		current = track{clip: clip, volume: 100, repeating: clip.Repeating}
+		fresh = true
+		if (clip.Source == nil) == (len(clip.Frames) == 0) {
+			return change{}, fmt.Errorf("source must contain either PCM frames or a streaming source")
+		}
 		for _, frame := range clip.Frames {
 			if !finite(frame.Left) || !finite(frame.Right) || math.Abs(frame.Left) > 1 || math.Abs(frame.Right) > 1 {
 				return change{}, fmt.Errorf("source contains invalid PCM")
 			}
 		}
-		current = track{clip: clip, volume: 100, repeating: clip.Repeating}
 	}
 	if patch.Volume != nil {
 		if !finite(*patch.Volume) || *patch.Volume < 0 || *patch.Volume > 200 {
@@ -356,7 +410,7 @@ func (s *Service) prepare(tableID string, patch Patch) (change, error) {
 			playback = *patch.Playback
 		}
 		var err error
-		region, err = s.region(playback, len(current.clip.Frames))
+		region, err = s.region(playback, current.clip.length())
 		if err != nil {
 			return change{}, err
 		}
@@ -368,7 +422,8 @@ func (s *Service) prepare(tableID string, patch Patch) (change, error) {
 			return change{}, fmt.Errorf("seek must be within the playback region")
 		}
 	}
-	return change{patch: patch, track: current}, nil
+	keepSource = true
+	return change{patch: patch, track: current, fresh: fresh}, nil
 }
 
 func (s *Service) region(playback Playback, length int) (mixer.Region, error) {
@@ -416,7 +471,13 @@ func (s *Service) newSession() *session {
 func (s *session) apply(change change) error {
 	id := change.patch.FileID
 	if _, exists := s.tracks[id]; !exists {
-		if err := s.engine.Add(id, change.track.clip.Frames); err != nil {
+		var err error
+		if change.track.clip.Source != nil {
+			err = s.engine.AddSource(id, change.track.clip.Source)
+		} else {
+			err = s.engine.Add(id, change.track.clip.Frames)
+		}
+		if err != nil {
 			return err
 		}
 	}
@@ -447,6 +508,19 @@ func (s *session) apply(change change) error {
 	}
 	s.tracks[id] = change.track
 	return nil
+}
+
+func (c Clip) length() int {
+	if c.Source != nil {
+		return c.Source.Len()
+	}
+	return len(c.Frames)
+}
+
+func (c change) close() {
+	if c.fresh && c.track.clip.Source != nil {
+		_ = c.track.clip.Source.Close()
+	}
 }
 
 func (s *session) gain(track track) float64 {

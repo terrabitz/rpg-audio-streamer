@@ -6,6 +6,7 @@ import (
 	"errors"
 	"math"
 	"runtime"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -150,12 +151,50 @@ func TestRenderingAndClosingDoNotWaitForDecoding(t *testing.T) {
 	}
 }
 
+func TestStreamingSourceOwnershipAcrossSnapshotsAndRemoval(t *testing.T) {
+	t.Run("snapshot transfers ownership", func(t *testing.T) {
+		var source *testPCMSource
+		s, err := New(6, func(context.Context, string, string) (Clip, error) {
+			source = &testPCMSource{frames: []mixer.Frame{{Left: 0.5}}}
+			return Clip{Source: source}, nil
+		})
+		must(t, err)
+		payload := json.RawMessage(`{"tracks":[{"fileID":"tone"}]}`)
+		must(t, s.Sync("table", payload))
+		must(t, s.Sync("table", payload))
+		if source.closed.Load() {
+			t.Fatal("snapshot replacement closed a source transferred from the prior session")
+		}
+		s.CloseTable("table")
+		if !source.closed.Load() {
+			t.Fatal("closing the table did not close its streaming source")
+		}
+	})
+
+	t.Run("removal closes source", func(t *testing.T) {
+		var source *testPCMSource
+		s, err := New(6, func(context.Context, string, string) (Clip, error) {
+			source = &testPCMSource{frames: []mixer.Frame{{Left: 0.5}}}
+			return Clip{Source: source}, nil
+		})
+		must(t, err)
+		must(t, s.Sync("table", json.RawMessage(`{"tracks":[{"fileID":"tone"}]}`)))
+		s.RemoveTrack("table", "tone")
+		if !source.closed.Load() {
+			t.Fatal("removing a track did not close its streaming source")
+		}
+	})
+}
+
 func TestRunRendersAndStopsOnCancellation(t *testing.T) {
 	s, err := New(50, func(context.Context, string, string) (Clip, error) {
 		return Clip{Frames: make([]mixer.Frame, 100)}, nil
 	})
 	must(t, err)
 	update(t, s, "table", `{"fileID":"tone","isPlaying":true}`)
+	subscription, unsubscribe, err := s.Subscribe("table")
+	must(t, err)
+	defer unsubscribe()
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 	done := make(chan struct{})
@@ -175,6 +214,72 @@ func TestRunRendersAndStopsOnCancellation(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("live clock did not stop")
 	}
+	select {
+	case _, open := <-subscription.Frames():
+		if !open {
+			t.Fatal("subscriber closed before renderer stopped")
+		}
+	default:
+		t.Fatal("renderer did not publish PCM")
+	}
+}
+
+func TestRunDoesNotRenderWithoutPCMSubscribers(t *testing.T) {
+	s := testService(t)
+	update(t, s, "table", `{"fileID":"tone","isPlaying":true}`)
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		s.Run(ctx)
+		close(done)
+	}()
+	defer func() {
+		cancel()
+		<-done
+	}()
+	time.Sleep(50 * time.Millisecond)
+	if rendered := s.Status("table").FramesRendered; rendered != 0 {
+		t.Fatalf("rendered %d frames without a PCM subscriber", rendered)
+	}
+	subscription, unsubscribe, err := s.Subscribe("table")
+	must(t, err)
+	defer unsubscribe()
+	deadline := time.Now().Add(time.Second)
+	for s.Status("table").FramesRendered == 0 && time.Now().Before(deadline) {
+		runtime.Gosched()
+	}
+	if s.Status("table").FramesRendered == 0 {
+		t.Fatal("renderer did not start after a PCM subscriber joined")
+	}
+	select {
+	case _, open := <-subscription.Frames():
+		if !open {
+			t.Fatal("subscriber closed while renderer was active")
+		}
+	default:
+		t.Fatal("renderer did not publish PCM after subscription")
+	}
+}
+
+type testPCMSource struct {
+	frames []mixer.Frame
+	closed atomic.Bool
+}
+
+func (s *testPCMSource) Len() int { return len(s.frames) }
+
+func (s *testPCMSource) FrameAt(position int) (mixer.Frame, bool) {
+	if s.closed.Load() || position < 0 || position >= len(s.frames) {
+		return mixer.Frame{}, false
+	}
+	return s.frames[position], true
+}
+
+func (*testPCMSource) Err() error { return nil }
+
+func (s *testPCMSource) Close() error {
+	s.closed.Store(true)
+	return nil
 }
 
 func testService(t *testing.T) *Service {
