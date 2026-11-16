@@ -146,9 +146,9 @@ injection.
 ## Full-app browser tests
 
 Playwright builds the Go executable and production UI once per run. Each test
-attempt starts its own API and Vite preview on loopback ports, with a temporary
+attempt starts its own Go server serving the production UI on a loopback port, with a temporary
 SQLite database, upload directory, and WebSocket hub. Its fixture closes browser
-contexts, stops the API and preview, and removes temporary state even when a
+contexts, stops the server, and removes temporary state even when a
 test fails. Except for the explicit live Discord configuration described above,
 no existing server, database, or uploads are used. Do not point these tests at a
 production environment. Public fixture credentials are `e2e-gm` /
