@@ -36,13 +36,24 @@ test('GM controls real Discord audio and reconnects the saved channel', { tag: '
       }
     }
     await waitAudio(audio => audio.present)
+    const lowTile = page.getByRole('group', { name: 'Discord Low', exact: true })
+    await lowTile.getByRole('button', { name: 'Edit Discord Low', exact: true }).click()
+    const volume = page.getByRole('dialog').getByRole('slider', { name: 'Volume for Discord Low' })
+    await volume.press('Home')
+    for (let step = 0; step < 25; step++) await volume.press('ArrowRight')
+    await expect(volume).toHaveAttribute('aria-valuenow', '25')
+    await page.getByRole('button', { name: 'Close track controls', exact: true }).click()
+    const startingFrames = current().frames
     await page.getByRole('group', { name: 'Discord Low', exact: true }).locator('.track-heading > span').click()
     await page.getByRole('group', { name: 'Discord High', exact: true }).locator('.track-heading > span').click()
     await expect(page.getByRole('group', { name: 'Playing Discord Low', exact: true })).toBeVisible()
     await expect(page.getByRole('group', { name: 'Playing Discord High', exact: true })).toBeVisible()
-    await waitAudio(audio => audio.low > 0.05 && audio.high > 0.05)
+    await waitAudio(audio => audio.frames >= startingFrames + 96000 &&
+      audio.low > 0.01 && audio.low < 0.04 && audio.high > 0.05)
     const low = page.getByRole('group', { name: 'Playing Discord Low', exact: true })
     const high = page.getByRole('group', { name: 'Playing Discord High', exact: true })
+    await low.getByRole('slider', { name: 'Volume for Discord Low' }).press('End')
+    await waitAudio(audio => audio.low > 0.05 && audio.high > 0.05)
     await low.getByRole('slider', { name: 'Volume for Discord Low' }).press('Home')
     let frames = current().frames
     await waitAudio(audio => audio.frames >= frames + 96000 && audio.low < 0.003 && audio.high > 0.05)

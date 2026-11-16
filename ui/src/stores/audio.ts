@@ -13,6 +13,9 @@ export interface AudioTrack {
   trackType: string
   playback?: PlaybackSettings
   positionVersion?: number
+  seekVersion?: number
+  seekTarget?: number | null
+  seekLanding?: number | null
 }
 
 interface FadeStatus {
@@ -35,6 +38,7 @@ function newAudioTrack(fileID: string, name: string, typeID: string = ""): Audio
 export const useAudioStore = defineStore('audio', {
   state: () => ({
     tracks: {} as Record<string, AudioTrack>,
+    localPlayback: new Set<string>(),
     enabled: false,
     masterVolume: 100,
     fadeStates: {} as Record<string, FadeStatus>,
@@ -65,6 +69,7 @@ export const useAudioStore = defineStore('audio', {
     clearTracks() {
       this.enabled = false
       this.tracks = {}
+      this.localPlayback.clear()
       this.fadeStates = {}
     },
     initTrack(fileID: string, name: string, typeID: string = "") {
@@ -81,8 +86,20 @@ export const useAudioStore = defineStore('audio', {
         this.tableMix.trackVolumes[fileID] = updates.volume
       }
     },
-    removeTrack(fildID: string) {
-      delete this.tracks[fildID]
+    removeTrack(fileID: string) {
+      delete this.tracks[fileID]
+      this.localPlayback.delete(fileID)
+    },
+    seekTrack(fileID: string, currentTime: number) {
+      const track = this.tracks[fileID]
+      if (!track) return
+      this.updateTrackState(fileID, {
+        currentTime, seekTarget: currentTime, seekLanding: null, seekVersion: (track.seekVersion ?? 0) + 1,
+      })
+    },
+    setLocalPlayback(fileID: string, playing: boolean) {
+      if (playing && this.tracks[fileID]) this.localPlayback.add(fileID)
+      else this.localPlayback.delete(fileID)
     },
     getPlayingTracks() {
       return Object.values(this.tracks)
@@ -107,7 +124,13 @@ export const useAudioStore = defineStore('audio', {
       tracks.forEach(track => {
         if (track.fileID) {
           this.initTrack(track.fileID, "")
-          this.updateTrackState(track.fileID, track)
+          const local = this.tracks[track.fileID]!
+          // Clock snapshots must not compete with an actively playing media element.
+          const keepPosition = this.localPlayback.has(track.fileID) && local.isPlaying && track.isPlaying &&
+            track.positionVersion !== undefined && track.positionVersion === local.positionVersion
+          this.updateTrackState(track.fileID, keepPosition
+            ? { ...track, currentTime: local.currentTime, seekTarget: local.seekTarget, seekLanding: local.seekLanding }
+            : track)
         }
       })
     },

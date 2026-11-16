@@ -1,6 +1,16 @@
 name: docker-build
 
 on:
+  workflow_dispatch:
+    inputs:
+      push:
+        description: Push per-architecture images by digest and publish a multi-arch manifest.
+        type: boolean
+        default: false
+      tags:
+        description: Newline-separated image tags for the multi-arch manifest. Required when push is true.
+        type: string
+        default: ""
   workflow_call:
     inputs:
       push:
@@ -11,6 +21,9 @@ on:
         description: Newline-separated image tags for the multi-arch manifest. Required when push is true.
         type: string
         default: ""
+
+permissions:
+  packages: write
 
 # Callers grant permissions: push requires packages: write.
 env:

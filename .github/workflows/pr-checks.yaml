@@ -190,6 +190,8 @@ jobs:
   docker:
     name: Build Docker Image
     needs: changes
+    permissions:
+      packages: write
     if: ${{ !cancelled() && (github.event_name == 'workflow_dispatch' || needs.changes.outputs.docker == 'true') }}
     uses: ./.github/workflows/docker-build.yaml
 

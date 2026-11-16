@@ -217,18 +217,38 @@ types also have a loop-back handle below it. The draft type selection controls
 its visibility without discarding saved loop-back points. Areas outside the
 selected region are dimmed and cannot be
 selected for seeking. Handles support mouse/touch dragging and keyboard adjustment.
+Dragging a seek cursor previews its position and time without changing audio;
+releasing commits one seek. Canceling a timeline seek discards the preview.
+The released preview remains visible until the seek version acknowledges the command,
+so intervening clock reports cannot flash the previous position.
+Compact now-playing seek sliders also commit on release. Keyboard seeking and
+restart controls commit immediately. Committed seeks during playback crossfade
+the outgoing position into the destination over two seconds in both the browser
+and Discord mixes. The selected time is the end of the incoming fade: a seek
+from 10 to 20 seconds blends 10–12 with 18–20 and continues at 20. Seek targets
+are capped two seconds before the playback-region end, leaving the final tail
+for the natural loop crossfade. For regions shorter than two seconds, only the
+beginning is seekable. A seek within the first two seconds of a region blends
+in from its beginning and continues two seconds later. Fades shorten to the
+available outgoing tail or region length. Paused seeks reposition silently.
 The handles display their timestamps directly. Moving a boundary keeps the
 loop-back point inside the region. The end defaults to the track duration;
 moving the loop-back handle to the beginning reanchors it so it follows later
 beginning adjustments. Moving the beginning to zero and the end to the full
 duration restores the full track without separate reset controls. Point edits
-immediately update live playback (including listening players at the current
+update live playback on pointer release (including listening players at the current
 table), but shared library metadata is only persisted on Save. Closing without
 saving restores the saved region in playback; invalid drafts are not applied.
+While dragging, marker labels and shading preview locally without changing audio
+or sending region commands. Canceling discards that local preview; keyboard edits
+commit immediately.
 Region edits preserve each listener's live playhead without seeking to a reported
-position; only a playhead outside the edited region is moved to its nearest boundary.
+position. A playhead before the new beginning crossfades into that beginning;
+a repeating playhead beyond the new end loops to the loop-back point.
 An in-flight loop crossfade keeps its incoming source playing through marker edits,
 preserving its position when valid and moving it into the edited region otherwise.
+Seek crossfades preserve their gain progress when marker edits move the incoming
+source, and a pending selection outside the edited region is cleared.
 Shortening the end can complete that handoff early; extending it applies to the next
 loop. A source that reaches its end without a prepared crossfade starts the next
 loop from the configured loop-back point.
@@ -359,9 +379,25 @@ one-shot completion without browser time-update messages. Browsers supply media
 duration as metadata becomes available; the server does not decode audio.
 Active tables receive a snapshot each second, keeping control-only browsers
 and completion state current even when local audio cannot autoplay.
-Explicit seek and play/pause commands advance a position version. Running media
+Explicit seek and play/pause commands advance a position version; only seeks also
+advance a seek version. Running media
 uses that version to distinguish commanded position changes from clock snapshots,
-preserving local loop handoffs during live marker edits.
+preserving local loop handoffs during live marker edits. While local media is
+playing, same-version snapshots update other track fields without replacing its
+displayed position. Control-only browsers continue to use snapshot positions.
+Media pause, playback failure, and component disposal release local clock ownership.
+The Discord mixer receives playback commands but does not send its render position
+back to the browser.
+The seek version distinguishes crossfade requests from play/pause commands and
+periodic snapshots. Snapshots carry a `seekTarget` for the selection and a
+`seekLanding` for the end of the fade; `currentTime` starts at the incoming
+preroll and advances throughout the fade, keeping control-only views and new
+listeners on that clock.
+Consecutive keyboard seeks advance from the pending selection until the fade
+lands; the target then clears so later keys follow the live playhead. A local
+listener retains its pending target while its incoming media buffers.
+Joining a table initializes directly at the snapshot's
+position rather than replaying a previous seek transition.
 GM snapshots carry unscaled track volume and saved table settings. Successful
 settings patches update connected GM mixes and listener playback without
 echoing remote changes back into another settings save. Player snapshots apply
@@ -374,7 +410,13 @@ configured beginning and stops or loops at the configured end. Repeating tracks
 use a second HLS media element to crossfade over a global two-second interval
 (shortened for shorter loop regions), starting the incoming source at the
 loop-back point or configured beginning. Significant seek differences are
-reconciled. Track, master, and type-volume changes ramp the mixed gain over two
+reconciled. Seek crossfades use the second HLS media element for repeating and
+non-repeating tracks, keeping the outgoing source audible while the destination
+loads. The displayed clock follows the destination during the overlap. Another
+seek adopts the destination once its fade has begun, otherwise retaining the
+audible outgoing source; pause adopts the incoming position, clears the pending
+selection, and releases the tail.
+Track, master, and type-volume changes ramp the mixed gain over two
 seconds independently of play/pause fades and loop crossfades. A new adjustment
 starts from the current interpolated gain, including mute and non-repeating
 tracks. Removing a media component destroys its HLS instances and clears
@@ -391,13 +433,13 @@ regions and table mixing/ordering settings, not the live playback clock.
 It accepts normalized stereo PCM frames at one caller-selected sample rate.
 `Add` copies an in-memory clip and leaves it paused; `AddSource` accepts a
 bounded indexed source whose reads never block rendering.
-`Play`, `Pause`, `Seek`, `SetRegion`, `SetRepeating`, `SetGain`, and `Remove`
+`Play`, `Pause`, `Seek`, `CrossfadeSeek`, `SetRegion`, `SetRepeating`, `SetGain`, and `Remove`
 control tracks; `State` exposes their absolute frame position and requested
 playing state. `Render` overwrites a caller-owned output buffer and advances
 the mix by that many frames. No device, codec, network connection, clock,
 timer, or goroutine is created. One owner must serialize renders and controls.
 
-Regions use absolute frame offsets with an exclusive end; seeks may also land
+Regions use absolute frame offsets with an exclusive end; initialization may land
 exactly on the end, resolving completion or looping when playback renders.
 A caller resolves an unset end to the decoded clip length
 and an unset loop-back to the beginning before setting a region. Completion
@@ -407,15 +449,32 @@ loop-back point using complementary linear gains. The overlap length is
 `min(2 * sampleRate, (end - loopBack) / 3, end - start)`, rounded down to
 whole frames. The incoming cursor advances during the overlap and continues
 from that position afterward, so an intro before the loop-back is not replayed.
-Sub-frame overlaps become hard loops. A late seek shortens the overlap to
-the remaining tail; seeking or changing a region cancels the existing overlap.
+Sub-frame overlaps become hard loops. `Seek` repositions directly for
+initialization. `CrossfadeSeek` caps targets two seconds before the region end
+(or at the beginning for shorter regions) and blends the current outgoing cursor
+with preroll ending at the destination over up to two seconds. Targets in the
+first two seconds start the incoming cursor at the region beginning. Fade duration
+is limited by the outgoing tail and the region length.
+`State` reports the advancing destination during seek overlap. A repeated seek
+adopts the previous incoming cursor once the fade has begun. While destination
+PCM is unavailable, the outgoing audio continues and the fade waits.
+Natural loops warm their incoming PCM window two seconds before the overlap.
+If that window is still decoding, outgoing audio continues while the overlap
+shortens to the remaining tail instead of emitting silence.
+Paused seeks reposition directly within the same seekable bounds.
+Changing a region or repeat policy cancels overlap at the destination of a seek,
+or at the outgoing position of a natural loop. A committed beginning beyond the
+playhead crossfades into the beginning; a committed end before it resolves to
+completion or the configured loop-back.
 
 Repeating play/pause transitions use independent two-second linear envelopes.
+Gain changes while fully silent apply directly, so the first audible frame uses
+the configured volume rather than ramping down from full volume.
 Pause cancels loop overlap, lets the outgoing cursor advance while fading,
 then freezes it; reaching the region end during fade-out stops and resets it
 rather than starting another loop. Non-repeating play/pause is immediate.
 `SetGain` takes an effective track/master/type product in `[0, 1]` and ramps it
-over two seconds, including while paused. Interrupted ramps start at the
+over two seconds while audible. Interrupted ramps start at the
 current interpolated gain. Duplicate play/pause, gain, repeat, and region
 settings do not restart ramps or loops.
 Tracks are summed in insertion order and only the final stereo output is
@@ -439,11 +498,15 @@ connection. The GM answers with `mixSync`: a full snapshot of playing tracks
 and the current type-volume map. This happens on reconnect as well as initial
 connection. Existing `syncTrack` messages feed partial play/pause, seek,
 volume, repeating, and live playback-region changes into the mixer.
-Their volume already includes the GM master multiplier; the service applies
-the separately supplied type multiplier and caps effective gain at unity,
+Seek commands use `CrossfadeSeek`; fresh snapshots initialize a paused engine
+at the requested position before starting playback, without a seek transition.
+Track volumes are unscaled; the supplied type-volume map includes the GM master
+multiplier. The service applies that multiplier and caps effective gain at unity,
 matching browser per-track gain clamping. The GM sends `mixVolumes` for live
-type-volume changes. Master changes use the existing per-track volume updates.
-Paused seeks and volumes are supplied by the full track state on resume.
+type-volume and master-volume changes.
+Play/resume commands include the GM's selected track volume, including unsaved
+and zero values. The hub also supplies the resolved track volume and playback
+region to the mixer on play, so clients omitting volume still honor saved settings.
 When an exclusive track starts, the hub also sends pause commands for the
 displaced tracks to the mixer. These commands use the core's playback envelopes
 and are serialized with the accepted playback update, so Discord fades out
@@ -468,7 +531,8 @@ uses HLS segment durations to determine the indexed PCM length. FFmpeg decodes
 audio lazily in five-second windows at 48 kHz stereo float PCM. Each temporary
 window playlist references only the stored HLS segments needed for that range,
 so seeking does not decode the entire track from its beginning. The source
-keeps a three-window least-recently-used cache and requests the next window
+keeps a four-window least-recently-used cache, enough for both crossfading
+cursors and their lookahead windows, and requests the next window
 one second before playback reaches a boundary. This bounds PCM memory to
 roughly 11 MiB of cached frames plus one in-flight decode window per active
 track, regardless of track duration. Temporary manifests contain paths only

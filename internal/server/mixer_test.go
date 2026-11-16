@@ -66,6 +66,11 @@ func TestMixerPCMStreamsBoundedHLSWindowsAndSeeks(t *testing.T) {
 	if cached > pcmCachedWindows {
 		t.Fatalf("cached %d windows, limit is %d", cached, pcmCachedWindows)
 	}
+	for _, seconds := range []int{0, 5, 10, 15} {
+		if _, ready := source.FrameAt(seconds*mixerSampleRate + mixerSampleRate/2); !ready {
+			t.Fatal("two crossfading cursors and their lookahead windows cannot stay decoded together")
+		}
+	}
 
 	longPlaylist := filepath.Join(track.Path, "long.m3u8")
 	var longManifest strings.Builder
@@ -111,6 +116,33 @@ func TestMixerPCMStreamsBoundedHLSWindowsAndSeeks(t *testing.T) {
 	}
 	if err := engine.AddSource("loop", source); err != nil {
 		t.Fatal(err)
+	}
+	source.mu.Lock()
+	if head := source.windows[0]; head != nil {
+		delete(source.windows, 0)
+		source.lru.Remove(head)
+	}
+	source.mu.Unlock()
+	if err := engine.SetRegion("loop", mixer.Region{End: 20 * mixerSampleRate}); err != nil {
+		t.Fatal(err)
+	}
+	if err := engine.Seek("loop", 18*mixerSampleRate); err != nil {
+		t.Fatal(err)
+	}
+	if err := engine.Play("loop"); err != nil {
+		t.Fatal(err)
+	}
+	if err := engine.SetRepeating("loop", true); err != nil {
+		t.Fatal(err)
+	}
+	coldLoop := make([]mixer.Frame, mixerSampleRate/10)
+	engine.Render(coldLoop)
+	energy := 0.0
+	for _, frame := range coldLoop {
+		energy += frame.Left * frame.Left
+	}
+	if energy/float64(len(coldLoop)) < 0.001 {
+		t.Fatal("cold loop-back window silenced the decoded outgoing tail")
 	}
 	if err := engine.SetRegion("loop", mixer.Region{
 		Start: 0, End: 20 * mixerSampleRate, LoopBack: 10 * mixerSampleRate,
