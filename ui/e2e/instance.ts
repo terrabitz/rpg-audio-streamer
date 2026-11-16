@@ -2,12 +2,11 @@ import { spawn, type ChildProcess } from 'node:child_process'
 import { createHmac, randomBytes } from 'node:crypto'
 import { once } from 'node:events'
 import { mkdtemp, rm } from 'node:fs/promises'
-import { createServer, type Socket } from 'node:net'
+import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import { fileURLToPath } from 'node:url'
-import { preview, type PreviewServer } from 'vite'
 import { discordTestConfig } from './discord-config'
 
 const root = fileURLToPath(new URL('../..', import.meta.url))
@@ -27,30 +26,19 @@ export async function startApp(liveDiscord = false): Promise<AppInstance> {
   if (!binary) throw new Error('E2E server binary was not built by global setup')
   const scratch = await mkdtemp(join(tmpdir(), 'rpg-audio-e2e-'))
   let server: ChildProcess | undefined
-  let frontend: PreviewServer | undefined
   let done: Promise<void> | undefined
   let stopping: Promise<void> | undefined
   let output = ''
-  const sockets = new Set<Socket>()
   const stop = () => {
     stopping ??= (async () => {
       try {
-        if (frontend) {
-          await new Promise<void>((resolve, reject) => {
-            frontend!.httpServer.close(error => error ? reject(error) : resolve())
-            for (const socket of sockets) socket.destroy()
-          })
+        if (server && done) {
+          server.kill('SIGTERM')
+          const timeout = setTimeout(() => server?.kill('SIGKILL'), 5000)
+          try { await done } finally { clearTimeout(timeout) }
         }
       } finally {
-        try {
-          if (server && done) {
-            server.kill('SIGTERM')
-            const timeout = setTimeout(() => server?.kill('SIGKILL'), 5000)
-            try { await done } finally { clearTimeout(timeout) }
-          }
-        } finally {
-          await rm(scratch, { recursive: true, force: true, maxRetries: 3 })
-        }
+        await rm(scratch, { recursive: true, force: true, maxRetries: 3 })
       }
     })()
     return stopping
@@ -65,7 +53,7 @@ export async function startApp(liveDiscord = false): Promise<AppInstance> {
       if (name.startsWith('DISCORD_') || name.startsWith('INTEGRATION_TEST_DISCORD_')) delete env[name]
     }
     for (const name of [
-      'HOST', 'PORT', 'CORS_ORIGINS', 'LOG_FORMAT', 'LOG_LEVEL', 'UPLOAD_DIR',
+      'HOST', 'PORT', 'CORS_ORIGINS', 'LOG_FORMAT', 'LOG_LEVEL', 'UPLOAD_DIR', 'FRONTEND_DIR',
       'ROOT_USERNAME', 'ROOT_PASSWORD_HASH', 'TOKEN_SECRET', 'TOKEN_DURATION',
       'TOKEN_ISSUER', 'TOKEN_AUDIENCE', 'DEV_MODE', 'DB_PATH',
     ]) delete env[name]
@@ -73,6 +61,7 @@ export async function startApp(liveDiscord = false): Promise<AppInstance> {
       'serve', '--host', '127.0.0.1', '--port', String(port), '--dev-mode',
       '--root-username', 'e2e-gm', '--root-password-hash', passwordHash,
       '--db-path', join(scratch, 'app.db'), '--upload-dir', join(scratch, 'uploads'),
+      '--frontend-dir', join(ui, 'dist'),
     ], {
       cwd: scratch,
       stdio: liveDiscord ? 'ignore' : ['ignore', 'pipe', 'pipe'],
@@ -101,24 +90,7 @@ export async function startApp(liveDiscord = false): Promise<AppInstance> {
       done.then(() => { throw new Error('E2E API exited before becoming ready') }),
     ])
     await verifyAPI(apiURL, secret)
-    frontend = await preview({
-      root: ui,
-      envDir: scratch,
-      logLevel: 'error',
-      preview: {
-        host: '127.0.0.1',
-        port: 0,
-        strictPort: true,
-        proxy: { '/api': { target: apiURL, ws: true, changeOrigin: true } },
-      },
-    })
-    frontend.httpServer.on('connection', socket => {
-      sockets.add(socket)
-      socket.once('close', () => sockets.delete(socket))
-    })
-    const address = frontend.httpServer.address()
-    if (!address || typeof address === 'string') throw new Error('E2E preview did not bind a TCP port')
-    return { url: `http://127.0.0.1:${address.port}`, scratch, logs: () => output, stop }
+    return { url: apiURL, scratch, logs: () => output, stop }
   } catch (error) {
     await stop()
     if (output) throw new Error(`E2E app startup failed:\n${output}`, { cause: error })

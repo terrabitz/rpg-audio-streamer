@@ -1,3 +1,0 @@
-#!/command/execlineb -P
-cd /app/frontend
-caddy run --config /etc/caddy/Caddyfile --adapter caddyfile

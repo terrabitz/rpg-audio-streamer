@@ -19,6 +19,7 @@ test(
       ROOT_PASSWORD_HASH: 'must-not-be-used',
       TOKEN_DURATION: 'invalid',
       API_PROXY_TARGET: 'http://127.0.0.1:1',
+      FRONTEND_DIR: '/nonexistent/frontend',
       VITE_API_BASE_URL: 'https://unused.invalid/',
     })
     const second = launch(t)
