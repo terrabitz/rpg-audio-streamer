@@ -8,7 +8,6 @@ const recordingOptions = recording
   ? {
       video: { mode: 'on' as const, size: recordingViewport },
       viewport: recordingViewport,
-      launchOptions: { slowMo: 600 },
     }
   : {}
 const failureArtifacts = { trace: 'retain-on-failure' as const, screenshot: 'only-on-failure' as const }
@@ -27,6 +26,8 @@ export default defineConfig({
   use: {
     trace: 'off',
     screenshot: 'off',
+    // Keep real media clocks independent of the host's audio device.
+    launchOptions: { args: ['--disable-audio-output'], ...(recording ? { slowMo: 600 } : {}) },
   },
   projects: [
     {
@@ -36,11 +37,7 @@ export default defineConfig({
     },
     {
       name: 'chromium-timing', grep: /@timing/, workers: 1,
-      use: {
-        ...devices['Desktop Chrome'], ...failureArtifacts, ...recordingOptions,
-        // Avoid platform audio-device timing while retaining real media playback.
-        launchOptions: { args: ['--disable-audio-output'], ...(recording ? { slowMo: 600 } : {}) },
-      },
+      use: { ...devices['Desktop Chrome'], ...failureArtifacts, ...recordingOptions },
     },
     ...(recording ? [] : [
       { name: 'chromium-discord', grep: /@discord/, workers: 1, use: { ...devices['Desktop Chrome'] } },
