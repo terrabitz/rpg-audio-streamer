@@ -108,6 +108,12 @@ func main() {
 						Destination: &cfg.Server.UploadDir,
 					},
 					&cli.StringFlag{
+						Name:        "frontend-dir",
+						EnvVars:     []string{"FRONTEND_DIR"},
+						Usage:       "Directory containing the built SPA (empty disables frontend serving)",
+						Destination: &cfg.Server.FrontendDir,
+					},
+					&cli.StringFlag{
 						Name:        "root-username",
 						EnvVars:     []string{"ROOT_USERNAME"},
 						Value:       "admin",

@@ -324,6 +324,7 @@ function start(command, args, cwd, ipc = false, overrides = {}) {
     'LOG_FORMAT',
     'LOG_LEVEL',
     'UPLOAD_DIR',
+    'FRONTEND_DIR',
     'ROOT_USERNAME',
     'ROOT_PASSWORD_HASH',
     'TOKEN_SECRET',

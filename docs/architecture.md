@@ -34,8 +34,11 @@ adapter, authentication service, hub, and HTTP server. Startup applies pending
 migrations before accepting requests. The CLI also exposes migration commands;
 `cmd/hashpass` produces the Argon2id password hash used in configuration.
 
-The Go server serves `/api/v1` routes; it does not serve the Vue application.
-The Vue app is built and hosted separately. Vite development/preview uses an
+The Go server serves API and WebSocket routes under `/api` and can serve the
+built Vue application from `--frontend-dir` / `FRONTEND_DIR`. Non-API navigation
+paths fall back to `index.html`; missing static files return 404. The Docker
+image serves both on HTTP port 80 by default, with no built-in TLS; deploy a
+TLS-terminating reverse proxy when HTTPS is needed. Vite development uses an
 API and WebSocket proxy (by default to `http://localhost:8080`); the proxy target
 can be supplied through `API_PROXY_TARGET`. The browser SDK base URL comes from
 `VITE_API_BASE_URL`, normally `/`.

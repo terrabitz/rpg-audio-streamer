@@ -25,59 +25,34 @@ RUN CGOENABLED=1 go build -o backend main.go
 # Stage 3: Create the final runtime image
 FROM debian:trixie-slim
 
-ARG TARGETARCH
-
 # Install OS packages
 RUN apt-get update && apt-get install -y --no-install-recommends \
   ca-certificates \
-  caddy \
   ffmpeg \
-  libstdc++6 \
-  wget \
-  xz-utils
-
-# Add s6-overlay with architecture support
-RUN S6_ARCH=$(case ${TARGETARCH} in \
-  "amd64") echo "x86_64";; \
-  "arm64") echo "aarch64";; \
-  *) echo "unsupported architecture: ${TARGETARCH}" && exit 1;; \
-  esac) && \
-  wget -q "https://github.com/just-containers/s6-overlay/releases/download/v3.1.6.2/s6-overlay-noarch.tar.xz" -O /tmp/s6-overlay-noarch.tar.xz && \
-  wget -q "https://github.com/just-containers/s6-overlay/releases/download/v3.1.6.2/s6-overlay-${S6_ARCH}.tar.xz" -O /tmp/s6-overlay-arch.tar.xz && \
-  tar -C / -Jxpf /tmp/s6-overlay-noarch.tar.xz && \
-  tar -C / -Jxpf /tmp/s6-overlay-arch.tar.xz && \
-  rm /tmp/s6-overlay-*.tar.xz
+  libstdc++6
 
 # Set up directories
 WORKDIR /app
 
-# Copy built backend, frontend and docs
+# Copy built backend and frontend
 COPY --from=backend-builder /app/backend /app/backend
 COPY --from=frontend-builder /ui/dist /app/frontend
 COPY --from=backend-builder /opt/libdave/lib/libdave.so /usr/local/lib/libdave.so
 COPY --from=backend-builder /opt/libdave/share/licenses/libdave /usr/share/licenses/libdave
 RUN ldconfig
 
-# Copy Caddy and s6 configurations
-COPY docker/Caddyfile /etc/caddy/Caddyfile
-COPY docker/s6-rc.d /etc/s6-overlay/s6-rc.d
-
 # Create directories and set permissions
 RUN mkdir -p /app/data/uploads \
-  && mkdir -p /caddy/data \
-  && chown -R nobody:nogroup /app \
-  && chown -R nobody:nogroup /caddy
+  && chown -R nobody:nogroup /app
 
 # Set default env vars for Docker layout
 ENV DB_PATH=/app/data/skaldbot.db \
-  UPLOAD_DIR=/app/data/uploads
-
-# Set s6-overlay environment variables
-ENV  S6_KEEP_ENV=1 \
-  S6_BEHAVIOUR_IF_STAGE2_FAILS=2 \
-  S6_CMD_WAIT_FOR_SERVICES_MAXTIME=0
+  UPLOAD_DIR=/app/data/uploads \
+  FRONTEND_DIR=/app/frontend \
+  PORT=80
 
 # Expose ports
-EXPOSE 80 443
+EXPOSE 80
 
-ENTRYPOINT ["/init"]
+ENTRYPOINT ["/app/backend"]
+CMD ["serve"]
