@@ -183,6 +183,14 @@ menu on smaller screens. **Rotate invite link** is always a red item in that
 menu. Its confirmation dialog warns that active players will be disconnected
 and the GM must reshare the new link; cancellation leaves the link unchanged.
 After rotation, the GM's table URL updates to the new invite code.
+On mobile layouts, the table options menu includes **Keep screen awake**.
+This browser-local preference uses the Screen Wake Lock API while the app is
+visible on a mobile layout, releases the lock when disabled or hidden, and
+reacquires it when the app returns to the foreground. Unsupported browsers
+show a disabled option, and denied requests produce an error notification.
+It is independent of table settings and is not sent to the server or other clients.
+Now-playing cards wrap into compact columns when space permits, including
+inside the tablet bottom drawer; narrow phones retain a single column.
 **Add Track** opens a dialog with library selection and new-upload tabs;
 neither workflow adds a permanent control row to the track grid.
 Uploads require a file, a nonblank name, and a valid library track type before
@@ -273,7 +281,8 @@ requires no authentication exchange.
 | `stores/audio.ts` | Per-file playback state, synchronization reconciliation, fades, master/type volumes |
 | `stores/websocket.ts` | Socket connection/reconnection, message handlers and history |
 | `stores/debug.ts` | Development-only debug panel state |
-| `composables/` | Shared app-bar state, browser origin, immutable partial-object patches |
+| `stores/clientPreferences.ts` | Browser-persisted screen-awake preference |
+| `composables/` | Shared app-bar state, browser origin, immutable partial-object patches, screen wake-lock lifecycle |
 | `FileList`, `AudioControls`, `PlayingTrackList`, `TrackPlaybackControls`, `TrackTimeline`, `AudioUploader` | Shared-library metadata management and uploads; table associations, responsive now-playing surfaces, and shared playback controls |
 | `AudioPlayer`, `AudioTrackPlayer` | Per-track HLS.js media elements and playback synchronization |
 | `VolumeMixer`, `VolumeSlider` | Active master and per-type mixing; player preferences stay local |

@@ -396,6 +396,40 @@ test('GM manages simultaneous tracks in the currently-playing sidebar', async ({
   await deleteLibraryTrack(page, 'Bell', 1)
 })
 
+test('GM manages now-playing tracks in a tablet drawer', async ({ page }, testInfo) => {
+  test.slow()
+  await page.setViewportSize({ width: 768, height: 900 })
+  await login(page)
+  for (const name of ['Tablet Forest', 'Tablet Rain', 'Tablet Wind']) {
+    await uploadTrack(page, name, 'Ambiance', 60)
+    await page.getByRole('group', { name, exact: true }).click()
+  }
+  await page.getByRole('button', { name: 'Now playing (3)', exact: true }).click()
+  const drawer = page.getByRole('dialog', { name: 'Currently playing', exact: true })
+  await expect(drawer.getByRole('group')).toHaveCount(3)
+  const cards = drawer.getByRole('group')
+  for (const width of [600, 768, 839]) {
+    await page.setViewportSize({ width, height: 900 })
+    await expect.poll(async () => {
+      const boxes = await cards.evaluateAll(elements => elements.map(element => {
+        const { x, y, width } = element.getBoundingClientRect()
+        return { x, y, width }
+      }))
+      const [first, second] = boxes
+      return !!first && !!second && first.y === second.y && second.x > first.x
+        && boxes.every(box => box.width >= 240 && box.width <= 320)
+    }).toBe(true)
+    for (const card of await cards.all()) await expectCompactPlayingCard(card)
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+  }
+  await page.setViewportSize({ width: 768, height: 900 })
+  await page.screenshot({ path: testInfo.outputPath('tablet-now-playing.png'), fullPage: true, animations: 'disabled' })
+  await drawer.getByRole('slider', { name: 'Volume for Tablet Rain', exact: true }).press('Home')
+  await expect.poll(() => page.locator('video').nth(1).evaluate(
+    (el: HTMLVideoElement) => el.volume === 0 && !el.paused,
+  )).toBe(true)
+})
+
 test('GM opens compact now-playing controls from a mobile bottom drawer', async ({ page }, testInfo) => {
   test.slow()
   await page.setViewportSize({ width: 390, height: 667 })

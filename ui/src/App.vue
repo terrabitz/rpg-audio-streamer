@@ -1,10 +1,13 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router';
+import { useDisplay } from 'vuetify';
 import DevDebugPanel from './components/DevDebugPanel.vue';
+import { useScreenWakeLock } from './composables/screenWakeLock';
 import { useAppBar } from './composables/useAppBar';
 import { useAuthStore } from './stores/auth';
 import { useDebugStore } from './stores/debug';
+import { useClientPreferencesStore } from './stores/clientPreferences';
 import { useWebSocketStore } from './stores/websocket';
 
 const auth = useAuthStore()
@@ -13,6 +16,9 @@ const wsStore = useWebSocketStore()
 const debugStore = useDebugStore()
 const route = useRoute()
 const drawer = ref(false)
+const { mobile } = useDisplay()
+const clientPreferences = useClientPreferencesStore()
+const { error: wakeLockError } = useScreenWakeLock(computed(() => mobile.value && clientPreferences.keepScreenAwake))
 const isPlayerView = computed(() => {
   // Check if we're in a player context within the table view
   return route.name === 'table' && (!auth.authenticated || auth.role === 'player')
@@ -82,6 +88,7 @@ onUnmounted(() => {
     <v-main>
       <RouterView :key="route.fullPath" />
     </v-main>
+    <v-snackbar :model-value="!!wakeLockError" @update:model-value="wakeLockError = ''">{{ wakeLockError }}</v-snackbar>
     <v-navigation-drawer location="right" v-if="debugStore.isDevMode" v-model="debugStore.showDebugPanel"
       :permanent="debugStore.showDebugPanel" width="400">
       <DevDebugPanel />
