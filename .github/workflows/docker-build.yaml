@@ -22,6 +22,9 @@ on:
         type: string
         default: ""
 
+permissions:
+  packages: write
+
 # Callers grant permissions: push requires packages: write.
 env:
   IMAGE: ghcr.io/${{ github.repository }}
