@@ -34,8 +34,11 @@ adapter, authentication service, hub, and HTTP server. Startup applies pending
 migrations before accepting requests. The CLI also exposes migration commands;
 `cmd/hashpass` produces the Argon2id password hash used in configuration.
 
-The Go server serves `/api/v1` routes; it does not serve the Vue application.
-The Vue app is built and hosted separately. Vite development/preview uses an
+The Go server serves API and WebSocket routes under `/api` and can serve the
+built Vue application from `--frontend-dir` / `FRONTEND_DIR`. Non-API navigation
+paths fall back to `index.html`; missing static files return 404. The Docker
+image serves both on HTTP port 80 by default, with no built-in TLS; deploy a
+TLS-terminating reverse proxy when HTTPS is needed. Vite development uses an
 API and WebSocket proxy (by default to `http://localhost:8080`); the proxy target
 can be supplied through `API_PROXY_TARGET`. The browser SDK base URL comes from
 `VITE_API_BASE_URL`, normally `/`.
@@ -210,7 +213,7 @@ playback path as the track tile. When the dialog opens it fetches the track's
 waveform once and draws it as the timeline bar: the played portion is bright, the
 unplayed region dimmer, and trimmed areas grey. If the waveform cannot be loaded
 the plain bar is shown instead. Beginning and end handles sit above the bar; repeating
-types also have a loop-back handle below it. The draft type selection controls
+types also have a repeat-icon loop-back handle below it. The selected type controls
 its visibility without discarding saved loop-back points. Areas outside the
 selected region are dimmed and cannot be
 selected for seeking. Handles support mouse/touch dragging and keyboard adjustment.
@@ -234,8 +237,10 @@ moving the loop-back handle to the beginning reanchors it so it follows later
 beginning adjustments. Moving the beginning to zero and the end to the full
 duration restores the full track without separate reset controls. Point edits
 update live playback on pointer release (including listening players at the current
-table), but shared library metadata is only persisted on Save. Closing without
-saving restores the saved region in playback; invalid drafts are not applied.
+table) and save to shared library metadata automatically. Name and region edits are
+briefly debounced; type changes save immediately. Saves are serialized, and the
+dialog reports failures with a retry action rather than discarding edits. Closing
+waits for pending saves; invalid edits are not applied.
 While dragging, marker labels and shading preview locally without changing audio
 or sending region commands. Canceling discards that local preview; keyboard edits
 commit immediately.

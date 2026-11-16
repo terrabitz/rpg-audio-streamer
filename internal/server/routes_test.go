@@ -167,6 +167,7 @@ func TestUploadValidation(t *testing.T) {
 func TestWebSocketRoute(t *testing.T) {
 	ts := setupTestServer(t)
 	defer ts.cleanup(t)
+	ts.frontend = os.DirFS(t.TempDir())
 	reg := &recordingWSRegisterer{tokens: make(chan *auth.Token, 1)}
 	ts.hub = reg
 	httpServer := httptest.NewServer(ts.Handler())
@@ -208,6 +209,60 @@ func TestWebSocketRoute(t *testing.T) {
 		if rec.Code != tc.status {
 			t.Fatalf("GM socket table %s = %d; want %d", tc.tableID, rec.Code, tc.status)
 		}
+	}
+}
+
+func TestFrontendRouting(t *testing.T) {
+	ts := setupTestServer(t)
+	defer ts.cleanup(t)
+	dir := t.TempDir()
+	if err := os.Mkdir(filepath.Join(dir, "assets"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	for name, content := range map[string]string{
+		"index.html":      "<html>SPA</html>",
+		"assets/app.js":   "console.log('app')",
+		"assets/main.css": "body {}",
+	} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ts.frontend = os.DirFS(dir)
+	handler := ts.Handler()
+	for _, tc := range []struct {
+		method, path, body string
+		status             int
+	}{
+		{"GET", "/", "<html>SPA</html>", 200},
+		{"GET", "/tables/123", "<html>SPA</html>", 200},
+		{"GET", "/assets/app.js", "console.log('app')", 200},
+		{"HEAD", "/assets/main.css", "", 200},
+		{"GET", "/assets/missing.js", "404 page not found\n", 404},
+		{"GET", "/assets/", "404 page not found\n", 404},
+		{"GET", "/api/v1/missing", "404 page not found\n", 404},
+		{"GET", "/api", "404 page not found\n", 404},
+		{"POST", "/tables/123", "method not allowed\n", 405},
+	} {
+		t.Run(tc.method+" "+tc.path, func(t *testing.T) {
+			rec := routedRequest(handler, tc.method, tc.path, "", false)
+			if rec.Code != tc.status || rec.Body.String() != tc.body {
+				t.Fatalf("response = %d %q; want %d %q", rec.Code, rec.Body.String(), tc.status, tc.body)
+			}
+		})
+	}
+}
+
+func TestFrontendConfiguration(t *testing.T) {
+	dir := t.TempDir()
+	if _, err := New(Config{FrontendDir: dir}, nil, nil, nil, nil); err == nil {
+		t.Fatal("missing frontend index should fail startup")
+	}
+	if err := os.WriteFile(filepath.Join(dir, "index.html"), []byte("index"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := New(Config{FrontendDir: dir}, nil, nil, nil, nil); err != nil {
+		t.Fatalf("valid frontend directory: %v", err)
 	}
 }
 

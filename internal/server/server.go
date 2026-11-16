@@ -9,7 +9,9 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path"
 	"strconv"
+	"strings"
 
 	"github.com/gorilla/websocket"
 	"github.com/terrabitz/rpg-audio-streamer/internal/auth"
@@ -72,6 +74,7 @@ type Config struct {
 	Host                    string
 	Port                    int
 	UploadDir               string
+	FrontendDir             string
 	DevMode                 bool
 	CORS                    middlewares.CorsConfig
 	DiscordStreamingEnabled bool
@@ -92,6 +95,17 @@ func New(cfg Config, logger *slog.Logger, auth Authenticator, store Store, hub W
 				return true
 			},
 		},
+	}
+
+	if cfg.FrontendDir != "" {
+		srv.frontend = os.DirFS(cfg.FrontendDir)
+		info, err := fs.Stat(srv.frontend, "index.html")
+		if err != nil {
+			return nil, fmt.Errorf("open frontend index: %w", err)
+		}
+		if !info.Mode().IsRegular() {
+			return nil, fmt.Errorf("frontend index is not a regular file")
+		}
 	}
 
 	if cfg.DiscordStreamingEnabled {
@@ -160,9 +174,50 @@ func (s *Server) Handler() http.Handler {
 	// NOTE, we want to register this separately, because we don't want to apply
 	// the same default middleware we apply to the API routes.
 	mux.HandleFunc("/api/v1/ws", s.tableWebSocketMiddleware(s.handleWebSocket))
-	mux.Handle("/", apiHandler)
+	mux.Handle("/api", apiHandler)
+	mux.Handle("/api/", apiHandler)
+	if s.frontend != nil {
+		mux.HandleFunc("/", s.serveFrontend)
+	} else {
+		mux.Handle("/", apiHandler)
+	}
 
 	return mux
+}
+
+func (s *Server) serveFrontend(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		w.Header().Set("Allow", "GET, HEAD")
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	name := strings.TrimPrefix(r.URL.Path, "/")
+	if name == "" {
+		name = "index.html"
+	}
+	if !fs.ValidPath(name) {
+		http.NotFound(w, r)
+		return
+	}
+	info, err := fs.Stat(s.frontend, name)
+	if err != nil && !os.IsNotExist(err) {
+		s.logger.Error("stat frontend file", slog.String("path", name), slog.Any("error", err))
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	if err == nil && info.IsDir() {
+		http.NotFound(w, r)
+		return
+	}
+	if os.IsNotExist(err) {
+		if path.Ext(name) != "" {
+			http.NotFound(w, r)
+			return
+		}
+		name = "index.html"
+	}
+	http.ServeFileFS(w, r, s.frontend, name)
 }
 
 func (s *Server) registerHandlers() *http.ServeMux {

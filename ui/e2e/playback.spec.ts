@@ -112,7 +112,7 @@ for (const surface of ['sidebar', 'timeline'] as const) {
     await loop.press('PageUp')
     await expect(loop).toHaveAttribute('aria-valuenow', '5')
     const end = Number(await dialog.getByRole('slider', { name: 'End for Loop Seek Music' }).getAttribute('aria-valuenow'))
-    await dialog.getByRole('button', { name: 'Save Changes' }).click()
+    await dialog.getByRole('button', { name: 'Close track controls' }).click()
     await expect(dialog).not.toBeVisible()
     if (surface === 'timeline') await tile.getByRole('button', { name: 'Edit Loop Seek Music', exact: true }).click()
     const controls = surface === 'timeline' ? dialog : page.getByRole('complementary', { name: 'Currently playing' })

@@ -11,40 +11,36 @@
       </div>
     </slot>
 
-    <v-dialog v-model="showControls" max-width="480px" :persistent="isDeleting">
+    <v-dialog :model-value="showControls" max-width="480px" :persistent="isDeleting"
+      @update:model-value="value => value ? showControls = true : closeControls()">
       <v-card>
         <v-card-title class="text-body-1">
           <v-btn icon="$close" size="small" variant="text" aria-label="Close track controls"
-            :disabled="isDeleting" @click="showControls = false" class="float-right" />
+            :disabled="isDeleting" @click="closeControls" class="float-right" />
         </v-card-title>
         <v-card-text>
           <v-alert v-if="error" type="error" class="mb-3">{{ error }}</v-alert>
-          <v-text-field v-model="editName" label="Track Name" variant="underlined" hide-details
+          <v-btn v-if="saveFailed" color="primary" variant="text" @click="saveTrackChanges">Retry saving</v-btn>
+          <v-text-field :model-value="editName" @update:model-value="changeName" label="Track Name" variant="underlined" hide-details
             class="pa-0 ma-0"></v-text-field>
-          <TrackTypeSelector v-model="editTrackType" />
+          <TrackTypeSelector :model-value="editTrackType" @update:model-value="changeTrackType" />
           <v-alert v-if="regionError" type="error" class="mb-3">{{ regionError }}</v-alert>
           <TrackTimeline v-if="audioState" :model-value="editedPlayback" @update:model-value="previewPlayback" :duration="audioState.duration"
             :current-time="audioState.currentTime" :seek-target="audioState.seekTarget" :seek-version="audioState.seekVersion"
             :name="props.fileName" :waveform="waveform"
             show-play :is-playing="audioState.isPlaying"
             :is-repeating="trackTypeStore.getTypeById(editTrackType)?.isRepeating"
-            :volume="props.library ? undefined : audioState.volume" :disabled="isSaving || isDeleting" class="mt-3"
+            :volume="props.library ? undefined : audioState.volume" :disabled="isDeleting" class="mt-3"
             @volume="$emit('volume', $event)" @seek="$emit('seek', $event)" @play="$emit('play')" />
         </v-card-text>
         <v-divider></v-divider>
         <v-card-actions>
           <v-btn color="error" variant="text" prepend-icon="$delete" :loading="isDeleting && !showDeleteConfirmation"
-            :disabled="isSaving || isDeleting" :aria-label="props.library ? 'Delete track' : 'Remove from table'"
+            :disabled="isSaving || isDeleting || hasChanges" :aria-label="props.library ? 'Delete track' : 'Remove from table'"
             @click="requestDelete">
             {{ props.library ? 'Delete track' : 'Remove from table' }}
           </v-btn>
-
           <v-spacer />
-
-          <v-btn color="primary" variant="text" prepend-icon="$save" @click="saveTrackChanges" :loading="isSaving"
-            :disabled="!hasChanges || !!regionError || isDeleting">
-            Save Changes
-          </v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
@@ -72,7 +68,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch, watchEffect } from 'vue';
+import { computed, onBeforeUnmount, ref, watchEffect } from 'vue';
 import type { PlaybackSettings, UpdateTrackRequest } from '@/client/apiClient';
 import { defaultPlayback, playbackError } from '@/composables/playback';
 import { useAudioStore } from '../stores/audio';
@@ -102,6 +98,7 @@ const isDeleting = ref(false);
 const showDeleteConfirmation = ref(false);
 const deleteTableCount = ref(0);
 const error = ref('');
+const saveFailed = ref(false);
 
 const isActive = computed(() => audioState.value?.isPlaying);
 
@@ -109,11 +106,18 @@ const editName = ref(props.fileName);
 const editTrackType = ref(trackType.value?.id || '');
 const editedPlayback = ref<PlaybackSettings>(defaultPlayback());
 const waveform = ref<number[]>();
-let hasPlaybackPreview = false;
+let saveTimer: ReturnType<typeof setTimeout> | undefined;
+let savePromise: Promise<void> | undefined;
 const regionError = computed(() => playbackError(editedPlayback.value, audioState.value?.duration));
 
 function openControls() {
   error.value = '';
+  if (track.value) {
+    editName.value = track.value.name;
+    editTrackType.value = track.value.typeID;
+    editedPlayback.value = { ...(track.value.playback ?? defaultPlayback()) };
+    loadWaveform(track.value.id);
+  }
   if (props.library && track.value && !audioState.value) {
     audioStore.initTrack(props.fileID, props.fileName, trackType.value?.name);
     audioStore.updateTrackState(props.fileID, {
@@ -124,40 +128,44 @@ function openControls() {
   showControls.value = true;
 }
 
-// Computed property to check if there are any changes to save
 const hasChanges = computed(() => {
   if (!track.value) return false;
   return editName.value !== track.value.name || editTrackType.value !== track.value.typeID ||
     JSON.stringify(editedPlayback.value) !== JSON.stringify(track.value.playback ?? defaultPlayback());
 });
 
-// Reset edit values when dialog opens
-watch(showControls, (open) => {
-  if (open && track.value) {
-    editName.value = track.value.name;
-    editTrackType.value = track.value.typeID;
-    editedPlayback.value = { ...(track.value.playback ?? defaultPlayback()) };
-    loadWaveform(track.value.id);
-  }
-  if (!open) restorePlayback();
-});
+async function closeControls() {
+  if (isDeleting.value) return;
+  await saveTrackChanges();
+  if (!saveFailed.value && !regionError.value && !hasChanges.value) showControls.value = false;
+}
+
+function changeName(name: string) {
+  editName.value = name;
+  scheduleSave();
+}
+
+function scheduleSave() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => { void saveTrackChanges(); }, 400);
+}
+
+function changeTrackType(typeID: string) {
+  editTrackType.value = typeID;
+  void saveTrackChanges();
+}
 
 function previewPlayback(playback: PlaybackSettings) {
   editedPlayback.value = playback;
   if (regionError.value) return;
-  hasPlaybackPreview = true;
   emit('settings', { ...playback });
+  scheduleSave();
 }
 
-function restorePlayback() {
-  if (!hasPlaybackPreview) return;
-  hasPlaybackPreview = false;
-  if (track.value && audioState.value) {
-    emit('settings', { ...(track.value.playback ?? defaultPlayback()) });
-  }
-}
-
-onBeforeUnmount(restorePlayback);
+onBeforeUnmount(() => {
+  clearTimeout(saveTimer);
+  if (hasChanges.value && !saveFailed.value) void saveTrackChanges();
+});
 
 async function loadWaveform(trackID: string) {
   if (waveform.value) return;
@@ -214,44 +222,30 @@ async function confirmDelete(expectedTableCount: number | null) {
   }
 }
 
-async function saveTrackChanges() {
-  error.value = ''
-  if (regionError.value) {
-    error.value = regionError.value;
-    return;
-  }
-  if (!track.value) {
-    console.warn('Cannot save track changes: track not found');
-    return;
-  }
+function saveTrackChanges(): Promise<void> {
+  clearTimeout(saveTimer);
+  if (savePromise) return savePromise;
+  savePromise = persistChanges().finally(() => { savePromise = undefined; });
+  return savePromise;
+}
 
+async function persistChanges() {
+  isSaving.value = true;
+  saveFailed.value = false;
+  error.value = '';
   try {
-    isSaving.value = true;
-
-    // Only update if values have changed
-    const updates: Omit<UpdateTrackRequest, 'id'> = {};
-
-    if (editName.value !== track.value.name) {
-      updates.name = editName.value;
-    }
-
-    if (editTrackType.value !== track.value.typeID) {
-      updates.typeID = editTrackType.value;
-    }
-    if (JSON.stringify(editedPlayback.value) !== JSON.stringify(track.value.playback ?? defaultPlayback())) {
-      updates.playback = editedPlayback.value;
-    }
-
-    // Only make API call if something has changed
-    if (Object.keys(updates).length > 0) {
-      const updatedTrack = await fileStore.updateTrack(track.value.id, updates);
-      if (updatedTrack) {
-        emit('settings', updatedTrack.playback ?? defaultPlayback());
-        hasPlaybackPreview = false;
+    while (hasChanges.value) {
+      if (!track.value) throw new Error('Track not found');
+      if (!editName.value.trim()) throw new Error('Track name cannot be empty');
+      if (regionError.value) throw new Error(regionError.value);
+      const updates: Omit<UpdateTrackRequest, 'id'> = {};
+      if (editName.value !== track.value.name) updates.name = editName.value;
+      if (editTrackType.value !== track.value.typeID) updates.typeID = editTrackType.value;
+      if (JSON.stringify(editedPlayback.value) !== JSON.stringify(track.value.playback ?? defaultPlayback())) {
+        updates.playback = { ...editedPlayback.value };
       }
-
-      // Update audio track state if track type changed (may affect isRepeating)
-      if (updates.typeID && updatedTrack) {
+      const updatedTrack = await fileStore.updateTrack(track.value.id, updates);
+      if (updates.typeID) {
         const newTrackType = trackTypeStore.getTypeById(updatedTrack.typeID);
         if (newTrackType) {
           audioStore.updateTrackState(props.fileID, {
@@ -261,12 +255,11 @@ async function saveTrackChanges() {
         }
       }
     }
-
-    // Close the dialog after successful save
-    showControls.value = false;
   } catch (cause) {
     console.error('Failed to update track:', cause);
-    error.value = 'Failed to update track.'
+    error.value = cause instanceof Error && cause.message === 'Track name cannot be empty'
+      ? cause.message : 'Failed to update track.';
+    saveFailed.value = true;
   } finally {
     isSaving.value = false;
   }

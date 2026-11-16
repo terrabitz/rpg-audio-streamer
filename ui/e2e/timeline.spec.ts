@@ -15,12 +15,13 @@ test('GM configures and persists track loop points', async ({ page }) => {
   await expect(timeline.getByRole('slider', { name: 'Beginning for Looping Forest' })).toHaveText('0:10.0')
   await expect(timeline.getByRole('slider', { name: 'End for Looping Forest' })).toHaveText('0:25.0')
   await expect(timeline.getByRole('slider', { name: 'Loop-back point for Looping Forest' })).toHaveText('0:15.0')
+  await expect(timeline.getByRole('slider', { name: 'Loop-back point for Looping Forest' }).locator('svg')).toBeVisible()
   await expect(timeline.getByRole('slider', { name: 'Playback position for Looping Forest' }))
     .toHaveAttribute('aria-valuemin', '10')
   await expect(timeline.getByRole('slider', { name: 'Playback position for Looping Forest' }))
     .toHaveAttribute('aria-valuemax', '23')
   await expectTimelineLayout(page.getByRole('dialog'))
-  await page.getByRole('button', { name: 'Save Changes', exact: true }).click()
+  await page.getByRole('button', { name: 'Close track controls', exact: true }).click()
   await expect(page.getByRole('dialog')).toHaveCount(0)
   await page.reload()
   const persistedRow = page.getByRole('row').filter({ hasText: 'Looping Forest' })
@@ -39,7 +40,7 @@ test('GM reads playback time relative to the trimmed track', async ({ page }) =>
   await tile.getByRole('button', { name: 'Edit Trimmed Timer' }).click()
   await dragTimelinePoint(page, 'Beginning for Trimmed Timer', 10)
   await dragTimelinePoint(page, 'End for Trimmed Timer', 25)
-  await page.getByRole('button', { name: 'Save Changes', exact: true }).click()
+  await page.getByRole('button', { name: 'Close track controls', exact: true }).click()
   await tile.locator('.track-heading').click()
   const playing = page.getByRole('group', { name: 'Playing Trimmed Timer', exact: true })
   const position = playing.getByRole('slider', { name: 'Playback position for Trimmed Timer' })
@@ -150,7 +151,7 @@ test('GM commits waveform marker drags only on release', async ({ page, browser 
   } finally { await context.close() }
 })
 
-test('GM previews loop edits live for listeners before saving them', async ({ page, browser }) => {
+test('GM saves loop edits live for listeners', async ({ page, browser }) => {
   test.slow()
   await login(page)
   await uploadTrack(page, 'Live Loop')
@@ -179,7 +180,7 @@ test('GM previews loop edits live for listeners before saving them', async ({ pa
       const tracks = await response.json()
       return tracks.find((track: { name: string }) => track.name === 'Live Loop').playback
     }
-    expect(await savedPlayback()).toEqual({ startTime: 0, endTime: null, loopBackTime: null })
+    await expect.poll(savedPlayback).toEqual({ startTime: 10, endTime: 20, loopBackTime: 12 })
     const seek = page.getByRole('dialog').getByRole('slider', { name: 'Playback position for Live Loop' })
     await seek.press('End')
     for (const browserPage of [page, player]) {
@@ -190,15 +191,8 @@ test('GM previews loop edits live for listeners before saving them', async ({ pa
     await page.getByRole('button', { name: 'Close track controls', exact: true }).click()
     const sidebar = page.getByRole('group', { name: 'Playing Live Loop', exact: true })
     await expect(sidebar.getByRole('slider', { name: 'Playback position for Live Loop' }))
-      .toHaveAttribute('aria-valuemax', /^28(?:\.\d+)?$/)
-    await expect(sidebar.locator('.v-slider-track__tick')).toHaveCount(0)
-    expect(await savedPlayback()).toEqual({ startTime: 0, endTime: null, loopBackTime: null })
-    await tile.getByRole('button', { name: 'Edit Live Loop', exact: true }).click()
-    await dragTimelinePoint(page, 'Beginning for Live Loop', 10)
-    await dragTimelinePoint(page, 'End for Live Loop', 20)
-    await dragTimelinePoint(page, 'Loop-back point for Live Loop', 12)
-    await page.getByRole('button', { name: 'Save Changes', exact: true }).click()
-    await expect(page.getByRole('dialog')).toHaveCount(0)
+      .toHaveAttribute('aria-valuemax', '18')
+    await expect(sidebar.locator('.v-slider-track__tick')).toHaveCount(1)
     expect(await savedPlayback()).toEqual({ startTime: 10, endTime: 20, loopBackTime: 12 })
   } finally {
     await playerContext.close()
@@ -514,7 +508,7 @@ for (const point of ['Loop-back point', 'End']) {
   })
 }
 
-test('GM auditions unsaved loop points in the library', async ({ page }) => {
+test('GM auditions saved loop points in the library', async ({ page }) => {
   await login(page)
   await navigate(page, 'Library')
   await uploadTrack(page, 'Draft Preview')
@@ -540,8 +534,8 @@ test('GM auditions unsaved loop points in the library', async ({ page }) => {
   )).toBe(true)
   await dialog.getByRole('button', { name: 'Close track controls', exact: true }).click()
   await row.getByRole('button', { name: 'Edit Draft Preview', exact: true }).click()
-  await expect(dialog.getByRole('slider', { name: 'Beginning for Draft Preview' })).toHaveAttribute('aria-valuenow', '0')
-  await expect(dialog.getByRole('slider', { name: 'End for Draft Preview' })).toHaveAttribute('aria-valuenow', /^30(?:\.\d+)?$/)
+  await expect(dialog.getByRole('slider', { name: 'Beginning for Draft Preview' })).toHaveAttribute('aria-valuenow', '5')
+  await expect(dialog.getByRole('slider', { name: 'End for Draft Preview' })).toHaveAttribute('aria-valuenow', '15')
   await dialog.getByRole('button', { name: 'Close track controls', exact: true }).click()
   await deleteLibraryTrack(page, 'Draft Preview', 0)
 })
@@ -561,7 +555,7 @@ test('GM trims a one-shot without loop-back controls', async ({ page }) => {
   await dialog.getByRole('combobox', { name: 'Track Type', exact: true }).press('ArrowDown')
   await page.getByRole('option', { name: 'One-Shot', exact: true }).click()
   await expect(dialog.getByRole('slider', { name: 'Loop-back point for Trimmed Bell' })).toHaveCount(0)
-  await dialog.getByRole('button', { name: 'Save Changes', exact: true }).click()
+  await dialog.getByRole('button', { name: 'Close track controls', exact: true }).click()
   await tile.locator('.track-heading').click()
   await expect(page.locator('.playing-sidebar .v-slider-track__tick')).toHaveCount(0)
   await expect.poll(() => page.locator('video').evaluate((media: HTMLVideoElement) => media.currentTime))
@@ -642,7 +636,7 @@ test.describe('touch loop controls', () => {
     await cursor.press('End')
     await expect.poll(() => page.locator('video').evaluate((media: HTMLVideoElement) => media.currentTime)).toBe(18)
     await expect.poll(() => page.locator('video').evaluate((media: HTMLVideoElement) => media.paused)).toBe(true)
-    await page.getByRole('button', { name: 'Save Changes', exact: true }).tap()
+    await page.getByRole('button', { name: 'Close track controls', exact: true }).tap()
     await tile.getByRole('button', { name: 'Edit Mobile Loop' }).tap()
     await expect(beginning).toHaveAttribute('aria-valuenow', '2.1')
     await expect(dialog.getByRole('slider', { name: 'Loop-back point for Mobile Loop' })).toHaveAttribute('aria-valuenow', '5')
@@ -651,7 +645,7 @@ test.describe('touch loop controls', () => {
       .toHaveAttribute('aria-valuetext', 'Beginning (0:02.1)')
     await beginning.press('Shift+ArrowRight')
     await expect(dialog.getByRole('slider', { name: 'Loop-back point for Mobile Loop' })).toHaveText('0:03.1')
-    await page.getByRole('button', { name: 'Save Changes', exact: true }).tap()
+    await page.getByRole('button', { name: 'Close track controls', exact: true }).tap()
     await tile.getByRole('button', { name: 'Edit Mobile Loop' }).tap()
     await expect(dialog.getByRole('slider', { name: 'Loop-back point for Mobile Loop' }))
       .toHaveAttribute('aria-valuetext', 'Beginning (0:03.1)')
@@ -663,7 +657,7 @@ test.describe('touch loop controls', () => {
     await expect(dialog.getByRole('button', { name: 'Reset points', exact: true })).toHaveCount(0)
     await dialog.getByRole('button', { name: 'Close track controls' }).tap()
     await tile.getByRole('button', { name: 'Edit Mobile Loop' }).tap()
-    await expect(beginning).toHaveAttribute('aria-valuenow', '3.1')
+    await expect(beginning).toHaveAttribute('aria-valuenow', '0')
     await dialog.getByRole('button', { name: 'Remove from table', exact: true }).tap()
     await expect(tile).toHaveCount(0)
     await deleteLibraryTrack(page, 'Mobile Loop', 0)
@@ -679,7 +673,7 @@ test('GM crossfades a repeating track at its configured loop point', async ({ pa
   await dragTimelinePoint(page, 'Beginning for Boss Loop', 1)
   await dragTimelinePoint(page, 'End for Boss Loop', 6)
   await dragTimelinePoint(page, 'Loop-back point for Boss Loop', 2)
-  await page.getByRole('button', { name: 'Save Changes', exact: true }).click()
+  await page.getByRole('button', { name: 'Close track controls', exact: true }).click()
 
   const video = page.locator('video')
   const audio = page.locator('audio')
@@ -714,7 +708,7 @@ test('GM crossfades a repeating track at its configured loop point', async ({ pa
 
   await tile.getByRole('button', { name: 'Edit Boss Loop', exact: true }).click()
   await page.getByRole('slider', { name: 'Loop-back point for Boss Loop' }).press('Home')
-  await page.getByRole('button', { name: 'Save Changes', exact: true }).click()
+  await page.getByRole('button', { name: 'Close track controls', exact: true }).click()
   await expect(loopTick).toHaveCount(0)
   await tile.getByRole('button', { name: 'Edit Boss Loop', exact: true }).click()
   await page.getByRole('button', { name: 'Remove from table', exact: true }).click()
