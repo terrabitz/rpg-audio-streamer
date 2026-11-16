@@ -18,7 +18,7 @@ test('GM configures and persists track loop points', async ({ page }) => {
   await expect(timeline.getByRole('slider', { name: 'Playback position for Looping Forest' }))
     .toHaveAttribute('aria-valuemin', '10')
   await expect(timeline.getByRole('slider', { name: 'Playback position for Looping Forest' }))
-    .toHaveAttribute('aria-valuemax', '25')
+    .toHaveAttribute('aria-valuemax', '23')
   await expectTimelineLayout(page.getByRole('dialog'))
   await page.getByRole('button', { name: 'Save Changes', exact: true }).click()
   await expect(page.getByRole('dialog')).toHaveCount(0)
@@ -47,6 +47,7 @@ test('GM reads playback time relative to the trimmed track', async ({ page }) =>
   await expect(position).toHaveAttribute('aria-valuetext', '0:00 of 0:15')
   await position.press('Home')
   await position.press('ArrowRight')
+  await expect.poll(async () => Number(await position.getAttribute('aria-valuenow'))).toBeGreaterThanOrEqual(12)
   const timer = await playing.evaluate(el => {
     const slider = el.querySelector('[aria-label="Playback position for Trimmed Timer"]')
     return {
@@ -55,13 +56,17 @@ test('GM reads playback time relative to the trimmed track', async ({ page }) =>
       text: el.querySelector('.position-time')?.textContent,
     }
   })
-  const elapsed = Math.floor(timer.sourceTime - 10)
+  const elapsedText = timer.text?.match(/^0:(\d{2})/)?.[1]
+  if (elapsedText === undefined) throw new Error('Playback timer should show elapsed time')
+  const elapsed = Number(elapsedText)
+  expect(timer.sourceTime).toBeGreaterThanOrEqual(11)
+  expect(timer.sourceTime).toBeLessThan(15)
   expect(elapsed).toBeGreaterThanOrEqual(1)
   expect(elapsed).toBeLessThan(5)
-  expect(timer.text).toBe(`0:0${elapsed} / 0:15`)
-  expect(timer.valueText).toBe(`0:0${elapsed} of 0:15`)
-  await expect.poll(() => page.locator('video').evaluate((media: HTMLVideoElement) => media.currentTime))
-    .toBeGreaterThanOrEqual(11)
+  expect(timer.text).toBe(`0:${String(elapsed).padStart(2, '0')} / 0:15`)
+  expect(timer.valueText).toBe(`0:${String(elapsed).padStart(2, '0')} of 0:15`)
+  await expect.poll(() => page.locator('[data-active="true"]').evaluate((media: HTMLMediaElement) => media.currentTime))
+    .toBeGreaterThanOrEqual(12)
   await tile.getByRole('button', { name: 'Edit Trimmed Timer' }).click()
   await page.getByRole('button', { name: 'Remove from table', exact: true }).click()
   await deleteLibraryTrack(page, 'Trimmed Timer', 0)
@@ -122,13 +127,13 @@ test('GM previews loop edits live for listeners before saving them', async ({ pa
     await seek.press('End')
     for (const browserPage of [page, player]) {
       await expect.poll(() => browserPage.locator('[data-active="true"]').evaluate(
-        (media: HTMLMediaElement) => !media.paused && media.currentTime >= 12 && media.currentTime < 18,
+        (media: HTMLMediaElement) => !media.paused && media.currentTime >= 18 && media.currentTime < 20,
       )).toBe(true)
     }
     await page.getByRole('button', { name: 'Close track controls', exact: true }).click()
     const sidebar = page.getByRole('group', { name: 'Playing Live Loop', exact: true })
     await expect(sidebar.getByRole('slider', { name: 'Playback position for Live Loop' }))
-      .toHaveAttribute('aria-valuemax', /^30(?:\.\d+)?$/)
+      .toHaveAttribute('aria-valuemax', /^28(?:\.\d+)?$/)
     await expect(sidebar.locator('.v-slider-track__tick')).toHaveCount(0)
     expect(await savedPlayback()).toEqual({ startTime: 0, endTime: null, loopBackTime: null })
     await tile.getByRole('button', { name: 'Edit Live Loop', exact: true }).click()
@@ -574,10 +579,11 @@ test.describe('touch loop controls', () => {
     await expect(beginning).toHaveAttribute('aria-valuenow', '2.1')
     await expectTimelineLayout(dialog)
     const cursor = dialog.getByRole('slider', { name: 'Playback position for Mobile Loop' })
+    await expect(cursor).toHaveAttribute('aria-valuemax', '18')
     await cursor.press('Home')
     await expect.poll(() => page.locator('video').evaluate((media: HTMLVideoElement) => media.currentTime)).toBe(2.1)
     await cursor.press('End')
-    await expect.poll(() => page.locator('video').evaluate((media: HTMLVideoElement) => media.currentTime)).toBe(20)
+    await expect.poll(() => page.locator('video').evaluate((media: HTMLVideoElement) => media.currentTime)).toBe(18)
     await expect.poll(() => page.locator('video').evaluate((media: HTMLVideoElement) => media.paused)).toBe(true)
     await page.getByRole('button', { name: 'Save Changes', exact: true }).tap()
     await tile.getByRole('button', { name: 'Edit Mobile Loop' }).tap()
@@ -622,6 +628,9 @@ test('GM crossfades a repeating track at its configured loop point', async ({ pa
   const audio = page.locator('audio')
   await tile.locator('.track-heading').click()
   const sidebarSeek = page.locator('.playing-sidebar .track-position')
+  const seekSlider = sidebarSeek.getByRole('slider', { name: 'Playback position for Boss Loop' })
+  await expect(seekSlider).toHaveAttribute('aria-valuemin', '1')
+  await expect(seekSlider).toHaveAttribute('aria-valuemax', '4')
   const loopTick = sidebarSeek.locator('.v-slider-track__tick')
   await expect(loopTick).toHaveCount(1)
   await expect(loopTick).toHaveCSS('width', '2px')
@@ -633,7 +642,7 @@ test('GM crossfades a repeating track at its configured loop point', async ({ pa
     const rail = await sidebarSeek.locator('.v-slider-track__background').boundingBox()
     const tick = await loopTick.boundingBox()
     if (!rail || !tick) throw new Error('The seek rail and loop-back tick must be visible')
-    return Math.abs(tick.x + tick.width / 2 - rail.x - rail.width * (2 - 1) / (6 - 1))
+    return Math.abs(tick.x + tick.width / 2 - rail.x - rail.width * (2 - 1) / (4 - 1))
   }).toBeLessThan(1)
   await expect.poll(() => audio.evaluate((media: HTMLAudioElement) => !media.paused), { timeout: 20_000 }).toBe(true)
   await expect.poll(() => audio.evaluate((media: HTMLAudioElement) => media.currentTime))

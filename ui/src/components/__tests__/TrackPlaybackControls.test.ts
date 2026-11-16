@@ -56,6 +56,52 @@ it('marks only a distinct loop-back point for repeating tracks', async () => {
   wrapper.unmount()
 })
 
+it('previews a pointer drag despite playback updates and seeks only on release', async () => {
+  const wrapper = mountControls(true)
+  const seek = wrapper.getComponent({ name: 'VSlider' })
+  seek.element.dispatchEvent(new MouseEvent('pointerdown', { button: 0, bubbles: true }))
+  await seek.vm.$emit('update:modelValue', 90)
+  await seek.vm.$emit('start', 90)
+  await wrapper.setProps({ state: { ...state, currentTime: 66 } })
+  expect(seek.props('modelValue')).toBe(90)
+  expect(wrapper.get('.position-time').text()).toBe('1:30 / 2:00')
+  expect(wrapper.emitted('seek')).toBeUndefined()
+  await seek.vm.$emit('update:modelValue', 95)
+  await seek.vm.$emit('end', 95)
+  expect(wrapper.emitted('seek')).toEqual([[95]])
+  expect(seek.props('modelValue')).toBe(66)
+  wrapper.unmount()
+})
+
+it('advances repeated keyboard seeks from the pending landing point instead of its preroll', async () => {
+  const wrapper = mountControls(true)
+  const seek = wrapper.getComponent({ name: 'VSlider' })
+  await wrapper.setProps({ state: { ...state, currentTime: 18, seekTarget: 20 } })
+  await seek.trigger('keydown', { key: 'ArrowRight' })
+  await wrapper.setProps({ state: { ...state, currentTime: 19, seekTarget: 21 } })
+  await seek.trigger('keydown', { key: 'ArrowRight' })
+  await wrapper.setProps({ state: { ...state, currentTime: 24, seekTarget: null } })
+  await seek.trigger('keydown', { key: 'ArrowLeft' })
+  expect(wrapper.emitted('seek')).toEqual([[21], [22], [23]])
+  wrapper.unmount()
+})
+
+it.each([[10, 30, 28], [10, 11, 10]])('caps pointer and keyboard seeks before the final tail (%s–%s)', async (startTime, endTime, limit) => {
+  const wrapper = mountControls(true)
+  await wrapper.setProps({
+    state: { ...state, playback: { startTime, endTime, loopBackTime: null }, currentTime: startTime, duration: 60 },
+  })
+  const slider = wrapper.getComponent({ name: 'VSlider' })
+  expect(slider.props('max')).toBe(limit)
+  await slider.vm.$emit('update:modelValue', endTime)
+  slider.element.dispatchEvent(new MouseEvent('pointerdown', { button: 0, bubbles: true }))
+  await slider.vm.$emit('update:modelValue', endTime)
+  expect(slider.props('modelValue')).toBe(limit)
+  await slider.vm.$emit('end', endTime)
+  expect(wrapper.emitted('seek')).toEqual([[limit], [limit]])
+  wrapper.unmount()
+})
+
 it.each([
   [10, 50, 10, 60, '0:00', '0:40'],
   [10, 50, 30, 60, '0:20', '0:40'],
@@ -79,7 +125,7 @@ it.each([
   expect(seek.props('modelValue')).toBe(currentTime)
   await seek.vm.$emit('update:modelValue', startTime + 1)
   await wrapper.get('[aria-label="Restart Forest"]').trigger('click')
-  expect(wrapper.emitted('seek')).toEqual([[startTime + 1], [startTime]])
+  expect(wrapper.emitted('seek')).toEqual([[duration > 0 ? startTime + 1 : startTime], [startTime]])
   wrapper.unmount()
 })
 
@@ -103,7 +149,7 @@ function mountControls(showPlay = false) {
     global: {
       stubs: {
         VolumeSlider: { name: 'VolumeSlider', props: ['modelValue'], template: '<div />' },
-        VSlider: { name: 'VSlider', props: ['modelValue', 'disabled', 'ticks', 'showTicks'], template: '<div />' },
+        VSlider: { name: 'VSlider', props: ['modelValue', 'disabled', 'ticks', 'showTicks', 'max'], template: '<div />' },
         VBtn: { template: '<button><slot /></button>' },
         VProgressCircular: { name: 'VProgressCircular', template: '<span />' },
         VIcon: true,

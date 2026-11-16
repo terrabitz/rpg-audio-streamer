@@ -50,7 +50,8 @@ type track struct {
 }
 
 type overlap struct {
-	start, incoming int
+	start, end, incoming int
+	seek, beginning      bool
 }
 
 type ramp struct {
@@ -134,6 +135,36 @@ func (m *Mixer) Seek(id string, position int) error {
 	return nil
 }
 
+// CrossfadeSeek blends the outgoing tail with the audio leading to the destination.
+func (m *Mixer) CrossfadeSeek(id string, position int) error {
+	t, err := m.find(id)
+	if err != nil {
+		return err
+	}
+	if position < t.region.Start || position > t.region.End {
+		return fmt.Errorf("seek position must be within the playback region")
+	}
+	position = min(position, max(t.region.Start, t.region.End-2*m.sampleRate))
+	if t.overlap != nil {
+		if t.overlap.seek && t.position > t.overlap.start {
+			t.position = t.overlap.incoming
+		}
+		t.overlap = nil
+	}
+	frames := min(2*m.sampleRate, t.region.End-t.position, t.region.End-t.region.Start)
+	if !t.playing || frames <= 0 {
+		t.position = position
+		return nil
+	}
+	beginning := position-t.region.Start <= 2*m.sampleRate
+	incoming := position - frames
+	if beginning {
+		incoming = t.region.Start
+	}
+	t.overlap = &overlap{start: t.position, end: t.position + frames, incoming: incoming, seek: true, beginning: beginning}
+	return nil
+}
+
 func (m *Mixer) SetRegion(id string, region Region) error {
 	t, err := m.find(id)
 	if err != nil {
@@ -147,6 +178,9 @@ func (m *Mixer) SetRegion(id string, region Region) error {
 		return nil
 	}
 	t.region = region
+	if t.overlap != nil && t.overlap.seek {
+		t.position = t.overlap.incoming
+	}
 	t.overlap = nil
 	if t.position < region.Start || t.position >= region.End {
 		t.position = region.Start
@@ -163,6 +197,9 @@ func (m *Mixer) SetRepeating(id string, repeating bool) error {
 		return nil
 	}
 	t.repeating = repeating
+	if t.overlap != nil && t.overlap.seek {
+		t.position = t.overlap.incoming
+	}
 	t.overlap = nil
 	return nil
 }
@@ -219,7 +256,11 @@ func (m *Mixer) State(id string) (State, error) {
 	if err != nil {
 		return State{}, err
 	}
-	return State{Position: t.position, Playing: t.playing}, nil
+	position := t.position
+	if t.overlap != nil && t.overlap.seek {
+		position = t.overlap.incoming
+	}
+	return State{Position: position, Playing: t.playing}, nil
 }
 
 func (m *Mixer) TrackError(id string) error {
@@ -257,24 +298,40 @@ func (t *track) next(sampleRate int) Frame {
 	}
 	fadeFrames := min(2*sampleRate, (t.region.End-t.region.LoopBack)/3, t.region.End-t.region.Start)
 	if t.playing && t.repeating && t.overlap == nil && fadeFrames > 0 && t.position >= t.region.End-fadeFrames {
-		t.overlap = &overlap{start: t.position, incoming: t.region.LoopBack}
+		t.overlap = &overlap{start: t.position, end: t.region.End, incoming: t.region.LoopBack}
 	}
 	frame, ready := t.frameAt(t.position)
 	if !ready {
 		return t.stopOnSourceError()
 	}
 	if t.overlap != nil {
-		progress := float64(t.position-t.overlap.start) / float64(t.region.End-t.overlap.start)
 		head, headReady := t.frameAt(t.overlap.incoming)
 		if !headReady {
+			if t.overlap.seek && t.sourceErr == nil && t.position < t.region.End-1 {
+				// Keep the outgoing audio audible while the destination is decoded.
+				duration := t.overlap.end - t.overlap.start
+				t.position++
+				t.overlap.start = t.position
+				t.overlap.end = min(t.region.End, t.position+duration)
+				if !t.overlap.beginning {
+					t.overlap.incoming += duration - (t.overlap.end - t.overlap.start)
+				}
+				envelope := t.envelope.step()
+				return Frame{Left: frame.Left * gain * envelope, Right: frame.Right * gain * envelope}
+			}
 			return t.stopOnSourceError()
 		}
+		progress := float64(t.position-t.overlap.start) / float64(t.overlap.end-t.overlap.start)
 		frame.Left = frame.Left*(1-progress) + head.Left*progress
 		frame.Right = frame.Right*(1-progress) + head.Right*progress
 		t.overlap.incoming++
 	}
 	envelope := t.envelope.step()
 	t.position++
+	if t.overlap != nil && t.position == t.overlap.end {
+		t.position = t.overlap.incoming
+		t.overlap = nil
+	}
 	if t.position == t.region.End {
 		t.finish()
 	}
@@ -339,6 +396,9 @@ func (t *track) setPlaying(playing bool, sampleRate int) {
 	}
 	t.playing = playing
 	if !playing {
+		if t.overlap != nil && t.overlap.seek {
+			t.position = t.overlap.incoming
+		}
 		t.overlap = nil
 	}
 	target := 0.0

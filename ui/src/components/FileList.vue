@@ -323,10 +323,9 @@ const handleVolume = (fileID: string, volume: number) => {
 }
 
 const handleSeek = (fileID: string, time: number) => {
-  audioStore.updateTrackState(fileID, { currentTime: time })
   if (!props.library && wsStore.isConnected) {
     wsStore.sendMessage('syncTrack', { fileID, currentTime: time, duration: audioStore.tracks[fileID]?.duration })
-  }
+  } else audioStore.seekTrack(fileID, time)
 }
 
 onUnmounted(() => {

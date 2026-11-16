@@ -119,7 +119,7 @@ func (s *Service) Update(tableID string, payload json.RawMessage) error {
 		return fmt.Errorf("mix session closed while loading audio")
 	}
 	session := s.get(tableID)
-	if err := session.apply(change); err != nil {
+	if err := session.apply(change, false); err != nil {
 		change.close()
 		return err
 	}
@@ -186,7 +186,7 @@ func (s *Service) SyncContext(ctx context.Context, tableID string, payload json.
 		closeChanges()
 	}
 	for _, change := range changes {
-		if err := replacement.apply(change); err != nil {
+		if err := replacement.apply(change, true); err != nil {
 			closeReplacement()
 			return err
 		}
@@ -468,7 +468,7 @@ func (s *Service) newSession() *session {
 	return &session{sampleRate: s.sampleRate, engine: engine, tracks: make(map[string]track)}
 }
 
-func (s *session) apply(change change) error {
+func (s *session) apply(change change, snapshot bool) error {
 	id := change.patch.FileID
 	if _, exists := s.tracks[id]; !exists {
 		var err error
@@ -490,19 +490,22 @@ func (s *session) apply(change change) error {
 	if err := s.engine.SetGain(id, s.gain(change.track)); err != nil {
 		return err
 	}
-	if change.patch.CurrentTime != nil {
-		if err := s.engine.Seek(id, int(*change.patch.CurrentTime*float64(s.sampleRate))); err != nil {
+	if change.patch.IsPlaying != nil && !*change.patch.IsPlaying {
+		if err := s.engine.Pause(id); err != nil {
 			return err
 		}
 	}
-	if change.patch.IsPlaying != nil {
-		var err error
-		if *change.patch.IsPlaying {
-			err = s.engine.Play(id)
-		} else {
-			err = s.engine.Pause(id)
+	if change.patch.CurrentTime != nil {
+		seek := s.engine.CrossfadeSeek
+		if snapshot {
+			seek = s.engine.Seek
 		}
-		if err != nil {
+		if err := seek(id, int(*change.patch.CurrentTime*float64(s.sampleRate))); err != nil {
+			return err
+		}
+	}
+	if change.patch.IsPlaying != nil && *change.patch.IsPlaying {
+		if err := s.engine.Play(id); err != nil {
 			return err
 		}
 	}

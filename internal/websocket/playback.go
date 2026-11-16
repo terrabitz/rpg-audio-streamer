@@ -31,6 +31,9 @@ type playingTrack struct {
 	TrackType       string                  `json:"trackType"`
 	Playback        server.PlaybackSettings `json:"playback"`
 	PositionVersion uint64                  `json:"positionVersion"`
+	SeekVersion     uint64                  `json:"seekVersion"`
+	SeekTarget      *float64                `json:"seekTarget"`
+	SeekLanding     *float64                `json:"seekLanding"`
 	typeID          uuid.UUID
 	updatedAt       time.Time
 }
@@ -134,6 +137,7 @@ func (h *Hub) updatePlayback(payload json.RawMessage, c *Client) {
 			CurrentTime: track.Playback.StartTime}
 	}
 	state.Name, state.TrackType, state.typeID = track.Name, trackType.Name, track.TypeID
+	outgoing, wasPlaying := state.CurrentTime, state.IsPlaying
 	state.IsRepeating = trackType.IsRepeating
 	if patch.Duration != nil {
 		state.Duration = *patch.Duration
@@ -143,12 +147,17 @@ func (h *Hub) updatePlayback(payload json.RawMessage, c *Client) {
 	}
 	if patch.CurrentTime != nil {
 		state.CurrentTime = *patch.CurrentTime
+		state.SeekVersion++
 	}
 	if patch.Volume != nil {
 		state.Volume = *patch.Volume
 	}
 	if patch.IsPlaying != nil {
 		state.IsPlaying = *patch.IsPlaying
+		if !state.IsPlaying && patch.CurrentTime == nil {
+			state.SeekTarget = nil
+			state.SeekLanding = nil
+		}
 	}
 	if patch.CurrentTime != nil || patch.IsPlaying != nil {
 		state.PositionVersion++
@@ -158,7 +167,35 @@ func (h *Hub) updatePlayback(payload json.RawMessage, c *Client) {
 		return
 	}
 	end := state.end()
+	if patch.CurrentTime == nil && state.SeekTarget != nil &&
+		(*state.SeekTarget < state.Playback.StartTime ||
+			end > 0 && (*state.SeekTarget > math.Max(state.Playback.StartTime, end-2) ||
+				state.SeekLanding != nil && *state.SeekLanding > end)) {
+		state.SeekTarget = nil
+		state.SeekLanding = nil
+	}
 	state.CurrentTime = math.Max(state.Playback.StartTime, state.CurrentTime)
+	if patch.CurrentTime != nil {
+		target := state.CurrentTime
+		if end > 0 {
+			target = math.Min(target, math.Max(state.Playback.StartTime, end-2))
+		}
+		state.SeekTarget = &target
+		state.CurrentTime = target
+		landing := target
+		if wasPlaying && state.IsPlaying {
+			duration := math.Max(0, math.Min(2, math.Min(end-outgoing, end-state.Playback.StartTime)))
+			if duration > 0 {
+				if target-state.Playback.StartTime <= 2 {
+					state.CurrentTime = state.Playback.StartTime
+				} else {
+					state.CurrentTime = target - duration
+				}
+				landing = state.CurrentTime + duration
+			}
+		}
+		state.SeekLanding = &landing
+	}
 	if end > 0 {
 		state.CurrentTime = math.Min(state.CurrentTime, end)
 		if state.IsPlaying && state.CurrentTime >= end {
@@ -307,6 +344,10 @@ func (t playingTrack) validate() error {
 func (t playingTrack) at(now time.Time) playingTrack {
 	if t.IsPlaying {
 		t.CurrentTime += now.Sub(t.updatedAt).Seconds()
+		if t.SeekLanding != nil && t.CurrentTime >= *t.SeekLanding {
+			t.SeekTarget = nil
+			t.SeekLanding = nil
+		}
 		end := t.end()
 		if end > 0 && t.CurrentTime >= end {
 			if !t.IsRepeating {

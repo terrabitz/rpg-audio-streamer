@@ -6,8 +6,9 @@
     <v-btn v-if="showPlay" class="timeline-play" :icon="isPlaying ? '$pause' : '$play'" size="small"
       variant="text" :disabled="disabled" :aria-label="`${isPlaying ? 'Pause' : 'Play'} ${name}`" :aria-pressed="isPlaying"
       @click="$emit('play')" />
-    <div ref="axis" class="timeline-axis" :class="{ 'has-waveform': waveformPath }" @pointerdown="startDrag($event, 'seek')"
-      @pointermove="moveDrag" @pointerup="finishDrag" @pointercancel="cancelDrag">
+    <div ref="axis" class="timeline-axis" tabindex="-1" :class="{ 'has-waveform': waveformPath }" @pointerdown="startDrag($event, 'seek')"
+      @pointermove="moveDrag" @pointerup="finishDrag" @pointercancel="cancelDrag"
+      @keydown.esc="cancelDrag">
       <template v-if="waveformPath">
         <svg v-for="layer in waveformLayers" :key="layer.key" :class="`timeline-waveform timeline-waveform--${layer.key}`"
           :style="{ clipPath: layer.clip }" :viewBox="`0 0 ${waveform!.length} 2`" preserveAspectRatio="none"
@@ -35,12 +36,12 @@
       </button>
       <button type="button" role="slider" class="timeline-cursor" :style="{ left: percent(position) }"
         :disabled="unavailable" :aria-label="`Playback position for ${name}`"
-        :aria-valuemin="modelValue.startTime" :aria-valuemax="end" :aria-valuenow="position"
+        :aria-valuemin="modelValue.startTime" :aria-valuemax="seekEnd" :aria-valuenow="position"
         :aria-valuetext="`${formatTime(position)} of ${formatTime(duration)}`" aria-orientation="horizontal"
         @pointerdown.stop="startDrag($event, 'seek')" @pointermove.stop="moveDrag"
         @pointerup.stop="finishDrag" @pointercancel.stop="cancelDrag" @keydown="handleKey($event, 'seek')" />
     </div>
-    <span class="position-time text-caption">{{ formatTime(currentTime) }} / {{ formatTime(duration) }}</span>
+    <span class="position-time text-caption">{{ formatTime(position) }} / {{ formatTime(duration) }}</span>
     <p v-if="unavailable && !disabled" class="text-caption mt-2" role="status">Loading audio timeline…</p>
   </div>
 </template>
@@ -48,7 +49,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import type { PlaybackSettings } from '@/client/apiClient'
-import { movePlaybackPoint, type PlaybackPoint } from '@/composables/playback'
+import { movePlaybackPoint, seekLimit, type PlaybackPoint } from '@/composables/playback'
 import VolumeSlider from './VolumeSlider.vue'
 
 type TimelinePoint = PlaybackPoint | 'seek'
@@ -56,6 +57,7 @@ const props = defineProps<{
   modelValue: PlaybackSettings
   duration: number
   currentTime: number
+  seekTarget?: number | null
   name: string
   volume?: number
   waveform?: number[]
@@ -80,8 +82,10 @@ const drag = ref<{
 } | null>(null)
 const unavailable = computed(() => props.disabled || !Number.isFinite(props.duration) || props.duration <= 0)
 const end = computed(() => Math.min(props.modelValue.endTime ?? props.duration, props.duration))
+const seekEnd = computed(() => seekLimit(props.modelValue, props.duration))
 const loop = computed(() => props.modelValue.loopBackTime ?? props.modelValue.startTime)
-const position = computed(() => Math.max(props.modelValue.startTime, Math.min(props.currentTime, end.value)))
+const position = computed(() => Math.max(props.modelValue.startTime,
+  Math.min(drag.value?.point === 'seek' ? drag.value.time : props.currentTime, end.value)))
 const gap = computed(() => Math.min(0.1, props.duration))
 const points = computed(() => [
   { key: 'start' as const, label: 'Beginning', value: props.modelValue.startTime, min: 0, max: end.value - gap.value },
@@ -126,13 +130,13 @@ function moveDrag(event: PointerEvent) {
 }
 
 function finishDrag() {
+  if (drag.value?.point === 'seek' && !unavailable.value) emit('seek', position.value)
   drag.value = null
 }
 
 function cancelDrag() {
   if (!drag.value) return
-  if (drag.value.point === 'seek') emit('seek', drag.value.time)
-  else emit('update:modelValue', drag.value.settings)
+  if (drag.value.point !== 'seek') emit('update:modelValue', drag.value.settings)
   drag.value = null
 }
 
@@ -147,10 +151,10 @@ function handleKey(event: KeyboardEvent, point: TimelinePoint) {
     ? { min: props.modelValue.startTime + gap.value, max: props.duration }
     : {
       min: point === 'start' ? 0 : props.modelValue.startTime,
-      max: point === 'seek' ? end.value : end.value - gap.value,
+      max: point === 'seek' ? seekEnd.value : end.value - gap.value,
     }
   const step = point === 'seek' || event.shiftKey ? 1 : 0.1
-  const time = pointValue(point)
+  const time = point === 'seek' ? props.seekTarget ?? pointValue(point) : pointValue(point)
   let next: number
   switch (event.key) {
     case 'ArrowRight': case 'ArrowUp': next = time + step; break
@@ -168,7 +172,9 @@ function handleKey(event: KeyboardEvent, point: TimelinePoint) {
 function movePoint(point: TimelinePoint, time: number) {
   if (point === 'seek') {
     const start = props.modelValue.startTime
-    emit('seek', Math.max(start, Math.min(start + Math.round(time - start), end.value)))
+    const position = Math.max(start, Math.min(start + Math.round(time - start), seekEnd.value))
+    if (drag.value?.point === 'seek') drag.value.time = position
+    else emit('seek', position)
     return
   }
   emit('update:modelValue', movePlaybackPoint(props.modelValue, props.duration, point, time))

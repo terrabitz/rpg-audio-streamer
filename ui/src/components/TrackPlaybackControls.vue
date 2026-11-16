@@ -12,13 +12,14 @@
       <v-btn v-else icon="$restart" size="x-small" variant="text" :aria-label="`Restart ${name}`"
         title="Restart track" @click="$emit('seek', state.playback?.startTime ?? 0)" />
       <div class="track-position flex-grow-1">
-        <v-slider :model-value="state.currentTime" :max="state.playback?.endTime ?? state.duration"
+        <v-slider :model-value="position" :max="seekEnd"
           :min="state.playback?.startTime ?? 0" step="1"
           :ticks="loopTicks" :show-ticks="Object.keys(loopTicks).length ? 'always' : false" tick-size="2"
           :disabled="state.duration <= 0" thumb-size="18" track-size="6" density="compact" hide-details
           :aria-label="`Playback position for ${name}`"
           :aria-valuetext="`${formatTime(elapsedTime)} of ${formatTime(regionDuration)}`"
-          class="ma-0" @update:model-value="$emit('seek', $event)" />
+          class="ma-0" @pointerdown.capture="startSeek" @start="previewTime = position"
+          @update:model-value="updatePosition" @end="finishSeek" @keydown.capture="handleKey" />
         <div class="position-time text-center">{{ formatTime(elapsedTime) }} / {{ formatTime(regionDuration) }}</div>
       </div>
       <v-btn v-if="showPlay" icon="$restart" size="x-small" variant="text" :aria-label="`Restart ${name}`"
@@ -28,9 +29,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import type { AudioTrack } from '@/stores/audio'
-import { playbackRegion } from '@/composables/playback'
+import { playbackRegion, seekLimit } from '@/composables/playback'
 import VolumeSlider from './VolumeSlider.vue'
 
 const props = defineProps<{
@@ -40,16 +41,19 @@ const props = defineProps<{
   fading?: boolean
 }>()
 
-defineEmits<{
+const emit = defineEmits<{
   play: []
   volume: [volume: number]
   seek: [time: number]
 }>()
 
 const region = computed(() => playbackRegion(props.state.playback, props.state.duration))
+const seekEnd = computed(() => seekLimit(props.state.playback, props.state.duration))
+const previewTime = ref<number | null>(null)
+const position = computed(() => previewTime.value ?? props.state.currentTime)
 const regionDuration = computed(() => Math.max(0, region.value.end - region.value.start))
 const elapsedTime = computed(() => Math.max(0, Math.min(
-  props.state.currentTime - region.value.start, regionDuration.value,
+  position.value - region.value.start, regionDuration.value,
 )))
 
 const loopTicks = computed(() => {
@@ -58,6 +62,40 @@ const loopTicks = computed(() => {
   return props.state.isRepeating && props.state.duration > 0 && loop != null && loop > start
     ? { [loop]: '' } : {}
 })
+
+function startSeek(event: PointerEvent) {
+  // Vuetify updates the value before emitting start when the track is pressed.
+  if (event.button === 0 && props.state.duration > 0) previewTime.value = position.value
+}
+
+function handleKey(event: KeyboardEvent) {
+  if (props.state.duration <= 0) return
+  const time = props.state.seekTarget ?? position.value
+  let next: number
+  switch (event.key) {
+    case 'ArrowRight': case 'ArrowUp': next = time + 1; break
+    case 'ArrowLeft': case 'ArrowDown': next = time - 1; break
+    case 'PageUp': next = time + 5; break
+    case 'PageDown': next = time - 5; break
+    case 'Home': next = region.value.start; break
+    case 'End': next = seekEnd.value; break
+    default: return
+  }
+  event.preventDefault()
+  event.stopPropagation()
+  updatePosition(next)
+}
+
+function finishSeek(time: number) {
+  previewTime.value = null
+  updatePosition(time)
+}
+
+function updatePosition(time: number) {
+  time = Math.max(region.value.start, Math.min(time, seekEnd.value))
+  if (previewTime.value !== null) previewTime.value = time
+  else emit('seek', time)
+}
 
 function formatTime(seconds: number): string {
   const mins = Math.floor(seconds / 60)
