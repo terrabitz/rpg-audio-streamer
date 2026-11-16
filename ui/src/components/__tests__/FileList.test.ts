@@ -6,11 +6,50 @@ import FileList from '../FileList.vue'
 import { useAudioStore } from '@/stores/audio'
 import { useFileStore } from '@/stores/files'
 import { useTrackTypeStore } from '@/stores/trackTypes'
+import { useTableStore } from '@/stores/tables'
+import { useWebSocketStore } from '@/stores/websocket'
 
 vi.mock('vuetify', async (importOriginal) => ({
   ...await importOriginal<typeof import('vuetify')>(),
   useDisplay: () => ({ smAndDown: ref(false) }),
 }))
+
+it.each([0, 25])('sends the selected volume (%s) with the first play command', async (volume) => {
+  const pinia = createPinia()
+  setActivePinia(pinia)
+  const files = useFileStore()
+  files.tracks = [{ id: 'forest', name: 'Forest', typeID: 'music', path: '/forest', createdAt: '2026-01-01T00:00:00Z' }]
+  useTableStore().tracks = files.tracks
+  const types = useTrackTypeStore()
+  types.trackTypes = [{
+    id: 'music', name: 'Music', color: '#123456', isRepeating: true, allowSimultaneousPlay: false,
+  }]
+  vi.spyOn(files, 'fetchFiles').mockResolvedValue()
+  vi.spyOn(types, 'fetchTrackTypes').mockResolvedValue()
+  const ws = useWebSocketStore()
+  ws.isConnected = true
+  const send = vi.spyOn(ws, 'sendMessage').mockImplementation(() => {})
+  const wrapper = mount(FileList, {
+    global: {
+      plugins: [pinia],
+      stubs: {
+        VContainer: { template: '<div><slot /></div>' },
+        VRow: { template: '<div><slot /></div>' },
+        VCard: { template: '<div><slot /></div>' },
+        SortableTrack: { template: '<div><slot /></div>' },
+        DragDropProvider: { template: '<div><slot /></div>' },
+        AudioControls: true, PlayingTrackList: true, VolumeSlider: true, VBtn: true,
+      },
+    },
+  })
+  await flushPromises()
+  useAudioStore().updateTrackState('forest', { volume })
+  await wrapper.get('[aria-label="Forest"]').trigger('click')
+  expect(send).toHaveBeenCalledWith('syncTrack', {
+    fileID: 'forest', isPlaying: true, duration: 0, volume,
+  })
+  wrapper.unmount()
+})
 
 it('preserves audio metadata when resuming a library preview', async () => {
   const pinia = createPinia()

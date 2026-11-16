@@ -64,6 +64,11 @@ for (const surface of ['sidebar', 'timeline'] as const) {
           sample()
         }),
       }))))
+      const playhead = await slider.evaluateHandle(element => {
+        const values: number[] = []
+        const timer = setInterval(() => values.push(Number(element.getAttribute('aria-valuenow'))), 5)
+        return { finish() { clearInterval(timer); return values } }
+      })
       await page.mouse.up()
       for (const observation of observations) {
         const samples = await observation.evaluate(value => value.result)
@@ -77,6 +82,10 @@ for (const surface of ['sidebar', 'timeline'] as const) {
         expect(samples.at(-1)!.elapsed).toBeGreaterThan(1.7)
         await observation.dispose()
       }
+      const positions = await playhead.evaluate(value => value.finish())
+      await playhead.dispose()
+      expect(positions.length).toBeGreaterThan(0)
+      expect(Math.min(...positions), 'released seek must never flash the outgoing position').toBeGreaterThanOrEqual(42.5)
       for (const media of [gmAudio, playerAudio]) {
         await expect.poll(() => media.evaluate((el: HTMLMediaElement) => el.currentTime)).toBeGreaterThanOrEqual(44)
         await expect.poll(() => media.evaluate((el: HTMLMediaElement) => el.currentTime)).toBeLessThan(50)

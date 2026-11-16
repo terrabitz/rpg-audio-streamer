@@ -29,7 +29,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import type { AudioTrack } from '@/stores/audio'
 import { playbackRegion, seekLimit } from '@/composables/playback'
 import VolumeSlider from './VolumeSlider.vue'
@@ -50,7 +50,9 @@ const emit = defineEmits<{
 const region = computed(() => playbackRegion(props.state.playback, props.state.duration))
 const seekEnd = computed(() => seekLimit(props.state.playback, props.state.duration))
 const previewTime = ref<number | null>(null)
-const position = computed(() => previewTime.value ?? props.state.currentTime)
+const pendingTime = ref<number | null>(null)
+watch(() => props.state.seekVersion, () => { pendingTime.value = null })
+const position = computed(() => previewTime.value ?? pendingTime.value ?? props.state.currentTime)
 const regionDuration = computed(() => Math.max(0, region.value.end - region.value.start))
 const elapsedTime = computed(() => Math.max(0, Math.min(
   position.value - region.value.start, regionDuration.value,
@@ -94,7 +96,10 @@ function finishSeek(time: number) {
 function updatePosition(time: number) {
   time = Math.max(region.value.start, Math.min(time, seekEnd.value))
   if (previewTime.value !== null) previewTime.value = time
-  else emit('seek', time)
+  else {
+    pendingTime.value = time
+    emit('seek', time)
+  }
 }
 
 function formatTime(seconds: number): string {

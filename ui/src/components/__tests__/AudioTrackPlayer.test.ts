@@ -622,12 +622,15 @@ it('applies edited boundaries and stops one-shots at the selected end without lo
       isRepeating: false,
     })
     await nextTick()
-    expect(primary.currentTime).toBe(10)
-    primary.currentTime = 50
-    await player.get('video').trigger('timeupdate')
+    expect(secondary.currentTime).toBe(10)
+    primary.currentTime = 2
+    secondary.currentTime = 12
+    await player.get('audio').trigger('timeupdate')
+    secondary.currentTime = 50
+    await player.get('audio').trigger('timeupdate')
     expect(primary.paused).toBe(true)
     expect(secondary.paused).toBe(true)
-    expect(primary.currentTime).toBe(10)
+    expect(secondary.currentTime).toBe(10)
     expect(audio.tracks.forest?.isPlaying).toBe(false)
     expect(audio.tracks.forest?.currentTime).toBe(10)
   } finally { player.unmount() }
@@ -656,18 +659,40 @@ it.each([
   } finally { player.unmount() }
 })
 
-it.each([
-  [{ startTime: 25 }, 25],
-  [{ endTime: 15 }, 15],
-])('moves an excluded live playhead to the edited boundary: %j', async (settings, position) => {
-  const { player, audio, primary } = await mountPlaying({})
+it('crossfades an excluded playhead into the committed beginning', async () => {
+  const { player, audio, primary, secondary } = await mountPlaying({})
   try {
     primary.currentTime = 20
-    audio.updateTrackState('forest', { playback: { ...defaultPlayback(), ...settings } })
+    audio.updateTrackState('forest', { playback: { ...defaultPlayback(), startTime: 25 } })
     await nextTick()
-    expect(primary.currentTime).toBe(position)
+    expect(primary.currentTime).toBe(20)
     expect(primary.paused).toBe(false)
-    expect(audio.tracks.forest?.currentTime).toBe(position)
+    expect(secondary.currentTime).toBe(25)
+    expect(secondary.paused).toBe(false)
+    primary.currentTime = 21
+    secondary.currentTime = 26
+    await player.get('audio').trigger('timeupdate')
+    expect(primary.volume).toBeCloseTo(0.5)
+    expect(secondary.volume).toBeCloseTo(0.5)
+    primary.currentTime = 22
+    secondary.currentTime = 27
+    await player.get('audio').trigger('timeupdate')
+    expect(primary.paused).toBe(true)
+    expect(secondary.volume).toBe(1)
+    expect(audio.tracks.forest?.currentTime).toBe(27)
+  } finally { player.unmount() }
+})
+
+it('loops an excluded playhead into the committed loop-back point', async () => {
+  const { player, audio, primary, secondary } = await mountPlaying({ loopBackTime: 5 })
+  try {
+    primary.currentTime = 20
+    audio.updateTrackState('forest', { playback: { ...defaultPlayback(), endTime: 15, loopBackTime: 5 } })
+    await nextTick()
+    expect(primary.paused).toBe(true)
+    expect(secondary.currentTime).toBe(5)
+    expect(secondary.paused).toBe(false)
+    expect(audio.tracks.forest?.currentTime).toBe(5)
   } finally { player.unmount() }
 })
 

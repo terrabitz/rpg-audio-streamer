@@ -18,13 +18,13 @@
         <div class="timeline-playhead" :style="{ left: percent(position) }" />
       </template>
       <template v-else>
-        <div class="timeline-usable" :style="{ left: percent(modelValue.startTime), right: percent(duration - end) }" />
-        <div class="timeline-progress" :style="{ left: percent(modelValue.startTime), width: percent(position - modelValue.startTime) }" />
+        <div class="timeline-usable" :style="{ left: percent(settings.startTime), right: percent(duration - end) }" />
+        <div class="timeline-progress" :style="{ left: percent(settings.startTime), width: percent(position - settings.startTime) }" />
       </template>
       <button v-for="point in points" :key="point.key" type="button" role="slider"
         class="timeline-handle" :class="[
           `timeline-handle--${point.key}`,
-          { 'timeline-handle--anchored': point.key === 'loop' && modelValue.loopBackTime === null },
+          { 'timeline-handle--anchored': point.key === 'loop' && settings.loopBackTime === null },
         ]"
         :style="{ left: percent(point.value) }" :disabled="unavailable"
         :aria-label="`${point.label} for ${name}`" :aria-valuemin="point.min" :aria-valuemax="point.max"
@@ -47,7 +47,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import type { PlaybackSettings } from '@/client/apiClient'
 import { movePlaybackPoint, seekLimit, type PlaybackPoint } from '@/composables/playback'
 import VolumeSlider from './VolumeSlider.vue'
@@ -58,6 +58,7 @@ const props = defineProps<{
   duration: number
   currentTime: number
   seekTarget?: number | null
+  seekVersion?: number
   name: string
   volume?: number
   waveform?: number[]
@@ -81,17 +82,21 @@ const drag = ref<{
   time: number
 } | null>(null)
 const unavailable = computed(() => props.disabled || !Number.isFinite(props.duration) || props.duration <= 0)
-const end = computed(() => Math.min(props.modelValue.endTime ?? props.duration, props.duration))
-const seekEnd = computed(() => seekLimit(props.modelValue, props.duration))
-const loop = computed(() => props.modelValue.loopBackTime ?? props.modelValue.startTime)
+const settings = computed(() => drag.value?.settings ?? props.modelValue)
+const pendingTime = ref<number | null>(null)
+watch(() => props.seekVersion, () => { pendingTime.value = null })
+const end = computed(() => Math.min(settings.value.endTime ?? props.duration, props.duration))
+const seekEnd = computed(() => seekLimit(settings.value, props.duration))
+const loop = computed(() => settings.value.loopBackTime ?? settings.value.startTime)
 const position = computed(() => Math.max(props.modelValue.startTime,
-  Math.min(drag.value?.point === 'seek' ? drag.value.time : props.currentTime, end.value)))
+  Math.min(drag.value?.point === 'seek' ? drag.value.time : pendingTime.value ?? props.currentTime,
+    props.modelValue.endTime ?? props.duration)))
 const gap = computed(() => Math.min(0.1, props.duration))
 const points = computed(() => [
-  { key: 'start' as const, label: 'Beginning', value: props.modelValue.startTime, min: 0, max: end.value - gap.value },
-  { key: 'end' as const, label: 'End', value: end.value, min: props.modelValue.startTime + gap.value, max: props.duration },
+  { key: 'start' as const, label: 'Beginning', value: settings.value.startTime, min: 0, max: end.value - gap.value },
+  { key: 'end' as const, label: 'End', value: end.value, min: settings.value.startTime + gap.value, max: props.duration },
   ...(props.isRepeating ? [
-    { key: 'loop' as const, label: 'Loop-back point', value: loop.value, min: props.modelValue.startTime, max: end.value - gap.value },
+    { key: 'loop' as const, label: 'Loop-back point', value: loop.value, min: settings.value.startTime, max: end.value - gap.value },
   ] : []),
 ])
 const waveformPath = computed(() => {
@@ -105,8 +110,8 @@ const waveformPath = computed(() => {
 })
 const waveformLayers = computed(() => [
   { key: 'track', clip: undefined },
-  { key: 'usable', clip: `inset(0 ${percent(props.duration - end.value)} 0 ${percent(props.modelValue.startTime)})` },
-  { key: 'progress', clip: `inset(0 ${percent(props.duration - position.value)} 0 ${percent(props.modelValue.startTime)})` },
+  { key: 'usable', clip: `inset(0 ${percent(props.duration - end.value)} 0 ${percent(settings.value.startTime)})` },
+  { key: 'progress', clip: `inset(0 ${percent(props.duration - position.value)} 0 ${percent(settings.value.startTime)})` },
 ])
 
 function startDrag(event: PointerEvent, point: TimelinePoint) {
@@ -130,13 +135,15 @@ function moveDrag(event: PointerEvent) {
 }
 
 function finishDrag() {
-  if (drag.value?.point === 'seek' && !unavailable.value) emit('seek', position.value)
+  if (drag.value && !unavailable.value) {
+    if (drag.value.point === 'seek') commitSeek(position.value)
+    else emit('update:modelValue', drag.value.settings)
+  }
   drag.value = null
 }
 
 function cancelDrag() {
   if (!drag.value) return
-  if (drag.value.point !== 'seek') emit('update:modelValue', drag.value.settings)
   drag.value = null
 }
 
@@ -174,14 +181,21 @@ function movePoint(point: TimelinePoint, time: number) {
     const start = props.modelValue.startTime
     const position = Math.max(start, Math.min(start + Math.round(time - start), seekEnd.value))
     if (drag.value?.point === 'seek') drag.value.time = position
-    else emit('seek', position)
+    else commitSeek(position)
     return
   }
-  emit('update:modelValue', movePlaybackPoint(props.modelValue, props.duration, point, time))
+  const updated = movePlaybackPoint(settings.value, props.duration, point, time)
+  if (drag.value) drag.value.settings = updated
+  else emit('update:modelValue', updated)
+}
+
+function commitSeek(time: number) {
+  pendingTime.value = time
+  emit('seek', time)
 }
 
 function pointValue(point: TimelinePoint) {
-  if (point === 'start') return props.modelValue.startTime
+  if (point === 'start') return settings.value.startTime
   if (point === 'end') return end.value
   if (point === 'loop') return loop.value
   return position.value
@@ -198,7 +212,7 @@ function percent(time: number) {
 }
 
 function valueText(point: PlaybackPoint, time: number) {
-  if (point === 'loop' && props.modelValue.loopBackTime === null) return `Beginning (${formatTime(time, true)})`
+  if (point === 'loop' && settings.value.loopBackTime === null) return `Beginning (${formatTime(time, true)})`
   return formatTime(time, true)
 }
 

@@ -111,8 +111,9 @@ func (s *delayedSource) Close() error {
 
 func TestPlaybackRegion(t *testing.T) {
 	m := newMixer(t, 6)
-	addPlaying(t, m, "music", []Frame{{0.1, 0.1}, {0.2, 0.2}, {0.3, 0.3}, {0.4, 0.4}})
+	must(t, m.Add("music", []Frame{{0.1, 0.1}, {0.2, 0.2}, {0.3, 0.3}, {0.4, 0.4}}))
 	must(t, m.SetRegion("music", Region{Start: 1, End: 3, LoopBack: 2}))
+	must(t, m.Play("music"))
 	out := make([]Frame, 3)
 	m.Render(out)
 	assertFrames(t, out, []Frame{{0.2, 0.2}, {0.3, 0.3}, {0, 0}})
@@ -130,6 +131,54 @@ func TestPlaybackRegion(t *testing.T) {
 	must(t, m.Play("music"))
 	m.Render(out)
 	assertFrames(t, out, []Frame{{0.3, 0.3}, {0.4, 0.4}, {0, 0}})
+}
+
+func TestLoopKeepsOutgoingAudioWhileIncomingPCMIsBuffered(t *testing.T) {
+	m := newMixer(t, 1)
+	source := &delayedSource{frame: Frame{Left: 0.5}, readyFrom: 8}
+	must(t, m.AddSource("music", source))
+	must(t, m.Play("music"))
+	must(t, m.SetRepeating("music", true))
+	must(t, m.Seek("music", 10))
+	out := make([]Frame, 1)
+	m.Render(out)
+	assertFrames(t, out, []Frame{{Left: 0.5}})
+	assertState(t, m, "music", State{Position: 11, Playing: true})
+	source.ready = true
+	m.Render(out)
+	assertFrames(t, out, []Frame{{Left: 0.5}})
+	assertState(t, m, "music", State{Position: 1, Playing: true})
+}
+
+func TestRegionCommitCrossfadesToBeginningAndLoopsPastEnd(t *testing.T) {
+	m := newMixer(t, 2)
+	frames := constantFrames(40, Frame{Left: 0.5})
+	for i := 10; i < len(frames); i++ {
+		frames[i] = Frame{Right: 0.5}
+	}
+	addPlaying(t, m, "music", frames)
+	must(t, m.Seek("music", 2))
+	must(t, m.SetRegion("music", Region{Start: 10, End: 40, LoopBack: 20}))
+	out := make([]Frame, 5)
+	m.Render(out)
+	assertFrames(t, out, []Frame{{Left: 0.5}, {0.375, 0.125}, {0.25, 0.25}, {0.125, 0.375}, {Right: 0.5}})
+	must(t, m.SetRepeating("music", true))
+	must(t, m.Seek("music", 35))
+	must(t, m.SetRegion("music", Region{Start: 10, End: 30, LoopBack: 20}))
+	m.Render(out[:1])
+	assertState(t, m, "music", State{Position: 21, Playing: true})
+}
+
+func TestFirstFrameUsesConfiguredGainWithoutAFullVolumeRamp(t *testing.T) {
+	for _, gain := range []float64{0, 0.25} {
+		m := newMixer(t, 2)
+		must(t, m.Add("effect", constantFrames(10, Frame{1, 1})))
+		must(t, m.SetGain("effect", gain))
+		must(t, m.Play("effect"))
+		out := make([]Frame, 3)
+		m.Render(out)
+		assertFrames(t, out, constantFrames(3, Frame{gain, gain}))
+	}
 }
 
 func TestSeekingToEndResolvesOnPlayback(t *testing.T) {
