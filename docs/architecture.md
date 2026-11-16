@@ -547,7 +547,10 @@ Commands are serialized while a separate lock protects PCM rendering.
 Validation precedes mutation, so invalid patches and snapshots do not
 partially alter a mix. FFmpeg work runs asynchronously and source reads on the
 render path are non-blocking.
-The service renders 960-frame blocks every 20 ms with a cancellable loop.
+The service renders 960-frame blocks on a 20 ms schedule derived from elapsed
+time with a cancellable loop. After a scheduling stall it renders every missed
+block, up to half a subscriber's buffer, so the Discord stream keeps pace with
+real time rather than falling behind receivers' jitter buffers.
 It renders a table only while that table has a PCM subscriber, avoiding
 duplicate decoding while Discord is disconnected.
 

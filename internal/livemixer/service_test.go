@@ -305,6 +305,29 @@ func TestRunRendersAndStopsOnCancellation(t *testing.T) {
 	}
 }
 
+func TestBlockClockRendersEveryBlockMissedDuringAStall(t *testing.T) {
+	start := time.Unix(0, 0)
+	clock := newBlockClock(start)
+	if due := clock.due(start.Add(19 * time.Millisecond)); due != 0 {
+		t.Fatalf("early wake rendered %d blocks", due)
+	}
+	if due := clock.due(start.Add(21 * time.Millisecond)); due != 1 {
+		t.Fatalf("steady tick rendered %d blocks", due)
+	}
+	if due := clock.due(start.Add(321 * time.Millisecond)); due != 15 {
+		t.Fatalf("300 ms stall rendered %d blocks, want 15", due)
+	}
+	if due := clock.due(start.Add(341 * time.Millisecond)); due != 1 {
+		t.Fatalf("tick after catching up rendered %d blocks", due)
+	}
+	if due := clock.due(start.Add(5 * time.Second)); due != maxCatchUpBlocks {
+		t.Fatalf("long stall rendered %d blocks, want bound %d", due, maxCatchUpBlocks)
+	}
+	if due := clock.due(start.Add(5*time.Second + 21*time.Millisecond)); due != 1 {
+		t.Fatalf("tick after a bounded catch-up rendered %d blocks", due)
+	}
+}
+
 func TestRunDoesNotRenderWithoutPCMSubscribers(t *testing.T) {
 	s := testService(t)
 	update(t, s, "table", `{"fileID":"tone","isPlaying":true}`)
