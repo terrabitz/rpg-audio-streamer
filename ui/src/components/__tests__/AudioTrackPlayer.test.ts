@@ -71,6 +71,49 @@ it('releases HLS and never recreates deleted state from queued media events', as
   expect(audio.availableTracks).toEqual([])
 })
 
+it('keeps a replacement seek playing when the canceled play request rejects later', async () => {
+  const { player, audio, primary, secondary } = await mountPlaying({})
+  let rejectInterrupted!: (cause: Error) => void
+  const interrupted = new Promise<void>((_, reject) => { rejectInterrupted = reject })
+  const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+  vi.mocked(secondary.play).mockImplementationOnce(function (this: HTMLMediaElement) {
+    Object.defineProperty(this, 'paused', { configurable: true, value: false })
+    return interrupted
+  })
+  try {
+    primary.currentTime = 10
+    audio.seekTrack('forest', 0)
+    await nextTick()
+    audio.seekTrack('forest', 1)
+    await nextTick()
+    rejectInterrupted(new DOMException('The play request was interrupted by pause', 'AbortError'))
+    await flushPromises()
+    expect(primary.paused).toBe(false)
+    expect(secondary.paused).toBe(false)
+    expect(audio.tracks.forest?.isPlaying).toBe(true)
+    expect(player.emitted('error')).toBeUndefined()
+    expect(error).not.toHaveBeenCalled()
+  } finally { player.unmount() }
+})
+
+it.each(['AbortError', 'NotAllowedError'])('reports an uncanceled %s play failure', async (name) => {
+  const { player, audio, primary, secondary } = await mountPlaying({})
+  vi.spyOn(console, 'error').mockImplementation(() => {})
+  vi.mocked(secondary.play).mockRejectedValueOnce(new DOMException('Playback failed', name))
+  try {
+    primary.currentTime = 10
+    audio.seekTrack('forest', 20)
+    await nextTick()
+    await flushPromises()
+    expect(primary.paused).toBe(true)
+    expect(secondary.paused).toBe(true)
+    expect(audio.tracks.forest?.isPlaying).toBe(false)
+    expect(player.emitted('error')).toEqual([
+      ['Unable to play track. Try again or choose another track.'],
+    ])
+  } finally { player.unmount() }
+})
+
 it.each([
   [{}, 0, 60, 0],
   [{ endTime: 50 }, 0, 50, 0],

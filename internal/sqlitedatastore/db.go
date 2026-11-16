@@ -14,6 +14,8 @@ func New(path string) (*SQLiteDatastore, error) {
 	if err != nil {
 		return nil, fmt.Errorf("couldn't open sqlite DB at '%s': %v", path, err)
 	}
+	// Serialize access so settings writes cannot lock out table and stream reads.
+	db.SetMaxOpenConns(1)
 
 	return &SQLiteDatastore{DB: db}, nil
 }

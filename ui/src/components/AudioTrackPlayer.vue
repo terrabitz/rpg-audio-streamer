@@ -23,6 +23,7 @@ const active = ref(0)
 const players: Hls[] = []
 const ready = [false, false]
 const bound = [false, false]
+const playRequests = new WeakMap<HTMLMediaElement, Promise<void>>()
 let timer: ReturnType<typeof setInterval> | undefined
 let disposed = false
 let overlap: { outgoing: number, incoming: number, start: number, end: number, seekStart?: number } | undefined
@@ -97,9 +98,9 @@ onBeforeUnmount(() => {
   audioStore.setLocalPlayback(props.fileID, false)
   clearInterval(timer)
   for (const player of players) player.destroy()
-  for (const media of [primary.value, secondary.value]) {
+  for (const [index, media] of [primary.value, secondary.value].entries()) {
     if (!media) continue
-    media.pause()
+    pauseMedia(index)
     media.src = ''
   }
   if (audioStore.tracks[props.fileID]) audioStore.setFading(props.fileID, false)
@@ -149,7 +150,7 @@ function syncPlaying() {
   if (!fade) envelope = target
   if (state.isPlaying && media.paused) {
     syncPosition()
-    void media.play().catch(reportPlaybackError)
+    playMedia(active.value)
   }
   tick()
 }
@@ -208,7 +209,7 @@ function tick() {
     if (progress === 1) fade = undefined
   }
   if (!state.isPlaying) {
-    if (!fade) media.pause()
+    if (!fade) pauseMedia(active.value)
     applyVolumes()
     audioStore.setFading(props.fileID, !!fade || !!volumeFade)
     return
@@ -266,7 +267,7 @@ function startOverlap(time: number, end: number, seek = false) {
   incoming.volume = 0
   overlap = { outgoing: active.value, incoming: 1 - active.value, start: outgoing.currentTime, end,
     seekStart: seek ? time : undefined }
-  void incoming.play().catch(reportPlaybackError)
+  playMedia(1 - active.value)
 }
 
 function finishOverlap() {
@@ -275,7 +276,7 @@ function finishOverlap() {
   // Keep the outgoing element until the replacement has actually started.
   if (!incoming || incoming.paused || incoming.seeking || incoming.readyState < 2) return
   const completedSeek = overlap.seekStart !== undefined
-  element(overlap.outgoing)?.pause()
+  pauseMedia(overlap.outgoing)
   active.value = overlap.incoming
   overlap = undefined
   updatePlaybackState({
@@ -287,9 +288,9 @@ function cancelOverlap(adoptSeek = true) {
   pendingSeek = undefined
   if (!overlap) return
   if (adoptSeek && overlap.seekStart !== undefined) {
-    element(overlap.outgoing)?.pause()
+    pauseMedia(overlap.outgoing)
     active.value = overlap.incoming
-  } else element(overlap.incoming)?.pause()
+  } else pauseMedia(overlap.incoming)
   overlap = undefined
   applyVolumes()
 }
@@ -329,7 +330,7 @@ function handleEnded(index: number) {
 function finishTrack() {
   cancelOverlap()
   const media = element(active.value)
-  media?.pause()
+  pauseMedia(active.value)
   const start = audioStore.tracks[props.fileID]?.playback?.startTime ?? 0
   if (media) media.currentTime = start
   envelope = 0
@@ -365,6 +366,25 @@ function updateDuration(duration: number) {
   }
 }
 
+function playMedia(index: number) {
+  const media = element(index)
+  if (!media) return
+  const request = media.play()
+  playRequests.set(media, request)
+  void request.catch(cause => {
+    // Pausing or replacing a request makes its delayed rejection obsolete.
+    if (playRequests.get(media) !== request) return
+    reportPlaybackError(cause)
+  })
+}
+
+function pauseMedia(index: number) {
+  const media = element(index)
+  if (!media) return
+  playRequests.delete(media)
+  media.pause()
+}
+
 function element(index: number): HTMLMediaElement | null {
   return index === 0 ? primary.value : secondary.value
 }
@@ -391,8 +411,8 @@ function reportPlaybackError(cause: unknown) {
   cancelOverlap()
   fade = undefined
   envelope = 0
-  primary.value?.pause()
-  secondary.value?.pause()
+  pauseMedia(0)
+  pauseMedia(1)
   if (!audioStore.tableMix) updatePlaybackState({ isPlaying: false })
   emit('error', 'Unable to play track. Try again or choose another track.')
 }

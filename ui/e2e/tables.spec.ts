@@ -18,6 +18,8 @@ test('GM creates, renames, opens, and deletes tables', async ({ page }) => {
   await expect(page).toHaveURL(/\/tables$/)
   await page.getByLabel('Table name', { exact: true }).fill('Friday group')
   await page.getByRole('button', { name: 'Save table', exact: true }).click()
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+  await expect(page.getByRole('link', { name: 'Open Friday group', exact: true })).toBeVisible()
   await page.reload()
   await page.getByRole('link', { name: 'Open Friday group', exact: true }).click()
   await expect(page.getByRole('banner')).toContainText('Friday group')

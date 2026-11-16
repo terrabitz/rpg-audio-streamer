@@ -145,6 +145,43 @@ func TestDatastoreCancellation(t *testing.T) {
 	}
 }
 
+func TestConcurrentTableReadsAndSettingsWrites(t *testing.T) {
+	db, _ := migratedDatabase(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	table, err := db.GetTable(ctx, server.DefaultTableID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	start := make(chan struct{})
+	results := make(chan error, 8)
+	for worker := range cap(results) {
+		go func() {
+			<-start
+			for range 25 {
+				var err error
+				if worker%2 == 0 {
+					volume := 50.0
+					_, err = db.UpdateTableSettings(ctx, table.ID, server.TableSettingsPatch{MasterVolume: &volume})
+				} else {
+					_, err = db.GetTableByExternalID(ctx, table.ExternalID)
+				}
+				if err != nil {
+					results <- err
+					return
+				}
+			}
+			results <- nil
+		}()
+	}
+	close(start)
+	for range cap(results) {
+		if err := <-results; err != nil {
+			t.Errorf("concurrent table access: %v", err)
+		}
+	}
+}
+
 func TestMigrationLifecycle(t *testing.T) {
 	db, err := New(filepath.Join(t.TempDir(), "migration.db"))
 	if err != nil {
