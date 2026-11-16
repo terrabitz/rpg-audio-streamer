@@ -280,9 +280,17 @@ func (s *Service) CloseTable(tableID string) {
 	delete(s.tables, tableID)
 }
 
+const (
+	blockDuration = 20 * time.Millisecond
+	// maxCatchUpBlocks keeps a post-stall burst within half of a subscriber's
+	// backlog, so catching up cannot overflow a monitor that is also behind.
+	maxCatchUpBlocks = monitorBacklog / 2
+)
+
 // Run advances active sessions in 20 ms PCM blocks until ctx is cancelled.
 func (s *Service) Run(ctx context.Context) {
-	ticker := time.NewTicker(20 * time.Millisecond)
+	clock := newBlockClock(time.Now())
+	ticker := time.NewTicker(blockDuration)
 	defer ticker.Stop()
 	defer func() {
 		s.mu.Lock()
@@ -299,20 +307,52 @@ func (s *Service) Run(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			s.mu.Lock()
-			for tableID, session := range s.tables {
-				if len(s.listeners[tableID]) == 0 {
-					continue
-				}
-				if session.buffer == nil {
-					session.buffer = make([]mixer.Frame, max(1, s.sampleRate/50))
-				}
-				session.render(session.buffer)
-				s.publish(tableID, session.buffer)
-			}
-			s.mu.Unlock()
+			s.renderBlocks(clock.due(time.Now()))
 		}
 	}
+}
+
+func (s *Service) renderBlocks(count int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for tableID, session := range s.tables {
+		if len(s.listeners[tableID]) == 0 {
+			continue
+		}
+		if session.buffer == nil {
+			session.buffer = make([]mixer.Frame, max(1, s.sampleRate/50))
+		}
+		for range count {
+			session.render(session.buffer)
+			s.publish(tableID, session.buffer)
+		}
+	}
+}
+
+// blockClock schedules blocks from elapsed time rather than ticks received.
+// Tickers drop ticks while the process is descheduled; counting ticks would
+// permanently fall behind real time and drain Discord receivers' jitter
+// buffers, which is audible as a stutter after every stall.
+type blockClock struct {
+	next time.Time
+}
+
+func newBlockClock(start time.Time) *blockClock {
+	return &blockClock{next: start.Add(blockDuration)}
+}
+
+func (c *blockClock) due(now time.Time) int {
+	if now.Before(c.next) {
+		return 0
+	}
+	count := int(now.Sub(c.next)/blockDuration) + 1
+	if count > maxCatchUpBlocks {
+		// Audio beyond the catch-up bound is skipped rather than burst.
+		c.next = now.Add(blockDuration)
+		return maxCatchUpBlocks
+	}
+	c.next = c.next.Add(time.Duration(count) * blockDuration)
+	return count
 }
 
 // Render is also a deterministic offline driver for testing command timelines.
