@@ -121,6 +121,9 @@ SQLite stores metadata, not media bytes:
   used in player URLs; the UUID remains the internal database identity.
 - `table_tracks`: many-to-many table/track associations.
 
+The datastore uses one pooled SQLite connection to serialize in-process
+access, so concurrent settings writes cannot lock out table or stream reads.
+
 UUIDs are stored as BLOBs. Track creation timestamps are serialized as RFC3339
 text, with second precision. Partial updates preserve omitted name/type fields.
 The initial migration seeds Ambiance (repeating, simultaneous), Music
@@ -418,6 +421,9 @@ loads. The displayed clock follows the destination during the overlap. Another
 seek adopts the destination once its fade has begun, otherwise retaining the
 audible outgoing source; pause adopts the incoming position, clears the pending
 selection, and releases the tail.
+Each media element tracks its current play request. Intentional pauses or
+replacement requests invalidate pending work, so delayed rejections from canceled
+requests cannot stop healthy playback; failures of current requests still surface.
 Track, master, and type-volume changes ramp the mixed gain over two
 seconds independently of play/pause fades and loop crossfades. A new adjustment
 starts from the current interpolated gain, including mute and non-repeating

@@ -456,13 +456,13 @@ test('GM opens compact now-playing controls from a mobile bottom drawer', async 
     el => el.scrollHeight > el.clientHeight,
   )).toBe(true)
   await forest.getByRole('slider', { name: `Volume for ${forestName}` }).press('Home')
-  await expect.poll(() => page.locator('video').first().evaluate(
-    (el: HTMLVideoElement) => el.volume === 0 && !el.paused,
+  await expect.poll(() => page.locator('[data-active="true"]').first().evaluate(
+    (el: HTMLMediaElement) => el.volume === 0 && !el.paused,
   )).toBe(true)
   await forest.getByRole('slider', { name: `Playback position for ${forestName}` }).press('Home')
   await forest.getByRole('slider', { name: `Playback position for ${forestName}` }).press('ArrowRight')
-  await expect.poll(() => page.locator('video').first().evaluate(
-    (el: HTMLVideoElement) => el.currentTime < 4 && !el.paused,
+  await expect.poll(() => page.locator('[data-active="true"]').first().evaluate(
+    (el: HTMLMediaElement) => el.currentTime < 4 && !el.paused,
   )).toBe(true)
   await page.screenshot({ path: testInfo.outputPath('mobile-now-playing-open.png'), fullPage: true })
   await drawer.getByRole('button', { name: 'Pause Tavern', exact: true }).click()
@@ -478,8 +478,8 @@ test('GM opens compact now-playing controls from a mobile bottom drawer', async 
   await toggle.click()
   await page.mouse.click(10, 80)
   await expect(drawer).toBeHidden()
-  await expect.poll(() => page.locator('video').first().evaluate(
-    (el: HTMLVideoElement) => !el.paused,
+  await expect.poll(() => page.locator('[data-active="true"]').first().evaluate(
+    (el: HTMLMediaElement) => !el.paused,
   )).toBe(true)
   await toggle.click()
   await page.setViewportSize({ width: 1280, height: 720 })

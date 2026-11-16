@@ -157,8 +157,14 @@ production environment. Public fixture credentials are `e2e-gm` /
 The suite uses two workers; the timing-sensitive and live Discord projects each
 have a one-worker limit. Only the live Discord journey loads credentials or
 connects the bots; do not run multiple suite invocations against the same bots.
-The timing project disables Chromium audio output so its media clock does not
-depend on the host audio device; it still checks real media playback.
+All projects disable Chromium audio output so media clocks do not depend on the
+host audio device; they still check real media playback. Loop-editing journeys
+with continuous playback measurements belong in the timing project.
+Continuous marker-drag observations stop before releasing the pointer.
+Natural-loop drag checks restore a known playback region between markers and
+assert real loop handoffs. Both drag flows require progress in every half-second
+window; exact subsecond playback-rate invariants belong in deterministic
+component tests, not browser wall-clock comparisons affected by decoder warm-up.
 Recording mode uses one worker and excludes infrastructure and live Discord
 tests. Each test has a fresh browser session; use a
 separate browser context for players so a GM cookie cannot masquerade as player
@@ -178,8 +184,9 @@ instead of fixed `test.setTimeout()` values so recording mode's longer limits
 still apply.
 
 Failed non-Discord tests retain browser traces, screenshots, and bounded server
-logs in `ui/test-results/`. Live Discord tests disable these artifacts and the
-HTML report to protect credentials. Diagnose the underlying
+logs in `ui/test-results/`; CI uploads them as attempt-specific artifacts with
+seven-day retention when the job fails. Live Discord tests disable these artifacts
+and the HTML report to protect credentials. Diagnose the underlying
 behavior before changing selectors, timeouts, or assertions. Do not bypass
 failed app paths with mocked responses or injected Pinia/localStorage state.
 
