@@ -144,10 +144,13 @@ it('drags boundaries without seeking, cancels pointer edits, and clamps clicks i
   Object.defineProperty(axis.element, 'setPointerCapture', { value: vi.fn() })
   await pointerEvent(start.element, 'pointerdown', 1, 0)
   await pointerEvent(start.element, 'pointermove', 1, 50)
-  expect(wrapper.props('modelValue').startTime).toBe(10)
+  expect(start.attributes('aria-valuenow')).toBe('10')
+  expect(wrapper.props('modelValue').startTime).toBe(0)
+  expect(wrapper.emitted('update:modelValue')).toBeUndefined()
   expect(wrapper.emitted('seek')).toBeUndefined()
   await pointerEvent(start.element, 'pointercancel', 1, 50)
   expect(wrapper.props('modelValue').startTime).toBe(0)
+  expect(wrapper.emitted('update:modelValue')).toBeUndefined()
   await wrapper.setProps({ modelValue: { startTime: 10, endTime: 25, loopBackTime: 15 } })
   await pointerEvent(axis.element, 'pointerdown', 2, 0)
   expect(wrapper.get('.timeline-cursor').attributes('aria-valuenow')).toBe('10')
@@ -158,6 +161,44 @@ it('drags boundaries without seeking, cancels pointer edits, and clamps clicks i
   await pointerEvent(axis.element, 'pointerup', 2, 300)
   expect(wrapper.props('currentTime')).toBe(23)
   expect(wrapper.emitted('seek')).toEqual([[23]])
+  wrapper.unmount()
+})
+
+it.each([
+  ['Beginning', 0, 50, '10', 'startTime'],
+  ['End', 300, 250, '50', 'endTime'],
+  ['Loop-back point', 0, 75, '15', 'loopBackTime'],
+] as const)('previews %s locally and commits one region change on release', async (name, from, to, value, key) => {
+  const wrapper = await mountTimeline()
+  await wrapper.setProps({ currentTime: 5 })
+  const axis = wrapper.get('.timeline-axis')
+  vi.spyOn(axis.element, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, 300, 6))
+  const handle = wrapper.get(`[aria-label="${name} for Forest"]`)
+  Object.defineProperty(handle.element, 'setPointerCapture', { value: vi.fn() })
+  await pointerEvent(handle.element, 'pointerdown', 1, from)
+  await pointerEvent(handle.element, 'pointermove', 1, to)
+  expect(handle.attributes('aria-valuenow')).toBe(value)
+  expect(wrapper.emitted('update:modelValue')).toBeUndefined()
+  expect(wrapper.get('.timeline-cursor').attributes('aria-valuenow')).toBe('5')
+  await pointerEvent(handle.element, 'pointerup', 1, to)
+  expect(wrapper.emitted('update:modelValue')).toHaveLength(1)
+  expect(wrapper.props('modelValue')[key]).toBe(Number(value))
+  wrapper.unmount()
+})
+
+it('retains the released seek preview until acknowledgement, not an old clock update', async () => {
+  const wrapper = mount(TrackTimeline, {
+    props: { modelValue: defaultPlayback(), duration: 60, currentTime: 5, name: 'Forest', seekVersion: 0 },
+  })
+  const axis = wrapper.get('.timeline-axis')
+  vi.spyOn(axis.element, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, 300, 6))
+  Object.defineProperty(axis.element, 'setPointerCapture', { value: vi.fn() })
+  await pointerEvent(axis.element, 'pointerdown', 1, 225)
+  await pointerEvent(axis.element, 'pointerup', 1, 225)
+  await wrapper.setProps({ currentTime: 5.2 })
+  expect(wrapper.get('.timeline-cursor').attributes('aria-valuenow')).toBe('45')
+  await wrapper.setProps({ currentTime: 43, seekTarget: 45, seekVersion: 1 })
+  expect(wrapper.get('.timeline-cursor').attributes('aria-valuenow')).toBe('43')
   wrapper.unmount()
 })
 
@@ -236,7 +277,7 @@ async function mountTimeline() {
   })
   await wrapper.setProps({
     'onUpdate:modelValue': settings => { void wrapper.setProps({ modelValue: settings }) },
-    onSeek: time => { void wrapper.setProps({ currentTime: time }) },
+    onSeek: time => { void wrapper.setProps({ currentTime: time, seekVersion: (wrapper.props('seekVersion') ?? 0) + 1 }) },
   })
   return wrapper
 }

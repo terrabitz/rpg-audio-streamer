@@ -93,6 +93,63 @@ test('GM plays and pauses a track from its settings', async ({ page }) => {
   await deleteLibraryTrack(page, 'Settings Preview', 0)
 })
 
+test('GM commits waveform marker drags only on release', async ({ page, browser }) => {
+  const regions: unknown[] = []
+  page.on('websocket', socket => socket.on('framesent', frame => {
+    const message = JSON.parse(frame.payload.toString())
+    if (message.method === 'syncTrack' && message.payload.playback) regions.push(message.payload.playback)
+  }))
+  await login(page)
+  await uploadTrack(page, 'Release Markers', 'Music', 60)
+  const tile = page.getByRole('group', { name: 'Release Markers', exact: true })
+  await tile.click()
+  await expect.poll(() => page.locator('[data-active="true"]').evaluate(
+    (media: HTMLMediaElement) => !media.paused && media.currentTime > 3,
+  )).toBe(true)
+  const context = await browser.newContext()
+  try {
+    const player = await context.newPage()
+    await player.goto(page.url())
+    await player.getByRole('button', { name: 'Connect Audio', exact: true }).click()
+    await tile.getByRole('button', { name: 'Edit Release Markers', exact: true }).click()
+    const dialog = page.getByRole('dialog')
+    for (const [point, target] of [['Beginning', 20], ['End', 40], ['Loop-back point', 25]] as const) {
+      const marker = dialog.getByRole('slider', { name: `${point} for Release Markers`, exact: true })
+      await marker.hover()
+      const handle = await marker.boundingBox()
+      const axis = await dialog.locator('.timeline-axis').boundingBox()
+      if (!handle || !axis) throw new Error('Timeline must be visible')
+      const duration = Number(await dialog.getByRole('slider', { name: 'End for Release Markers' }).getAttribute('aria-valuemax'))
+      const current = Number(await marker.getAttribute('aria-valuenow'))
+      const x = handle.x + handle.width / 2
+      const y = handle.y + handle.height / 2
+      const before = regions.length
+      await page.mouse.move(x, y)
+      await page.mouse.down()
+      await page.mouse.move(x + (target - current) / duration * axis.width, y, { steps: 12 })
+      expect(Number(await marker.getAttribute('aria-valuenow'))).toBeCloseTo(target, 0)
+      for (const view of [page, player]) {
+        const media = view.locator('[data-active="true"]')
+        const position = await media.evaluate((element: HTMLMediaElement) => element.currentTime)
+        await expect.poll(() => media.evaluate((element: HTMLMediaElement) => element.currentTime)).toBeGreaterThan(position + 0.25)
+        if (point === 'Beginning') {
+          expect(await media.evaluate((element: HTMLMediaElement) => element.currentTime)).toBeLessThan(20)
+        }
+      }
+      expect(regions).toHaveLength(before)
+      await page.mouse.up()
+      await expect.poll(() => regions.length).toBe(before + 1)
+      if (point === 'Beginning') {
+        for (const view of [page, player]) {
+          await expect.poll(() => view.locator('[data-active="true"]').evaluate(
+            (element: HTMLMediaElement) => !element.paused && element.currentTime >= 20,
+          )).toBe(true)
+        }
+      }
+    }
+  } finally { await context.close() }
+})
+
 test('GM previews loop edits live for listeners before saving them', async ({ page, browser }) => {
   test.slow()
   await login(page)

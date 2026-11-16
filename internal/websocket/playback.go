@@ -200,6 +200,9 @@ func (h *Hub) updatePlayback(payload json.RawMessage, c *Client) {
 		state.CurrentTime = math.Min(state.CurrentTime, end)
 		if state.IsPlaying && state.CurrentTime >= end {
 			state.CurrentTime = state.Playback.StartTime
+			if state.IsRepeating && state.Playback.LoopBackTime != nil {
+				state.CurrentTime = *state.Playback.LoopBackTime
+			}
 		}
 	}
 	state.updatedAt = now
@@ -226,6 +229,14 @@ func (h *Hub) updatePlayback(payload json.RawMessage, c *Client) {
 					return err
 				}
 				if err := h.mixer.Update(c.Token.TableID, stop); err != nil {
+					return err
+				}
+			}
+			if patch.IsPlaying != nil && *patch.IsPlaying {
+				patch.Volume = &state.Volume
+				patch.Playback = &state.Playback
+				payload, err = json.Marshal(patch)
+				if err != nil {
 					return err
 				}
 			}

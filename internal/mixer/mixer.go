@@ -182,8 +182,16 @@ func (m *Mixer) SetRegion(id string, region Region) error {
 		t.position = t.overlap.incoming
 	}
 	t.overlap = nil
-	if t.position < region.Start || t.position >= region.End {
+	if t.position < region.Start {
+		if t.playing {
+			return m.CrossfadeSeek(id, region.Start)
+		}
 		t.position = region.Start
+	} else if t.position >= region.End {
+		t.position = region.End
+		if !t.playing {
+			t.position = region.Start
+		}
 	}
 	return nil
 }
@@ -247,6 +255,10 @@ func (m *Mixer) SetGain(id string, gain float64) error {
 	if t.gain.to == gain {
 		return nil
 	}
+	if !t.playing && t.envelope.value() == 0 {
+		t.gain = ramp{to: gain}
+		return nil
+	}
 	t.gain.retarget(gain, 2*m.sampleRate)
 	return nil
 }
@@ -297,6 +309,11 @@ func (t *track) next(sampleRate int) Frame {
 		}
 	}
 	fadeFrames := min(2*sampleRate, (t.region.End-t.region.LoopBack)/3, t.region.End-t.region.Start)
+	if t.source != nil && t.playing && t.repeating && t.overlap == nil &&
+		t.position >= t.region.End-fadeFrames-2*sampleRate {
+		// Warm the incoming window before the overlap, including after LRU eviction.
+		_, _ = t.source.FrameAt(t.region.LoopBack)
+	}
 	if t.playing && t.repeating && t.overlap == nil && fadeFrames > 0 && t.position >= t.region.End-fadeFrames {
 		t.overlap = &overlap{start: t.position, end: t.region.End, incoming: t.region.LoopBack}
 	}
@@ -307,14 +324,20 @@ func (t *track) next(sampleRate int) Frame {
 	if t.overlap != nil {
 		head, headReady := t.frameAt(t.overlap.incoming)
 		if !headReady {
-			if t.overlap.seek && t.sourceErr == nil && t.position < t.region.End-1 {
+			if t.sourceErr == nil {
 				// Keep the outgoing audio audible while the destination is decoded.
 				duration := t.overlap.end - t.overlap.start
 				t.position++
-				t.overlap.start = t.position
-				t.overlap.end = min(t.region.End, t.position+duration)
-				if !t.overlap.beginning {
-					t.overlap.incoming += duration - (t.overlap.end - t.overlap.start)
+				if t.position == t.region.End {
+					t.finish()
+				} else {
+					t.overlap.start = t.position
+					if t.overlap.seek {
+						t.overlap.end = min(t.region.End, t.position+duration)
+					}
+					if t.overlap.seek && !t.overlap.beginning {
+						t.overlap.incoming += duration - (t.overlap.end - t.overlap.start)
+					}
 				}
 				envelope := t.envelope.step()
 				return Frame{Left: frame.Left * gain * envelope, Right: frame.Right * gain * envelope}

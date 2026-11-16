@@ -275,6 +275,7 @@ const handlePlay = (fileID: string) => {
     fileID,
     isPlaying: !state.isPlaying,
     duration: state.duration,
+    volume: state.volume,
   })
 }
 
@@ -305,8 +306,7 @@ function previewTrack(fileID: string) {
 function handleSettings(fileID: string, playback: PlaybackSettings) {
   const state = audioStore.tracks[fileID]
   if (!state) return
-  const currentTime = Math.max(playback.startTime, Math.min(state.currentTime, playback.endTime ?? Infinity))
-  audioStore.updateTrackState(fileID, { playback, currentTime })
+  audioStore.updateTrackState(fileID, { playback })
   if (!props.library && wsStore.isConnected) {
     wsStore.sendMessage('syncTrack', {
       fileID, playback, duration: state.duration,

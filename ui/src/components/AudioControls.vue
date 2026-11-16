@@ -24,7 +24,8 @@
           <TrackTypeSelector v-model="editTrackType" />
           <v-alert v-if="regionError" type="error" class="mb-3">{{ regionError }}</v-alert>
           <TrackTimeline v-if="audioState" :model-value="editedPlayback" @update:model-value="previewPlayback" :duration="audioState.duration"
-            :current-time="audioState.currentTime" :seek-target="audioState.seekTarget" :name="props.fileName" :waveform="waveform"
+            :current-time="audioState.currentTime" :seek-target="audioState.seekTarget" :seek-version="audioState.seekVersion"
+            :name="props.fileName" :waveform="waveform"
             show-play :is-playing="audioState.isPlaying"
             :is-repeating="trackTypeStore.getTypeById(editTrackType)?.isRepeating"
             :volume="props.library ? undefined : audioState.volume" :disabled="isSaving || isDeleting" class="mt-3"

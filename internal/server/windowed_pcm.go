@@ -20,7 +20,7 @@ import (
 const (
 	pcmWindowSeconds = 5
 	pcmDecodePadding = 0.1
-	pcmCachedWindows = 3
+	pcmCachedWindows = 4 // Two crossfading cursors, each with a current and lookahead window.
 	pcmRequestQueue  = 16
 )
 

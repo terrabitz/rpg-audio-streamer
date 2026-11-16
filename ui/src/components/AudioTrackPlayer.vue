@@ -164,6 +164,12 @@ function syncRegion() {
         state.seekLanding != null && state.seekLanding > end)) {
     updatePlaybackState({ seekTarget: null, seekLanding: null })
   }
+  if (!overlap && media.currentTime < start && state.isPlaying && !media.paused) {
+    pendingSeek = start
+    bindHLS(1 - active.value)
+    tick()
+    return
+  }
   if (overlap) {
     // An in-flight handoff must survive edits, even if the outgoing source has ended.
     overlap.end = Math.min(overlap.end, end)
@@ -177,6 +183,7 @@ function syncRegion() {
     }
   }
   syncPosition(media.currentTime)
+  tick()
 }
 
 function syncPosition(currentTime?: number) {

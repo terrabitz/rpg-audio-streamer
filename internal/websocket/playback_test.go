@@ -361,19 +361,19 @@ func TestPlaybackExclusivityFadesMixerAudio(t *testing.T) {
 			mix.Render(tableID, 12)
 			play(testOtherID)
 			frames := mix.Render(tableID, 13)
-			if frames[0] != (mixer.Frame{Left: 0.5}) {
+			if frames[0] != (mixer.Frame{Left: 0.25}) {
 				t.Fatalf("switch cut off outgoing audio: %+v", frames[0])
 			}
-			want := mixer.Frame{Left: 0.25, Right: 0.25}
+			want := mixer.Frame{Left: 0.125, Right: 0.25}
 			if simultaneous {
-				want.Left = 0.5
+				want.Left = 0.25
 			}
 			if frames[6] != want {
 				t.Fatalf("mid-transition audio = %+v; want %+v", frames[6], want)
 			}
 			want = mixer.Frame{Right: 0.5}
 			if simultaneous {
-				want.Left = 0.5
+				want.Left = 0.25
 			}
 			if frames[12] != want {
 				t.Fatalf("settled audio = %+v; want %+v", frames[12], want)
