@@ -13,6 +13,7 @@ it('separates the seek cursor and three region handles and exposes their bounds'
   expect(wrapper.get('[aria-label="Beginning for Forest"]').text()).toBe('0:00.0')
   expect(wrapper.get('[aria-label="End for Forest"]').text()).toBe('1:00.0')
   expect(wrapper.get('[aria-label="Loop-back point for Forest"]').text()).toBe('0:00.0')
+  expect(wrapper.get('[aria-label="Loop-back point for Forest"]').get('v-icon-stub').attributes('icon')).toBe('$repeat')
   expect(wrapper.find('.timeline-labels').exists()).toBe(false)
   expect(wrapper.find('.timeline-loop-label').exists()).toBe(false)
   expect(wrapper.find('.timeline-reset').exists()).toBe(false)
@@ -47,6 +48,7 @@ it('shares volume changes without adding restart or playback buttons', async () 
     global: {
       stubs: {
         VolumeSlider: { name: 'VolumeSlider', props: { modelValue: Number, disabled: Boolean }, template: '<div />' },
+        VIcon: true,
       },
     },
   })
@@ -274,6 +276,7 @@ it('disables all handles until metadata is ready and during save', async () => {
 async function mountTimeline() {
   const wrapper = mount(TrackTimeline, {
     props: { modelValue: defaultPlayback(), duration: 60, currentTime: 0, name: 'Forest', isRepeating: true },
+    global: { stubs: { VIcon: true } },
   })
   await wrapper.setProps({
     'onUpdate:modelValue': settings => { void wrapper.setProps({ modelValue: settings }) },
