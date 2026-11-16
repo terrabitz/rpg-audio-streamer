@@ -1,6 +1,236 @@
 import { expect, test } from './fixtures'
 import { expectEdgeToEdgeTable, expectTrackGridSpacing, expectCompactPlayingCard, login, createTable, addExistingTrack, deleteTable, deleteLibraryTrack, uploadTrack, navigate } from './helpers'
 
+for (const surface of ['sidebar', 'timeline'] as const) {
+  test(`GM previews a seek in the ${surface} and commits on release`, async ({ page, browser }, testInfo) => {
+    await login(page)
+    await uploadTrack(page, 'Seek Music', 'Music', 60)
+    const tile = page.getByRole('group', { name: 'Seek Music', exact: true })
+    await tile.click()
+    const gmAudio = page.locator('[data-active="true"]')
+    await expect.poll(() => gmAudio.evaluate((el: HTMLMediaElement) => !el.paused && el.currentTime > 0)).toBe(true)
+    const playerContext = await browser.newContext()
+    try {
+      const player = await playerContext.newPage()
+      await player.goto(page.url())
+      await player.getByRole('button', { name: 'Connect Audio', exact: true }).click()
+      const playerAudio = player.locator('[data-active="true"]')
+      await expect.poll(() => playerAudio.evaluate((el: HTMLMediaElement) => !el.paused && el.currentTime > 0)).toBe(true)
+      if (surface === 'timeline') await tile.getByRole('button', { name: 'Edit Seek Music', exact: true }).click()
+      const controls = surface === 'timeline'
+        ? page.getByRole('dialog')
+        : page.getByRole('complementary', { name: 'Currently playing' })
+      const slider = controls.getByRole('slider', { name: 'Playback position for Seek Music' })
+      const track = controls.locator(surface === 'timeline' ? '.timeline-axis' : '.track-position .v-slider-track')
+      await expect(slider).toBeEnabled()
+      if (surface === 'timeline') await expect(controls.getByTestId('waveform-track')).toBeVisible()
+      await track.hover()
+      const bounds = await track.boundingBox()
+      if (!bounds) throw new Error('Seek track must be visible')
+      const y = bounds.y + bounds.height / 2
+      const maximum = surface === 'timeline' ? 60 : Number(await slider.getAttribute('aria-valuemax'))
+      await page.mouse.move(bounds.x + bounds.width * 36 / maximum, y)
+      await page.mouse.down()
+      await page.mouse.move(bounds.x + bounds.width * 45 / maximum, y, { steps: 8 })
+      await expect(slider).toHaveAttribute('aria-valuenow', '45')
+      await page.screenshot({ path: testInfo.outputPath('seek-preview.png') })
+      for (const media of [gmAudio, playerAudio]) {
+        await expect.poll(() => media.evaluate((el: HTMLMediaElement) => el.currentTime)).toBeLessThan(30)
+        const before = await media.evaluate((el: HTMLMediaElement) => el.currentTime)
+        await expect.poll(() => media.evaluate((el: HTMLMediaElement) => el.currentTime)).toBeGreaterThan(before + 1)
+        await expect.poll(() => media.evaluate((el: HTMLMediaElement) => el.paused)).toBe(false)
+      }
+      await expect(slider).toHaveAttribute('aria-valuenow', '45')
+      const observations = await Promise.all([page, player].map(view => view.evaluateHandle(() => ({
+        result: new Promise<{ elapsed: number, outgoing: number, incoming: number, time: number }[]>((resolve, reject) => {
+          const outgoing = document.querySelector<HTMLMediaElement>('[data-active="true"]')!
+          const incoming = [...document.querySelectorAll<HTMLMediaElement>('video, audio')].find(el => el !== outgoing)!
+          const deadline = performance.now() + 10_000
+          const samples: { elapsed: number, outgoing: number, incoming: number, time: number }[] = []
+          let start: number | undefined
+          function sample() {
+            if (performance.now() > deadline) {
+              reject(new Error('Seek crossfade did not complete'))
+              return
+            }
+            if (!incoming.paused && incoming.currentTime >= 43) {
+              start ??= incoming.currentTime
+              samples.push({ elapsed: incoming.currentTime - start, outgoing: outgoing.volume,
+                incoming: incoming.volume, time: incoming.currentTime })
+            }
+            if (samples.length && outgoing.paused && incoming.volume === 1) resolve(samples)
+            else requestAnimationFrame(sample)
+          }
+          sample()
+        }),
+      }))))
+      await page.mouse.up()
+      for (const observation of observations) {
+        const samples = await observation.evaluate(value => value.result)
+        const middle = samples.find(sample => sample.incoming >= 0.4 && sample.incoming <= 0.6)
+        expect(middle, 'both sources must be audible halfway through the seek').toBeDefined()
+        expect(middle!.outgoing + middle!.incoming).toBeCloseTo(1, 1)
+        expect(middle!.time).toBeGreaterThan(43.5)
+        expect(middle!.time).toBeLessThan(44.5)
+        expect(samples.at(-1)!.time).toBeGreaterThanOrEqual(45)
+        expect(samples.at(-1)!.time).toBeLessThan(46)
+        expect(samples.at(-1)!.elapsed).toBeGreaterThan(1.7)
+        await observation.dispose()
+      }
+      for (const media of [gmAudio, playerAudio]) {
+        await expect.poll(() => media.evaluate((el: HTMLMediaElement) => el.currentTime)).toBeGreaterThanOrEqual(44)
+        await expect.poll(() => media.evaluate((el: HTMLMediaElement) => el.currentTime)).toBeLessThan(50)
+        await expect.poll(() => media.evaluate((el: HTMLMediaElement) => el.paused)).toBe(false)
+      }
+    } finally {
+      await playerContext.close()
+    }
+  })
+}
+
+for (const surface of ['sidebar', 'timeline'] as const) {
+  test(`GM seeks near the end from the ${surface} and the playhead follows the loop`, async ({ page, browser }) => {
+    await login(page)
+    await uploadTrack(page, 'Loop Seek Music', 'Music', 30)
+    const tile = page.getByRole('group', { name: 'Loop Seek Music', exact: true })
+    await tile.click()
+    const gmAudio = page.locator('[data-active="true"]')
+    await expect.poll(() => gmAudio.evaluate((el: HTMLMediaElement) => !el.paused && el.currentTime > 0)).toBe(true)
+    await tile.getByRole('button', { name: 'Edit Loop Seek Music', exact: true }).click()
+    const dialog = page.getByRole('dialog')
+    const loop = dialog.getByRole('slider', { name: 'Loop-back point for Loop Seek Music' })
+    await loop.press('Home')
+    await loop.press('PageUp')
+    await expect(loop).toHaveAttribute('aria-valuenow', '5')
+    const end = Number(await dialog.getByRole('slider', { name: 'End for Loop Seek Music' }).getAttribute('aria-valuenow'))
+    await dialog.getByRole('button', { name: 'Save Changes' }).click()
+    await expect(dialog).not.toBeVisible()
+    if (surface === 'timeline') await tile.getByRole('button', { name: 'Edit Loop Seek Music', exact: true }).click()
+    const controls = surface === 'timeline' ? dialog : page.getByRole('complementary', { name: 'Currently playing' })
+    const slider = controls.getByRole('slider', { name: 'Playback position for Loop Seek Music' })
+    await expect(slider).toHaveAttribute('aria-valuemax', String(end - 2))
+    const context = await browser.newContext()
+    try {
+      const player = await context.newPage()
+      await player.goto(page.url())
+      await player.getByRole('button', { name: 'Connect Audio', exact: true }).click()
+      const playerAudio = player.locator('[data-active="true"]')
+      await expect.poll(() => playerAudio.evaluate((el: HTMLMediaElement) => !el.paused && el.currentTime > 0)).toBe(true)
+      await slider.press('End')
+      for (const media of [gmAudio, playerAudio]) {
+        await expect.poll(() => media.evaluate((el: HTMLMediaElement) => el.currentTime)).toBeGreaterThanOrEqual(26)
+        await expect.poll(() => media.evaluate((el: HTMLMediaElement) => el.currentTime)).toBeLessThan(30)
+      }
+      for (const media of [gmAudio, playerAudio]) {
+        await expect.poll(() => media.evaluate((el: HTMLMediaElement) => el.currentTime)).toBeLessThan(12)
+        await expect.poll(() => media.evaluate((el: HTMLMediaElement) => el.currentTime)).toBeGreaterThanOrEqual(5)
+        await expect.poll(() => media.evaluate((el: HTMLMediaElement) => el.paused)).toBe(false)
+      }
+      const afterLoop = await gmAudio.evaluate((el: HTMLMediaElement) => el.currentTime)
+      await expect.poll(async () => Number(await slider.getAttribute('aria-valuenow'))).toBeGreaterThan(afterLoop + 1)
+      await expect.poll(async () => Math.abs(Number(await slider.getAttribute('aria-valuenow')) -
+        await gmAudio.evaluate((el: HTMLMediaElement) => el.currentTime))).toBeLessThan(1)
+    } finally { await context.close() }
+  })
+}
+
+test('GM seeks near the beginning while players listen', { tag: '@timing' }, async ({ page, browser }) => {
+  await login(page)
+  await uploadTrack(page, 'Beginning Seek Music', 'Music', 60)
+  const tile = page.getByRole('group', { name: 'Beginning Seek Music', exact: true })
+  await tile.click()
+  const gmAudio = page.locator('[data-active="true"]')
+  await expect.poll(() => gmAudio.evaluate((el: HTMLMediaElement) => !el.paused && el.currentTime > 5), { timeout: 20_000 }).toBe(true)
+  const playerContext = await browser.newContext()
+  try {
+    const player = await playerContext.newPage()
+    await player.goto(page.url())
+    await player.getByRole('button', { name: 'Connect Audio', exact: true }).click()
+    const playerAudio = player.locator('[data-active="true"]')
+    await expect.poll(() => playerAudio.evaluate((el: HTMLMediaElement) => !el.paused && el.currentTime > 5), { timeout: 20_000 }).toBe(true)
+    await expect.poll(() => playerAudio.evaluate((el: HTMLMediaElement) => el.volume)).toBe(1)
+    await tile.getByRole('button', { name: 'Edit Beginning Seek Music', exact: true }).click()
+    const dialog = page.getByRole('dialog')
+    const slider = dialog.getByRole('slider', { name: 'Playback position for Beginning Seek Music' })
+    const track = dialog.locator('.timeline-axis')
+    await expect(dialog.getByTestId('waveform-track')).toBeVisible()
+    await track.hover()
+    const bounds = await track.boundingBox()
+    if (!bounds) throw new Error('Seek track must be visible')
+    const duration = Number(await dialog.getByRole('slider', { name: 'End for Beginning Seek Music' }).getAttribute('aria-valuenow'))
+    const y = bounds.y + bounds.height / 2
+    await page.mouse.move(bounds.x + bounds.width * 40 / duration, y)
+    await page.mouse.down()
+    await page.mouse.move(bounds.x + bounds.width / duration, y, { steps: 8 })
+    await expect(slider).toHaveAttribute('aria-valuenow', '1')
+    const observations = await Promise.all([page, player].map(view => view.evaluateHandle(() => ({
+      result: new Promise<{ time: number, outgoing: number, incoming: number }[]>((resolve, reject) => {
+        const outgoing = document.querySelector<HTMLMediaElement>('[data-active="true"]')!
+        const incoming = [...document.querySelectorAll<HTMLMediaElement>('video, audio')].find(el => el !== outgoing)!
+        const deadline = performance.now() + 10_000
+        const samples: { time: number, outgoing: number, incoming: number }[] = []
+        function sample() {
+          if (performance.now() > deadline) {
+            reject(new Error('Seek did not complete'))
+            return
+          }
+          if (!incoming.paused && incoming.currentTime < 4) {
+            samples.push({ time: incoming.currentTime, outgoing: outgoing.volume, incoming: incoming.volume })
+          }
+          if (samples.length && outgoing.paused && !incoming.paused) resolve(samples)
+          else requestAnimationFrame(sample)
+        }
+        sample()
+      }),
+    }))))
+    await page.mouse.up()
+    for (const observation of observations) {
+      const samples = await observation.evaluate(value => value.result)
+      const middle = samples.find(sample => sample.incoming >= 0.4 && sample.incoming <= 0.6)
+      expect(middle, 'both sources must be audible halfway through the opening').toBeDefined()
+      expect(middle!.outgoing + middle!.incoming).toBeCloseTo(1, 1)
+      expect(middle!.time).toBeGreaterThan(0.75)
+      expect(middle!.time).toBeLessThan(1.25)
+      expect(samples.at(-1)!.time).toBeGreaterThanOrEqual(2)
+      expect(samples.at(-1)!.time).toBeLessThan(3)
+      expect(samples.at(-1)!.time - samples[0]!.time).toBeGreaterThan(1.7)
+      await observation.dispose()
+    }
+    for (const media of [gmAudio, playerAudio]) {
+      await expect.poll(() => media.evaluate((el: HTMLMediaElement) => el.paused)).toBe(false)
+    }
+  } finally { await playerContext.close() }
+})
+
+test('playback position follows the media clock without jumping backward @timing', async ({ page }) => {
+  await login(page)
+  await uploadTrack(page, 'Clock Music')
+  await page.getByRole('group', { name: 'Clock Music', exact: true }).click()
+  const media = page.locator('[data-active="true"]')
+  await expect.poll(() => media.evaluate((el: HTMLMediaElement) => !el.paused && el.currentTime > 0)).toBe(true)
+  const samples = await page.evaluate(async () => {
+    const media = document.querySelector<HTMLMediaElement>('[data-active="true"]')!
+    const slider = document.querySelector('[aria-label="Playback position for Clock Music"]')!
+    const start = media.currentTime
+    const deadline = performance.now() + 10_000
+    const values: { media: number, slider: number }[] = []
+    await new Promise<void>(resolve => {
+      function sample() {
+        values.push({ media: media.currentTime, slider: Number(slider.getAttribute('aria-valuenow')) })
+        if (media.currentTime >= start + 4 || performance.now() >= deadline) resolve()
+        else requestAnimationFrame(sample)
+      }
+      sample()
+    })
+    return values
+  })
+  expect(samples.at(-1)!.media - samples[0]!.media).toBeGreaterThanOrEqual(4)
+  for (const [index, sample] of samples.entries()) {
+    expect(Math.abs(sample.slider - sample.media)).toBeLessThan(1)
+    if (index > 0) expect(sample.slider).toBeGreaterThanOrEqual(samples[index - 1]!.slider)
+  }
+})
+
 test('player receives live playback, late-join state, and pause', async ({
   page,
   browser,
@@ -79,10 +309,10 @@ test('player receives live playback, late-join state, and pause', async ({
     await sidebar.getByRole('button', { name: 'Restart Session Music' }).click()
     await expect
       .poll(() => gmAudio.evaluate((el: HTMLVideoElement) => el.currentTime))
-      .toBeLessThan(2)
+      .toBeLessThan(4)
     await expect
       .poll(() => playerAudio.evaluate((el: HTMLVideoElement) => el.currentTime))
-      .toBeLessThan(2)
+      .toBeLessThan(4)
     await expect.poll(() => playerAudio.evaluate((el: HTMLVideoElement) => el.paused)).toBe(false)
     await sidebar.getByRole('button', { name: 'Pause Session Music', exact: true }).click()
     await expect.poll(() => playerAudio.evaluate((el: HTMLVideoElement) => el.paused)).toBe(true)

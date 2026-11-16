@@ -89,15 +89,17 @@ func TestPlaybackControls(t *testing.T) {
 }
 
 type delayedSource struct {
-	frame  Frame
-	ready  bool
-	closed bool
+	frame      Frame
+	ready      bool
+	readyUntil int
+	readyFrom  int
+	closed     bool
 }
 
 func (*delayedSource) Len() int { return 12 }
 
-func (s *delayedSource) FrameAt(int) (Frame, bool) {
-	return s.frame, s.ready
+func (s *delayedSource) FrameAt(position int) (Frame, bool) {
+	return s.frame, s.ready || position < s.readyUntil || s.readyFrom > 0 && position >= s.readyFrom
 }
 
 func (*delayedSource) Err() error { return nil }
@@ -118,6 +120,9 @@ func TestPlaybackRegion(t *testing.T) {
 	for _, position := range []int{0, 4} {
 		if err := m.Seek("music", position); err == nil {
 			t.Fatalf("accepted seek outside region: %d", position)
+		}
+		if err := m.CrossfadeSeek("music", position); err == nil {
+			t.Fatalf("accepted crossfade seek outside region: %d", position)
 		}
 	}
 	must(t, m.Seek("music", 2))
@@ -219,6 +224,191 @@ func TestSeekCancelsOverlapAndLateSeekShortensIt(t *testing.T) {
 	out = make([]Frame, 3)
 	m.Render(out)
 	assertFrames(t, out, []Frame{{0.5, 0.5}, {0.55, 0.55}, {0, 0}})
+}
+
+func TestSeekCrossfadesOutgoingAndIncomingPCMForTwoSeconds(t *testing.T) {
+	for _, repeating := range []bool{false, true} {
+		t.Run(fmt.Sprint(repeating), func(t *testing.T) {
+			m := newMixer(t, 2)
+			samples := make([]Frame, 80)
+			for i := range samples {
+				samples[i] = Frame{Left: float64(i) / 100, Right: -float64(i) / 100}
+			}
+			addPlaying(t, m, "music", samples)
+			must(t, m.SetRepeating("music", repeating))
+			must(t, m.Seek("music", 20))
+			must(t, m.CrossfadeSeek("music", 40))
+			assertState(t, m, "music", State{Position: 36, Playing: true})
+			out := make([]Frame, 5)
+			m.Render(out)
+			assertFrames(t, out, []Frame{
+				{0.20, -0.20}, {0.25, -0.25}, {0.30, -0.30}, {0.35, -0.35}, {0.40, -0.40},
+			})
+			assertState(t, m, "music", State{Position: 41, Playing: true})
+		})
+	}
+}
+
+func TestSeekNearBeginningCrossfadesTheFullOpening(t *testing.T) {
+	for _, tc := range []struct {
+		start, target, outgoing int
+		want                    []Frame
+	}{
+		{0, 0, 20, []Frame{{0.20, 0}, {0.16, 0}, {0.12, 0}, {0.08, 0}, {0.04, 0}}},
+		{0, 2, 20, []Frame{{0.20, 0}, {0.16, 0}, {0.12, 0}, {0.08, 0}, {0.04, 0}}},
+		{0, 4, 20, []Frame{{0.20, 0}, {0.16, 0}, {0.12, 0}, {0.08, 0}, {0.04, 0}}},
+		{0, 2, 2, []Frame{{0.02, 0}, {0.025, 0}, {0.03, 0}, {0.035, 0}, {0.04, 0}}},
+		{10, 10, 30, []Frame{{0.30, 0}, {0.26, 0}, {0.22, 0}, {0.18, 0}, {0.14, 0}}},
+		{10, 12, 30, []Frame{{0.30, 0}, {0.26, 0}, {0.22, 0}, {0.18, 0}, {0.14, 0}}},
+		{10, 14, 30, []Frame{{0.30, 0}, {0.26, 0}, {0.22, 0}, {0.18, 0}, {0.14, 0}}},
+	} {
+		t.Run(fmt.Sprint(tc.start, "/", tc.target, "/", tc.outgoing), func(t *testing.T) {
+			m := newMixer(t, 2)
+			samples := make([]Frame, 80)
+			for i := range samples {
+				samples[i].Left = float64(i) / 100
+			}
+			addPlaying(t, m, "music", samples)
+			must(t, m.SetRegion("music", Region{Start: tc.start, End: 80, LoopBack: tc.start}))
+			must(t, m.Seek("music", tc.outgoing))
+			must(t, m.CrossfadeSeek("music", tc.target))
+			assertState(t, m, "music", State{Position: tc.start, Playing: true})
+			out := make([]Frame, len(tc.want))
+			m.Render(out)
+			assertFrames(t, out, tc.want)
+			assertState(t, m, "music", State{Position: tc.start + 5, Playing: true})
+		})
+	}
+}
+
+func TestSeekNearBeginningKeepsTheOpeningWhenTheTailIsShort(t *testing.T) {
+	m := newMixer(t, 2)
+	samples := make([]Frame, 80)
+	for i := range samples {
+		samples[i].Left = float64(i) / 100
+	}
+	addPlaying(t, m, "music", samples)
+	must(t, m.Seek("music", 78))
+	must(t, m.CrossfadeSeek("music", 4))
+	out := make([]Frame, 3)
+	m.Render(out)
+	assertFrames(t, out, []Frame{{Left: 0.78}, {Left: 0.40}, {Left: 0.02}})
+	assertState(t, m, "music", State{Position: 3, Playing: true})
+}
+
+func TestSeekNearBeginningKeepsTheOpeningWhilePCMIsBuffered(t *testing.T) {
+	for _, target := range []int{0, 2, 4} {
+		t.Run(fmt.Sprint(target), func(t *testing.T) {
+			m := newMixer(t, 2)
+			source := &delayedSource{frame: Frame{Left: 0.5}, readyFrom: 8}
+			must(t, m.AddSource("music", source))
+			must(t, m.Play("music"))
+			must(t, m.Seek("music", 8))
+			must(t, m.CrossfadeSeek("music", target))
+			out := make([]Frame, 2)
+			m.Render(out)
+			assertFrames(t, out, constantFrames(2, Frame{Left: 0.5}))
+			assertState(t, m, "music", State{Position: 0, Playing: true})
+			source.ready = true
+			m.Render(out)
+			assertFrames(t, out, constantFrames(2, Frame{Left: 0.5}))
+			assertState(t, m, "music", State{Position: 2, Playing: true})
+		})
+	}
+}
+
+func TestSeekCrossfadeShortensAtBoundariesAndPausedSeeksStaySilent(t *testing.T) {
+	m := newMixer(t, 2)
+	addPlaying(t, m, "music", constantFrames(20, Frame{Left: 0.5}))
+	must(t, m.Seek("music", 18))
+	must(t, m.CrossfadeSeek("music", 4))
+	m.Render(make([]Frame, 2))
+	assertState(t, m, "music", State{Position: 2, Playing: true})
+	must(t, m.CrossfadeSeek("music", 19))
+	m.Render(make([]Frame, 4))
+	assertState(t, m, "music", State{Position: 16, Playing: true})
+	must(t, m.Pause("music"))
+	must(t, m.CrossfadeSeek("music", 10))
+	out := make([]Frame, 4)
+	m.Render(out)
+	assertFrames(t, out, make([]Frame, 4))
+	assertState(t, m, "music", State{Position: 10})
+}
+
+func TestSeekDuringCrossfadeReplacesThePreviousTail(t *testing.T) {
+	m := newMixer(t, 2)
+	samples := make([]Frame, 80)
+	for i := range samples {
+		samples[i].Left = float64(i) / 100
+	}
+	addPlaying(t, m, "music", samples)
+	must(t, m.CrossfadeSeek("music", 20))
+	m.Render(make([]Frame, 2))
+	must(t, m.CrossfadeSeek("music", 40))
+	out := make([]Frame, 5)
+	m.Render(out)
+	assertFrames(t, out, []Frame{{Left: 0.18}, {Left: 0.235}, {Left: 0.29}, {Left: 0.345}, {Left: 0.40}})
+	assertState(t, m, "music", State{Position: 41, Playing: true})
+}
+
+func TestSeekKeepsOutgoingPCMPlayingWhileTheDestinationBuffers(t *testing.T) {
+	m := newMixer(t, 2)
+	source := &delayedSource{frame: Frame{Left: 0.5}, readyUntil: 6}
+	must(t, m.AddSource("music", source))
+	must(t, m.Play("music"))
+	must(t, m.CrossfadeSeek("music", 10))
+	out := make([]Frame, 2)
+	m.Render(out)
+	assertFrames(t, out, []Frame{{Left: 0.5}, {Left: 0.5}})
+	assertState(t, m, "music", State{Position: 6, Playing: true})
+	source.ready = true
+	out = make([]Frame, 5)
+	m.Render(out)
+	assertFrames(t, out, constantFrames(5, Frame{Left: 0.5}))
+	assertState(t, m, "music", State{Position: 11, Playing: true})
+}
+
+func TestSeekLandingLeavesRoomForTheNaturalLoopCrossfade(t *testing.T) {
+	m := newMixer(t, 2)
+	addPlaying(t, m, "music", constantFrames(60, Frame{Left: 0.5}))
+	must(t, m.SetRepeating("music", true))
+	must(t, m.SetRegion("music", Region{End: 60, LoopBack: 10}))
+	must(t, m.Seek("music", 20))
+	must(t, m.CrossfadeSeek("music", 60))
+	m.Render(make([]Frame, 4))
+	assertState(t, m, "music", State{Position: 56, Playing: true})
+	m.Render(make([]Frame, 4))
+	assertState(t, m, "music", State{Position: 14, Playing: true})
+	m.Render(make([]Frame, 2))
+	assertState(t, m, "music", State{Position: 16, Playing: true})
+}
+
+func TestSeekLandingStaysInsideTrimmedAndShortRegions(t *testing.T) {
+	for _, tc := range []struct {
+		region Region
+		target int
+		want   int
+	}{
+		{Region{Start: 10, End: 30, LoopBack: 10}, 11, 14},
+		{Region{Start: 10, End: 30, LoopBack: 10}, 10, 14},
+		{Region{Start: 10, End: 30, LoopBack: 10}, 30, 26},
+		{Region{Start: 10, End: 12, LoopBack: 10}, 12, 11},
+	} {
+		t.Run(fmt.Sprint(tc.region, tc.target), func(t *testing.T) {
+			m := newMixer(t, 2)
+			addPlaying(t, m, "music", constantFrames(40, Frame{Left: 0.5}))
+			must(t, m.SetRegion("music", tc.region))
+			must(t, m.Seek("music", min(tc.region.Start+8, tc.region.End-1)))
+			must(t, m.CrossfadeSeek("music", tc.target))
+			if overlap := m.tracks[0].overlap; overlap != nil {
+				m.Render(make([]Frame, overlap.end-overlap.start))
+			}
+			assertState(t, m, "music", State{Position: tc.want, Playing: true})
+			must(t, m.Pause("music"))
+			must(t, m.CrossfadeSeek("music", tc.region.End))
+			assertState(t, m, "music", State{Position: max(tc.region.Start, tc.region.End-4)})
+		})
+	}
 }
 
 func TestSubFrameCrossfadeLoopsWithoutOverlap(t *testing.T) {
@@ -393,6 +583,8 @@ func TestRenderPartitionInvariant(t *testing.T) {
 		must(t, m.Play("music"))
 		must(t, m.Seek("music", 20))
 		pull(22)
+		must(t, m.CrossfadeSeek("music", 10))
+		pull(16)
 		must(t, m.SetRegion("music", Region{Start: 4, End: 25, LoopBack: 8}))
 		pull(17)
 		must(t, m.SetRepeating("music", false))
@@ -444,6 +636,7 @@ func TestInvalidInputsAndMissingTracks(t *testing.T) {
 		"play":      func() error { return m.Play("missing") },
 		"pause":     func() error { return m.Pause("missing") },
 		"seek":      func() error { return m.Seek("missing", 0) },
+		"seek fade": func() error { return m.CrossfadeSeek("missing", 0) },
 		"remove":    func() error { return m.Remove("missing") },
 		"region":    func() error { return m.SetRegion("missing", Region{End: 1}) },
 		"repeating": func() error { return m.SetRepeating("missing", true) },

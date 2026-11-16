@@ -1,5 +1,14 @@
 import { expect, it } from 'vitest'
-import { defaultPlayback, movePlaybackPoint, playbackError, playbackRegion } from '../playback'
+import { defaultPlayback, movePlaybackPoint, playbackError, playbackRegion, seekLimit } from '../playback'
+
+it.each([
+  [0, null, 30, 28],
+  [10, 25, 30, 23],
+  [10, 11, 30, 10],
+  [0, null, 1, 0],
+])('reserves the final two seconds for natural playback (%s–%s)', (startTime, endTime, duration, expected) => {
+  expect(seekLimit({ startTime, endTime, loopBackTime: null }, duration)).toBe(expected)
+})
 
 it.each([
   [{}, { start: 0, end: 60, loop: 0, fade: 2 }],
