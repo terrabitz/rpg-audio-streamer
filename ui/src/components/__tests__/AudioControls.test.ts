@@ -52,8 +52,9 @@ it('keeps the plain timeline when the waveform cannot load', async () => {
   wrapper.unmount()
 })
 
-it('uses the draft track type to show or hide loop-back controls immediately', async () => {
+it('saves track type changes and updates loop-back controls immediately', async () => {
   const { wrapper } = mountControls()
+  mockUpdateTrack()
   useTrackTypeStore().trackTypes.push({
     id: 'one-shot', name: 'One-Shot', color: '#123456', isRepeating: false, allowSimultaneousPlay: true,
   })
@@ -70,13 +71,12 @@ it('uses the draft track type to show or hide loop-back controls immediately', a
   wrapper.unmount()
 })
 
-it('previews point edits immediately, restores them on cancel, and persists only on save', async () => {
+it('previews and saves point edits without closing the editor', async () => {
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
   const { wrapper } = mountControls()
   const audio = useAudioStore()
   const files = useFileStore()
-  const update = vi.spyOn(files, 'updateTrack').mockImplementation(async (id, settings) => ({
-    ...files.tracks[0]!, ...settings, id,
-  }))
+  const update = mockUpdateTrack()
   await wrapper.get('[aria-label="Edit Forest"]').trigger('click')
   expect(audio.tracks.forest?.isPlaying).toBe(false)
   audio.updateTrackState('forest', { duration: 60 })
@@ -84,24 +84,22 @@ it('previews point edits immediately, restores them on cancel, and persists only
   const timeline = wrapper.getComponent({ name: 'TrackTimeline' })
   await timeline.vm.$emit('update:modelValue', { startTime: 10, endTime: 50, loopBackTime: 20 })
   expect(wrapper.emitted('settings')).toEqual([[{ startTime: 10, endTime: 50, loopBackTime: 20 }]])
-  expect(files.tracks[0]?.playback).toBeUndefined()
-  expect(update).not.toHaveBeenCalled()
-  await wrapper.get('[aria-label="Close track controls"]').trigger('click')
-  expect(wrapper.emitted('settings')?.at(-1)).toEqual([{ startTime: 0, endTime: null, loopBackTime: null }])
-  await wrapper.get('[aria-label="Edit Forest"]').trigger('click')
-  expect(wrapper.getComponent({ name: 'TrackTimeline' }).props('modelValue').startTime).toBe(0)
-  await wrapper.getComponent({ name: 'TrackTimeline' }).vm.$emit('update:modelValue', {
-    startTime: 10, endTime: 50, loopBackTime: 20,
-  })
-  await wrapper.findAll('button').find(button => button.text() === 'Save Changes')!.trigger('click')
+  await vi.advanceTimersByTimeAsync(400)
   await flushPromises()
+  expect(files.tracks[0]?.playback).toEqual({ startTime: 10, endTime: 50, loopBackTime: 20 })
   expect(update).toHaveBeenCalledWith('forest', { playback: { startTime: 10, endTime: 50, loopBackTime: 20 } })
-  expect(wrapper.emitted('settings')).toHaveLength(4)
-  expect(wrapper.emitted('settings')?.at(-1)).toEqual([{ startTime: 10, endTime: 50, loopBackTime: 20 }])
+  expect(wrapper.find(EDITOR).exists()).toBe(true)
+  expect(wrapper.text()).not.toContain('Save Changes')
+  await wrapper.get('[aria-label="Close track controls"]').trigger('click')
+  await flushPromises()
+  await wrapper.get('[aria-label="Edit Forest"]').trigger('click')
+  expect(wrapper.getComponent({ name: 'TrackTimeline' }).props('modelValue').startTime).toBe(10)
   wrapper.unmount()
+  vi.useRealTimers()
 })
 
-it('rejects invalid previews and restores saved settings after a failed save', async () => {
+it('rejects invalid previews and allows retrying a failed save', async () => {
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
   const { wrapper } = mountControls()
   vi.spyOn(console, 'error').mockImplementation(() => {})
   const update = vi.spyOn(useFileStore(), 'updateTrack').mockRejectedValue(new Error('offline'))
@@ -111,15 +109,72 @@ it('rejects invalid previews and restores saved settings after a failed save', a
   await timeline.vm.$emit('update:modelValue', { startTime: 50, endTime: 10, loopBackTime: null })
   expect(wrapper.emitted('settings')).toBeUndefined()
   await timeline.vm.$emit('update:modelValue', { startTime: 10, endTime: 50, loopBackTime: null })
-  await wrapper.findAll('button').find(button => button.text() === 'Save Changes')!.trigger('click')
+  await vi.advanceTimersByTimeAsync(400)
   await flushPromises()
   expect(update).toHaveBeenCalledOnce()
   expect(wrapper.text()).toContain('Failed to update track.')
   expect(wrapper.emitted('settings')).toEqual([[{ startTime: 10, endTime: 50, loopBackTime: null }]])
-  const settings = vi.fn()
-  await wrapper.setProps({ onSettings: settings })
+  await wrapper.get('[aria-label="Close track controls"]').trigger('click')
+  await flushPromises()
+  expect(wrapper.find(EDITOR).exists()).toBe(true)
+  update.mockRestore()
+  const retry = mockUpdateTrack()
+  await wrapper.findAll('button').find(button => button.text() === 'Retry saving')!.trigger('click')
+  await flushPromises()
+  expect(retry).toHaveBeenCalledWith('forest', { playback: { startTime: 10, endTime: 50, loopBackTime: null } })
+  await wrapper.get('[aria-label="Close track controls"]').trigger('click')
+  await flushPromises()
+  expect(wrapper.find(EDITOR).exists()).toBe(false)
   wrapper.unmount()
-  expect(settings).toHaveBeenCalledExactlyOnceWith({ startTime: 0, endTime: null, loopBackTime: null })
+  vi.useRealTimers()
+})
+
+it('serializes rapid edits and flushes a pending name on close', async () => {
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+  const { wrapper } = mountControls()
+  const files = useFileStore()
+  let release: () => void = () => {}
+  const update = vi.spyOn(files, 'updateTrack').mockImplementation(async (id, settings) => {
+    if (settings.playback?.startTime === 10) await new Promise<void>(resolve => { release = resolve })
+    const updated = { ...files.tracks[0]!, ...settings, id }
+    files.tracks[0] = updated
+    return updated
+  })
+  await wrapper.get('[aria-label="Edit Forest"]').trigger('click')
+  useAudioStore().updateTrackState('forest', { duration: 60 })
+  const timeline = wrapper.getComponent({ name: 'TrackTimeline' })
+  await timeline.vm.$emit('update:modelValue', { startTime: 10, endTime: 50, loopBackTime: null })
+  await vi.advanceTimersByTimeAsync(400)
+  await timeline.vm.$emit('update:modelValue', { startTime: 20, endTime: 50, loopBackTime: null })
+  await wrapper.getComponent({ name: 'VTextField' }).vm.$emit('update:modelValue', 'Rain')
+  await wrapper.get('[aria-label="Close track controls"]').trigger('click')
+  expect(wrapper.find(EDITOR).exists()).toBe(true)
+  release()
+  await flushPromises()
+  expect(update).toHaveBeenCalledTimes(2)
+  expect(files.tracks[0]).toMatchObject({ name: 'Rain', playback: { startTime: 20, endTime: 50, loopBackTime: null } })
+  expect(wrapper.find(EDITOR).exists()).toBe(false)
+  wrapper.unmount()
+  vi.useRealTimers()
+})
+
+it('debounces name edits and saves without closing', async () => {
+  vi.useFakeTimers()
+  try {
+    const { wrapper } = mountControls()
+    const update = mockUpdateTrack()
+    await wrapper.get('[aria-label="Edit Forest"]').trigger('click')
+    const field = wrapper.getComponent({ name: 'VTextField' })
+    await field.vm.$emit('update:modelValue', 'Rai')
+    await field.vm.$emit('update:modelValue', 'Rain')
+    expect(update).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(400)
+    expect(update).toHaveBeenCalledExactlyOnceWith('forest', { name: 'Rain' })
+    expect(wrapper.find(EDITOR).exists()).toBe(true)
+    wrapper.unmount()
+  } finally {
+    vi.useRealTimers()
+  }
 })
 
 it.each([
@@ -279,4 +334,13 @@ function mountControls(library = true) {
     },
   })
   return { wrapper, countTables, deleteTrack, fetchWaveform }
+}
+
+function mockUpdateTrack() {
+  const files = useFileStore()
+  return vi.spyOn(files, 'updateTrack').mockImplementation(async (id, settings) => {
+    const updated = { ...files.tracks[0]!, ...settings, id }
+    files.tracks[0] = updated
+    return updated
+  })
 }

@@ -32,7 +32,7 @@
         :title="`${point.label}: ${valueText(point.key, point.value)}`" aria-orientation="horizontal"
         @pointerdown.stop="startDrag($event, point.key)" @pointermove.stop="moveDrag"
         @pointerup.stop="finishDrag" @pointercancel.stop="cancelDrag" @keydown="handleKey($event, point.key)">
-        <span aria-hidden="true">{{ formatTime(point.value, true) }}</span>
+        <span aria-hidden="true"><v-icon v-if="point.key === 'loop'" icon="$repeat" size="14" class="mr-1" />{{ formatTime(point.value, true) }}</span>
       </button>
       <button type="button" role="slider" class="timeline-cursor" :style="{ left: percent(position) }"
         :disabled="unavailable" :aria-label="`Playback position for ${name}`"
@@ -399,6 +399,7 @@ function formatTime(time: number, precise = false) {
 
 .timeline-handle--loop {
   top: calc(var(--axis-height) + 18px);
+  width: 82px;
   border-color: rgb(var(--v-theme-warning));
   color: rgb(var(--v-theme-warning));
 }

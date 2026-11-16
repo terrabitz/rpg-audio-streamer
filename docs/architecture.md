@@ -210,7 +210,7 @@ playback path as the track tile. When the dialog opens it fetches the track's
 waveform once and draws it as the timeline bar: the played portion is bright, the
 unplayed region dimmer, and trimmed areas grey. If the waveform cannot be loaded
 the plain bar is shown instead. Beginning and end handles sit above the bar; repeating
-types also have a loop-back handle below it. The draft type selection controls
+types also have a repeat-icon loop-back handle below it. The selected type controls
 its visibility without discarding saved loop-back points. Areas outside the
 selected region are dimmed and cannot be
 selected for seeking. Handles support mouse/touch dragging and keyboard adjustment.
@@ -234,8 +234,10 @@ moving the loop-back handle to the beginning reanchors it so it follows later
 beginning adjustments. Moving the beginning to zero and the end to the full
 duration restores the full track without separate reset controls. Point edits
 update live playback on pointer release (including listening players at the current
-table), but shared library metadata is only persisted on Save. Closing without
-saving restores the saved region in playback; invalid drafts are not applied.
+table) and save to shared library metadata automatically. Name and region edits are
+briefly debounced; type changes save immediately. Saves are serialized, and the
+dialog reports failures with a retry action rather than discarding edits. Closing
+waits for pending saves; invalid edits are not applied.
 While dragging, marker labels and shading preview locally without changing audio
 or sending region commands. Canceling discards that local preview; keyboard edits
 commit immediately.
