@@ -272,9 +272,10 @@ function announceMove(name: string, index: number) {
 }
 
 async function deleteFile(file: Track, expectedTableCount: number | null) {
-  if (props.library) {
+  if (props.library || file.status === 'failed') {
     if (expectedTableCount === null) throw new Error('Missing track usage count')
     await fileStore.deleteFile(file.id, expectedTableCount)
+    tables.tracks = tables.tracks.filter(track => track.id !== file.id)
   } else {
     if (!tables.current) throw new Error('No current table')
     await tables.removeTrack(tables.current.externalID, file.id)

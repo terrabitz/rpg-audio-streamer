@@ -50,9 +50,9 @@
         <v-card-actions>
           <v-btn color="error" :variant="failed ? 'flat' : 'text'" :block="failed" prepend-icon="$delete"
             :loading="isDeleting && !showDeleteConfirmation"
-            :disabled="isSaving || isDeleting || (!failed && hasChanges)" :aria-label="props.library ? 'Delete track' : 'Remove from table'"
+            :disabled="isSaving || isDeleting || (!failed && hasChanges)" :aria-label="deleteFromLibrary ? 'Delete track' : 'Remove from table'"
             @click="requestDelete">
-            {{ props.library ? 'Delete track' : 'Remove from table' }}
+            {{ deleteFromLibrary ? 'Delete track' : 'Remove from table' }}
           </v-btn>
           <v-spacer v-if="!failed" />
         </v-card-actions>
@@ -105,6 +105,7 @@ const fileStore = useFileStore();
 const track = computed(() => fileStore.tracks.find(t => t.id === props.fileID));
 const available = computed(() => !track.value?.status || track.value.status === 'ready');
 const failed = computed(() => track.value?.status === 'failed');
+const deleteFromLibrary = computed(() => props.library || failed.value);
 const trackType = computed(() => track.value ? trackTypeStore.getTypeById(track.value.typeID) : null);
 const audioState = computed(() => audioStore.tracks[props.fileID]);
 
@@ -199,7 +200,7 @@ async function loadWaveform(trackID: string) {
 
 async function requestDelete() {
   error.value = '';
-  if (!props.library) {
+  if (!deleteFromLibrary.value) {
     await confirmDelete(null);
     return;
   }
@@ -235,7 +236,7 @@ async function confirmDelete(expectedTableCount: number | null) {
     if (cause instanceof TrackUsageChangedError) {
       error.value = 'Table usage changed. Check the current count before deleting the track.';
     } else {
-      error.value = props.library ? 'Failed to delete track.' : 'Failed to remove track from table.';
+      error.value = deleteFromLibrary.value ? 'Failed to delete track.' : 'Failed to remove track from table.';
     }
   } finally {
     isDeleting.value = false;

@@ -455,6 +455,7 @@ test('failed audio conversion is shown on the track', async ({ page }) => {
     .getByLabel('Processing diagnostics', { exact: true })
   await expect(diagnostics).toContainText('Audio processing failed')
   await expect(diagnostics).toContainText('convert audio to HLS')
-  await page.getByRole('button', { name: 'Remove from table', exact: true }).click()
+  await page.getByRole('button', { name: 'Delete track', exact: true }).click()
+  await page.getByRole('button', { name: 'Confirm delete track', exact: true }).click()
   await expect(tile).toHaveCount(0)
 })

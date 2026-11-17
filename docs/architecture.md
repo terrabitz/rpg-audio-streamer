@@ -275,8 +275,10 @@ slot, keeping the tile height unchanged. Hovering displays a processing tooltip.
 On failure, a warning icon replaces the spinner without changing tile height.
 Clicking a failed track or its warning icon, or activating the card by keyboard,
 opens a diagnostics dialog with a scrollable, selectable code-style log and a
-prominent Remove from table action. In the library, the same dialog uses the
-library's usage-aware deletion flow. Failed tracks do not show playback or metadata
+prominent Delete track action. The library shows the same warning icon and
+diagnostics dialog. Deleting a failed track from either view uses the library's
+usage-aware confirmation flow and removes the track from the library and every
+associated table. Failed tracks do not show playback or metadata
 editing controls. YouTube retrieval failures include the shell-quoted command,
 combined stdout/stderr, and error; captured output is limited to 1 MiB with an
 explicit truncation notice. Diagnostics are persisted with the failed track and
