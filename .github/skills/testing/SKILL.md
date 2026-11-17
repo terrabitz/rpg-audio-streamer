@@ -102,9 +102,9 @@ running untrusted code with them.
   tests still run. Test-result caching is disabled so the combined profile uses
   the current run across all instrumented packages. Inspect `coverage.out` with
   `go tool cover -func=coverage.out` or `go tool cover -html=coverage.out`.
-- The frontend gate includes **every store and composable**, including files
-  without tests. Reports are in `ui/coverage/`. Generated SDK code and Vue
-  templates are outside this domain metric.
+- The frontend gate includes **every store, composable, and WebSocket router**,
+  including files without tests. Reports are in `ui/coverage/`. Generated SDK
+  code and Vue templates are outside this domain metric.
 - Browser tests establish observable UX and real integration, not a synthetic
   "80% E2E coverage" claim. They do not mock HTTP, SQLite, FFmpeg, WebSockets,
   HLS, or browser media playback.
@@ -194,6 +194,8 @@ failed app paths with mocked responses or injected Pinia/localStorage state.
 
 1. Add a regression assertion at the lowest meaningful layer.
 2. Update queries/OpenAPI at their source and regenerate clients when needed.
+   For WebSocket changes, keep the Go payload structs and browser payload
+   interfaces aligned, and exercise the affected typed callbacks.
 3. Keep `docs/architecture.md` synchronized with changed app behavior and
    boundaries; keep commands and testing procedures in this skill.
 4. Run focused tests, the affected coverage gates, and relevant build/lint.

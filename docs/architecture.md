@@ -279,7 +279,7 @@ requires no authentication exchange.
 | `stores/auth.ts` | GM session role, credentials, and logout |
 | `stores/files.ts`, `stores/trackTypes.ts`, `stores/tables.ts` | Library, track-type, table, and association metadata through the generated SDK |
 | `stores/audio.ts` | Per-file playback state, synchronization reconciliation, fades, master/type volumes |
-| `stores/websocket.ts` | Socket connection/reconnection, message handlers and history |
+| `stores/websocket.ts` | Socket connection/reconnection, typed command subscriptions and message history |
 | `stores/debug.ts` | Development-only debug panel state |
 | `stores/clientPreferences.ts` | Browser-persisted screen-awake preference |
 | `composables/` | Shared app-bar state, browser origin, immutable partial-object patches, screen wake-lock lifecycle |
@@ -359,6 +359,57 @@ preserves it across metadata refreshes, appends newly discovered tracks, and
 drops deleted tracks from the displayed order. Reordering saves to the server
 so another GM browser restores the same layout. Ordering does not change
 playback state or player mixes.
+
+### WebSocket command protocol
+
+WebSocket text frames use `{ method, payload, senderId? }`. The Go side declares
+command-name constants and ordinary payload structs in
+`internal/websocket/protocol.go`, with playback models in `playback.go`.
+The browser declares matching payload interfaces and a command-to-payload
+`Payloads` map in `ui/src/websocket/protocol.ts`. Nested table and region settings
+reuse existing application types. The declarations are maintained together;
+there is no WebSocket code generation or runtime schema registry.
+
+| Commands | Direction | Payload |
+| --- | --- | --- |
+| `ping` / `pong` | Client to server / server to client | Opaque JSON diagnostic echo |
+| `broadcast` | GM to server to other table clients | Opaque JSON diagnostic broadcast |
+| `syncRequest` | Client to server | Empty object |
+| `syncTrack` | GM to server | Track ID and optional playback patch fields |
+| `syncAll` | Server to client | Canonical track array; table settings included for GMs |
+| `mixSync` | GM to server | Track patch array and optional type-volume map |
+| `mixVolumes` | GM to server | Type-volume map |
+| `mixerReady`, `tableDeleted` | Server to client | Empty object |
+| `mixerAck` | Server to client | Acknowledged command name |
+| `mixerError` | Server to client | Failed command name and message |
+| `playbackError` | Server to client | Error message |
+
+Backend handlers register before connections are accepted with
+`Handle(hub, SyncTrack, func(patch PlaybackPatch, client *Client) { ... })`.
+The small generic adapter infers the payload type from the callback and uses
+`json.Unmarshal` before invoking it. Registering the same name replaces its
+callback. Authorization and domain validation stay in the application handlers.
+`SendPayload` and `BroadcastPayload` encode ordinary Go values into the envelope
+and retain the hub's table/role/recipient filters.
+
+Browser pages subscribe with `ws.on('syncAll', payload => { ... })`, receiving
+typed payloads and optional sender metadata rather than inspecting every
+message. Each subscription returns an idempotent unsubscribe function, which
+pages invoke on unmount. Multiple subscribers are independent; a throwing or
+rejecting subscriber is logged without preventing other callbacks. Subscribers
+survive socket reconnects, while stale socket generations are ignored.
+`sendMessage` couples each command name to its payload type at compile time.
+The debug panel uses a separate untyped entry point for form input and replay.
+
+The browser checks the incoming message envelope, then dispatches the payload
+using its declared TypeScript type; it does not validate payload schemas at
+runtime. Go uses standard JSON decoding, including pointer fields for optional
+patch values so zero and false remain distinct from omission. Undecodable
+messages are logged; invalid playback and mixer commands also use their error
+responses. Table membership, playback-region constraints, and volume ranges
+remain domain checks. The server logs commands without a registered handler;
+the browser ignores messages without subscribers. Diagnostic echo and broadcast
+accept arbitrary JSON.
 
 ### Playback synchronization
 

@@ -38,13 +38,14 @@ type playingTrack struct {
 	updatedAt       time.Time
 }
 
-type playbackPatch struct {
+type PlaybackPatch struct {
 	FileID      string                   `json:"fileID"`
-	IsPlaying   *bool                    `json:"isPlaying"`
-	Volume      *float64                 `json:"volume"`
-	CurrentTime *float64                 `json:"currentTime"`
-	Duration    *float64                 `json:"duration"`
-	Playback    *server.PlaybackSettings `json:"playback"`
+	IsPlaying   *bool                    `json:"isPlaying,omitempty"`
+	IsRepeating *bool                    `json:"isRepeating,omitempty"`
+	Volume      *float64                 `json:"volume,omitempty"`
+	CurrentTime *float64                 `json:"currentTime,omitempty"`
+	Duration    *float64                 `json:"duration,omitempty"`
+	Playback    *server.PlaybackSettings `json:"playback,omitempty"`
 }
 
 func (h *Hub) refreshPlayback() {
@@ -90,10 +91,7 @@ func (h *Hub) SyncSettings(tableID string, patch server.TableSettingsPatch) {
 			track.Volume = settings.TrackVolumes[id]
 			h.playback[tableID][id] = track
 			if h.mixer != nil && track.IsPlaying {
-				payload, err := json.Marshal(struct {
-					FileID string  `json:"fileID"`
-					Volume float64 `json:"volume"`
-				}{FileID: id, Volume: track.Volume})
+				payload, err := json.Marshal(PlaybackPatch{FileID: id, Volume: &track.Volume})
 				if err != nil {
 					h.logger.Error("failed to encode mixer track volume", "error", err, "tableID", tableID)
 					continue
@@ -107,14 +105,9 @@ func (h *Hub) SyncSettings(tableID string, patch server.TableSettingsPatch) {
 	h.sendState(tableID, settings, "")
 }
 
-func (h *Hub) updatePlayback(payload json.RawMessage, c *Client) {
+func (h *Hub) updatePlayback(patch PlaybackPatch, c *Client) {
 	h.stateMu.Lock()
 	defer h.stateMu.Unlock()
-	var patch playbackPatch
-	if err := json.Unmarshal(payload, &patch); err != nil {
-		h.playbackError(c, fmt.Errorf("invalid playback command: %w", err))
-		return
-	}
 	track, trackType, settings, err := h.resolvePlayback(c.Token.TableID, patch.FileID)
 	if err != nil {
 		h.playbackError(c, err)
@@ -221,10 +214,10 @@ func (h *Hub) updatePlayback(payload json.RawMessage, c *Client) {
 	h.playback[c.Token.TableID] = states
 	h.sendState(c.Token.TableID, settings, "")
 	if h.mixer != nil {
-		h.applyMixer(c, "syncTrack", func() error {
+		h.applyMixer(c, SyncTrack, func() error {
 			paused := false
 			for _, id := range stopped {
-				stop, err := json.Marshal(playbackPatch{FileID: id, IsPlaying: &paused})
+				stop, err := json.Marshal(PlaybackPatch{FileID: id, IsPlaying: &paused})
 				if err != nil {
 					return err
 				}
@@ -235,10 +228,10 @@ func (h *Hub) updatePlayback(payload json.RawMessage, c *Client) {
 			if patch.IsPlaying != nil && *patch.IsPlaying {
 				patch.Volume = &state.Volume
 				patch.Playback = &state.Playback
-				payload, err = json.Marshal(patch)
-				if err != nil {
-					return err
-				}
+			}
+			payload, err := json.Marshal(patch)
+			if err != nil {
+				return err
 			}
 			return h.mixer.Update(c.Token.TableID, payload)
 		})
@@ -304,23 +297,15 @@ func (h *Hub) sendState(tableID string, settings server.TableSettings, target st
 				outgoing[i].Volume *= settings.MasterVolume / 100
 			}
 		}
-		snapshot := struct {
-			Tracks   []playingTrack        `json:"tracks"`
-			Settings *server.TableSettings `json:"settings,omitempty"`
-		}{Tracks: outgoing}
+		snapshot := Snapshot{Tracks: outgoing}
 		if role == auth.RoleGM {
 			snapshot.Settings = &settings
-		}
-		payload, err := json.Marshal(snapshot)
-		if err != nil {
-			h.logger.Error("failed to encode playback state", "error", err)
-			return
 		}
 		options := []BroadcastOption{ToTable(tableID), func(c *Client) bool { return c.Token.Role == role }}
 		if target != "" {
 			options = append(options, ToClientID(target))
 		}
-		if err := h.Broadcast(Message{Method: "syncAll", Payload: payload}, options...); err != nil {
+		if err := h.BroadcastPayload(SyncAll, snapshot, options...); err != nil {
 			h.logger.Error("failed to send playback state", "error", err)
 		}
 	}
@@ -328,10 +313,7 @@ func (h *Hub) sendState(tableID string, settings server.TableSettings, target st
 
 func (h *Hub) playbackError(c *Client, err error) {
 	h.logger.Warn("playback command failed", "error", err, "tableID", c.Token.TableID)
-	payload, _ := json.Marshal(struct {
-		Message string `json:"message"`
-	}{Message: "Unable to synchronize playback. Reload the table and try again."})
-	if sendErr := c.Send(Message{Method: "playbackError", Payload: payload}); sendErr != nil {
+	if sendErr := c.SendPayload(PlaybackError, Failure{Message: "Unable to synchronize playback. Reload the table and try again."}); sendErr != nil {
 		h.logger.Error("failed to send playback error", "error", sendErr)
 	}
 }

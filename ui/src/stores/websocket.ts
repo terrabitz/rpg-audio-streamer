@@ -1,20 +1,13 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
+import { CommandRouter, parseMessage, type CommandArgs, type Message } from '@/websocket/router'
 
 const reconnectIntervalMs = 3000
 
-export interface WebSocketMessage<T = unknown> {
-  method: string
-  senderId?: string
-  payload: T
-}
-
-interface StoredMessage<T = unknown> extends WebSocketMessage<T> {
+interface StoredMessage extends Message {
   timestamp: number
   direction: 'sent' | 'received'
 }
-
-type MessageHandler<T = unknown> = (message: WebSocketMessage<T>) => void
 
 function getWebSocketUrl(): string {
   const apiBase = import.meta.env.VITE_API_BASE_URL
@@ -32,7 +25,7 @@ function getWebSocketUrl(): string {
 
 export const useWebSocketStore = defineStore('websocket', () => {
   const isConnected = ref(false)
-  const messageHandlers = ref<MessageHandler[]>([])
+  const router = new CommandRouter()
   const messageHistory = ref<StoredMessage[]>([])
   let socket: WebSocket | null = null
   let reconnectTimer: ReturnType<typeof setTimeout> | undefined
@@ -97,36 +90,37 @@ export const useWebSocketStore = defineStore('websocket', () => {
     })
   }
 
-  function receiveMessage<T>(event: MessageEvent) {
+  function receiveMessage(event: MessageEvent) {
+    let message: Message
     try {
-      const message = JSON.parse(event.data) as WebSocketMessage<T>
-      console.log('Received WebSocket message:', message)
-      const storedMessage: StoredMessage = {
-        ...message,
-        timestamp: Date.now(),
-        direction: 'received'
-      }
-      messageHistory.value.push(storedMessage)
-      messageHandlers.value.forEach(handler => handler(message))
+      message = parseMessage(JSON.parse(event.data))
     } catch (error) {
-      console.error(`Failed to parse WebSocket\nmessage:${event.data}\nerror:${error}`)
+      console.error('Invalid WebSocket message:', error)
+      return
     }
+    console.log('Received WebSocket message:', message)
+    recordMessage(message, 'received')
+    router.dispatch(message)
   }
 
-  function sendMessage<T>(method: string, payload: T) {
+  function sendMessage(...[method, payload]: CommandArgs) {
+    sendDebugMessage(method, payload)
+  }
+
+  function sendDebugMessage(method: string, payload: unknown) {
+    const msg: Message = { method, payload }
     if (!socket || socket.readyState !== WebSocket.OPEN) {
       throw new Error('WebSocket is not connected')
     }
 
-    const msg: WebSocketMessage<T> = { method, payload }
     console.log('Sending WebSocket message:', msg)
     socket.send(JSON.stringify(msg))
 
-    messageHistory.value.push({
-      ...msg,
-      timestamp: Date.now(),
-      direction: 'sent'
-    })
+    recordMessage(msg, 'sent')
+  }
+
+  function recordMessage(message: Message, direction: StoredMessage['direction']) {
+    messageHistory.value.push({ ...message, timestamp: Date.now(), direction })
   }
 
   function disconnect() {
@@ -140,17 +134,6 @@ export const useWebSocketStore = defineStore('websocket', () => {
     }
   }
 
-  function addMessageHandler(handler: MessageHandler) {
-    messageHandlers.value.push(handler)
-  }
-
-  function removeMessageHandler(handler: MessageHandler) {
-    const index = messageHandlers.value.indexOf(handler)
-    if (index > -1) {
-      messageHandlers.value.splice(index, 1)
-    }
-  }
-
   function clearMessageHistory() {
     messageHistory.value = []
   }
@@ -160,8 +143,8 @@ export const useWebSocketStore = defineStore('websocket', () => {
     connect,
     disconnect,
     sendMessage,
-    addMessageHandler,
-    removeMessageHandler,
+    sendDebugMessage,
+    on: router.on.bind(router),
     messageHistory,
     clearMessageHistory
   }
