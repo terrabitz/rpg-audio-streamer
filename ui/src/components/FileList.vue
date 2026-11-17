@@ -118,7 +118,7 @@ import { defaultPlayback } from '@/composables/playback'
 import { defaultPreset, Feedback, PointerActivationConstraints, PointerSensor } from '@dnd-kit/dom'
 import { DragDropProvider, type DragEndEvent } from '@dnd-kit/vue'
 import { isSortable } from '@dnd-kit/vue/sortable'
-import { useFileStore } from '@/stores/files'
+import { useFileStore, withTrackStatus } from '@/stores/files'
 import { useTrackTypeStore } from '@/stores/trackTypes'
 import { useTableStore } from '@/stores/tables'
 import { useWebSocketStore } from '@/stores/websocket'
@@ -152,8 +152,6 @@ const tables = useTableStore()
 const props = defineProps<{ library?: boolean }>()
 const error = ref('')
 const loading = ref(true)
-let processingTimer: ReturnType<typeof setTimeout> | undefined
-let disposed = false
 const libraryHeaders = [
   { title: '', key: 'preview', sortable: false, width: 56 },
   { title: 'Name', key: 'name' },
@@ -170,26 +168,21 @@ const playingTracks = computed(() => tracks.value.flatMap(track => {
 
 watch(smAndDown, () => { showNowPlaying.value = false })
 
-watch(() => fileStore.tracks.some(track => track.status === 'processing'), (processing) => {
-  clearTimeout(processingTimer)
-  if (processing) processingTimer = setTimeout(refreshProcessing, 1000)
-}, { immediate: true })
+const stopTrackStatus = wsStore.on('trackStatus', (update) => {
+  fileStore.applyTrackStatus(update)
+  tables.tracks = tables.tracks.map(track => track.id === update.fileID ? withTrackStatus(track, update) : track)
+})
 
-async function refreshProcessing() {
+watch(() => wsStore.isConnected, async (connected) => {
+  if (!connected || loading.value || !fileStore.tracks.some(track => track.status === 'processing')) return
   try {
     await fileStore.fetchFiles()
     if (!props.library && tables.current) await tables.fetchTracks(tables.current.externalID)
-    if (error.value === 'Unable to refresh track processing status.') error.value = ''
   } catch (cause) {
     console.error('Failed to refresh processing tracks:', cause)
     error.value = 'Unable to refresh track processing status.'
-  } finally {
-    clearTimeout(processingTimer)
-    if (!disposed && fileStore.tracks.some(track => track.status === 'processing')) {
-      processingTimer = setTimeout(refreshProcessing, 1000)
-    }
   }
-}
+})
 
 function trackReady(track: Track) {
   return !track.status || track.status === 'ready'
@@ -378,8 +371,7 @@ const handleSeek = (fileID: string, time: number) => {
 }
 
 onUnmounted(() => {
-  disposed = true
-  clearTimeout(processingTimer)
+  stopTrackStatus()
   if (props.library) audioStore.clearTracks()
 })
 </script>

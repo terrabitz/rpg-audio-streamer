@@ -20,10 +20,12 @@ flowchart LR
   Store --> Queries[Generated sqlc queries]
   Queries --> DB[(SQLite metadata)]
   API --> Processing[Music processing service]
+  API -->|Scans| YouTube[YouTube service]
   Processing --> Store
   Processing --> FFmpeg[FFmpeg conversion]
-  Processing --> YTDLP[yt-dlp YouTube retrieval]
-  YTDLP --> FFmpeg
+  Processing -->|Downloader| YouTube
+  Processing -.->|Track status notifier| Hub
+  YouTube --> YTDLP[yt-dlp]
   FFmpeg --> Uploads[HLS files on disk]
   API --> Uploads
   Hub -.->|GM playback commands| Mix[Live table mixer]
@@ -34,7 +36,7 @@ flowchart LR
 ```
 
 `main.go` composes configuration, logging, embedded migrations, the SQLite
-adapter, authentication service, hub, music processing service, and HTTP server. Startup applies pending
+adapter, authentication service, hub, YouTube service, music processing service, and HTTP server. Startup applies pending
 migrations before accepting requests. The CLI also exposes migration commands;
 `cmd/hashpass` produces the Argon2id password hash used in configuration.
 
@@ -84,7 +86,8 @@ cannot guarantee cleanup. Procedures live in the local-dev skill.
 | --- | --- |
 | `internal/auth` | Argon2id credential checks, signed JWTs, GM/player roles |
 | `internal/server` | HTTP handlers, cookies/middleware, public table access, track/table contracts, datastore and hub interfaces |
-| `internal/musicprocessing` | Track/playback models, bounded background jobs, staging, YouTube scans/retrieval, HLS conversion, waveform generation and restart recovery |
+| `internal/musicprocessing` | Track/playback models, bounded background jobs, staging, HLS conversion, waveform generation, restart recovery, and completion notifications |
+| `internal/youtube` | YouTube URL canonicalization, yt-dlp metadata scans with import limits, and audio retrieval |
 | `internal/middlewares` | API request logging and CORS |
 | `internal/mixer` | Standalone deterministic stereo PCM mixing, transport, loop overlap, and gain envelopes |
 | `internal/livemixer` | Serialized live commands, table-scoped PCM engines, rendering lifecycle, and diagnostics |
@@ -98,7 +101,10 @@ Authentication rules live in `auth`; synchronization authorization/routing lives
 table models and HTTP store interfaces live in `server`. Track and playback
 models live in `musicprocessing`, with aliases in the HTTP contracts. The
 datastore implements both packages' store interfaces, keeping processing and
-HTTP handlers independent of SQLite details.
+HTTP handlers independent of SQLite details. Processing depends on small
+`Downloader` and `Notifier` interfaces, satisfied in `main.go` by the YouTube
+client and the hub; the HTTP server depends on a `VideoScanner` interface for
+scans. These services share no package state.
 `Server.Handler()` assembles the production HTTP pipeline independently of
 binding a network listener. WebSocket upgrades bypass the API logging wrapper.
 
@@ -125,7 +131,7 @@ authentication only.
 ### Library and persistence
 
 The datastore uses one pooled connection to serialize metadata reads and writes,
-including background processing status updates and client polling.
+including background processing status updates.
 
 SQLite stores metadata, not media bytes:
 
@@ -261,9 +267,12 @@ editable track name and displays duration and audio size. Failed scans and limit
 violations turn the URL field red with the specific error and disable Import.
 Imports require a successful scan, nonblank display name, and track type.
 Accepted uploads and imports close the dialog immediately and add a disabled
-track with a spinner. Hovering displays a processing tooltip. The GM table and
-library poll while processing tracks exist, including after reload, and enable
-playback when ready. Failed tracks display an error and retain their normal
+track with a spinner. Hovering displays a processing tooltip. When a job
+finishes, the processing service notifies the hub, which pushes `trackStatus`
+to every connected GM. The GM table and library apply it to their track lists
+and enable playback when ready. An update that arrives before the upload
+response is held until the response adds the track. Reloading, or reconnecting
+while tracks are still processing, refetches the authoritative status. Failed tracks display an error and retain their normal
 removal/deletion workflow without trying to load audio or waveforms. The seeded
 development launcher waits for each uploaded fixture to become ready before
 announcing its preview.
@@ -276,8 +285,8 @@ The shared library uses a sortable, paginated metadata table showing each
 track's name, type, and creation time. Row clicks (or keyboard
 activation) toggle a local preview, with at most one preview playing at once.
 Resuming a paused preview continues from its current position.
-Library previews reuse the HLS player without opening a WebSocket or sending
-synchronization messages. Resuming a preview retains its loaded duration and
+Library previews reuse the HLS player without sending synchronization
+messages. The library opens a GM WebSocket only to receive `trackStatus`. Resuming a preview retains its loaded duration and
 playback region. Preview state is cleared on leaving the library;
 it cannot become a table's playback state. Track editing is shared with the
 table tiles through the audio-controls dialog's activator slot. Before deleting
@@ -452,6 +461,7 @@ there is no WebSocket code generation or runtime schema registry.
 | `mixerAck` | Server to client | Acknowledged command name |
 | `mixerError` | Server to client | Failed command name and message |
 | `playbackError` | Server to client | Error message |
+| `trackStatus` | Server to GMs | Track ID, `ready` or `failed` status, and optional processing error |
 
 Backend handlers register before connections are accepted with
 `Handle(hub, SyncTrack, func(patch PlaybackPatch, client *Client) { ... })`.
@@ -832,12 +842,12 @@ Each browser test attempt owns a separate server, datastore, upload directory,
 and WebSocket state; the built UI and server executable are shared as immutable
 artifacts. Live Discord validation uses a shared external voice channel.
 Live YouTube integration scans and retrieves an environment-configured public
-video with the production music-processing service, real SQLite, yt-dlp, and
-FFmpeg. Its separate browser project exercises the same external integration
+video with the production YouTube and music-processing services, real SQLite,
+yt-dlp, and FFmpeg. Its separate browser project exercises the same external integration
 through import, readiness, persistence, browser playback, and UI deletion.
 Deterministic YouTube journeys substitute only the external downloader; the
 live journeys do not. Both live layers use typed environment configuration and
-are opt-in when `INTEGRATION_TEST_YT_DLP_LINK` is present.
+are opt-in when `INTEGRATION_TEST_YT_DLP_LINK` is present; `pr-checks` sets it.
 These layers cover different boundaries rather than substituting mocks for
 end-to-end behavior. Test execution and maintenance procedures live in the
 repository testing skill.

@@ -20,6 +20,7 @@ import (
 	"github.com/terrabitz/rpg-audio-streamer/internal/musicprocessing"
 	"github.com/terrabitz/rpg-audio-streamer/internal/server"
 	"github.com/terrabitz/rpg-audio-streamer/internal/sqlitedatastore"
+	"github.com/terrabitz/rpg-audio-streamer/internal/youtube"
 )
 
 type testWSRegisterer struct{}
@@ -29,6 +30,7 @@ func (testWSRegisterer) CloseTable(string)                              {}
 func (testWSRegisterer) RevokePlayerAccess(string)                      {}
 func (testWSRegisterer) RemoveTrack(string, string)                     {}
 func (testWSRegisterer) SyncSettings(string, server.TableSettingsPatch) {}
+func (testWSRegisterer) TrackProcessed(server.Track)                    {}
 
 func TestTableHTTP(t *testing.T) {
 	ctx := context.Background()
@@ -52,8 +54,9 @@ func TestTableHTTP(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	processing := musicprocessing.New(dir, logger, db)
-	srv, err := server.New(server.Config{UploadDir: dir, DevMode: true}, logger, authenticator, db, testWSRegisterer{}, processing)
+	videos := youtube.New(logger)
+	processing := musicprocessing.New(dir, logger, db, videos, testWSRegisterer{})
+	srv, err := server.New(server.Config{UploadDir: dir, DevMode: true}, logger, authenticator, db, testWSRegisterer{}, processing, videos)
 	if err != nil {
 		t.Fatal(err)
 	}

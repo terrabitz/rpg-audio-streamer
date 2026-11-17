@@ -14,6 +14,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/terrabitz/rpg-audio-streamer/internal/musicprocessing"
 	"github.com/terrabitz/rpg-audio-streamer/internal/sqlitedatastore"
+	"github.com/terrabitz/rpg-audio-streamer/internal/youtube"
 )
 
 type youtubeIntegrationConfig struct {
@@ -43,7 +44,9 @@ func TestYouTubeIntegration(t *testing.T) {
 	if err := migrations.Up(); err != nil {
 		t.Fatal(err)
 	}
-	service := musicprocessing.New(filepath.Join(dir, "uploads"), slog.Default(), db)
+	videos := youtube.New(slog.Default())
+	processed := make(processedTracks, 1)
+	service := musicprocessing.New(filepath.Join(dir, "uploads"), slog.Default(), db, videos, processed)
 	if err := service.Recover(ctx); err != nil {
 		t.Fatal(err)
 	}
@@ -62,11 +65,11 @@ func TestYouTubeIntegration(t *testing.T) {
 	}
 	t.Cleanup(stop)
 
-	metadata, err := service.Scan(ctx, cfg.Link)
+	metadata, err := videos.Scan(ctx, cfg.Link)
 	if err != nil {
 		t.Fatalf("scan real YouTube video: %v", err)
 	}
-	canonical, _ := musicprocessing.YouTubeURL(cfg.Link)
+	canonical, _ := youtube.CanonicalURL(cfg.Link)
 	if metadata.URL != canonical || strings.TrimSpace(metadata.Name) == "" || metadata.Duration <= 0 {
 		t.Fatalf("invalid real video metadata: %+v", metadata)
 	}
@@ -81,27 +84,17 @@ func TestYouTubeIntegration(t *testing.T) {
 	if queued.Status != "processing" {
 		t.Fatalf("accepted track status = %q", queued.Status)
 	}
-	ticker := time.NewTicker(200 * time.Millisecond)
-	defer ticker.Stop()
-	for {
-		track, err := db.GetTrackByID(ctx, queued.ID)
-		if err != nil {
-			t.Fatal(err)
+	select {
+	case <-ctx.Done():
+		t.Fatalf("waiting for real YouTube processing: %v", ctx.Err())
+	case notified := <-processed:
+		if notified.ID != queued.ID || notified.Status != "ready" {
+			t.Fatalf("real YouTube processing notification = %+v", notified)
 		}
-		if track.Status == "failed" {
-			t.Fatalf("real YouTube processing failed: %s", track.ProcessingError)
-		}
-		if track.Ready() {
-			if track.Name != metadata.Name || track.TypeID != queued.TypeID {
-				t.Fatalf("processed metadata changed: %+v", track)
-			}
-			break
-		}
-		select {
-		case <-ctx.Done():
-			t.Fatalf("waiting for real YouTube processing: %v", ctx.Err())
-		case <-ticker.C:
-		}
+	}
+	track, err := db.GetTrackByID(ctx, queued.ID)
+	if err != nil || !track.Ready() || track.Name != metadata.Name || track.TypeID != queued.TypeID {
+		t.Fatalf("processed track = %+v, %v", track, err)
 	}
 	for _, file := range []string{"index.m3u8", "segment_000.ts", "waveform.json"} {
 		info, err := os.Stat(filepath.Join(queued.Path, file))
@@ -124,9 +117,15 @@ func TestYouTubeIntegration(t *testing.T) {
 	}
 }
 
+type processedTracks chan musicprocessing.Track
+
+func (p processedTracks) TrackProcessed(track musicprocessing.Track) {
+	p <- track
+}
+
 func youtubeIntegrationConfigFromEnv() (youtubeIntegrationConfig, error) {
 	cfg := youtubeIntegrationConfig{Link: strings.TrimSpace(os.Getenv("INTEGRATION_TEST_YT_DLP_LINK"))}
-	if _, valid := musicprocessing.YouTubeURL(cfg.Link); !valid {
+	if _, valid := youtube.CanonicalURL(cfg.Link); !valid {
 		return youtubeIntegrationConfig{}, fmt.Errorf("INTEGRATION_TEST_YT_DLP_LINK must contain a YouTube video URL")
 	}
 	return cfg, nil

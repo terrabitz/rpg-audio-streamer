@@ -229,9 +229,9 @@ async function importTrack() {
 }
 
 function addProcessingTrack(track: Track) {
-  fileStore.tracks = [...fileStore.tracks.filter(item => item.id !== track.id), track]
+  const added = fileStore.addTrack(track)
   if (props.tableID && tables.current?.id === props.tableID) {
-    tables.tracks = [...tables.tracks.filter(item => item.id !== track.id), track]
+    tables.tracks = [...tables.tracks.filter(item => item.id !== track.id), added]
   }
   showModal.value = false
   uploadStatus.value = { type: 'success', message: 'Track added' }

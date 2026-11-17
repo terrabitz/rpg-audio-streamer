@@ -18,7 +18,7 @@ import (
 )
 
 func TestUploadSurvivesRequestCancellation(t *testing.T) {
-	service, store := testService(t)
+	service, store, notifier := testService(t)
 	audio := filepath.Join(t.TempDir(), "sample.wav")
 	if output, err := exec.Command("ffmpeg", "-v", "error", "-f", "lavfi", "-i",
 		"sine=frequency=440:duration=1", audio).CombinedOutput(); err != nil {
@@ -41,6 +41,9 @@ func TestUploadSurvivesRequestCancellation(t *testing.T) {
 	stop := runService(t, service)
 	waitStatus(t, store, track.ID, "ready")
 	stop()
+	if got := notifier.received(); len(got) != 1 || got[0].ID != track.ID || got[0].Status != "ready" {
+		t.Fatalf("ready notifications = %+v", got)
+	}
 	for _, file := range []string{"index.m3u8", "segment_000.ts", waveformFile} {
 		if _, err := os.Stat(filepath.Join(track.Path, file)); err != nil {
 			t.Errorf("processed track missing %s: %v", file, err)
@@ -52,7 +55,7 @@ func TestUploadSurvivesRequestCancellation(t *testing.T) {
 }
 
 func TestRunCancellationDrainsQueuedJobs(t *testing.T) {
-	service, store := testService(t)
+	service, store, notifier := testService(t)
 	track, err := service.Upload(context.Background(), "Queued", uuid.New(), uuid.Nil, strings.NewReader("audio"))
 	if err != nil {
 		t.Fatal(err)
@@ -64,6 +67,9 @@ func TestRunCancellationDrainsQueuedJobs(t *testing.T) {
 	if got.Status != "failed" || !strings.Contains(got.ProcessingError, "interrupted") {
 		t.Fatalf("cancelled job = %+v", got)
 	}
+	if sent := notifier.received(); len(sent) != 1 || sent[0].Status != "failed" || sent[0].ProcessingError != got.ProcessingError {
+		t.Fatalf("failure notifications = %+v", sent)
+	}
 	if _, err := os.Stat(filepath.Dir(service.inputPath(track.ID))); !os.IsNotExist(err) {
 		t.Fatalf("cancelled staging not removed: %v", err)
 	}
@@ -73,14 +79,18 @@ func TestRunCancellationDrainsQueuedJobs(t *testing.T) {
 }
 
 func TestRunCancellationStopsActiveDownload(t *testing.T) {
-	service, store := testService(t)
-	started := fixtureDownloader(t)
-	track, err := service.Import(context.Background(), "Downloading", uuid.New(), uuid.Nil, "https://youtu.be/ddddddddddd")
+	service, store, _ := testService(t)
+	downloader := service.downloader.(*blockingDownloader)
+	track, err := service.Import(context.Background(), "Downloading", uuid.New(), uuid.Nil, "source")
 	if err != nil {
 		t.Fatal(err)
 	}
 	stop := runService(t, service)
-	waitForFile(t, started)
+	select {
+	case <-downloader.started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("download did not start")
+	}
 	stop()
 	got := store.get(track.ID)
 	if got.Status != "failed" || !strings.Contains(got.ProcessingError, "interrupted") {
@@ -93,30 +103,19 @@ func TestRunCancellationStopsActiveDownload(t *testing.T) {
 	}
 }
 
-func TestScanUsesRequestContext(t *testing.T) {
-	service, _ := testService(t)
-	started := fixtureDownloader(t)
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	finished := make(chan error, 1)
-	go func() {
-		_, err := service.Scan(ctx, "https://youtu.be/ddddddddddd")
-		finished <- err
-	}()
-	waitForFile(t, started)
-	cancel()
-	select {
-	case err := <-finished:
-		if !errors.Is(err, context.Canceled) {
-			t.Fatalf("scan ignored request cancellation: %v", err)
-		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("scan did not stop after request cancellation")
+func TestImportRejectsUnresolvedSource(t *testing.T) {
+	service, store, _ := testService(t)
+	service.downloader.(*blockingDownloader).resolveErr = errUnsupported
+	if _, err := service.Import(context.Background(), "Invalid", uuid.New(), uuid.Nil, "source"); !errors.Is(err, errUnsupported) {
+		t.Fatalf("unresolved import error = %v", err)
+	}
+	if tracks, _ := store.GetTracks(context.Background()); len(tracks) != 0 {
+		t.Fatalf("unresolved import persisted tracks: %+v", tracks)
 	}
 }
 
 func TestQueuedDeadlineAndAdmission(t *testing.T) {
-	service, store := testService(t)
+	service, store, _ := testService(t)
 	for range cap(service.jobs) {
 		if _, err := service.Upload(context.Background(), "Queued", uuid.New(), uuid.Nil, strings.NewReader("audio")); err != nil {
 			t.Fatal(err)
@@ -142,7 +141,7 @@ func TestQueuedDeadlineAndAdmission(t *testing.T) {
 }
 
 func TestRecoverInterruptedProcessing(t *testing.T) {
-	service, store := testService(t)
+	service, store, _ := testService(t)
 	track, err := service.newTrack("Interrupted", uuid.New())
 	if err != nil {
 		t.Fatal(err)
@@ -169,38 +168,13 @@ func TestRecoverInterruptedProcessing(t *testing.T) {
 	}
 }
 
-func fixtureDownloader(t *testing.T) string {
-	t.Helper()
-	script, err := os.ReadFile("testdata/yt-dlp")
-	if err != nil {
-		t.Fatal(err)
-	}
-	bin := t.TempDir()
-	if err := os.WriteFile(filepath.Join(bin, "yt-dlp"), script, 0700); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
-	started := filepath.Join(t.TempDir(), "started")
-	t.Setenv("IMPORT_ARGS", started)
-	return started
-}
-
-func waitForFile(t *testing.T, path string) {
-	t.Helper()
-	deadline := time.Now().Add(5 * time.Second)
-	for time.Now().Before(deadline) {
-		if _, err := os.Stat(path); err == nil {
-			return
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-	t.Fatal("downloader did not start")
-}
-
-func testService(t *testing.T) (*Service, *memoryStore) {
+func testService(t *testing.T) (*Service, *memoryStore, *recordingNotifier) {
 	t.Helper()
 	store := &memoryStore{tracks: make(map[uuid.UUID]Track)}
-	return New(t.TempDir(), slog.New(slog.NewTextHandler(io.Discard, nil)), store), store
+	notifier := &recordingNotifier{}
+	downloader := &blockingDownloader{started: make(chan struct{})}
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	return New(t.TempDir(), logger, store, downloader, notifier), store, notifier
 }
 
 func runService(t *testing.T, service *Service) func() {
@@ -282,4 +256,38 @@ func (s *memoryStore) get(id uuid.UUID) Track {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.tracks[id]
+}
+
+var errUnsupported = errors.New("unsupported source")
+
+type blockingDownloader struct {
+	started    chan struct{}
+	resolveErr error
+}
+
+func (d *blockingDownloader) Resolve(source string) (string, error) {
+	return source, d.resolveErr
+}
+
+func (d *blockingDownloader) Download(ctx context.Context, _, _ string) error {
+	close(d.started)
+	<-ctx.Done()
+	return ctx.Err()
+}
+
+type recordingNotifier struct {
+	mu     sync.Mutex
+	tracks []Track
+}
+
+func (n *recordingNotifier) TrackProcessed(track Track) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	n.tracks = append(n.tracks, track)
+}
+
+func (n *recordingNotifier) received() []Track {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	return append([]Track(nil), n.tracks...)
 }

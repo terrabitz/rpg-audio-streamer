@@ -11,7 +11,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/terrabitz/rpg-audio-streamer/internal/auth"
-	"github.com/terrabitz/rpg-audio-streamer/internal/musicprocessing"
+	"github.com/terrabitz/rpg-audio-streamer/internal/youtube"
 )
 
 func (s *Server) handleImport(w http.ResponseWriter, r *http.Request, _ *auth.Token) {
@@ -35,8 +35,8 @@ func (s *Server) handleImport(w http.ResponseWriter, r *http.Request, _ *auth.To
 		http.Error(w, "Invalid import request", http.StatusBadRequest)
 		return
 	}
-	if _, ok := musicprocessing.YouTubeURL(req.URL); !ok {
-		http.Error(w, musicprocessing.ErrInvalidURL.Error(), http.StatusBadRequest)
+	if _, ok := youtube.CanonicalURL(req.URL); !ok {
+		http.Error(w, youtube.ErrInvalidURL.Error(), http.StatusBadRequest)
 		return
 	}
 	req.Name = strings.TrimSpace(req.Name)
@@ -57,8 +57,8 @@ func (s *Server) handleImport(w http.ResponseWriter, r *http.Request, _ *auth.To
 	track, err := s.processing.Import(r.Context(), req.Name, req.TypeID, req.TableID, req.URL)
 	if err != nil {
 		s.logger.Error("failed to queue imported audio", "error", err)
-		if errors.Is(err, musicprocessing.ErrUnavailable) {
-			http.Error(w, musicprocessing.ErrUnavailable.Error(), http.StatusServiceUnavailable)
+		if errors.Is(err, youtube.ErrUnavailable) {
+			http.Error(w, youtube.ErrUnavailable.Error(), http.StatusServiceUnavailable)
 			return
 		}
 		http.Error(w, "Failed to queue audio processing. Please try again.", http.StatusServiceUnavailable)
@@ -85,19 +85,19 @@ func (s *Server) handleScan(w http.ResponseWriter, r *http.Request, _ *auth.Toke
 		http.Error(w, "Invalid scan request", http.StatusBadRequest)
 		return
 	}
-	metadata, err := s.processing.Scan(r.Context(), req.URL)
+	metadata, err := s.videos.Scan(r.Context(), req.URL)
 	if err != nil {
 		switch {
-		case errors.Is(err, musicprocessing.ErrInvalidURL):
+		case errors.Is(err, youtube.ErrInvalidURL):
 			http.Error(w, err.Error(), http.StatusBadRequest)
-		case errors.Is(err, musicprocessing.ErrUnavailable):
+		case errors.Is(err, youtube.ErrUnavailable):
 			http.Error(w, err.Error(), http.StatusServiceUnavailable)
 		case errors.Is(err, context.DeadlineExceeded), errors.Is(err, context.Canceled):
 			http.Error(w, "Video scan timed out. Please try again.", http.StatusGatewayTimeout)
-		case errors.Is(err, musicprocessing.ErrInvalidMetadata):
+		case errors.Is(err, youtube.ErrInvalidMetadata):
 			http.Error(w, err.Error(), http.StatusBadGateway)
-		case errors.Is(err, musicprocessing.ErrLiveStream), errors.Is(err, musicprocessing.ErrDurationLimit),
-			errors.Is(err, musicprocessing.ErrSizeLimit):
+		case errors.Is(err, youtube.ErrLiveStream), errors.Is(err, youtube.ErrDurationLimit),
+			errors.Is(err, youtube.ErrSizeLimit):
 			http.Error(w, err.Error(), http.StatusUnprocessableEntity)
 		default:
 			http.Error(w, "Could not retrieve video metadata. Check that the video is public and available.", http.StatusBadGateway)

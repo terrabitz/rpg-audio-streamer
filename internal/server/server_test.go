@@ -20,6 +20,7 @@ import (
 	"github.com/terrabitz/rpg-audio-streamer/internal/auth"
 	"github.com/terrabitz/rpg-audio-streamer/internal/middlewares"
 	"github.com/terrabitz/rpg-audio-streamer/internal/musicprocessing"
+	"github.com/terrabitz/rpg-audio-streamer/internal/youtube"
 )
 
 type testServer struct {
@@ -60,6 +61,7 @@ func (m *mockWSRegisterer) CloseTable(string)                       {}
 func (m *mockWSRegisterer) RemoveTrack(string, string)              {}
 func (m *mockWSRegisterer) SyncSettings(string, TableSettingsPatch) {}
 func (m *mockWSRegisterer) RevokePlayerAccess(string)               {}
+func (m *mockWSRegisterer) TrackProcessed(Track)                    {}
 
 func (m *mockWSRegisterer) Register(conn *websocket.Conn, token *auth.Token) {
 	// For testing purposes, just verify the inputs are not nil
@@ -89,7 +91,8 @@ func setupTestServer(t *testing.T) *testServer {
 	mockTrackStore := NewMockTrackStore(t)
 	mockWSReg := &mockWSRegisterer{t: t}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	processing := musicprocessing.New(tempDir, logger, mockTrackStore)
+	videos := youtube.New(logger)
+	processing := musicprocessing.New(tempDir, logger, mockTrackStore, videos, mockWSReg)
 	if err := processing.Recover(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -99,7 +102,7 @@ func setupTestServer(t *testing.T) *testServer {
 		Port:      8080,
 		UploadDir: tempDir,
 		CORS:      middlewares.CorsConfig{},
-	}, logger, mockAuth, mockTrackStore, mockWSReg, processing)
+	}, logger, mockAuth, mockTrackStore, mockWSReg, processing, videos)
 	if err != nil {
 		t.Fatalf("failed to create server: %v", err)
 	}

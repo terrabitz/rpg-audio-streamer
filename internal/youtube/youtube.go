@@ -1,4 +1,4 @@
-package musicprocessing
+package youtube
 
 import (
 	"bytes"
@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/url"
 	"os"
 	"os/exec"
@@ -33,26 +34,32 @@ type VideoMetadata struct {
 	SizeEstimated bool    `json:"sizeEstimated"`
 }
 
-func (s *Service) Scan(ctx context.Context, sourceURL string) (VideoMetadata, error) {
-	source, ok := YouTubeURL(sourceURL)
-	if !ok {
-		return VideoMetadata{}, ErrInvalidURL
-	}
-	if err := available(); err != nil {
+// Client retrieves single YouTube videos through the yt-dlp executable on PATH.
+type Client struct {
+	logger *slog.Logger
+}
+
+func New(logger *slog.Logger) *Client {
+	return &Client{logger: logger}
+}
+
+func (c *Client) Scan(ctx context.Context, sourceURL string) (VideoMetadata, error) {
+	source, err := c.Resolve(sourceURL)
+	if err != nil {
 		return VideoMetadata{}, err
 	}
 	ctx, cancel := context.WithTimeout(ctx, time.Minute)
 	defer cancel()
 	cmd := videoCommand(ctx, "--skip-download", "--dump-single-json", "--", source)
-	output := importOutput{limit: 1 << 20}
-	var stderr importOutput
+	output := cappedOutput{limit: 1 << 20}
+	var stderr cappedOutput
 	cmd.Stdout, cmd.Stderr = &output, &stderr
-	err := cmd.Run()
+	err = cmd.Run()
 	if ctx.Err() != nil {
 		return VideoMetadata{}, ctx.Err()
 	}
 	if err != nil {
-		s.logger.Warn("YouTube scan failed", "error", err, "stderr", stderr.buf.String())
+		c.logger.Warn("YouTube scan failed", "error", err, "stderr", stderr.buf.String())
 		return VideoMetadata{}, fmt.Errorf("retrieve video metadata: %w", err)
 	}
 	var info struct {
@@ -64,7 +71,7 @@ func (s *Service) Scan(ctx context.Context, sourceURL string) (VideoMetadata, er
 		LiveStatus     string  `json:"live_status"`
 	}
 	if err := json.Unmarshal(output.buf.Bytes(), &info); err != nil {
-		s.logger.Warn("invalid YouTube metadata", "error", err)
+		c.logger.Warn("invalid YouTube metadata", "error", err)
 		return VideoMetadata{}, ErrInvalidMetadata
 	}
 	if info.IsLive || info.LiveStatus == "is_upcoming" || info.LiveStatus == "post_live" {
@@ -91,22 +98,27 @@ func (s *Service) Scan(ctx context.Context, sourceURL string) (VideoMetadata, er
 		SizeBytes: size, SizeEstimated: estimated}, nil
 }
 
-func available() error {
-	if _, err := exec.LookPath("yt-dlp"); err != nil {
-		return ErrUnavailable
+// Resolve returns the canonical single-video URL once retrieval is possible.
+func (c *Client) Resolve(sourceURL string) (string, error) {
+	source, ok := CanonicalURL(sourceURL)
+	if !ok {
+		return "", ErrInvalidURL
 	}
-	return nil
+	if _, err := exec.LookPath("yt-dlp"); err != nil {
+		return "", ErrUnavailable
+	}
+	return source, nil
 }
 
-func downloadVideo(ctx context.Context, source, input string) error {
+func (c *Client) Download(ctx context.Context, source, destination string) error {
 	cmd := videoCommand(ctx, "--no-part", "--max-filesize", "200M",
-		"--match-filter", "!is_live & duration <= 10800", "--output", input, "--", source)
-	var stderr importOutput
+		"--match-filter", "!is_live & duration <= 10800", "--output", destination, "--", source)
+	var stderr cappedOutput
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("retrieve YouTube audio: %w: %s", err, stderr.buf.String())
 	}
-	info, err := os.Stat(input)
+	info, err := os.Stat(destination)
 	if err != nil {
 		return fmt.Errorf("YouTube audio unavailable or exceeds import limits: %w", err)
 	}
@@ -125,9 +137,9 @@ func videoCommand(ctx context.Context, args ...string) *exec.Cmd {
 	return cmd
 }
 
-var youtubeVideoID = regexp.MustCompile(`^[A-Za-z0-9_-]{11}$`)
+var videoID = regexp.MustCompile(`^[A-Za-z0-9_-]{11}$`)
 
-func YouTubeURL(value string) (string, bool) {
+func CanonicalURL(value string) (string, bool) {
 	u, err := url.Parse(strings.TrimSpace(value))
 	if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.User != nil || u.Port() != "" {
 		return "", false
@@ -148,18 +160,18 @@ func YouTubeURL(value string) (string, bool) {
 			id = strings.TrimPrefix(u.Path, "/live/")
 		}
 	}
-	if !youtubeVideoID.MatchString(id) {
+	if !videoID.MatchString(id) {
 		return "", false
 	}
 	return "https://www.youtube.com/watch?v=" + id, true
 }
 
-type importOutput struct {
+type cappedOutput struct {
 	buf   bytes.Buffer
 	limit int
 }
 
-func (b *importOutput) Write(p []byte) (int, error) {
+func (b *cappedOutput) Write(p []byte) (int, error) {
 	n := len(p)
 	limit := b.limit
 	if limit == 0 {

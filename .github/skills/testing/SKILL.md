@@ -55,7 +55,8 @@ Both the Go music-processing integration test and the `chromium-youtube`
 browser project read `INTEGRATION_TEST_YT_DLP_LINK` into typed test
 configuration. With the variable absent, these tests skip; an explicitly empty
 or invalid value fails rather than falling back to a sample video. Other
-YouTube browser tests keep their deterministic external-downloader fixture.
+YouTube tests keep their deterministic external-downloader fixture,
+`internal/youtube/testdata/yt-dlp`.
 
 Use a public single-video URL within the application's three-hour and 200 MiB
 limits. Put a current `yt-dlp[default]`, Node.js 20 or newer, and FFmpeg on
@@ -66,6 +67,10 @@ export INTEGRATION_TEST_YT_DLP_LINK='https://www.youtube.com/watch?v=PyD9cMarVJk
 go test ./internal/musicprocessing -run '^TestYouTubeIntegration$' -count=1 -timeout=20m
 cd ui && npm run test:e2e -- youtube-live.spec.ts --project=chromium-youtube
 ```
+
+The `pr-checks` workflow sets this public, non-secret link as plain workflow
+environment and installs `yt-dlp[default]` with pipx and Node.js in the Go and
+browser jobs, so both live tests run in CI.
 
 The Go test scans and downloads the real video, persists processing state in
 temporary SQLite, converts it to HLS, checks waveform output, and decodes the

@@ -262,13 +262,13 @@ func TestFrontendRouting(t *testing.T) {
 
 func TestFrontendConfiguration(t *testing.T) {
 	dir := t.TempDir()
-	if _, err := New(Config{FrontendDir: dir}, nil, nil, nil, nil, nil); err == nil {
+	if _, err := New(Config{FrontendDir: dir}, nil, nil, nil, nil, nil, nil); err == nil {
 		t.Fatal("missing frontend index should fail startup")
 	}
 	if err := os.WriteFile(filepath.Join(dir, "index.html"), []byte("index"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := New(Config{FrontendDir: dir}, nil, nil, nil, nil, nil); err != nil {
+	if _, err := New(Config{FrontendDir: dir}, nil, nil, nil, nil, nil, nil); err != nil {
 		t.Fatalf("valid frontend directory: %v", err)
 	}
 }

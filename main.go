@@ -24,6 +24,7 @@ import (
 	"github.com/terrabitz/rpg-audio-streamer/internal/server"
 	"github.com/terrabitz/rpg-audio-streamer/internal/sqlitedatastore"
 	ws "github.com/terrabitz/rpg-audio-streamer/internal/websocket"
+	"github.com/terrabitz/rpg-audio-streamer/internal/youtube"
 )
 
 //go:embed sql/migrations/*
@@ -353,7 +354,8 @@ func startServer(ctx context.Context, cfg Config) error {
 
 	hub := ws.NewHub(logger, db)
 
-	processing := musicprocessing.New(cfg.Server.UploadDir, logger, db)
+	videos := youtube.New(logger)
+	processing := musicprocessing.New(cfg.Server.UploadDir, logger, db, videos, hub)
 	if err := processing.Recover(ctx); err != nil {
 		return fmt.Errorf("recover interrupted processing: %w", err)
 	}
@@ -368,7 +370,7 @@ func startServer(ctx context.Context, cfg Config) error {
 		<-finished
 	}()
 
-	srv, err := server.New(cfg.Server, logger, authService, db, hub, processing)
+	srv, err := server.New(cfg.Server, logger, authService, db, hub, processing, videos)
 	if err != nil {
 		return fmt.Errorf("couldn't create server: %w", err)
 	}

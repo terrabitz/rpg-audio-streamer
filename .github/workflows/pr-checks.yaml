@@ -7,6 +7,9 @@ on:
 permissions:
   contents: read
 
+env:
+  INTEGRATION_TEST_YT_DLP_LINK: https://www.youtube.com/watch?v=PyD9cMarVJk
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -73,6 +76,11 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: ./ui/.nvmrc
+      - name: Install yt-dlp
+        run: pipx install 'yt-dlp[default]'
       - name: Install libdave
         run: |
           sh scripts/install-libdave.sh "$RUNNER_TEMP/libdave"
@@ -111,6 +119,8 @@ jobs:
           node-version-file: ./ui/.nvmrc
           cache: npm
           cache-dependency-path: ui/package-lock.json
+      - name: Install yt-dlp
+        run: pipx install 'yt-dlp[default]'
       - name: Install libdave
         run: |
           sh scripts/install-libdave.sh "$RUNNER_TEMP/libdave"
@@ -188,7 +198,7 @@ jobs:
           cache: npm
           cache-dependency-path: ui/package-lock.json
       - run: npm ci
-      - run: node --test e2e/discord-config.test.ts e2e/discord-listener.test.ts
+      - run: node --test e2e/discord-config.test.ts e2e/discord-listener.test.ts e2e/youtube-config.test.ts
       - run: npm run test:coverage
 
   docker:

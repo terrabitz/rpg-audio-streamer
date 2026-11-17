@@ -21,6 +21,7 @@ import (
 	"github.com/terrabitz/rpg-audio-streamer/internal/livemixer"
 	"github.com/terrabitz/rpg-audio-streamer/internal/middlewares"
 	"github.com/terrabitz/rpg-audio-streamer/internal/musicprocessing"
+	"github.com/terrabitz/rpg-audio-streamer/internal/youtube"
 )
 
 const (
@@ -72,6 +73,11 @@ type Server struct {
 	discord    DiscordController
 	discordMix *discordMixer
 	processing *musicprocessing.Service
+	videos     VideoScanner
+}
+
+type VideoScanner interface {
+	Scan(ctx context.Context, sourceURL string) (youtube.VideoMetadata, error)
 }
 
 type Config struct {
@@ -85,7 +91,7 @@ type Config struct {
 	Discord                 discord.Config
 }
 
-func New(cfg Config, logger *slog.Logger, auth Authenticator, store Store, hub WSRegisterer, processing *musicprocessing.Service) (*Server, error) {
+func New(cfg Config, logger *slog.Logger, auth Authenticator, store Store, hub WSRegisterer, processing *musicprocessing.Service, videos VideoScanner) (*Server, error) {
 	srv := &Server{
 		logger:     logger,
 		cfg:        cfg,
@@ -93,6 +99,7 @@ func New(cfg Config, logger *slog.Logger, auth Authenticator, store Store, hub W
 		auth:       auth,
 		store:      store,
 		processing: processing,
+		videos:     videos,
 		upgrader: websocket.Upgrader{
 			ReadBufferSize:  1024,
 			WriteBufferSize: 1024,

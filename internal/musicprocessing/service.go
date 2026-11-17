@@ -25,14 +25,27 @@ type Store interface {
 	SetTrackProcessing(context.Context, uuid.UUID, string, string) error
 }
 
+// Downloader retrieves remote audio sources into local files for processing.
+type Downloader interface {
+	Resolve(sourceURL string) (string, error)
+	Download(ctx context.Context, source, destination string) error
+}
+
+// Notifier observes tracks whose processing reached a terminal status.
+type Notifier interface {
+	TrackProcessed(Track)
+}
+
 type Service struct {
-	dir    string
-	logger *slog.Logger
-	store  Store
-	jobs   chan job
-	limit  chan struct{}
-	mu     sync.Mutex
-	closed bool
+	dir        string
+	logger     *slog.Logger
+	store      Store
+	downloader Downloader
+	notifier   Notifier
+	jobs       chan job
+	limit      chan struct{}
+	mu         sync.Mutex
+	closed     bool
 }
 
 type job struct {
@@ -41,8 +54,8 @@ type job struct {
 	deadline  time.Time
 }
 
-func New(dir string, logger *slog.Logger, store Store) *Service {
-	return &Service{dir: dir, logger: logger, store: store,
+func New(dir string, logger *slog.Logger, store Store, downloader Downloader, notifier Notifier) *Service {
+	return &Service{dir: dir, logger: logger, store: store, downloader: downloader, notifier: notifier,
 		jobs: make(chan job, 16), limit: make(chan struct{}, 16)}
 }
 
@@ -132,11 +145,8 @@ func (s *Service) Upload(ctx context.Context, name string, typeID, tableID uuid.
 }
 
 func (s *Service) Import(ctx context.Context, name string, typeID, tableID uuid.UUID, sourceURL string) (Track, error) {
-	source, ok := YouTubeURL(sourceURL)
-	if !ok {
-		return Track{}, ErrInvalidURL
-	}
-	if err := available(); err != nil {
+	source, err := s.downloader.Resolve(sourceURL)
+	if err != nil {
 		return Track{}, err
 	}
 	track, err := s.newTrack(name, typeID)
@@ -199,6 +209,7 @@ func (s *Service) process(ctx context.Context, next job) {
 	}
 	s.removeFiles(next.track.ID, err != nil)
 	if err == nil {
+		s.notify(next.track, "ready", "")
 		return
 	}
 	s.logger.Error("track processing failed", "trackID", next.track.ID, "error", err)
@@ -210,7 +221,14 @@ func (s *Service) process(ctx context.Context, next job) {
 	defer failureCancel()
 	if err := s.store.SetTrackProcessing(failureCtx, next.track.ID, "failed", message); err != nil {
 		s.logger.Error("failed to record track processing failure", "trackID", next.track.ID, "error", err)
+		return
 	}
+	s.notify(next.track, "failed", message)
+}
+
+func (s *Service) notify(track Track, status, message string) {
+	track.Status, track.ProcessingError = status, message
+	s.notifier.TrackProcessed(track)
 }
 
 func (s *Service) processAudio(ctx context.Context, next job) error {
@@ -219,7 +237,7 @@ func (s *Service) processAudio(ctx context.Context, next job) error {
 		if err := os.MkdirAll(filepath.Dir(input), 0700); err != nil {
 			return err
 		}
-		if err := downloadVideo(ctx, next.sourceURL, input); err != nil {
+		if err := s.downloader.Download(ctx, next.sourceURL, input); err != nil {
 			return err
 		}
 	}

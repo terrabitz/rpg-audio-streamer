@@ -16,43 +16,14 @@ import (
 	"github.com/google/uuid"
 	"github.com/terrabitz/rpg-audio-streamer/internal/auth"
 	"github.com/terrabitz/rpg-audio-streamer/internal/musicprocessing"
+	"github.com/terrabitz/rpg-audio-streamer/internal/youtube"
 )
-
-func TestYouTubeURL(t *testing.T) {
-	for _, value := range []string{
-		"https://www.youtube.com/watch?v=aaaaaaaaaaa&list=PL123",
-		" http://youtu.be/aaaaaaaaaaa?t=42 ",
-		"https://youtube.com/shorts/aaaaaaaaaaa",
-		"https://m.youtube.com/watch?v=aaaaaaaaaaa",
-		"https://music.youtube.com/watch?v=aaaaaaaaaaa",
-		"https://www.youtube.com/embed/aaaaaaaaaaa",
-		"https://www.youtube.com/live/aaaaaaaaaaa",
-	} {
-		if got, ok := musicprocessing.YouTubeURL(value); !ok || got != "https://www.youtube.com/watch?v=aaaaaaaaaaa" {
-			t.Errorf("youtubeURL(%q) = %q, %v", value, got, ok)
-		}
-	}
-	for _, value := range []string{
-		"", "--exec=bad", "file:///etc/passwd", "https://127.0.0.1/watch?v=aaaaaaaaaaa",
-		"https://youtube.com.evil.example/watch?v=aaaaaaaaaaa",
-		"https://youtube.com@evil.example/watch?v=aaaaaaaaaaa",
-		"https://user@youtube.com/watch?v=aaaaaaaaaaa",
-		"https://youtube.com:8080/watch?v=aaaaaaaaaaa",
-		"https://youtube.com/playlist?list=PL123",
-		"https://youtu.be/aaaaaaaaaaa/extra", "https://youtube.com/redirect?q=https://example.com",
-		"https://youtube.com/watch?v=bad", "ftp://youtube.com/watch?v=aaaaaaaaaaa",
-	} {
-		if got, ok := musicprocessing.YouTubeURL(value); ok {
-			t.Errorf("accepted unsafe or non-video URL %q as %q", value, got)
-		}
-	}
-}
 
 func TestImportHTTP(t *testing.T) {
 	ts := setupTestServer(t)
 	defer ts.cleanup(t)
 	bin := t.TempDir()
-	script, err := os.ReadFile("../musicprocessing/testdata/yt-dlp")
+	script, err := os.ReadFile("../youtube/testdata/yt-dlp")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -149,7 +120,7 @@ func TestImportHTTP(t *testing.T) {
 		}
 	}
 	ts.store = importFailStore{Store: ts.store}
-	ts.processing = musicprocessing.New(ts.tempDir, ts.logger, ts.store)
+	ts.processing = musicprocessing.New(ts.tempDir, ts.logger, ts.store, youtube.New(ts.logger), ts.hub.(musicprocessing.Notifier))
 	request(ctx, "POST", validBody, true, 503)
 	entries, err := os.ReadDir(ts.tempDir)
 	if err != nil || len(entries) != 2 {
@@ -163,7 +134,7 @@ func TestVideoScan(t *testing.T) {
 	ts := setupTestServer(t)
 	defer ts.cleanup(t)
 	bin := t.TempDir()
-	script, err := os.ReadFile("../musicprocessing/testdata/yt-dlp")
+	script, err := os.ReadFile("../youtube/testdata/yt-dlp")
 	if err != nil {
 		t.Fatal(err)
 	}

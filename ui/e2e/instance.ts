@@ -53,7 +53,7 @@ export async function startApp(liveDiscord = false, youtubeFixture = false): Pro
       const bin = join(scratch, 'bin')
       await mkdir(bin)
       const downloader = join(bin, 'yt-dlp')
-      await copyFile(join(root, 'internal/musicprocessing/testdata/yt-dlp'), downloader)
+      await copyFile(join(root, 'internal/youtube/testdata/yt-dlp'), downloader)
       await chmod(downloader, 0o700)
       const audio = join(scratch, 'import.wav')
       execFileSync('ffmpeg', ['-v', 'error', '-f', 'lavfi', '-i', 'sine=frequency=440:duration=12', audio])

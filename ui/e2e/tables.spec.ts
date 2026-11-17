@@ -312,8 +312,8 @@ test('library row previews stay local while a table is streaming', async ({ page
 
   const playerContext = await browser.newContext()
   const library = await context.newPage()
-  const previewSockets: string[] = []
-  library.on('websocket', socket => previewSockets.push(socket.url()))
+  const previewMessages: (string | Buffer)[] = []
+  library.on('websocket', socket => socket.on('framesent', frame => previewMessages.push(frame.payload)))
   try {
     const player = await playerContext.newPage()
     await player.goto(defaultTableURL)
@@ -349,7 +349,7 @@ test('library row previews stay local while a table is streaming', async ({ page
     await expect.poll(() => library.locator('video').evaluate(
       (el: HTMLVideoElement) => !el.paused && el.currentTime > 0,
     )).toBe(true)
-    expect(previewSockets).toEqual([])
+    expect(previewMessages).toEqual([])
     await expect(player.locator('video')).toHaveCount(1)
     await expect(player.locator('video')).toHaveAttribute('src', playerSource)
     await expect.poll(() => player.locator('video').evaluate(

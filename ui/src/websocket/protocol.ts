@@ -1,4 +1,4 @@
-import type { PlaybackSettings, TableSettings } from '@/client/apiClient'
+import type { PlaybackSettings, TableSettings, Track } from '@/client/apiClient'
 import type { AudioTrack } from '@/stores/audio'
 
 export interface PlaybackPatch {
@@ -29,6 +29,12 @@ export interface TrackReference {
   fileID: string
 }
 
+export interface TrackStatusUpdate {
+  fileID: string
+  status: NonNullable<Track['status']>
+  processingError?: string
+}
+
 export interface MixerResult {
   command: string
 }
@@ -54,4 +60,5 @@ export interface Payloads {
   mixerAck: MixerResult
   mixerError: MixerFailure
   playbackError: Failure
+  trackStatus: TrackStatusUpdate
 }
