@@ -312,8 +312,8 @@ test('library row previews stay local while a table is streaming', async ({ page
 
   const playerContext = await browser.newContext()
   const library = await context.newPage()
-  const previewSockets: string[] = []
-  library.on('websocket', socket => previewSockets.push(socket.url()))
+  const previewMessages: (string | Buffer)[] = []
+  library.on('websocket', socket => socket.on('framesent', frame => previewMessages.push(frame.payload)))
   try {
     const player = await playerContext.newPage()
     await player.goto(defaultTableURL)
@@ -349,7 +349,7 @@ test('library row previews stay local while a table is streaming', async ({ page
     await expect.poll(() => library.locator('video').evaluate(
       (el: HTMLVideoElement) => !el.paused && el.currentTime > 0,
     )).toBe(true)
-    expect(previewSockets).toEqual([])
+    expect(previewMessages).toEqual([])
     await expect(player.locator('video')).toHaveCount(1)
     await expect(player.locator('video')).toHaveAttribute('src', playerSource)
     await expect.poll(() => player.locator('video').evaluate(
@@ -435,7 +435,7 @@ test('GM controls desktop playback from a phone and recovers after every GM leav
   await deleteLibraryTrack(page, 'Remote Music', 1)
 })
 
-test('failed audio conversion is shown as an upload error', async ({ page }) => {
+test('failed audio conversion is shown on the track', async ({ page }) => {
   await login(page)
   await openUploadDialog(page)
   await page.getByLabel('Select a file', { exact: true }).setInputFiles({
@@ -446,6 +446,16 @@ test('failed audio conversion is shown as an upload error', async ({ page }) => 
   await page.getByRole('combobox', { name: 'Track Type', exact: true }).press('ArrowDown')
   await page.getByRole('option', { name: 'Music', exact: true }).click()
   await page.getByRole('button', { name: 'Upload', exact: true }).click()
-  await expect(page.getByText('Failed to upload file', { exact: true })).toBeVisible()
-  await expect(page.locator('.file-tile')).toHaveCount(0)
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+  const tile = page.locator('.file-tile').filter({ hasText: 'invalid' })
+  await expect(tile).toHaveAttribute('aria-busy', 'false')
+  await expect(tile.getByRole('button', { name: 'View processing failure for invalid', exact: true })).toBeVisible()
+  await tile.click()
+  const diagnostics = page.getByRole('dialog', { name: 'Track processing failed', exact: true })
+    .getByLabel('Processing diagnostics', { exact: true })
+  await expect(diagnostics).toContainText('Audio processing failed')
+  await expect(diagnostics).toContainText('convert audio to HLS')
+  await page.getByRole('button', { name: 'Delete track', exact: true }).click()
+  await page.getByRole('button', { name: 'Confirm delete track', exact: true }).click()
+  await expect(tile).toHaveCount(0)
 })

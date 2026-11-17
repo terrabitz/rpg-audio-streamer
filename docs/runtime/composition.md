@@ -11,10 +11,19 @@ tags: [runtime, backend]
 `main.go` composes configuration, logging, embedded migrations, the
 [SQLite adapter](../data/sqlite-schema.md), the
 [authentication service](../backend/authentication.md), the
-[WebSocket hub](../playback/synchronization.md), and the
+[WebSocket hub](../playback/synchronization.md),
+[YouTube service](../backend/youtube.md),
+[music processing service](../data/track-processing.md), and the
 [HTTP server](./http-serving.md). Startup applies pending migrations before
 accepting requests. The CLI also exposes migration commands; `cmd/hashpass`
 produces the Argon2id password hash used in configuration.
+
+The CLI owns the signal-cancelled application context, recovers interrupted
+processing before serving, and runs the processing service with `Run(ctx)`.
+Shutdown cancels workers, drains accepted jobs into a failed state, waits for
+processing cleanup, and closes the datastore. The HTTP server receives its
+lifetime context through `Start(ctx)`; neither the server nor the processing
+service stores a context.
 
 When [Discord streaming](../discord/voice-streaming.md) is configured, the
 process also runs the [live mixer](../discord/live-mixer.md).

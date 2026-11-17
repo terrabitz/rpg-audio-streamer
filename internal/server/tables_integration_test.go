@@ -17,8 +17,10 @@ import (
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	"github.com/terrabitz/rpg-audio-streamer/internal/auth"
+	"github.com/terrabitz/rpg-audio-streamer/internal/musicprocessing"
 	"github.com/terrabitz/rpg-audio-streamer/internal/server"
 	"github.com/terrabitz/rpg-audio-streamer/internal/sqlitedatastore"
+	"github.com/terrabitz/rpg-audio-streamer/internal/youtube"
 )
 
 type testWSRegisterer struct{}
@@ -28,6 +30,7 @@ func (testWSRegisterer) CloseTable(string)                              {}
 func (testWSRegisterer) RevokePlayerAccess(string)                      {}
 func (testWSRegisterer) RemoveTrack(string, string)                     {}
 func (testWSRegisterer) SyncSettings(string, server.TableSettingsPatch) {}
+func (testWSRegisterer) TrackProcessed(server.Track)                    {}
 
 func TestTableHTTP(t *testing.T) {
 	ctx := context.Background()
@@ -51,7 +54,9 @@ func TestTableHTTP(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	srv, err := server.New(server.Config{UploadDir: dir, DevMode: true}, logger, authenticator, db, testWSRegisterer{})
+	videos := youtube.New(logger)
+	processing := musicprocessing.New(dir, logger, db, videos, testWSRegisterer{})
+	srv, err := server.New(server.Config{UploadDir: dir, DevMode: true}, logger, authenticator, db, testWSRegisterer{}, processing, videos)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -206,6 +211,31 @@ func TestTableHTTP(t *testing.T) {
 	var tracks []server.Track
 	if err := json.Unmarshal(list.Body.Bytes(), &tracks); err != nil || len(tracks) != 1 || tracks[0].ID != track.ID {
 		t.Fatalf("associated tracks = %v, %v", tracks, err)
+	}
+	const diagnostics = "Command:\nyt-dlp -- source\n\nLogs:\nERROR: blocked\n\nError:\nexit status 1"
+	failedTrack := server.Track{ID: uuid.New(), Name: "Failed import", TypeID: types[0].ID, CreatedAt: time.Now(),
+		Status: "failed", ProcessingError: diagnostics}
+	if err := db.SaveTrackToTable(ctx, &failedTrack, first.ID); err != nil {
+		t.Fatal(err)
+	}
+	for _, asGM := range []bool{false, true} {
+		rec := request("GET", firstPath+"/tracks", "", "", asGM, 200)
+		var listed []server.Track
+		if err := json.Unmarshal(rec.Body.Bytes(), &listed); err != nil || len(listed) != 2 {
+			t.Fatalf("failed track response = %s, %v", rec.Body, err)
+		}
+		var failed server.Track
+		for _, item := range listed {
+			if item.ID == failedTrack.ID {
+				failed = item
+			}
+		}
+		if failed.Status != "failed" || (asGM && failed.ProcessingError != diagnostics) || (!asGM && failed.ProcessingError != "") {
+			t.Fatalf("diagnostics visibility for GM=%v: %s", asGM, rec.Body)
+		}
+	}
+	if err := db.DeleteTrack(ctx, failedTrack.ID); err != nil {
+		t.Fatal(err)
 	}
 	stream := firstPath + "/stream/" + track.ID.String() + "/index.m3u8"
 	request("GET", stream, "", "", false, 200)

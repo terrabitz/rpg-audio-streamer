@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/fs"
 	"log/slog"
@@ -12,12 +13,15 @@ import (
 	"path"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gorilla/websocket"
 	"github.com/terrabitz/rpg-audio-streamer/internal/auth"
 	"github.com/terrabitz/rpg-audio-streamer/internal/discord"
 	"github.com/terrabitz/rpg-audio-streamer/internal/livemixer"
 	"github.com/terrabitz/rpg-audio-streamer/internal/middlewares"
+	"github.com/terrabitz/rpg-audio-streamer/internal/musicprocessing"
+	"github.com/terrabitz/rpg-audio-streamer/internal/youtube"
 )
 
 const (
@@ -68,6 +72,12 @@ type Server struct {
 	mixer      *livemixer.Service
 	discord    DiscordController
 	discordMix *discordMixer
+	processing *musicprocessing.Service
+	videos     VideoScanner
+}
+
+type VideoScanner interface {
+	Scan(ctx context.Context, sourceURL string) (youtube.VideoMetadata, error)
 }
 
 type Config struct {
@@ -81,13 +91,15 @@ type Config struct {
 	Discord                 discord.Config
 }
 
-func New(cfg Config, logger *slog.Logger, auth Authenticator, store Store, hub WSRegisterer) (*Server, error) {
+func New(cfg Config, logger *slog.Logger, auth Authenticator, store Store, hub WSRegisterer, processing *musicprocessing.Service, videos VideoScanner) (*Server, error) {
 	srv := &Server{
-		logger: logger,
-		cfg:    cfg,
-		hub:    hub,
-		auth:   auth,
-		store:  store,
+		logger:     logger,
+		cfg:        cfg,
+		hub:        hub,
+		auth:       auth,
+		store:      store,
+		processing: processing,
+		videos:     videos,
 		upgrader: websocket.Upgrader{
 			ReadBufferSize:  1024,
 			WriteBufferSize: 1024,
@@ -133,13 +145,7 @@ func New(cfg Config, logger *slog.Logger, auth Authenticator, store Store, hub W
 	return srv, nil
 }
 
-func (s *Server) Start() error {
-	// Ensure upload directory exists
-	if err := os.MkdirAll(s.cfg.UploadDir, os.ModePerm); err != nil {
-		return fmt.Errorf("failed to create upload directory: %w", err)
-	}
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+func (s *Server) Start(ctx context.Context) error {
 	if s.discord != nil {
 		defer s.discord.Close()
 	}
@@ -149,13 +155,37 @@ func (s *Server) Start() error {
 		Addr:    net.JoinHostPort(s.cfg.Host, strconv.Itoa(s.cfg.Port)),
 		Handler: s.Handler(),
 	}
+	stopped := make(chan struct{})
+	shutdownDone := make(chan struct{})
+	defer func() {
+		close(stopped)
+		<-shutdownDone
+	}()
+	go func() {
+		defer close(shutdownDone)
+		select {
+		case <-ctx.Done():
+			shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+			defer cancel()
+			if err := srv.Shutdown(shutdownCtx); err != nil {
+				s.logger.Error("HTTP shutdown failed", "error", err)
+				if err := srv.Close(); err != nil {
+					s.logger.Error("HTTP connection cleanup failed", "error", err)
+				}
+			}
+		case <-stopped:
+		}
+	}()
 
 	s.logger.Info("starting server",
 		slog.String("host", s.cfg.Host),
 		slog.Int("port", s.cfg.Port),
 		slog.Bool("devMode", s.cfg.DevMode),
 	)
-	return srv.ListenAndServe()
+	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		return err
+	}
+	return nil
 }
 
 // Handler serves the same HTTP and WebSocket routes used by Start.
@@ -230,6 +260,8 @@ func (s *Server) registerHandlers() *http.ServeMux {
 
 	// Protected endpoints with role validation
 	mux.HandleFunc("/api/v1/files", s.gmOnlyMiddleware(s.handleFiles))
+	mux.HandleFunc("/api/v1/files/import", s.gmOnlyMiddleware(s.handleImport))
+	mux.HandleFunc("/api/v1/files/scan", s.gmOnlyMiddleware(s.handleScan))
 	mux.HandleFunc("/api/v1/files/{trackID}", s.gmOnlyMiddleware(s.handleFile))
 	mux.HandleFunc("/api/v1/files/{trackID}/usage", s.gmOnlyMiddleware(s.handleFileUsage))
 	mux.HandleFunc("/api/v1/files/{trackID}/waveform", s.gmOnlyMiddleware(s.handleFileWaveform))

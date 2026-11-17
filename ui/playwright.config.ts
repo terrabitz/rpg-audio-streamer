@@ -32,7 +32,7 @@ export default defineConfig({
   projects: [
     {
       name: 'chromium',
-      grepInvert: recording ? /@discord|@timing|@infrastructure/ : /@discord|@timing/,
+      grepInvert: recording ? /@discord|@timing|@infrastructure|@youtube/ : /@discord|@timing|@youtube/,
       use: { ...devices['Desktop Chrome'], ...failureArtifacts, ...recordingOptions },
     },
     {
@@ -41,6 +41,10 @@ export default defineConfig({
     },
     ...(recording ? [] : [
       { name: 'chromium-discord', grep: /@discord/, workers: 1, use: { ...devices['Desktop Chrome'] } },
+      {
+        name: 'chromium-youtube', grep: /@youtube/, workers: 1, timeout: 17 * 60_000,
+        use: { ...devices['Desktop Chrome'], ...failureArtifacts },
+      },
     ]),
   ],
 })

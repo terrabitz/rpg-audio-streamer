@@ -1,0 +1,49 @@
+#!/bin/sh
+set -eu
+if [ -n "${IMPORT_ARGS:-}" ]; then
+  printf '%s\n' "$@" > "$IMPORT_ARGS"
+fi
+output=''
+scan=0
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --output) output="$2"; shift 2 ;;
+    --dump-single-json) scan=1; shift ;;
+    --) shift; break ;;
+    *) shift ;;
+  esac
+done
+if [ "$scan" = 1 ]; then
+  case "$1" in
+    'https://www.youtube.com/watch?v=bbbbbbbbbbb') echo 'Video unavailable' >&2; exit 1 ;;
+    'https://www.youtube.com/watch?v=ddddddddddd') exec sleep 30 ;;
+    'https://www.youtube.com/watch?v=ggggggggggg') printf '{"title":"Too long","duration":10801,"filesize":1024}' ;;
+    'https://www.youtube.com/watch?v=hhhhhhhhhhh') printf '{"title":"Too large","duration":10,"filesize":209715201}' ;;
+    'https://www.youtube.com/watch?v=iiiiiiiiiii') printf '{"title":"Live","duration":0,"is_live":true}' ;;
+    'https://www.youtube.com/watch?v=jjjjjjjjjjj') printf '{"title":"At the limits","duration":10800,"filesize":209715200}' ;;
+    'https://www.youtube.com/watch?v=kkkkkkkkkkk') printf '{"title":"Estimated too large","duration":10,"filesize_approx":209715201}' ;;
+    *) printf '{"title":"YouTube Forest","duration":12,"filesize":1048576}' ;;
+  esac
+  exit 0
+fi
+if [ -n "${IMPORT_RELEASE_FILE:-}" ]; then
+  while [ ! -f "$IMPORT_RELEASE_FILE" ]; do sleep 0.05; done
+fi
+case "$1" in
+  'https://www.youtube.com/watch?v=aaaaaaaaaaa') cp "$IMPORT_AUDIO_FIXTURE" "$output" ;;
+  'https://www.youtube.com/watch?v=bbbbbbbbbbb') echo 'Video unavailable' >&2; exit 1 ;;
+  'https://www.youtube.com/watch?v=ccccccccccc') exit 0 ;;
+  'https://www.youtube.com/watch?v=ddddddddddd') exec sleep 30 ;;
+  'https://www.youtube.com/watch?v=eeeeeeeeeee') printf 'not audio' > "$output" ;;
+  'https://www.youtube.com/watch?v=fffffffffff') truncate -s "$IMPORT_OVERSIZE_BYTES" "$output" ;;
+  'https://www.youtube.com/watch?v=lllllllllll')
+    echo '[youtube] Extracting URL: https://www.youtube.com/watch?v=lllllllllll'
+    i=1
+    while [ "$i" -le 40 ]; do
+      printf '[youtube] Download attempt %s\n' "$i"
+      i=$((i + 1))
+    done
+    echo 'ERROR: Sign in to confirm you are not a bot. <script>alert("untrusted output")</script>' >&2
+    exit 1 ;;
+  *) echo 'Unexpected video URL' >&2; exit 1 ;;
+esac

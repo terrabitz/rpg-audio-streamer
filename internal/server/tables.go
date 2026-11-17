@@ -115,6 +115,11 @@ func (s *Server) handleTableTracks(w http.ResponseWriter, r *http.Request, token
 		s.tableError(w, err)
 		return
 	}
+	if token.Role != auth.RoleGM {
+		for i := range tracks {
+			tracks[i].ProcessingError = ""
+		}
+	}
 	respondJSON(w, http.StatusOK, tracks)
 }
 

@@ -8,6 +8,7 @@ import { useFileStore } from '@/stores/files'
 import { useTrackTypeStore } from '@/stores/trackTypes'
 import { useTableStore } from '@/stores/tables'
 import { useWebSocketStore } from '@/stores/websocket'
+import type { TrackStatusUpdate } from '@/websocket/protocol'
 
 vi.mock('vuetify', async (importOriginal) => ({
   ...await importOriginal<typeof import('vuetify')>(),
@@ -100,4 +101,69 @@ it('preserves audio metadata when resuming a library preview', async () => {
   expect(audio.tracks.rain).toMatchObject({ isPlaying: true, duration: 0 })
   expect(audio.tracks.forest).toBeUndefined()
   wrapper.unmount()
+})
+
+it('applies pushed processing status and refreshes after reconnecting', async () => {
+  const pinia = createPinia()
+  setActivePinia(pinia)
+  const files = useFileStore()
+  const processing = { id: 'forest', name: 'Forest', typeID: 'music', path: '/forest', createdAt: '2026-01-01T00:00:00Z', status: 'processing' as const }
+  files.tracks = [processing]
+  const tables = useTableStore()
+  tables.tracks = [processing]
+  const types = useTrackTypeStore()
+  types.trackTypes = [{
+    id: 'music', name: 'Music', color: '#123456', isRepeating: true, allowSimultaneousPlay: false,
+  }]
+  const fetchFiles = vi.spyOn(files, 'fetchFiles').mockResolvedValue()
+  vi.spyOn(types, 'fetchTrackTypes').mockResolvedValue()
+  const ws = useWebSocketStore()
+  ws.isConnected = true
+  const stop = vi.fn()
+  let pushStatus: (update: TrackStatusUpdate) => void = () => {}
+  vi.spyOn(ws, 'on').mockImplementation((command, handler) => {
+    if (command === 'trackStatus') pushStatus = update => (handler as Parameters<typeof ws.on<'trackStatus'>>[1])(update, {})
+    return stop
+  })
+  const wrapper = mount(FileList, {
+    props: { library: true },
+    global: {
+      plugins: [pinia],
+      stubs: {
+        VContainer: { template: '<div><slot /></div>' },
+        VAlert: { template: '<div role="alert"><slot /></div>' },
+        VDataTable: true, VProgressCircular: true, VBtn: true, AudioPlayer: true, AudioControls: true,
+      },
+    },
+  })
+  await flushPromises()
+
+  fetchFiles.mockClear()
+  ws.isConnected = false
+  await flushPromises()
+  ws.isConnected = true
+  await flushPromises()
+  expect(fetchFiles).toHaveBeenCalledOnce()
+
+  pushStatus({ fileID: 'forest', status: 'ready' })
+  expect(files.getTrackById('forest')?.status).toBe('ready')
+  expect(tables.tracks[0]?.status).toBe('ready')
+
+  fetchFiles.mockClear()
+  ws.isConnected = false
+  await flushPromises()
+  ws.isConnected = true
+  await flushPromises()
+  expect(fetchFiles).not.toHaveBeenCalled()
+
+  fetchFiles.mockRejectedValue(new Error('offline'))
+  pushStatus({ fileID: 'forest', status: 'processing' })
+  ws.isConnected = false
+  await flushPromises()
+  ws.isConnected = true
+  await flushPromises()
+  expect(wrapper.text()).toContain('Unable to refresh track processing status.')
+
+  wrapper.unmount()
+  expect(stop).toHaveBeenCalledOnce()
 })

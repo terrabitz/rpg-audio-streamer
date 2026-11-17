@@ -172,6 +172,26 @@ describe('file library', () => {
     expect(files.tracks).toEqual([track])
   })
 
+  it('applies pushed processing status, including before the upload response adds the track', () => {
+    const files = useFileStore()
+    files.addTrack({ ...track, status: 'processing' })
+    files.applyTrackStatus({ fileID: 'forest', status: 'failed', processingError: 'decode failed' })
+    expect(files.getTrackById('forest')).toMatchObject({ status: 'failed', processingError: 'decode failed' })
+
+    files.applyTrackStatus({ fileID: 'rain', status: 'ready' })
+    expect(files.getTrackById('rain')).toBeUndefined()
+    expect(files.addTrack({ ...track, id: 'rain', status: 'processing' }).status).toBe('ready')
+    expect(files.addTrack({ ...track, id: 'rain', status: 'processing' }).status).toBe('processing')
+  })
+
+  it('discards unmatched status pushes once the library is refetched', async () => {
+    const files = useFileStore()
+    files.applyTrackStatus({ fileID: 'rain', status: 'ready' })
+    api.getApiV1Files.mockResolvedValue({ data: [] })
+    await files.fetchFiles()
+    expect(files.addTrack({ ...track, id: 'rain', status: 'processing' }).status).toBe('processing')
+  })
+
   it.each(['files', 'name', 'typeID'])('rejects an upload missing %s', async (field) => {
     const form = uploadForm()
     form.delete(field)

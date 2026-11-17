@@ -25,6 +25,9 @@ loop crossfades are audible. Repeating fixtures are 12 seconds long; one-shot
 tones keep their short durations. Uploading exercises normal validation,
 [conversion, and persistence](../data/track-uploads.md) rather than writing
 database fixtures directly.
+The launcher waits for each accepted fixture's
+[background processing](../data/track-processing.md) to finish before announcing
+the preview as ready.
 
 ## Isolation and cleanup
 

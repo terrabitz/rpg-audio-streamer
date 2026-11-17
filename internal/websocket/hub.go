@@ -202,6 +202,14 @@ func (h *Hub) RemoveTrack(tableID, trackID string) {
 	}
 }
 
+// TrackProcessed tells GM clients, including the library view, that a pending track settled.
+func (h *Hub) TrackProcessed(track server.Track) {
+	update := TrackStatusUpdate{FileID: track.ID.String(), Status: track.Status, ProcessingError: track.ProcessingError}
+	if err := h.BroadcastPayload(TrackStatus, update, ToGMOnly()); err != nil {
+		h.logger.Error("failed to announce track processing status", "error", err)
+	}
+}
+
 func (h *Hub) Broadcast(msg Message, opts ...BroadcastOption) error {
 	jsonMsg, err := json.Marshal(msg)
 	if err != nil {

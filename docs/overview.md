@@ -27,7 +27,13 @@ flowchart LR
   API --> Store[SQLite datastore adapter]
   Store --> Queries[Generated sqlc queries]
   Queries --> DB[(SQLite metadata)]
-  API --> FFmpeg[FFmpeg conversion]
+  API --> Processing[Music processing service]
+  API -->|Scans| YouTube[YouTube service]
+  Processing --> Store
+  Processing --> FFmpeg[FFmpeg conversion]
+  Processing -->|Downloader| YouTube
+  Processing -.->|Track status notifier| Hub
+  YouTube --> YTDLP[yt-dlp]
   FFmpeg --> Uploads[HLS files on disk]
   API --> Uploads
   Hub -.->|GM playback commands| Mix[Live table mixer]
@@ -44,6 +50,8 @@ flowchart LR
   handling, persistence, synchronization, and audio mixing.
 - [SQLite](./data/sqlite-schema.md) stores metadata; [uploaded tracks](./data/track-uploads.md)
   live on disk as HLS.
+- [Background processing](./data/track-processing.md) handles uploads and
+  [YouTube retrieval](./backend/youtube.md) independently of browser requests.
 - The [WebSocket hub](./playback/synchronization.md) owns live table playback.
 - The optional [live mixer](./discord/live-mixer.md) streams a table's mix to
   [Discord voice](./discord/voice-streaming.md).

@@ -290,6 +290,41 @@ it('shows table-removal failures without closing the controls', async () => {
   wrapper.unmount()
 })
 
+it.each([false, true])('shows failed diagnostics and retries library deletion (library view: %s)', async (library) => {
+  const { wrapper, countTables, deleteTrack, fetchWaveform } = mountControls(library)
+  countTables.mockResolvedValue(1)
+  const diagnostics = 'Command:\nyt-dlp -- source\n\nLogs:\n<script>alert("log")</script>\n\nError:\nexit status 1'
+  Object.assign(useFileStore().tracks[0]!, { status: 'failed', processingError: diagnostics })
+  await flushPromises()
+  expect(wrapper.find('[aria-label="Edit Forest"]').exists()).toBe(false)
+  await wrapper.get('[aria-label="View processing failure for Forest"]').trigger('click')
+  const dialog = wrapper.get('[role="dialog"][aria-label="Track processing failed"]')
+  expect(dialog.get('pre code').text()).toBe(diagnostics)
+  expect(dialog.find('script').exists()).toBe(false)
+  expect(dialog.findComponent({ name: 'TrackTypeSelector' }).exists()).toBe(false)
+  expect(dialog.findComponent({ name: 'TrackTimeline' }).exists()).toBe(false)
+  expect(fetchWaveform).not.toHaveBeenCalled()
+  const remove = dialog.get('[aria-label="Delete track"]')
+  expect(remove.attributes('variant')).toBe('flat')
+  vi.spyOn(console, 'error').mockImplementation(() => {})
+  deleteTrack.mockRejectedValueOnce(new Error('offline'))
+  await remove.trigger('click')
+  await flushPromises()
+  expect(wrapper.get(CONFIRMATION).text()).toContain('remove it from 1 table')
+  await wrapper.get('[aria-label="Confirm delete track"]').trigger('click')
+  await flushPromises()
+  expect(dialog.get('[role="alert"]').text()).toBe('Failed to delete track.')
+  expect(dialog.get('pre code').text()).toBe(diagnostics)
+  await remove.trigger('click')
+  await flushPromises()
+  await wrapper.get('[aria-label="Confirm delete track"]').trigger('click')
+  await flushPromises()
+  expect(countTables).toHaveBeenCalledTimes(2)
+  expect(deleteTrack.mock.calls).toEqual([[1], [1]])
+  expect(wrapper.find('[role="dialog"]').exists()).toBe(false)
+  wrapper.unmount()
+})
+
 function mountControls(library = true) {
   const pinia = createPinia()
   setActivePinia(pinia)
@@ -328,6 +363,7 @@ function mountControls(library = true) {
         VSpacer: true,
         VTextField: true,
         VIcon: true,
+        VTooltip: true,
         TrackTypeSelector: true,
         VolumeSlider: true,
       },

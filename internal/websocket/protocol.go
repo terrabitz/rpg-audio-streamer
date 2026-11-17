@@ -21,6 +21,7 @@ const (
 	MixerAck      = "mixerAck"
 	MixerError    = "mixerError"
 	PlaybackError = "playbackError"
+	TrackStatus   = "trackStatus"
 )
 
 type Message struct {
@@ -38,6 +39,12 @@ type TrackReference struct {
 type Snapshot struct {
 	Tracks   []playingTrack        `json:"tracks"`
 	Settings *server.TableSettings `json:"settings,omitempty"`
+}
+
+type TrackStatusUpdate struct {
+	FileID          string `json:"fileID"`
+	Status          string `json:"status"`
+	ProcessingError string `json:"processingError,omitempty"`
 }
 
 type MixSnapshot struct {

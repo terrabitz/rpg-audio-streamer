@@ -17,7 +17,7 @@ generated sqlc code (see [Go packages](../backend/packages.md)).
 
 | Table | Contents |
 | --- | --- |
-| `tracks` | UUID ID, creation timestamp, display name, disk path, track-type ID, and shared [playback-region](../playback/playback-regions.md) points (beginning, optional end, optional loop-back) |
+| `tracks` | UUID ID, creation timestamp, display name, disk path, track-type ID, shared [playback-region](../playback/playback-regions.md) points (beginning, optional end, optional loop-back), [processing status](./track-processing.md) (`processing`, `ready`, or `failed`), and processing diagnostics |
 | `track_types` | UUID ID, name, color, repeat policy, simultaneous-play policy, and creation timestamp |
 | `game_tables` | UUID ID, unique random Base64URL external ID, name, JSON GM [mixing/ordering settings](./table-settings.md), and saved [Discord destination](../discord/voice-streaming.md) (`discord_destination`) |
 | `table_tracks` | Many-to-many [table/track associations](./table-track-associations.md) |
@@ -46,4 +46,5 @@ Exclusivity is enforced during [playback synchronization](../playback/synchroniz
 ## Connection model
 
 The datastore uses one pooled SQLite connection to serialize in-process
-access, so concurrent settings writes cannot lock out table or stream reads.
+access, including background processing updates, so concurrent settings writes
+cannot lock out table or stream reads.

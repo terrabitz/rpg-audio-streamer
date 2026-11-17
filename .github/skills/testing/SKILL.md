@@ -50,6 +50,39 @@ gate after focused checks. No documentation-only validation is needed.
 Mixer domain tests render known PCM buffers without sleeps; live-service tests
 own the render loop's context and bound waits for decoding and cancellation.
 
+### Live YouTube tests
+
+Both the Go music-processing integration test and the `chromium-youtube`
+browser project read `INTEGRATION_TEST_YT_DLP_LINK` into typed test
+configuration. With the variable absent, these tests skip; an explicitly empty
+or invalid value fails rather than falling back to a sample video. Other
+YouTube tests keep their deterministic external-downloader fixture,
+`internal/youtube/testdata/yt-dlp`.
+
+Use a public single-video URL within the application's three-hour and 200 MiB
+limits. Put a current `yt-dlp[default]`, Node.js 20 or newer, and FFmpeg on
+`PATH`, with the usual Go/libdave environment configured. For example:
+
+```sh
+export INTEGRATION_TEST_YT_DLP_LINK='https://www.youtube.com/watch?v=PyD9cMarVJk'
+go test ./internal/musicprocessing -run '^TestYouTubeIntegration$' -count=1 -timeout=20m
+cd ui && npm run test:e2e -- youtube-live.spec.ts --project=chromium-youtube
+```
+
+Live YouTube checks are opt-in and are not enabled by the `pr-checks` workflow.
+Set the public, non-secret link explicitly when running these external-service
+checks.
+
+The Go test scans and downloads the real video, persists processing state in
+temporary SQLite, converts it to HLS, checks waveform output, and decodes the
+result with FFmpeg. The browser test uses the real downloader and isolated app
+to scan, import, wait for readiness, reload, play actual browser media, and
+delete the track through the UI. Neither test substitutes network responses or
+the downloader. Availability, rate limits, and YouTube extractor changes fail
+the configured tests; they are not converted into skips. Downloads and app
+state are temporary. The live browser project allows seventeen minutes for
+the scan and bounded processing job and is excluded from recording mode.
+
 ### Live Discord tests
 
 Run `make test-e2e` only against an isolated, regular voice channel with

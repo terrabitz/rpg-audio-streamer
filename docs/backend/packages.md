@@ -12,6 +12,8 @@ tags: [backend, go]
 | --- | --- |
 | `internal/auth` | Argon2id credential checks, signed JWTs, GM/player roles ([authentication](./authentication.md)) |
 | `internal/server` | HTTP handlers, cookies/middleware, [public table access](./public-table-links.md), track/table contracts, datastore and hub interfaces |
+| `internal/musicprocessing` | Track/playback models, bounded [background jobs](../data/track-processing.md), staging, HLS conversion, waveforms, restart recovery, and completion notifications |
+| `internal/youtube` | [YouTube retrieval](./youtube.md), URL canonicalization, and yt-dlp metadata scans with import limits |
 | `internal/middlewares` | API request logging and CORS |
 | `internal/mixer` | [Standalone PCM mixer](../discord/pcm-mixer.md): deterministic stereo mixing, transport, loop overlap, and gain envelopes |
 | `internal/livemixer` | [Live mixer](../discord/live-mixer.md): serialized live commands, table-scoped PCM engines, rendering lifecycle, and diagnostics |
@@ -24,9 +26,14 @@ tags: [backend, go]
 ## Boundaries
 
 Authentication rules live in `auth`; synchronization authorization and routing
-live in `websocket`; the track/table models and store interfaces live in
-`server`. The datastore implements those interfaces, which keeps HTTP handlers
-independent of SQLite details.
+live in `websocket`; table models and HTTP store interfaces live in `server`.
+Track and playback models live in `musicprocessing`, with aliases in the HTTP
+contracts. The datastore implements both packages' store interfaces, keeping
+processing and HTTP handlers independent of SQLite details.
+
+Processing depends on small `Downloader` and `Notifier` interfaces, satisfied
+in `main.go` by the YouTube client and the hub. The HTTP server depends on a
+`VideoScanner` interface for scans. These services share no package state.
 
 `sql/migrations` defines schema evolution; `sql/queries` is the authoritative
 query source. `openapi.yaml` defines the HTTP client contract. Generated Go

@@ -47,3 +47,16 @@ they load.
 
 The SDK's shared runtime configuration throws on HTTP failures so store and
 upload error handlers cannot report false success.
+
+## Processing updates
+
+The GM table and library subscribe to
+[`trackStatus`](../playback/websocket-protocol.md), applying terminal processing
+status and diagnostics to their track lists without polling. A push arriving
+before the upload response is held in a nonpersisted unmatched-status map
+until `addTrack()` adds the track. Successful library fetches clear that map.
+
+Reloading, or reconnecting while tracks are still processing, refetches
+authoritative metadata. Table track lists also refetch on mount after socket
+synchronization. These updates drive the
+[processing indicators and diagnostics](./track-processing.md).

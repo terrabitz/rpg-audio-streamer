@@ -1,16 +1,12 @@
 package server
 
 import (
-	"bytes"
 	"encoding/json"
-	"io"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/terrabitz/rpg-audio-streamer/internal/auth"
@@ -80,7 +76,7 @@ func (s *Server) uploadFile(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	file, handler, err := r.FormFile("files")
+	file, _, err := r.FormFile("files")
 	if err != nil {
 		s.logger.Error("failed to get file", "error", err)
 		http.Error(w, "Failed to retrieve file", http.StatusBadRequest)
@@ -106,100 +102,13 @@ func (s *Server) uploadFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	id, err := uuid.NewV7()
+	track, err := s.processing.Upload(r.Context(), name, typeID, tableID, file)
 	if err != nil {
-		s.logger.Error("failed to generate UUID", "error", err)
-		http.Error(w, "Failed to save track information", http.StatusInternalServerError)
+		s.logger.Error("failed to queue uploaded audio", "error", err)
+		http.Error(w, "Failed to queue audio processing. Please try again.", http.StatusServiceUnavailable)
 		return
 	}
-
-	tempDir := os.TempDir()
-	dstPath := filepath.Join(tempDir, id.String())
-	dstFile, err := os.Create(dstPath)
-	if err != nil {
-		s.logger.Error("failed to create file", "error", err, "path", dstPath)
-		http.Error(w, "Failed to save file", http.StatusInternalServerError)
-		return
-	}
-	defer func() {
-		if err := os.Remove(dstPath); err != nil {
-			s.logger.Warn("failed to remove original file", "error", err, "path", dstPath)
-		}
-	}()
-	defer dstFile.Close()
-
-	if _, err := io.Copy(dstFile, file); err != nil {
-		s.logger.Error("failed to write file", "error", err, "path", dstPath)
-		http.Error(w, "Failed to save file", http.StatusInternalServerError)
-		return
-	}
-
-	hlsDir := filepath.Join(s.cfg.UploadDir, id.String())
-	if err := os.MkdirAll(hlsDir, os.ModePerm); err != nil {
-		s.logger.Error("failed to create HLS directory", "error", err, "path", hlsDir)
-		http.Error(w, "Failed to save file", http.StatusInternalServerError)
-		return
-	}
-
-	cmd := exec.Command("ffmpeg",
-		"-i", dstPath,
-		"-v", "verbose",
-		"-c:a", "aac",
-		"-b:a", "128k",
-		"-ac", "2",
-		"-ar", "44100",
-		"-hls_time", "6",
-		"-hls_playlist_type", "event",
-		"-hls_segment_filename", hlsDir+"/segment_%03d.ts",
-		"-vn",
-		"-f", "hls",
-		filepath.Join(hlsDir, "index.m3u8"))
-	s.logger.Info("executing ffmpeg command", "command", cmd.String())
-	var out bytes.Buffer
-	var stderr bytes.Buffer
-	cmd.Stdout = &out
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		s.logger.Error("failed to convert file to HLS",
-			"err", err,
-			"path", dstPath,
-			"ffmpegStderr", stderr.String(),
-		)
-
-		http.Error(w, "Failed to convert file", http.StatusInternalServerError)
-		return
-	}
-
-	// Save track information to the datastore
-	track := Track{
-		ID:        id,
-		CreatedAt: time.Now(),
-		Name:      name,
-		Path:      hlsDir,
-		TypeID:    typeID,
-	}
-
-	if tableID == uuid.Nil {
-		err = s.store.SaveTrack(r.Context(), &track)
-	} else {
-		err = s.store.SaveTrackToTable(r.Context(), &track, tableID)
-	}
-	if err != nil {
-		s.logger.Error("failed to save track information", "error", err)
-		if cleanupErr := os.RemoveAll(hlsDir); cleanupErr != nil {
-			s.logger.Error("failed to clean up HLS directory", "error", cleanupErr)
-		}
-		http.Error(w, "Failed to save track information", http.StatusInternalServerError)
-		return
-	}
-
-	if _, err := generateWaveform(hlsDir); err != nil {
-		s.logger.Warn("failed to pre-generate waveform", "error", err, "trackID", id)
-	}
-
-	s.logger.Info("file uploaded and converted to HLS", "filename", handler.Filename)
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("File uploaded and converted to HLS successfully"))
+	respondJSON(w, http.StatusAccepted, track)
 }
 
 func (s *Server) handleFile(w http.ResponseWriter, r *http.Request, token *auth.Token) {
@@ -283,6 +192,10 @@ func (s *Server) handleFileDelete(w http.ResponseWriter, r *http.Request, token 
 		http.Error(w, "Track not found", http.StatusNotFound)
 		return
 	}
+	if track.Status == "processing" {
+		http.Error(w, "Track is still processing", http.StatusConflict)
+		return
+	}
 
 	if expectedCount == nil {
 		err = s.store.DeleteTrack(r.Context(), trackID)
@@ -364,6 +277,20 @@ func (s *Server) streamDirectory(w http.ResponseWriter, r *http.Request, token *
 	relativeToUpload, err := filepath.Rel(uploadPath, absolutePath)
 	if err != nil || relativeToUpload == ".." || strings.HasPrefix(relativeToUpload, ".."+string(filepath.Separator)) {
 		http.Error(w, "Invalid stream path", http.StatusBadRequest)
+		return
+	}
+	trackID, err := uuid.Parse(strings.Split(relativeToUpload, string(filepath.Separator))[0])
+	if err != nil {
+		http.Error(w, "Invalid track path", http.StatusBadRequest)
+		return
+	}
+	track, err := s.store.GetTrackByID(r.Context(), trackID)
+	if err != nil {
+		s.tableError(w, err)
+		return
+	}
+	if !track.Ready() {
+		http.Error(w, "Track is not ready", http.StatusConflict)
 		return
 	}
 	http.ServeFile(w, r, filePath)

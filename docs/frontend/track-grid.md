@@ -16,8 +16,11 @@ on hover, focus, and touch. Playing tiles have a saturated background mixed
 from their track-type color; paused tiles keep the neutral surface. Tile names
 stay on one line with ellipsis overflow and a full-name hover title.
 
-Card clicks or Enter/Space toggle playback, while the inline controls do not
-trigger card clicks. Tiles open the [track editor](./track-editor.md).
+Card clicks or Enter/Space toggle playback for ready tracks, while the inline
+controls do not trigger card clicks. Tiles open the
+[track editor](./track-editor.md); tracks still
+[processing or failed](./track-processing.md) use status indicators and failure
+diagnostics instead of playback controls.
 
 ## Layout
 

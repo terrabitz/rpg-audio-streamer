@@ -4,6 +4,9 @@ import (
 	"encoding/json"
 	"math"
 	"testing"
+
+	"github.com/google/uuid"
+	"github.com/terrabitz/rpg-audio-streamer/internal/server"
 )
 
 func TestTypedCommandRegistration(t *testing.T) {
@@ -79,5 +82,22 @@ func TestPayloadSending(t *testing.T) {
 	}
 	if err := hub.BroadcastPayload(SyncAll, Snapshot{Tracks: []playingTrack{{Volume: math.NaN()}}}); err == nil {
 		t.Fatal("non-finite playback data was encoded")
+	}
+}
+
+func TestTrackProcessedNotifiesGMs(t *testing.T) {
+	hub, clients := testHub()
+	id := uuid.New()
+	hub.TrackProcessed(server.Track{ID: id, Status: "failed", ProcessingError: "Conversion failed"})
+	var message Message
+	if err := json.Unmarshal(<-clients["gm"].send, &message); err != nil {
+		t.Fatal(err)
+	}
+	want := `{"fileID":"` + id.String() + `","status":"failed","processingError":"Conversion failed"}`
+	if message.Method != TrackStatus || string(message.Payload) != want {
+		t.Fatalf("processing status message = %s %s", message.Method, message.Payload)
+	}
+	if len(clients["otherGM"].send) != 1 || len(clients["player"].send) != 0 {
+		t.Fatal("processing status did not reach exactly the GM clients")
 	}
 }

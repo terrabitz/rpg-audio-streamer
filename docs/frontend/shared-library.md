@@ -17,8 +17,14 @@ Row clicks (or keyboard activation) toggle a local preview, with at most one
 preview playing at once. Resuming a paused preview continues from its current
 position and retains its loaded duration and playback region. Library previews
 reuse the HLS player (see [browser playback](../playback/browser-playback.md))
-without opening a WebSocket or sending synchronization messages. Preview state
-is cleared on leaving the library; it cannot become a table's playback state.
+without sending synchronization messages. The library opens a GM WebSocket
+only to receive [`trackStatus`](../playback/websocket-protocol.md) updates.
+Preview state is cleared on leaving the library; it cannot become a table's
+playback state.
+
+Processing tracks show a spinner instead of preview controls. Failed tracks
+show a warning icon; clicking the row or warning opens the shared
+[diagnostics dialog](./track-processing.md).
 
 ## Editing
 

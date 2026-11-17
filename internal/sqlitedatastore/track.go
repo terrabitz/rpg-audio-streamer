@@ -19,21 +19,39 @@ func saveTrack(ctx context.Context, queries *sqlitedb.Queries, track *server.Tra
 	if err := track.Playback.Validate(); err != nil {
 		return err
 	}
+	if track.Status == "" {
+		track.Status = "ready"
+	}
 	dbTrack := sqlitedb.SaveTrackParams{
-		ID:           track.ID[:],
-		CreatedAt:    track.CreatedAt.Format(time.RFC3339),
-		Name:         track.Name,
-		Path:         track.Path,
-		TypeID:       track.TypeID[:],
-		StartTime:    track.Playback.StartTime,
-		EndTime:      nullableTime(track.Playback.EndTime),
-		LoopBackTime: nullableTime(track.Playback.LoopBackTime),
+		ID:              track.ID[:],
+		CreatedAt:       track.CreatedAt.Format(time.RFC3339),
+		Name:            track.Name,
+		Path:            track.Path,
+		TypeID:          track.TypeID[:],
+		StartTime:       track.Playback.StartTime,
+		EndTime:         nullableTime(track.Playback.EndTime),
+		LoopBackTime:    nullableTime(track.Playback.LoopBackTime),
+		Status:          track.Status,
+		ProcessingError: track.ProcessingError,
 	}
 
 	if err := queries.SaveTrack(ctx, dbTrack); err != nil {
 		return fmt.Errorf("couldn't save track to SQLite: %w", err)
 	}
 
+	return nil
+}
+
+func (db *SQLiteDatastore) SetTrackProcessing(ctx context.Context, id uuid.UUID, status, message string) error {
+	affected, err := sqlitedb.New(db.DB).SetTrackProcessing(ctx, sqlitedb.SetTrackProcessingParams{
+		ID: id[:], Status: status, ProcessingError: message,
+	})
+	if err != nil {
+		return err
+	}
+	if affected != 1 {
+		return sql.ErrNoRows
+	}
 	return nil
 }
 
@@ -122,11 +140,13 @@ func convertDBTrack(dbTrack sqlitedb.Track) (server.Track, error) {
 	}
 
 	return server.Track{
-		ID:        id,
-		CreatedAt: createdAt,
-		Name:      dbTrack.Name,
-		Path:      dbTrack.Path,
-		TypeID:    typeID,
+		ID:              id,
+		CreatedAt:       createdAt,
+		Name:            dbTrack.Name,
+		Path:            dbTrack.Path,
+		TypeID:          typeID,
+		Status:          dbTrack.Status,
+		ProcessingError: dbTrack.ProcessingError,
 		Playback: server.PlaybackSettings{
 			StartTime:    dbTrack.StartTime,
 			EndTime:      optionalTime(dbTrack.EndTime),

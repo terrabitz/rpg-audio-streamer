@@ -10,7 +10,7 @@ test('GM selects a required track type and receives a bottom upload toast on mob
     if (request.method() === 'POST' && new URL(request.url()).pathname === '/api/v1/files') uploads += 1
   })
   await uploadTrack(page, 'Mobile Forest')
-  const toast = page.getByRole('status').filter({ hasText: 'File uploaded successfully!' })
+  const toast = page.getByRole('status').filter({ hasText: 'Track added' })
   await expect.poll(async () => {
     const bounds = await toast.boundingBox()
     const viewport = page.viewportSize()
@@ -23,7 +23,7 @@ test('GM selects a required track type and receives a bottom upload toast on mob
       && bounds.width <= 400
   }).toBe(true)
   expect(uploads).toBe(1)
-  await expect(page.getByRole('status').filter({ hasText: 'File uploaded successfully!' })).toBeHidden()
+  await expect(page.getByRole('status').filter({ hasText: 'Track added' })).toBeHidden()
   await openUploadDialog(page)
   await expect(page.getByRole('combobox', { name: 'Track Type', exact: true })).toHaveValue('')
   await expect(page.getByText('Select a track type before uploading.', { exact: true })).toHaveCount(0)

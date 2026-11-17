@@ -31,10 +31,13 @@ together; there is no WebSocket code generation or runtime schema registry.
 | `mixerAck` | Server to client | Acknowledged command name |
 | `mixerError` | Server to client | Failed command name and message |
 | `playbackError` | Server to client | Error message |
+| `trackStatus` | Server to GMs | Track ID, `ready` or `failed` status, and optional processing diagnostics |
 
 [Playback synchronization](./synchronization.md) describes the playback
 commands; the [live mixer](../discord/live-mixer.md) describes the mixer
 commands.
+The [processing service](../data/track-processing.md) sends `trackStatus` to all
+connected GMs, not just those viewing the affected table.
 
 ## Backend handlers
 
