@@ -5,11 +5,13 @@
         <v-tooltip v-if="track?.status === 'processing'" activator="parent" text="Track is still processing" />
         <span class="d-sr-only">Track type: {{ trackType.name }}</span>
         <div class="track-heading pa-2 text-subtitle-1 position-relative">
-          <v-progress-circular v-if="track?.status === 'processing'" indeterminate size="18" width="2"
-            :aria-label="`Processing ${props.fileName}`" class="mr-2" />
           <span :title="props.fileName">{{ props.fileName }}</span>
-          <v-btn v-if="track?.status !== 'processing'" icon="$dotsVertical" size="small" variant="text" :aria-label="`Edit ${props.fileName}`" @click.stop="openControls"
-            class="position-absolute top-0 right-0" />
+          <div class="track-menu-slot position-absolute top-0 right-0 d-flex align-center justify-center">
+            <v-progress-circular v-if="track?.status === 'processing'" indeterminate size="18" width="2"
+              :aria-label="`Processing ${props.fileName}`" />
+            <v-btn v-else icon="$dotsVertical" size="small" variant="text" :aria-label="`Edit ${props.fileName}`"
+              @click.stop="openControls" />
+          </div>
         </div>
         <span v-if="track?.status === 'failed'" class="text-error px-2">Processing failed</span>
       </div>
@@ -319,6 +321,11 @@ const emit = defineEmits<{
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.track-menu-slot {
+  width: 36px;
+  height: 36px;
 }
 
 .position-absolute {

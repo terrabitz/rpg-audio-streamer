@@ -1,5 +1,5 @@
 import { expect, test } from './fixtures'
-import { deleteLibraryTrack, login, navigate, openUploadDialog } from './helpers'
+import { deleteLibraryTrack, expectPlaceholderAt, login, navigate, openUploadDialog, uploadTrack } from './helpers'
 import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 
@@ -14,8 +14,9 @@ test('GM imports a YouTube link into a table and plays the audio', async ({ page
   await expect(submit).toBeDisabled()
   await page.getByLabel('YouTube URL', { exact: true }).fill('https://youtu.be/aaaaaaaaaaa?list=ignored')
   await expect(page.getByLabel('Track Name', { exact: true })).toHaveValue('YouTube Forest')
-  await expect(page.getByLabel('Duration', { exact: true })).toHaveValue('0:00:12')
-  await expect(page.getByLabel('Audio size', { exact: true })).toHaveValue('1.0 MiB')
+  const metadata = page.getByLabel('Video metadata', { exact: true })
+  await expect(metadata.locator('dd')).toHaveText(['0:00:12', '1.0 MiB'])
+  await expect(metadata.getByRole('textbox')).toHaveCount(0)
   await expect(submit).toBeDisabled()
   await page.getByRole('combobox', { name: 'Track Type', exact: true }).press('ArrowDown')
   await page.getByRole('option', { name: 'Music', exact: true }).click()
@@ -25,16 +26,16 @@ test('GM imports a YouTube link into a table and plays the audio', async ({ page
   await page.reload()
   const tile = page.locator('.file-tile').filter({ hasText: 'YouTube Forest' })
   await expect(tile).toBeVisible()
-  await expect(tile).toHaveAttribute('aria-disabled', 'true')
+  await expect(tile).toHaveAttribute('aria-busy', 'true')
   await expect(tile.getByRole('progressbar', { name: 'Processing YouTube Forest' })).toBeVisible()
   await tile.hover()
   await expect(page.getByRole('tooltip').filter({ hasText: 'Track is still processing' })).toBeVisible()
-  await expect(tile).toBeDisabled()
+  await tile.click()
   await tile.focus()
   await page.keyboard.press('Enter')
   await expect(page.locator('video')).toHaveCount(0)
   await writeFile(join(app.scratch, 'import-release'), '')
-  await expect(tile).toHaveAttribute('aria-disabled', 'false')
+  await expect(tile).toHaveAttribute('aria-busy', 'false')
   await tile.click()
   await expect.poll(() => page.locator('video').first().evaluate(
     (media: HTMLVideoElement) => !media.paused && media.currentTime > 0,
@@ -42,6 +43,77 @@ test('GM imports a YouTube link into a table and plays the audio', async ({ page
   await navigate(page, 'Library')
   await expect(page.getByRole('row').filter({ hasText: 'YouTube Forest' })).toBeVisible()
   await deleteLibraryTrack(page, 'YouTube Forest', 1)
+})
+
+test('GM reorders a processing track without changing tile height', async ({ page, app }) => {
+  await login(page)
+  await uploadTrack(page, 'Ready track')
+  await openUploadDialog(page)
+  await page.getByRole('tab', { name: 'YouTube link', exact: true }).click()
+  await page.getByLabel('YouTube URL', { exact: true }).fill('https://youtu.be/aaaaaaaaaaa')
+  await expect(page.getByLabel('Track Name', { exact: true })).toHaveValue('YouTube Forest')
+  await page.getByRole('combobox', { name: 'Track Type', exact: true }).press('ArrowDown')
+  await page.getByRole('option', { name: 'Music', exact: true }).click()
+  await page.getByRole('button', { name: 'Import', exact: true }).click()
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+
+  const ready = page.getByRole('group', { name: 'Ready track', exact: true })
+  const processing = page.getByRole('group', { name: 'YouTube Forest', exact: true })
+  await expect(processing).toHaveAttribute('aria-busy', 'true')
+  await expect(processing.getByRole('button', { name: 'Edit YouTube Forest', exact: true })).toHaveCount(0)
+  const spinner = processing.getByRole('progressbar', { name: 'Processing YouTube Forest' })
+  await expect(spinner).toBeVisible()
+  for (const width of [1280, 375]) {
+    await page.setViewportSize({ width, height: 812 })
+    const readyBox = await ready.boundingBox()
+    const processingBox = await processing.boundingBox()
+    const menuBox = await ready.getByRole('button', { name: 'Edit Ready track', exact: true }).boundingBox()
+    const spinnerBox = await spinner.boundingBox()
+    if (!readyBox || !processingBox || !menuBox || !spinnerBox) throw new Error('Track controls must have visible bounds')
+    expect(processingBox.height).toBe(readyBox.height)
+    expect(Math.abs(spinnerBox.x + spinnerBox.width / 2 - processingBox.x
+      - (menuBox.x + menuBox.width / 2 - readyBox.x))).toBeLessThan(1)
+    expect(Math.abs(spinnerBox.y + spinnerBox.height / 2 - processingBox.y
+      - (menuBox.y + menuBox.height / 2 - readyBox.y))).toBeLessThan(1)
+  }
+  await page.setViewportSize({ width: 1280, height: 812 })
+
+  const headings = page.locator('.track-item .track-heading > span')
+  const handle = processing.getByRole('button', { name: 'Drag to reorder YouTube Forest', exact: true })
+  await expect(handle).toBeEnabled()
+  const keyboardSave = page.waitForResponse(response => response.url().endsWith('/settings')
+    && response.request().method() === 'PATCH' && response.ok())
+  await handle.press('Alt+ArrowLeft')
+  await expect(headings).toHaveText(['YouTube Forest', 'Ready track'])
+  await keyboardSave
+  await expect(handle).toBeFocused()
+
+  const source = await handle.boundingBox()
+  const target = await ready.boundingBox()
+  if (!source || !target) throw new Error('Track cards must have visible bounds')
+  await page.mouse.move(source.x + source.width / 2, source.y + source.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(source.x + source.width / 2 + 8, source.y + source.height / 2, { steps: 2 })
+  await expect(page.locator('[data-dnd-dragging]')).toBeVisible()
+  await page.mouse.move(target.x + target.width * 3 / 4, target.y + 20, { steps: 12 })
+  await expectPlaceholderAt(page, target)
+  const dragSave = page.waitForResponse(response => response.url().endsWith('/settings')
+    && response.request().method() === 'PATCH' && response.ok())
+  await page.mouse.up()
+  await expect(page.locator('[data-dnd-dragging], [data-dnd-placeholder]')).toHaveCount(0)
+  await expect(headings).toHaveText(['Ready track', 'YouTube Forest'])
+  await dragSave
+  await page.reload()
+  await expect(headings).toHaveText(['Ready track', 'YouTube Forest'])
+  await expect(processing).toHaveAttribute('aria-busy', 'true')
+  await processing.press('Enter')
+  await processing.press('Space')
+  await expect(page.locator('video')).toHaveCount(1)
+  await expect.poll(() => page.locator('video').evaluate(
+    (media: HTMLVideoElement) => media.paused,
+  )).toBe(true)
+  await writeFile(join(app.scratch, 'import-release'), '')
+  await expect(processing).toHaveAttribute('aria-busy', 'false')
 })
 
 test('GM corrects an unavailable YouTube link in the library import dialog', async ({ page, app }) => {

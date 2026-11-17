@@ -18,8 +18,9 @@ test('GM imports a real YouTube video and plays the processed audio', { tag: '@y
   const name = page.getByLabel('Track Name', { exact: true })
   await expect(name).toHaveValue(/\S/)
   const trackName = await name.inputValue()
-  await expect(page.getByLabel('Duration', { exact: true })).not.toHaveValue('0:00:00')
-  await expect(page.getByLabel('Audio size', { exact: true })).not.toHaveValue('')
+  const metadata = page.getByLabel('Video metadata', { exact: true }).locator('dd')
+  await expect(metadata.nth(0)).not.toHaveText('0:00:00')
+  await expect(metadata.nth(1)).toHaveText(/\S/)
   await page.getByRole('combobox', { name: 'Track Type', exact: true }).press('ArrowDown')
   await page.getByRole('option', { name: 'Music', exact: true }).click()
   const accepted = page.waitForResponse(response =>

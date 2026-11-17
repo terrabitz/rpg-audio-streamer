@@ -263,12 +263,15 @@ to the document body, independent of the uploader's app-bar or library placement
 upload failures remain inline while the dialog is open.
 YouTube imports are also available from the library's upload dialog. Pasting or
 editing a link triggers a debounced, cancellable metadata scan. It fills in the
-editable track name and displays duration and audio size. Failed scans and limit
-violations turn the URL field red with the specific error and disable Import.
+editable track name and displays duration and audio size as read-only text, not
+form inputs. Failed scans and limit violations turn the URL field red with the
+specific error and disable Import.
 Imports require a successful scan, nonblank display name, and track type.
-Accepted uploads and imports close the dialog immediately and add a disabled
-track with a spinner. Hovering displays a processing tooltip. When a job
-finishes, the processing service notifies the hub, which pushes `trackStatus`
+Accepted uploads and imports close the dialog immediately and add a track with
+playback disabled while it processes. Processing tracks remain reorderable by
+dragging or keyboard. Their spinner replaces the three-dot menu in its existing
+slot, keeping the tile height unchanged. Hovering displays a processing tooltip.
+When a job finishes, the processing service notifies the hub, which pushes `trackStatus`
 to every connected GM. The GM table and library apply it to their track lists
 and enable playback when ready. An update that arrives before the upload
 response is held until the response adds the track. Reloading, or reconnecting

@@ -31,10 +31,16 @@
               :loading="isScanning" :error-messages="scanError ? [scanError] : []"
               placeholder="https://www.youtube.com/watch?v=..." />
             <v-text-field v-model="trackName" label="Track Name" maxlength="200" :disabled="isBusy || isScanning" />
-            <div v-if="videoMetadata" class="d-flex ga-3">
-              <v-text-field :model-value="videoDuration" label="Duration" readonly />
-              <v-text-field :model-value="videoSize" label="Audio size" readonly />
-            </div>
+            <dl v-if="videoMetadata" class="d-flex flex-wrap ga-6 mb-4" aria-label="Video metadata">
+              <div>
+                <dt class="text-caption text-medium-emphasis">Duration</dt>
+                <dd>{{ videoDuration }}</dd>
+              </div>
+              <div>
+                <dt class="text-caption text-medium-emphasis">Audio size</dt>
+                <dd>{{ videoSize }}</dd>
+              </div>
+            </dl>
             <TrackTypeSelector v-model="selectedTypeId" :disabled="isBusy" />
           </v-form>
           <div v-else @dragover="handleDragOver" @dragleave="handleDragLeave" @drop="handleDrop"

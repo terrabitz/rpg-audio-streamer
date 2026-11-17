@@ -89,12 +89,11 @@
           <v-row gap="3" class="track-list" :class="{ 'is-dragging': dragging }">
             <SortableTrack v-for="(file, index) in tracks" :key="file.id" :id="file.id" :index="index">
               <v-card class="file-tile" role="group" tabindex="0" :aria-label="file.name" aria-describedby="track-reorder-help"
-                :aria-disabled="file.status === 'processing'" :aria-busy="file.status === 'processing'"
+                :aria-busy="file.status === 'processing'"
                 :class="{ 'is-processing': file.status === 'processing' }"
                 aria-keyshortcuts="Alt+ArrowLeft Alt+ArrowRight" @keydown="handleKeydown($event, file.id)"
                 @click="handlePlay(file.id)">
                 <v-btn class="track-drag-handle" icon="$drag" size="x-small" variant="text"
-                  :disabled="!trackReady(file)"
                   :aria-label="`Drag to reorder ${file.name}`" title="Drag to reorder"
                   aria-describedby="track-reorder-help" aria-keyshortcuts="Alt+ArrowLeft Alt+ArrowRight"
                   @click.stop @keydown="handleKeydown($event, file.id)" />
@@ -241,7 +240,7 @@ function finishDrag(event: DragEndEvent) {
 
 async function handleKeydown(event: KeyboardEvent, fileID: string) {
   const file = fileStore.getTrackById(fileID)
-  if (!file || !trackReady(file)) return
+  if (!file) return
   if (event.target !== event.currentTarget || !(event.currentTarget instanceof HTMLElement)) return
   const card = event.currentTarget
   if ((event.key === 'Enter' || event.key === ' ') && card.classList.contains('file-tile')) {

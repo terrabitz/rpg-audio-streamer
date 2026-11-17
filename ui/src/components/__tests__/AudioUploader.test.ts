@@ -143,7 +143,10 @@ it('closes on acceptance and adds a processing track without waiting for convers
 it('auto-fills scanned metadata and puts limit errors on the URL field', async () => {
   const { wrapper, submit } = await prepareImport()
   expect(wrapper.findAllComponents({ name: 'VTextField' })[1]!.props('modelValue')).toBe('Forest')
-  expect(wrapper.findAllComponents({ name: 'VTextField' })[2]!.props('modelValue')).toBe('0:00:12')
+  const metadata = wrapper.get('dl[aria-label="Video metadata"]')
+  expect(metadata.findAll('dt').map(term => term.text())).toEqual(['Duration', 'Audio size'])
+  expect(metadata.findAll('dd').map(value => value.text())).toEqual(['0:00:12', '1.0 MiB'])
+  expect(wrapper.findAllComponents({ name: 'VTextField' })).toHaveLength(2)
   vi.spyOn(console, 'error').mockImplementation(() => {})
   vi.mocked(postApiV1FilesScan).mockRejectedValue('Video exceeds the 3-hour limit\n')
   await wrapper.findAllComponents({ name: 'VTextField' })[0]!.vm.$emit('update:modelValue', 'https://youtu.be/ggggggggggg')
