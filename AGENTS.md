@@ -1,6 +1,7 @@
 # Project guidance
 
-- Keep `docs/architecture.md` accurate whenever code or architecture changes.
+- `docs/` is an OKF wiki of atomic, linked concept files; start at `docs/index.md`. Keep affected concepts accurate whenever code or architecture changes.
+- Use `.github/skills/documentation/SKILL.md` for adding, updating, or reorganizing docs.
 - Use `.github/skills/testing/SKILL.md` for test commands, coverage policy, and test design.
 - Use `.github/skills/pr-recordings/SKILL.md` for pull request GIFs: one GIF per flow, each generated from its own browser test.
 - Use `.github/skills/local-dev/SKILL.md` for fresh seeded local previews and cleanup.
