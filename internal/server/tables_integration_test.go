@@ -17,6 +17,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	"github.com/terrabitz/rpg-audio-streamer/internal/auth"
+	"github.com/terrabitz/rpg-audio-streamer/internal/musicprocessing"
 	"github.com/terrabitz/rpg-audio-streamer/internal/server"
 	"github.com/terrabitz/rpg-audio-streamer/internal/sqlitedatastore"
 )
@@ -51,7 +52,8 @@ func TestTableHTTP(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	srv, err := server.New(server.Config{UploadDir: dir, DevMode: true}, logger, authenticator, db, testWSRegisterer{})
+	processing := musicprocessing.New(dir, logger, db)
+	srv, err := server.New(server.Config{UploadDir: dir, DevMode: true}, logger, authenticator, db, testWSRegisterer{}, processing)
 	if err != nil {
 		t.Fatal(err)
 	}

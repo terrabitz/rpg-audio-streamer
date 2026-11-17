@@ -1,0 +1,201 @@
+package server
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"errors"
+	"net/http/httptest"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"testing"
+
+	"github.com/google/uuid"
+	"github.com/terrabitz/rpg-audio-streamer/internal/auth"
+	"github.com/terrabitz/rpg-audio-streamer/internal/musicprocessing"
+)
+
+func TestYouTubeURL(t *testing.T) {
+	for _, value := range []string{
+		"https://www.youtube.com/watch?v=aaaaaaaaaaa&list=PL123",
+		" http://youtu.be/aaaaaaaaaaa?t=42 ",
+		"https://youtube.com/shorts/aaaaaaaaaaa",
+		"https://m.youtube.com/watch?v=aaaaaaaaaaa",
+		"https://music.youtube.com/watch?v=aaaaaaaaaaa",
+		"https://www.youtube.com/embed/aaaaaaaaaaa",
+		"https://www.youtube.com/live/aaaaaaaaaaa",
+	} {
+		if got, ok := musicprocessing.YouTubeURL(value); !ok || got != "https://www.youtube.com/watch?v=aaaaaaaaaaa" {
+			t.Errorf("youtubeURL(%q) = %q, %v", value, got, ok)
+		}
+	}
+	for _, value := range []string{
+		"", "--exec=bad", "file:///etc/passwd", "https://127.0.0.1/watch?v=aaaaaaaaaaa",
+		"https://youtube.com.evil.example/watch?v=aaaaaaaaaaa",
+		"https://youtube.com@evil.example/watch?v=aaaaaaaaaaa",
+		"https://user@youtube.com/watch?v=aaaaaaaaaaa",
+		"https://youtube.com:8080/watch?v=aaaaaaaaaaa",
+		"https://youtube.com/playlist?list=PL123",
+		"https://youtu.be/aaaaaaaaaaa/extra", "https://youtube.com/redirect?q=https://example.com",
+		"https://youtube.com/watch?v=bad", "ftp://youtube.com/watch?v=aaaaaaaaaaa",
+	} {
+		if got, ok := musicprocessing.YouTubeURL(value); ok {
+			t.Errorf("accepted unsafe or non-video URL %q as %q", value, got)
+		}
+	}
+}
+
+func TestImportHTTP(t *testing.T) {
+	ts := setupTestServer(t)
+	defer ts.cleanup(t)
+	bin := t.TempDir()
+	script, err := os.ReadFile("../musicprocessing/testdata/yt-dlp")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(bin, "yt-dlp"), script, 0700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	audio := filepath.Join(t.TempDir(), "sample.wav")
+	if output, err := exec.Command("ffmpeg", "-v", "error", "-f", "lavfi", "-i",
+		"sine=frequency=440:duration=1", audio).CombinedOutput(); err != nil {
+		t.Fatalf("generate audio: %v: %s", err, output)
+	}
+	t.Setenv("IMPORT_AUDIO_FIXTURE", audio)
+	t.Setenv("IMPORT_OVERSIZE_BYTES", strconv.Itoa((200<<20)+1))
+	argsFile := filepath.Join(t.TempDir(), "args")
+	t.Setenv("IMPORT_ARGS", argsFile)
+	validBody := `{"url":"https://youtu.be/aaaaaaaaaaa?list=ignored","name":" Imported audio ","typeID":"1ec000a2-a7c9-11ee-a0e5-0242ac120002"}`
+	request := func(ctx context.Context, method, body string, authenticated bool, status int) *httptest.ResponseRecorder {
+		t.Helper()
+		req := httptest.NewRequest(method, "/api/v1/files/import", strings.NewReader(body)).WithContext(ctx)
+		if authenticated {
+			addAuthCookie(req, ts.auth.(*mockAuth).token.String())
+		}
+		rec := httptest.NewRecorder()
+		ts.Handler().ServeHTTP(rec, req)
+		if rec.Code != status {
+			t.Fatalf("import status = %d: %s; want %d", rec.Code, rec.Body, status)
+		}
+		return rec
+	}
+	ctx := context.Background()
+	request(ctx, "POST", validBody, false, 401)
+	ts.auth.(*mockAuth).token.Role = auth.RolePlayer
+	request(ctx, "POST", validBody, true, 401)
+	ts.auth.(*mockAuth).token.Role = auth.RoleGM
+	request(ctx, "GET", validBody, true, 405)
+	for _, body := range []string{
+		`{`, `null`, `{}`, validBody + `{}`,
+		strings.Replace(validBody, "Imported audio", " ", 1),
+		strings.Replace(validBody, "Imported audio", strings.Repeat("x", 201), 1),
+		strings.Replace(validBody, "aaaaaaaaaaa?list=ignored", "playlist?list=PL123", 1),
+		strings.Replace(validBody, "1ec000a2-a7c9-11ee-a0e5-0242ac120002", uuid.NewString(), 1),
+		strings.TrimSuffix(validBody, "}") + `,"unexpected":true}`,
+	} {
+		request(ctx, "POST", body, true, 400)
+	}
+	request(ctx, "POST", strings.TrimSuffix(validBody, "}")+`,"tableID":"`+uuid.NewString()+`"}`, true, 404)
+	request(ctx, "POST", validBody, true, 202)
+	ts.waitForProcessing(t)
+	args, err := os.ReadFile(argsFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, flag := range []string{"--ignore-config", "--no-plugin-dirs", "--no-playlist",
+		"--max-filesize\n200M", "--match-filter\n!is_live & duration <= 10800", "--js-runtimes\nnode"} {
+		if !bytes.Contains(args, []byte(flag+"\n")) {
+			t.Errorf("downloader missing %q in %s", flag, args)
+		}
+	}
+	if !bytes.HasSuffix(args, []byte("--\nhttps://www.youtube.com/watch?v=aaaaaaaaaaa\n")) {
+		t.Errorf("downloader received noncanonical URL: %s", args)
+	}
+	tracks, _ := ts.store.GetTracks(ctx)
+	if len(tracks) != 1 || tracks[0].Name != "Imported audio" {
+		t.Fatalf("saved tracks = %+v", tracks)
+	}
+	for _, name := range []string{"index.m3u8", "segment_000.ts", "waveform.json"} {
+		if _, err := os.Stat(filepath.Join(tracks[0].Path, name)); err != nil {
+			t.Errorf("import missing %s: %v", name, err)
+		}
+	}
+	output := strings.Split(strings.Split(string(args), "--output\n")[1], "\n")[0]
+	staging := filepath.Dir(output)
+	if _, err := os.Stat(staging); !os.IsNotExist(err) {
+		t.Errorf("staging directory not cleaned up: %v", err)
+	}
+	for _, tc := range []struct {
+		id string
+	}{
+		{"bbbbbbbbbbb"},
+		{"ccccccccccc"},
+		{"eeeeeeeeeee"},
+		{"fffffffffff"},
+	} {
+		rec := request(ctx, "POST", strings.Replace(validBody, "aaaaaaaaaaa", tc.id, 1), true, 202)
+		var queued Track
+		if err := json.Unmarshal(rec.Body.Bytes(), &queued); err != nil {
+			t.Fatal(err)
+		}
+		ts.waitForProcessing(t)
+		result, err := ts.store.GetTrackByID(ctx, queued.ID)
+		if err != nil || result.Status != "failed" || result.ProcessingError == "" {
+			t.Fatalf("failed processing state = %+v, %v", result, err)
+		}
+	}
+	ts.store = importFailStore{Store: ts.store}
+	ts.processing = musicprocessing.New(ts.tempDir, ts.logger, ts.store)
+	request(ctx, "POST", validBody, true, 503)
+	entries, err := os.ReadDir(ts.tempDir)
+	if err != nil || len(entries) != 2 {
+		t.Fatalf("failed imports left HLS directories: %v, %v", entries, err)
+	}
+	t.Setenv("PATH", t.TempDir())
+	request(ctx, "POST", validBody, true, 503)
+}
+
+func TestVideoScan(t *testing.T) {
+	ts := setupTestServer(t)
+	defer ts.cleanup(t)
+	bin := t.TempDir()
+	script, err := os.ReadFile("../musicprocessing/testdata/yt-dlp")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(bin, "yt-dlp"), script, 0700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	for _, tc := range []struct {
+		id      string
+		status  int
+		message string
+	}{
+		{"aaaaaaaaaaa", 200, "YouTube Forest"},
+		{"jjjjjjjjjjj", 200, "At the limits"},
+		{"ggggggggggg", 422, "3-hour limit"},
+		{"hhhhhhhhhhh", 422, "200 MiB limit"},
+		{"kkkkkkkkkkk", 422, "200 MiB limit"},
+		{"iiiiiiiiiii", 422, "Live streams"},
+		{"bbbbbbbbbbb", 502, "Could not retrieve video metadata"},
+	} {
+		req := httptest.NewRequest("POST", "/api/v1/files/scan", strings.NewReader(`{"url":"https://youtu.be/`+tc.id+`"}`))
+		addAuthCookie(req, ts.auth.(*mockAuth).token.String())
+		rec := httptest.NewRecorder()
+		ts.Handler().ServeHTTP(rec, req)
+		if rec.Code != tc.status || !strings.Contains(rec.Body.String(), tc.message) {
+			t.Errorf("scan %s = %d: %s", tc.id, rec.Code, rec.Body)
+		}
+	}
+}
+
+type importFailStore struct{ Store }
+
+func (importFailStore) SaveTrack(context.Context, *Track) error {
+	return errors.New("injected persistence failure")
+}

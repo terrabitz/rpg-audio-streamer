@@ -435,7 +435,7 @@ test('GM controls desktop playback from a phone and recovers after every GM leav
   await deleteLibraryTrack(page, 'Remote Music', 1)
 })
 
-test('failed audio conversion is shown as an upload error', async ({ page }) => {
+test('failed audio conversion is shown on the track', async ({ page }) => {
   await login(page)
   await openUploadDialog(page)
   await page.getByLabel('Select a file', { exact: true }).setInputFiles({
@@ -446,6 +446,12 @@ test('failed audio conversion is shown as an upload error', async ({ page }) => 
   await page.getByRole('combobox', { name: 'Track Type', exact: true }).press('ArrowDown')
   await page.getByRole('option', { name: 'Music', exact: true }).click()
   await page.getByRole('button', { name: 'Upload', exact: true }).click()
-  await expect(page.getByText('Failed to upload file', { exact: true })).toBeVisible()
-  await expect(page.locator('.file-tile')).toHaveCount(0)
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+  const tile = page.locator('.file-tile').filter({ hasText: 'invalid' })
+  await expect(tile).toHaveAttribute('aria-busy', 'false')
+  await expect(tile.getByText('Processing failed', { exact: true })).toBeVisible()
+  await tile.getByRole('button', { name: 'Edit invalid', exact: true }).click()
+  await expect(page.getByRole('alert').filter({ hasText: 'Audio processing failed' })).toBeVisible()
+  await page.getByRole('button', { name: 'Remove from table', exact: true }).click()
+  await expect(tile).toHaveCount(0)
 })

@@ -1,10 +1,10 @@
-import { spawn, type ChildProcess } from 'node:child_process'
+import { execFileSync, spawn, type ChildProcess } from 'node:child_process'
 import { createHmac, randomBytes } from 'node:crypto'
 import { once } from 'node:events'
-import { mkdtemp, rm } from 'node:fs/promises'
+import { chmod, copyFile, mkdir, mkdtemp, rm } from 'node:fs/promises'
 import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { delimiter, join } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import { fileURLToPath } from 'node:url'
 import { discordTestConfig } from './discord-config'
@@ -21,7 +21,7 @@ export type AppInstance = {
   stop: () => Promise<void>
 }
 
-export async function startApp(liveDiscord = false): Promise<AppInstance> {
+export async function startApp(liveDiscord = false, youtubeFixture = false): Promise<AppInstance> {
   const binary = process.env.E2E_SERVER_BINARY
   if (!binary) throw new Error('E2E server binary was not built by global setup')
   const scratch = await mkdtemp(join(tmpdir(), 'rpg-audio-e2e-'))
@@ -49,6 +49,18 @@ export async function startApp(liveDiscord = false): Promise<AppInstance> {
     const secret = randomBytes(32).toString('hex')
     const discord = liveDiscord ? discordTestConfig(root) : undefined
     const env = { ...process.env }
+    if (youtubeFixture) {
+      const bin = join(scratch, 'bin')
+      await mkdir(bin)
+      const downloader = join(bin, 'yt-dlp')
+      await copyFile(join(root, 'internal/musicprocessing/testdata/yt-dlp'), downloader)
+      await chmod(downloader, 0o700)
+      const audio = join(scratch, 'import.wav')
+      execFileSync('ffmpeg', ['-v', 'error', '-f', 'lavfi', '-i', 'sine=frequency=440:duration=12', audio])
+      env.PATH = `${bin}${delimiter}${env.PATH ?? ''}`
+      env.IMPORT_AUDIO_FIXTURE = audio
+      env.IMPORT_RELEASE_FILE = join(scratch, 'import-release')
+    }
     for (const name of Object.keys(env)) {
       if (name.startsWith('DISCORD_') || name.startsWith('INTEGRATION_TEST_DISCORD_')) delete env[name]
     }

@@ -241,11 +241,23 @@ async function seed(apiURL) {
     body.set('name', sample.name)
     body.set('typeID', type.id)
     body.set('tableID', table.id)
-    await request(`${apiURL}/api/v1/files`, {
+    const queued = await (await request(`${apiURL}/api/v1/files`, {
       method: 'POST',
       headers: { Cookie: cookie },
       body,
-    })
+    })).json()
+    let ready = false
+    for (let attempt = 0; attempt < 150; attempt++) {
+      const tracks = await (await request(`${apiURL}/api/v1/files`, { headers: { Cookie: cookie } })).json()
+      const track = tracks.find(track => track.id === queued.id)
+      if (track?.status === 'failed') throw new Error(`Seed audio processing failed: ${track.processingError}`)
+      if (track?.status === 'ready') {
+        ready = true
+        break
+      }
+      await delay(200, undefined, { signal: controller.signal })
+    }
+    if (!ready) throw new Error(`Seed audio processing timed out: ${sample.name}`)
     await rm(file)
   }
   return table

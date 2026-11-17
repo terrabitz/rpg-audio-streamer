@@ -132,7 +132,7 @@ func TestUploadValidation(t *testing.T) {
 		{"missing file", "", false, 400},
 		{"invalid type ID", "invalid", true, 400},
 		{"unknown type", uuid.NewString(), true, 400},
-		{"invalid audio", "1ec000a2-a7c9-11ee-a0e5-0242ac120002", true, 500},
+		{"invalid audio", "1ec000a2-a7c9-11ee-a0e5-0242ac120002", true, 202},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var body bytes.Buffer
@@ -159,6 +159,13 @@ func TestUploadValidation(t *testing.T) {
 			ts.Handler().ServeHTTP(rec, req)
 			if rec.Code != tc.status {
 				t.Fatalf("status = %d; want %d: %s", rec.Code, tc.status, rec.Body)
+			}
+			if rec.Code == http.StatusAccepted {
+				ts.waitForProcessing(t)
+				tracks, err := ts.store.GetTracks(context.Background())
+				if err != nil || len(tracks) != 1 || tracks[0].Status != "failed" || tracks[0].ProcessingError == "" {
+					t.Fatalf("invalid audio processing state = %+v, %v", tracks, err)
+				}
 			}
 		})
 	}
@@ -255,13 +262,13 @@ func TestFrontendRouting(t *testing.T) {
 
 func TestFrontendConfiguration(t *testing.T) {
 	dir := t.TempDir()
-	if _, err := New(Config{FrontendDir: dir}, nil, nil, nil, nil); err == nil {
+	if _, err := New(Config{FrontendDir: dir}, nil, nil, nil, nil, nil); err == nil {
 		t.Fatal("missing frontend index should fail startup")
 	}
 	if err := os.WriteFile(filepath.Join(dir, "index.html"), []byte("index"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := New(Config{FrontendDir: dir}, nil, nil, nil, nil); err != nil {
+	if _, err := New(Config{FrontendDir: dir}, nil, nil, nil, nil, nil); err != nil {
 		t.Fatalf("valid frontend directory: %v", err)
 	}
 }

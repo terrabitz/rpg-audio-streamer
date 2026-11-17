@@ -5,8 +5,15 @@
       <AudioPlayer @error="error = $event" />
       <v-data-table :headers="libraryHeaders" :items="tracks" :loading="loading" density="compact" hover
         :row-props="libraryRowProps" no-data-text="No tracks in the library yet.">
+        <template #[`item.name`]="{ item }">
+          {{ item.name }}
+          <span v-if="item.status === 'failed'" class="text-error ml-2">Processing failed</span>
+        </template>
         <template #[`item.preview`]="{ item }">
-          <v-btn :icon="audioStore.tracks[item.id]?.isPlaying ? '$pause' : '$play'" variant="text" size="small"
+          <v-progress-circular v-if="item.status === 'processing'" indeterminate size="20"
+            :aria-label="`Processing ${item.name}`" title="Track is still processing" />
+          <v-btn v-else :icon="audioStore.tracks[item.id]?.isPlaying ? '$pause' : '$play'" variant="text" size="small"
+            :disabled="!trackReady(item)"
             :aria-label="`${audioStore.tracks[item.id]?.isPlaying ? 'Pause preview' : 'Preview'} ${item.name}`"
             :aria-pressed="!!audioStore.tracks[item.id]?.isPlaying" @click.stop="handlePlay(item.id)" />
         </template>
@@ -23,6 +30,7 @@
             @settings="settings => handleSettings(item.id, settings)" @seek="time => handleSeek(item.id, time)" @play="handlePlay(item.id)">
             <template #activator="{ open }">
               <v-btn icon="$dotsVertical" variant="text" size="small" :aria-label="`Edit ${item.name}`"
+                :disabled="item.status === 'processing'"
                 @click.stop="open" />
             </template>
           </AudioControls>
@@ -81,9 +89,12 @@
           <v-row gap="3" class="track-list" :class="{ 'is-dragging': dragging }">
             <SortableTrack v-for="(file, index) in tracks" :key="file.id" :id="file.id" :index="index">
               <v-card class="file-tile" role="group" tabindex="0" :aria-label="file.name" aria-describedby="track-reorder-help"
+                :aria-disabled="file.status === 'processing'" :aria-busy="file.status === 'processing'"
+                :class="{ 'is-processing': file.status === 'processing' }"
                 aria-keyshortcuts="Alt+ArrowLeft Alt+ArrowRight" @keydown="handleKeydown($event, file.id)"
                 @click="handlePlay(file.id)">
                 <v-btn class="track-drag-handle" icon="$drag" size="x-small" variant="text"
+                  :disabled="!trackReady(file)"
                   :aria-label="`Drag to reorder ${file.name}`" title="Drag to reorder"
                   aria-describedby="track-reorder-help" aria-keyshortcuts="Alt+ArrowLeft Alt+ArrowRight"
                   @click.stop @keydown="handleKeydown($event, file.id)" />
@@ -141,6 +152,8 @@ const tables = useTableStore()
 const props = defineProps<{ library?: boolean }>()
 const error = ref('')
 const loading = ref(true)
+let processingTimer: ReturnType<typeof setTimeout> | undefined
+let disposed = false
 const libraryHeaders = [
   { title: '', key: 'preview', sortable: false, width: 56 },
   { title: 'Name', key: 'name' },
@@ -156,6 +169,31 @@ const playingTracks = computed(() => tracks.value.flatMap(track => {
 }))
 
 watch(smAndDown, () => { showNowPlaying.value = false })
+
+watch(() => fileStore.tracks.some(track => track.status === 'processing'), (processing) => {
+  clearTimeout(processingTimer)
+  if (processing) processingTimer = setTimeout(refreshProcessing, 1000)
+}, { immediate: true })
+
+async function refreshProcessing() {
+  try {
+    await fileStore.fetchFiles()
+    if (!props.library && tables.current) await tables.fetchTracks(tables.current.externalID)
+    if (error.value === 'Unable to refresh track processing status.') error.value = ''
+  } catch (cause) {
+    console.error('Failed to refresh processing tracks:', cause)
+    error.value = 'Unable to refresh track processing status.'
+  } finally {
+    clearTimeout(processingTimer)
+    if (!disposed && fileStore.tracks.some(track => track.status === 'processing')) {
+      processingTimer = setTimeout(refreshProcessing, 1000)
+    }
+  }
+}
+
+function trackReady(track: Track) {
+  return !track.status || track.status === 'ready'
+}
 
 onMounted(async () => {
   if (props.library) audioStore.clearTracks()
@@ -177,6 +215,10 @@ watch(tracks, (tracks) => {
   }
   if (props.library) return
   for (const track of tracks) {
+    if (!trackReady(track)) {
+      audioStore.removeTrack(track.id)
+      continue
+    }
     const isNew = !audioStore.tracks[track.id]
     audioStore.initTrack(track.id, track.name, track.typeID)
     if (isNew) audioStore.updateTrackState(track.id, {
@@ -205,6 +247,8 @@ function finishDrag(event: DragEndEvent) {
 }
 
 async function handleKeydown(event: KeyboardEvent, fileID: string) {
+  const file = fileStore.getTrackById(fileID)
+  if (!file || !trackReady(file)) return
   if (event.target !== event.currentTarget || !(event.currentTarget instanceof HTMLElement)) return
   const card = event.currentTarget
   if ((event.key === 'Enter' || event.key === ' ') && card.classList.contains('file-tile')) {
@@ -244,6 +288,9 @@ async function deleteFile(file: Track, expectedTableCount: number | null) {
 function libraryRowProps({ item }: { item: Track }) {
   return {
     tabindex: 0,
+    'aria-disabled': item.status === 'processing',
+    'aria-busy': item.status === 'processing',
+    title: item.status === 'processing' ? 'Track is still processing' : item.processingError || undefined,
     class: ['library-track-row', { 'bg-grey-darken-3': audioStore.tracks[item.id]?.isPlaying }],
     onClick: () => handlePlay(item.id),
     onKeydown(event: KeyboardEvent) {
@@ -257,6 +304,8 @@ function libraryRowProps({ item }: { item: Track }) {
 // Event handlers just update state and send WS payloads
 const handlePlay = (fileID: string) => {
   if (dragging.value) return
+  const file = fileStore.getTrackById(fileID)
+  if (!file || !trackReady(file)) return
   if (props.library) {
     previewTrack(fileID)
     return
@@ -329,11 +378,18 @@ const handleSeek = (fileID: string, time: number) => {
 }
 
 onUnmounted(() => {
+  disposed = true
+  clearTimeout(processingTimer)
   if (props.library) audioStore.clearTracks()
 })
 </script>
 
 <style scoped>
+.file-tile.is-processing {
+  opacity: 0.6;
+  cursor: wait;
+}
+
 .table-playback-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 260px;

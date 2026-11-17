@@ -19,7 +19,11 @@ flowchart LR
   API --> Store[SQLite datastore adapter]
   Store --> Queries[Generated sqlc queries]
   Queries --> DB[(SQLite metadata)]
-  API --> FFmpeg[FFmpeg conversion]
+  API --> Processing[Music processing service]
+  Processing --> Store
+  Processing --> FFmpeg[FFmpeg conversion]
+  Processing --> YTDLP[yt-dlp YouTube retrieval]
+  YTDLP --> FFmpeg
   FFmpeg --> Uploads[HLS files on disk]
   API --> Uploads
   Hub -.->|GM playback commands| Mix[Live table mixer]
@@ -30,9 +34,16 @@ flowchart LR
 ```
 
 `main.go` composes configuration, logging, embedded migrations, the SQLite
-adapter, authentication service, hub, and HTTP server. Startup applies pending
+adapter, authentication service, hub, music processing service, and HTTP server. Startup applies pending
 migrations before accepting requests. The CLI also exposes migration commands;
 `cmd/hashpass` produces the Argon2id password hash used in configuration.
+
+The CLI owns the signal-cancelled application context, recovers interrupted
+processing before serving, and runs the processing service with `Run(ctx)`.
+Shutdown cancels workers, drains accepted jobs into a failed state, waits for
+processing cleanup, and closes the datastore. The HTTP server receives its
+lifetime context through `Start(ctx)`; neither the server nor the processing
+service stores a context.
 
 The Go server serves API and WebSocket routes under `/api` and can serve the
 built Vue application from `--frontend-dir` / `FRONTEND_DIR`. Non-API navigation
@@ -73,6 +84,7 @@ cannot guarantee cleanup. Procedures live in the local-dev skill.
 | --- | --- |
 | `internal/auth` | Argon2id credential checks, signed JWTs, GM/player roles |
 | `internal/server` | HTTP handlers, cookies/middleware, public table access, track/table contracts, datastore and hub interfaces |
+| `internal/musicprocessing` | Track/playback models, bounded background jobs, staging, YouTube scans/retrieval, HLS conversion, waveform generation and restart recovery |
 | `internal/middlewares` | API request logging and CORS |
 | `internal/mixer` | Standalone deterministic stereo PCM mixing, transport, loop overlap, and gain envelopes |
 | `internal/livemixer` | Serialized live commands, table-scoped PCM engines, rendering lifecycle, and diagnostics |
@@ -83,8 +95,10 @@ cannot guarantee cleanup. Procedures live in the local-dev skill.
 | `internal/websocket` | Authoritative live table playback, connected clients, message dispatch, recipient filters, read/write pumps |
 
 Authentication rules live in `auth`; synchronization authorization/routing lives in `websocket`; the
-track/table models and store interfaces live in `server`. The datastore implements
-those interfaces, which keeps HTTP handlers independent of SQLite details.
+table models and HTTP store interfaces live in `server`. Track and playback
+models live in `musicprocessing`, with aliases in the HTTP contracts. The
+datastore implements both packages' store interfaces, keeping processing and
+HTTP handlers independent of SQLite details.
 `Server.Handler()` assembles the production HTTP pipeline independently of
 binding a network listener. WebSocket upgrades bypass the API logging wrapper.
 
@@ -110,10 +124,14 @@ authentication only.
 
 ### Library and persistence
 
+The datastore uses one pooled connection to serialize metadata reads and writes,
+including background processing status updates and client polling.
+
 SQLite stores metadata, not media bytes:
 
 - `tracks`: UUID ID, creation timestamp, display name, disk path, track-type ID,
-  and shared playback-region points (beginning, optional end, optional loop-back).
+  shared playback-region points (beginning, optional end, optional loop-back),
+  processing status (`processing`, `ready`, or `failed`), and a processing error.
 - `track_types`: UUID ID, name, color, repeat policy, simultaneous-play policy,
   and creation timestamp.
 - `game_tables`: UUID ID, unique random Base64URL external ID, name, and JSON GM
@@ -146,16 +164,55 @@ a library track removes its associations everywhere. Cleanup triggers enforce
 association removal even on SQLite connections without foreign keys enabled.
 
 An upload is multipart audio plus a display name, type UUID, and optional table
-UUID. The server validates the type, assigns a UUIDv7, stages the input, and runs FFmpeg to
-produce AAC HLS playlists and `.ts` segments under `<upload-dir>/<track-id>/`.
-It then saves metadata; table uploads save the library entry and association
-in one database transaction. Streaming reads files from that upload directory.
-After conversion the server also computes a 400-bucket peak waveform with
+UUID. The server validates the type and delegates to the music processing
+service, which assigns a UUIDv7 and stages the input under
+`<upload-dir>/.processing/<track-id>/`. The service saves a processing track and optional
+table association in one database transaction, then returns HTTP 202 with the
+track. A service worker runs FFmpeg to produce AAC HLS playlists
+and `.ts` segments under `<upload-dir>/<track-id>/`. Streaming reads files from
+that upload directory only when the track is ready.
+After conversion the service also computes a 400-bucket peak waveform with
 FFmpeg and caches it as `waveform.json` beside the playlist; a failure there only
 logs a warning. The GM-only `GET /api/v1/files/{trackID}/waveform` endpoint
 serves that cache, generating it on first request for older tracks.
 Deletion removes metadata and the associated HLS directory. These filesystem
 and database operations are not a single atomic transaction.
+
+GMs scan a single YouTube video through `POST /api/v1/files/scan`. This
+request uses yt-dlp metadata without downloading audio, returning the title,
+duration, and selected audio format's exact or estimated byte size; an unknown
+size remains null. Live streams, videos over three hours, and known or estimated
+audio sizes over 200 MiB are rejected before submission. The scan has a one-minute
+deadline and is cancelled when its request ends. Scanning and on-demand waveform
+generation receive the request context explicitly. Download limits are also checked
+by the background task because estimates and upstream availability can change.
+
+GMs can import one public YouTube video's audio through
+`POST /api/v1/files/import`, providing a display name, track-type UUID, and
+optional table UUID. Watch, shortened, Shorts, embed, and live-video URLs are
+validated and reduced to a canonical HTTPS video URL; playlist-only and
+non-YouTube links are rejected, and playlist parameters are discarded.
+The endpoint saves a processing track and optional table association, returns
+HTTP 202, and queues retrieval. The task runs `yt-dlp` without user configuration,
+plugins, or shell interpolation, selecting audio into its staging directory. Imports
+exclude live streams and videos over three hours or 200 MiB of source audio,
+and have a fifteen-minute processing deadline derived from the application's
+context, including queue
+time. Uploads use that same deadline and conversion path. Up to sixteen tasks
+can be accepted, with two processing concurrently. Closing the dialog, navigating,
+or disconnecting does not cancel accepted tasks: submission uses the request
+context only for staging and metadata persistence; workers receive the
+application context through `Run(ctx)`. Successful HLS conversion and
+waveform generation mark the track ready; waveform failure remains a logged
+warning. Failed processing removes its HLS output, records a visible failed state,
+and removes staging. Server startup marks interrupted tasks failed and removes
+their partial files; tasks are not silently retried. Playback commands, mixer
+sources, and HTTP streams reject tracks that are not ready.
+Local servers require a current `yt-dlp[default]`
+installation, Node.js 20 or newer for YouTube JavaScript challenges, and FFmpeg
+on `PATH`; runtime and development container images include these dependencies.
+YouTube availability, access restrictions, and extractor compatibility can
+still prevent retrieval.
 
 `sql/migrations` defines schema evolution; `sql/queries` is the authoritative
 query source. `openapi.yaml` defines the HTTP client contract. Generated Go
@@ -191,13 +248,25 @@ show a disabled option, and denied requests produce an error notification.
 It is independent of table settings and is not sent to the server or other clients.
 Now-playing cards wrap into compact columns when space permits, including
 inside the tablet bottom drawer; narrow phones retain a single column.
-**Add Track** opens a dialog with library selection and new-upload tabs;
-neither workflow adds a permanent control row to the track grid.
+**Add Track** opens a dialog with library selection, new-upload, and YouTube-link tabs;
+none of these workflows adds a permanent control row to the track grid.
 Uploads require a file, a nonblank name, and a valid library track type before
 the Upload action is enabled.
 Upload results appear as compact, auto-dismissing bottom-center toasts attached
 to the document body, independent of the uploader's app-bar or library placement;
 upload failures remain inline while the dialog is open.
+YouTube imports are also available from the library's upload dialog. Pasting or
+editing a link triggers a debounced, cancellable metadata scan. It fills in the
+editable track name and displays duration and audio size. Failed scans and limit
+violations turn the URL field red with the specific error and disable Import.
+Imports require a successful scan, nonblank display name, and track type.
+Accepted uploads and imports close the dialog immediately and add a disabled
+track with a spinner. Hovering displays a processing tooltip. The GM table and
+library poll while processing tracks exist, including after reload, and enable
+playback when ready. Failed tracks display an error and retain their normal
+removal/deletion workflow without trying to load audio or waveforms. The seeded
+development launcher waits for each uploaded fixture to become ready before
+announcing its preview.
 The table-management list opens a table when its row is clicked. Each row's
 three-dot menu copies the invite code and also contains rename, delete, and
 red invite-link rotation actions. Rotation uses the same confirmation dialog
@@ -762,6 +831,13 @@ the real Go server, database, FFmpeg, WebSockets, and HLS media playback.
 Each browser test attempt owns a separate server, datastore, upload directory,
 and WebSocket state; the built UI and server executable are shared as immutable
 artifacts. Live Discord validation uses a shared external voice channel.
+Live YouTube integration scans and retrieves an environment-configured public
+video with the production music-processing service, real SQLite, yt-dlp, and
+FFmpeg. Its separate browser project exercises the same external integration
+through import, readiness, persistence, browser playback, and UI deletion.
+Deterministic YouTube journeys substitute only the external downloader; the
+live journeys do not. Both live layers use typed environment configuration and
+are opt-in when `INTEGRATION_TEST_YT_DLP_LINK` is present.
 These layers cover different boundaries rather than substituting mocks for
 end-to-end behavior. Test execution and maintenance procedures live in the
 repository testing skill.

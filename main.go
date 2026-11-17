@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"embed"
 	"encoding/json"
 	"errors"
@@ -9,7 +10,9 @@ import (
 	"log"
 	"log/slog"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/golang-migrate/migrate/v4"
@@ -17,6 +20,7 @@ import (
 	"github.com/urfave/cli/v2"
 
 	"github.com/terrabitz/rpg-audio-streamer/internal/auth"
+	"github.com/terrabitz/rpg-audio-streamer/internal/musicprocessing"
 	"github.com/terrabitz/rpg-audio-streamer/internal/server"
 	"github.com/terrabitz/rpg-audio-streamer/internal/sqlitedatastore"
 	ws "github.com/terrabitz/rpg-audio-streamer/internal/websocket"
@@ -170,7 +174,7 @@ func main() {
 					},
 				},
 				Action: func(cCtx *cli.Context) error {
-					return startServer(cfg)
+					return startServer(cCtx.Context, cfg)
 				},
 			},
 			{
@@ -292,7 +296,9 @@ func main() {
 		},
 	}
 
-	if err := app.Run(os.Args); err != nil {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	if err := app.RunContext(ctx, os.Args); err != nil {
 		log.Fatal(err)
 	}
 }
@@ -317,7 +323,7 @@ func setupLogger(cfg Config) (*slog.Logger, error) {
 	return slog.New(handler), nil
 }
 
-func startServer(cfg Config) error {
+func startServer(ctx context.Context, cfg Config) error {
 	logger, err := setupLogger(cfg)
 	if err != nil {
 		return fmt.Errorf("couldn't initialize logger: %w", err)
@@ -332,6 +338,7 @@ func startServer(cfg Config) error {
 	if err != nil {
 		return fmt.Errorf("couldn't initialize SQLite DB: %w", err)
 	}
+	defer db.Close()
 
 	migrations, err := sqlitedatastore.NewMigration(migrationsSub, db)
 	if err != nil {
@@ -346,7 +353,22 @@ func startServer(cfg Config) error {
 
 	hub := ws.NewHub(logger, db)
 
-	srv, err := server.New(cfg.Server, logger, authService, db, hub)
+	processing := musicprocessing.New(cfg.Server.UploadDir, logger, db)
+	if err := processing.Recover(ctx); err != nil {
+		return fmt.Errorf("recover interrupted processing: %w", err)
+	}
+	runCtx, cancel := context.WithCancel(ctx)
+	finished := make(chan struct{})
+	go func() {
+		defer close(finished)
+		processing.Run(runCtx)
+	}()
+	defer func() {
+		cancel()
+		<-finished
+	}()
+
+	srv, err := server.New(cfg.Server, logger, authService, db, hub, processing)
 	if err != nil {
 		return fmt.Errorf("couldn't create server: %w", err)
 	}
@@ -354,5 +376,5 @@ func startServer(cfg Config) error {
 	// FIXME use cleaner shutdown handling
 	go hub.Run()
 
-	return srv.Start()
+	return srv.Start(runCtx)
 }

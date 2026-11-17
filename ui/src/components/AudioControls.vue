@@ -2,12 +2,16 @@
   <template v-if="trackType">
     <slot name="activator" :open="openControls">
       <div class="audio-control-tile" :class="{ 'is-active': isActive }">
+        <v-tooltip v-if="track?.status === 'processing'" activator="parent" text="Track is still processing" />
         <span class="d-sr-only">Track type: {{ trackType.name }}</span>
         <div class="track-heading pa-2 text-subtitle-1 position-relative">
+          <v-progress-circular v-if="track?.status === 'processing'" indeterminate size="18" width="2"
+            :aria-label="`Processing ${props.fileName}`" class="mr-2" />
           <span :title="props.fileName">{{ props.fileName }}</span>
-          <v-btn icon="$dotsVertical" size="small" variant="text" :aria-label="`Edit ${props.fileName}`" @click.stop="openControls"
+          <v-btn v-if="track?.status !== 'processing'" icon="$dotsVertical" size="small" variant="text" :aria-label="`Edit ${props.fileName}`" @click.stop="openControls"
             class="position-absolute top-0 right-0" />
         </div>
+        <span v-if="track?.status === 'failed'" class="text-error px-2">Processing failed</span>
       </div>
     </slot>
 
@@ -20,12 +24,13 @@
         </v-card-title>
         <v-card-text>
           <v-alert v-if="error" type="error" class="mb-3">{{ error }}</v-alert>
+          <v-alert v-if="track?.processingError" type="error" class="mb-3">{{ track.processingError }}</v-alert>
           <v-btn v-if="saveFailed" color="primary" variant="text" @click="saveTrackChanges">Retry saving</v-btn>
           <v-text-field :model-value="editName" @update:model-value="changeName" label="Track Name" variant="underlined" hide-details
             class="pa-0 ma-0"></v-text-field>
           <TrackTypeSelector :model-value="editTrackType" @update:model-value="changeTrackType" />
           <v-alert v-if="regionError" type="error" class="mb-3">{{ regionError }}</v-alert>
-          <TrackTimeline v-if="audioState" :model-value="editedPlayback" @update:model-value="previewPlayback" :duration="audioState.duration"
+          <TrackTimeline v-if="audioState && available" :model-value="editedPlayback" @update:model-value="previewPlayback" :duration="audioState.duration"
             :current-time="audioState.currentTime" :seek-target="audioState.seekTarget" :seek-version="audioState.seekVersion"
             :name="props.fileName" :waveform="waveform"
             show-play :is-playing="audioState.isPlaying"
@@ -89,6 +94,7 @@ const trackTypeStore = useTrackTypeStore();
 const fileStore = useFileStore();
 
 const track = computed(() => fileStore.tracks.find(t => t.id === props.fileID));
+const available = computed(() => !track.value?.status || track.value.status === 'ready');
 const trackType = computed(() => track.value ? trackTypeStore.getTypeById(track.value.typeID) : null);
 const audioState = computed(() => audioStore.tracks[props.fileID]);
 
@@ -116,9 +122,9 @@ function openControls() {
     editName.value = track.value.name;
     editTrackType.value = track.value.typeID;
     editedPlayback.value = { ...(track.value.playback ?? defaultPlayback()) };
-    loadWaveform(track.value.id);
+    if (available.value) loadWaveform(track.value.id);
   }
-  if (props.library && track.value && !audioState.value) {
+  if (props.library && track.value && available.value && !audioState.value) {
     audioStore.initTrack(props.fileID, props.fileName, trackType.value?.name);
     audioStore.updateTrackState(props.fileID, {
       playback: track.value.playback ?? defaultPlayback(),

@@ -263,6 +263,9 @@ func (h *Hub) resolvePlayback(tableID, fileID string) (server.Track, server.Trac
 	if err != nil {
 		return track, trackType, settings, err
 	}
+	if !track.Ready() {
+		return track, trackType, settings, fmt.Errorf("track is not ready for playback")
+	}
 	trackType, err = h.store.GetTrackTypeByID(ctx, track.TypeID)
 	if err != nil {
 		return track, trackType, settings, err

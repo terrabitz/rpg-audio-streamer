@@ -14,8 +14,12 @@ AND (SELECT COUNT(*) FROM table_tracks WHERE track_id = sqlc.arg(id)) =
     CAST(sqlc.arg(expected_table_count) AS INTEGER);
 
 -- name: SaveTrack :exec
-insert into tracks (id, created_at, name, path, type_id, start_time, end_time, loop_back_time)
-values (@id, @created_at, @name, @path, @type_id, @start_time, sqlc.narg('end_time'), sqlc.narg('loop_back_time'));
+insert into tracks (id, created_at, name, path, type_id, start_time, end_time, loop_back_time, status, processing_error)
+values (@id, @created_at, @name, @path, @type_id, @start_time, sqlc.narg('end_time'), sqlc.narg('loop_back_time'), @status, @processing_error);
+
+-- name: SetTrackProcessing :execrows
+UPDATE tracks SET status = @status, processing_error = @processing_error
+WHERE id = @id AND status = 'processing';
 
 -- name: UpdateTrack :one
 update tracks

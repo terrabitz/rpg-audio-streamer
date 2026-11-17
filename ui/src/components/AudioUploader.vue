@@ -12,9 +12,10 @@
         <v-card-title>
           <span class="headline">{{ props.tableID ? 'Add Track' : 'Upload Track' }}</span>
         </v-card-title>
-        <v-tabs v-if="props.tableID" v-model="source" :disabled="isBusy">
-          <v-tab value="library">From library</v-tab>
+        <v-tabs v-model="source" :disabled="isBusy">
+          <v-tab v-if="props.tableID" value="library">From library</v-tab>
           <v-tab value="upload">Upload new</v-tab>
+          <v-tab value="youtube">YouTube link</v-tab>
         </v-tabs>
         <v-card-text>
           <v-alert v-if="uploadStatus?.type === 'error'" type="error" class="mb-3">{{ uploadStatus.message }}</v-alert>
@@ -25,6 +26,17 @@
               No unused tracks in the library. Upload a new track instead.
             </p>
           </template>
+          <v-form v-else-if="source === 'youtube'" @submit.prevent="importTrack">
+            <v-text-field v-model="videoURL" label="YouTube URL" type="url" :disabled="isBusy"
+              :loading="isScanning" :error-messages="scanError ? [scanError] : []"
+              placeholder="https://www.youtube.com/watch?v=..." />
+            <v-text-field v-model="trackName" label="Track Name" maxlength="200" :disabled="isBusy || isScanning" />
+            <div v-if="videoMetadata" class="d-flex ga-3">
+              <v-text-field :model-value="videoDuration" label="Duration" readonly />
+              <v-text-field :model-value="videoSize" label="Audio size" readonly />
+            </div>
+            <TrackTypeSelector v-model="selectedTypeId" :disabled="isBusy" />
+          </v-form>
           <div v-else @dragover="handleDragOver" @dragleave="handleDragLeave" @drop="handleDrop"
             :class="{ 'dragging': isDragging }" class="drop-area">
             <v-form v-model="formValid" @submit.prevent>
@@ -41,6 +53,9 @@
           <v-btn color="error" @click="showModal = false" :disabled="isBusy">Cancel</v-btn>
           <v-btn v-if="source === 'library'" color="success" @click="addTrack"
             :disabled="isBusy || !libraryReady || !selectedTrack" :loading="isAdding">Add to table</v-btn>
+          <v-btn v-else-if="source === 'youtube'" color="success" @click="importTrack"
+            :disabled="isBusy || isScanning || !videoMetadata || !trackName.trim() || !selectedType"
+            :loading="isUploading">Import</v-btn>
           <v-btn v-else color="success" @click="submitForm"
             :disabled="isBusy || !formValid || !trackFile || !trackName.trim() || !selectedType"
             :loading="isUploading">Upload</v-btn>
@@ -54,7 +69,7 @@
 </template>
 
 <script setup lang="ts">
-import { postApiV1Files } from '@/client/apiClient'
+import { postApiV1Files, postApiV1FilesImport, postApiV1FilesScan, type Track, type VideoMetadata } from '@/client/apiClient'
 import { useFileStore } from '@/stores/files'
 import { useTableStore } from '@/stores/tables'
 import { useTrackTypeStore } from '@/stores/trackTypes'
@@ -75,7 +90,22 @@ const trackName = ref('')
 const trackFile = ref<File | null>(null)
 const selectedTypeId = ref('')
 const selectedType = computed(() => trackTypes.getTypeById(selectedTypeId.value))
-const source = ref<'library' | 'upload'>(props.tableID ? 'library' : 'upload')
+const source = ref<'library' | 'upload' | 'youtube'>(props.tableID ? 'library' : 'upload')
+const videoURL = ref('')
+const videoMetadata = ref<VideoMetadata | null>(null)
+const isScanning = ref(false)
+const scanError = ref('')
+let scanController: AbortController | undefined
+let scanRevision = 0
+const videoDuration = computed(() => {
+  const seconds = Math.round(videoMetadata.value?.duration ?? 0)
+  return `${Math.floor(seconds / 3600)}:${String(Math.floor(seconds / 60) % 60).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`
+})
+const videoSize = computed(() => {
+  const metadata = videoMetadata.value
+  if (!metadata?.sizeBytes) return 'Unknown'
+  return `${metadata.sizeEstimated ? '~ ' : ''}${(metadata.sizeBytes / (1024 * 1024)).toFixed(1)} MiB`
+})
 const selectedTrack = ref<string | null>(null)
 const loadingLibrary = ref(false)
 const libraryReady = ref(false)
@@ -84,6 +114,35 @@ const isBusy = computed(() => isUploading.value || isAdding.value || loadingLibr
 const availableTracks = computed(() => fileStore.tracks.filter(
   track => !tables.tracks.some(associated => associated.id === track.id),
 ))
+
+const scanVideo = debounce(async (url: string, revision: number) => {
+  const controller = new AbortController()
+  scanController = controller
+  try {
+    const { data } = await postApiV1FilesScan<true>({ body: { url }, signal: controller.signal })
+    if (revision !== scanRevision) return
+    videoMetadata.value = data
+    trackName.value = data.name
+  } catch (error) {
+    if (controller.signal.aborted || revision !== scanRevision) return
+    console.error('Video scan failed:', error)
+    scanError.value = typeof error === 'string' && error.trim() ? error.trim() : 'Failed to scan video. Please try again.'
+  } finally {
+    if (revision === scanRevision) isScanning.value = false
+  }
+}, 500)
+
+watch([videoURL, source, showModal], ([url, selectedSource, open]) => {
+  scanRevision++
+  scanVideo.cancel()
+  scanController?.abort()
+  videoMetadata.value = null
+  scanError.value = ''
+  isScanning.value = false
+  if (!open || selectedSource !== 'youtube' || !url.trim()) return
+  isScanning.value = true
+  scanVideo(url.trim(), scanRevision)
+})
 
 watch([showModal, source], async ([open, selectedSource]) => {
   if (!open) return
@@ -143,6 +202,41 @@ async function submitForm() {
   selectedTypeId.value = ''
 }
 
+async function importTrack() {
+  const name = trackName.value.trim()
+  const url = videoMetadata.value?.url
+  const typeID = selectedType.value?.id
+  if (isBusy.value || isScanning.value || !url || !name || !typeID) return
+  isUploading.value = true
+  uploadStatus.value = null
+  try {
+    const { data } = await postApiV1FilesImport<true>({
+      body: { url, name, typeID, tableID: props.tableID },
+    })
+    addProcessingTrack(data)
+    videoURL.value = ''
+    trackName.value = ''
+    selectedTypeId.value = ''
+  } catch (error) {
+    console.error('Import error:', error)
+    uploadStatus.value = {
+      type: 'error',
+      message: typeof error === 'string' && error.trim() ? error.trim() : 'Failed to import audio. Please try again.',
+    }
+  } finally {
+    isUploading.value = false
+  }
+}
+
+function addProcessingTrack(track: Track) {
+  fileStore.tracks = [...fileStore.tracks.filter(item => item.id !== track.id), track]
+  if (props.tableID && tables.current?.id === props.tableID) {
+    tables.tracks = [...tables.tracks.filter(item => item.id !== track.id), track]
+  }
+  showModal.value = false
+  uploadStatus.value = { type: 'success', message: 'Track added' }
+}
+
 async function uploadTrack() {
   const files = trackFile.value
   const name = trackName.value.trim()
@@ -154,10 +248,8 @@ async function uploadTrack() {
 
   isUploading.value = true
   uploadStatus.value = null
-  let uploaded = false
-
   try {
-    await postApiV1Files<true>({
+    const { data } = await postApiV1Files<true>({
       body: {
         files,
         name,
@@ -166,18 +258,15 @@ async function uploadTrack() {
       }
     })
 
-    uploaded = true
-    await fileStore.fetchFiles()
-    if (props.tableID && tables.current) await tables.fetchTracks(tables.current.externalID)
-    uploadStatus.value = { type: 'success', message: 'File uploaded successfully!' }
+    addProcessingTrack(data)
     return true
   } catch (error) {
     uploadStatus.value = {
       type: 'error',
-      message: uploaded ? 'Track uploaded, but failed to refresh tracks. Reload the page before uploading again.' : 'Failed to upload file',
+      message: 'Failed to upload file',
     }
     console.error('Upload error:', error)
-    return uploaded
+    return false
   } finally {
     isUploading.value = false
   }
@@ -206,7 +295,12 @@ const handleDrop = (event: DragEvent) => {
   trackFile.value = dataTransfer.files[0]
 }
 
-onUnmounted(() => handleDragLeave.cancel())
+onUnmounted(() => {
+  handleDragLeave.cancel()
+  scanRevision++
+  scanVideo.cancel()
+  scanController?.abort()
+})
 </script>
 
 <style scoped>
