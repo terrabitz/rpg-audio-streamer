@@ -28,7 +28,7 @@ function sendDevMessage() {
     return
   }
 
-  wsStore.sendMessage(debugStore.devMethod, parsedPayload)
+  wsStore.sendDebugMessage(debugStore.devMethod, parsedPayload)
   debugStore.clearForm()
 }
 </script>
@@ -74,7 +74,7 @@ function sendDevMessage() {
                 <v-tooltip text="Repeat message">
                   <template v-slot:activator="{ props }">
                     <v-btn size="x-small" icon="$refresh" color="blue" variant="text" v-bind="props"
-                      @click="wsStore.sendMessage(msg.method, msg.payload)"></v-btn>
+                      @click="wsStore.sendDebugMessage(msg.method, msg.payload)"></v-btn>
                   </template>
                 </v-tooltip>
                 <v-tooltip text="Copy to form">

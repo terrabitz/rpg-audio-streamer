@@ -39,12 +39,12 @@ func NewHub(logger *slog.Logger, store PlaybackStore) *Hub {
 		store:      store,
 	}
 
-	hub.HandleFunc("ping", hub.handlePing)
-	hub.HandleFunc("broadcast", hub.handleBroadcast)
-	hub.HandleFunc("syncRequest", hub.handleSyncRequest)
-	hub.HandleFunc("syncTrack", hub.handleSyncTrack)
-	hub.HandleFunc("mixSync", hub.handleMixSync)
-	hub.HandleFunc("mixVolumes", hub.handleMixVolumes)
+	Handle(hub, Ping, hub.handlePing)
+	Handle(hub, Broadcast, hub.handleBroadcast)
+	Handle(hub, SyncRequest, hub.handleSyncRequest)
+	Handle(hub, SyncTrack, hub.handleSyncTrack)
+	Handle(hub, MixSync, hub.handleMixSync)
+	Handle(hub, MixVolumes, hub.handleMixVolumes)
 
 	return hub
 }
@@ -100,7 +100,7 @@ func (h *Hub) Register(conn *websocket.Conn, token *auth.Token) {
 	)
 	h.register <- client
 	if h.mixer != nil && token.Role == auth.RoleGM {
-		if err := client.Send(Message{Method: "mixerReady", Payload: json.RawMessage(`{}`)}); err != nil {
+		if err := client.SendPayload(MixerReady, Empty{}); err != nil {
 			h.logger.Error("failed to announce mixer", "error", err)
 		}
 	}
@@ -153,7 +153,9 @@ func (h *Hub) CloseTable(tableID string) {
 	h.stateMu.Lock()
 	delete(h.playback, tableID)
 	h.stateMu.Unlock()
-	h.Broadcast(Message{Method: "tableDeleted", Payload: json.RawMessage(`{}`)}, ToTable(tableID))
+	if err := h.BroadcastPayload(TableDeleted, Empty{}, ToTable(tableID)); err != nil {
+		h.logger.Error("failed to announce table deletion", "error", err)
+	}
 	h.clientsMu.Lock()
 	defer h.clientsMu.Unlock()
 	for client := range h.clients {
@@ -190,15 +192,14 @@ func (h *Hub) RemoveTrack(tableID, trackID string) {
 		delete(h.playback[tableID], trackID)
 	}
 	h.stateMu.Unlock()
-	payload, _ := json.Marshal(struct {
-		FileID string `json:"fileID"`
-	}{FileID: trackID})
 	opts := []BroadcastOption{}
 	if tableID != "" {
 		opts = append(opts, ToTable(tableID))
 	}
 
-	h.Broadcast(Message{Method: "removeTrack", Payload: payload}, opts...)
+	if err := h.BroadcastPayload(RemoveTrack, TrackReference{FileID: trackID}, opts...); err != nil {
+		h.logger.Error("failed to announce track removal", "error", err)
+	}
 }
 
 func (h *Hub) Broadcast(msg Message, opts ...BroadcastOption) error {
@@ -277,10 +278,6 @@ func (h *Hub) ForEachClient(fn func(*Client), opts ...BroadcastOption) {
 }
 
 type HandlerFunc func(payload json.RawMessage, c *Client)
-
-func (h *Hub) HandleFunc(name string, fn func(payload json.RawMessage, c *Client)) {
-	h.handlers[name] = fn
-}
 
 func (h *Hub) route(message []byte, c *Client) {
 	h.clientsMu.RLock()

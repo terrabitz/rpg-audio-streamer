@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import { useDebugStore } from '@/stores/debug'
-import { useWebSocketStore, type WebSocketMessage } from '@/stores/websocket'
+import { useWebSocketStore } from '@/stores/websocket'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import AudioPlayer from '../components/AudioPlayer.vue'
 import PlayerFileList from '../components/PlayerFileList.vue'
 import VolumeMixer from '../components/VolumeMixer.vue'
-import { useAudioStore, type AudioTrack } from '../stores/audio'
+import { useAudioStore } from '../stores/audio'
 
 const route = useRoute()
 const wsStore = useWebSocketStore()
@@ -14,6 +14,7 @@ const audioStore = useAudioStore()
 const debugStore = useDebugStore()
 const connecting = ref(false)
 const error = ref('')
+let unsubscribe: (() => void) | undefined
 
 const externalID = route.params.externalID as string
 
@@ -23,37 +24,14 @@ const buttonLabel = computed(() => {
   return 'Connect Audio'
 })
 
-function handleSyncAll(message: WebSocketMessage) {
-  if (message.method === 'syncAll' &&
-    message.payload &&
-    typeof message.payload === 'object' &&
-    'tracks' in message.payload &&
-    Array.isArray((message.payload as { tracks: unknown }).tracks)) {
-    audioStore.syncTracks((message.payload as { tracks: AudioTrack[] }).tracks)
-  }
-}
-
-function handleSyncTrack(message: WebSocketMessage) {
-  if (message.method === 'syncTrack' &&
-    message.payload &&
-    typeof message.payload === 'object' &&
-    'fileID' in message.payload) {
-    const payload = message.payload as Partial<AudioTrack> & { fileID: string }
-    const { fileID, ...updates } = payload
-    audioStore.updateTrackState(fileID, updates)
-  }
-}
-
 onMounted(() => {
   audioStore.enabled = false
-  wsStore.addMessageHandler(handleSyncAll)
-  wsStore.addMessageHandler(handleSyncTrack)
+  unsubscribe = wsStore.on('syncAll', payload => audioStore.syncTracks(payload.tracks))
 })
 
 onUnmounted(() => {
   disconnectAudio()
-  wsStore.removeMessageHandler(handleSyncAll)
-  wsStore.removeMessageHandler(handleSyncTrack)
+  unsubscribe?.()
 })
 
 watch(() => wsStore.isConnected, (connected) => {

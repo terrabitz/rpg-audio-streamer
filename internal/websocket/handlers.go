@@ -6,17 +6,8 @@ import (
 	"github.com/terrabitz/rpg-audio-streamer/internal/auth"
 )
 
-type Message struct {
-	Method   string          `json:"method"`
-	Payload  json.RawMessage `json:"payload"`
-	SenderID string          `json:"senderId"`
-}
-
 func (h *Hub) handlePing(payload json.RawMessage, c *Client) {
-	if err := c.Send(Message{
-		Method:  "pong",
-		Payload: payload,
-	}); err != nil {
+	if err := c.SendPayload(Pong, payload); err != nil {
 		h.logger.Error("failed to send pong message", "error", err)
 	}
 }
@@ -26,15 +17,18 @@ func (h *Hub) handleBroadcast(payload json.RawMessage, c *Client) {
 		h.logger.Warn("unauthorized broadcast attempt", "role", c.Token.Role)
 		return
 	}
-
-	h.Broadcast(Message{
-		Method:   "broadcast",
-		SenderID: c.ID,
-		Payload:  payload,
-	}, ExceptClient(c), ToTable(c.Token.TableID))
+	message, err := newMessage(Broadcast, payload)
+	if err != nil {
+		h.logger.Error("failed to encode broadcast", "error", err)
+		return
+	}
+	message.SenderID = c.ID
+	if err := h.Broadcast(message, ExceptClient(c), ToTable(c.Token.TableID)); err != nil {
+		h.logger.Error("failed to broadcast", "error", err)
+	}
 }
 
-func (h *Hub) handleSyncRequest(payload json.RawMessage, c *Client) {
+func (h *Hub) handleSyncRequest(_ Empty, c *Client) {
 	h.stateMu.Lock()
 	defer h.stateMu.Unlock()
 	settings, err := h.tableSettings(c.Token.TableID)
@@ -45,7 +39,7 @@ func (h *Hub) handleSyncRequest(payload json.RawMessage, c *Client) {
 	h.sendState(c.Token.TableID, settings, c.ID)
 }
 
-func (h *Hub) handleSyncTrack(payload json.RawMessage, c *Client) {
+func (h *Hub) handleSyncTrack(payload PlaybackPatch, c *Client) {
 	if c.Token.Role != auth.RoleGM {
 		h.logger.Warn("unauthorized syncTrack command", "role", c.Token.Role)
 		return
@@ -53,33 +47,54 @@ func (h *Hub) handleSyncTrack(payload json.RawMessage, c *Client) {
 	h.updatePlayback(payload, c)
 }
 
-func (h *Hub) handleMixSync(payload json.RawMessage, c *Client) {
+func (h *Hub) handleMixSync(payload MixSnapshot, c *Client) {
 	if c.Token.Role != auth.RoleGM || h.mixer == nil {
 		return
 	}
-	h.applyMixer(c, "mixSync", func() error { return h.mixer.Sync(c.Token.TableID, payload) })
+	h.applyMixer(c, MixSync, func() error {
+		raw, err := json.Marshal(payload)
+		if err != nil {
+			return err
+		}
+		return h.mixer.Sync(c.Token.TableID, raw)
+	})
 }
 
-func (h *Hub) handleMixVolumes(payload json.RawMessage, c *Client) {
+func (h *Hub) handleMixVolumes(payload MixVolumePatch, c *Client) {
 	if c.Token.Role != auth.RoleGM || h.mixer == nil {
 		return
 	}
-	h.applyMixer(c, "mixVolumes", func() error { return h.mixer.Volumes(c.Token.TableID, payload) })
+	h.applyMixer(c, MixVolumes, func() error {
+		raw, err := json.Marshal(payload)
+		if err != nil {
+			return err
+		}
+		return h.mixer.Volumes(c.Token.TableID, raw)
+	})
 }
 
 func (h *Hub) applyMixer(c *Client, command string, apply func() error) {
-	method := "mixerAck"
-	message := ""
 	if err := apply(); err != nil {
 		h.logger.Error("mixer command failed", "command", command, "tableID", c.Token.TableID, "error", err)
-		method = "mixerError"
-		message = "Server mixing failed. Check the server logs and reconnect to retry."
+		if err := c.SendPayload(MixerError, MixerFailure{
+			Command: command,
+			Message: "Server mixing failed. Check the server logs and reconnect to retry.",
+		}); err != nil {
+			h.logger.Error("failed to report mixer command failure", "error", err)
+		}
+
+		return
 	}
-	payload, _ := json.Marshal(struct {
-		Command string `json:"command"`
-		Message string `json:"message,omitempty"`
-	}{Command: command, Message: message})
-	if err := c.Send(Message{Method: method, Payload: payload}); err != nil {
+	if err := c.SendPayload(MixerAck, MixerResult{Command: command}); err != nil {
 		h.logger.Error("failed to report mixer command result", "error", err)
+	}
+}
+
+func (h *Hub) invalidCommand(command string, client *Client, err error) {
+	switch command {
+	case SyncTrack:
+		h.playbackError(client, err)
+	case MixSync, MixVolumes:
+		h.applyMixer(client, command, func() error { return err })
 	}
 }

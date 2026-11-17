@@ -3,12 +3,13 @@ import AudioPlayer from '@/components/AudioPlayer.vue';
 import FileList from '@/components/FileList.vue';
 import TableActions from '@/components/TableActions.vue';
 import { useAppBar } from '@/composables/useAppBar';
-import { useAudioStore, type AudioTrack } from '@/stores/audio';
+import { useAudioStore } from '@/stores/audio';
 import { useFileStore } from '@/stores/files';
 import { useTrackTypeStore } from '@/stores/trackTypes';
 import { useTableStore } from '@/stores/tables';
-import { useWebSocketStore, type WebSocketMessage } from '@/stores/websocket';
-import type { TableSettings, TableSettingsPatch } from '@/client/apiClient';
+import { useWebSocketStore } from '@/stores/websocket';
+import type { Snapshot } from '@/websocket/protocol';
+import type { TableSettingsPatch } from '@/client/apiClient';
 import debounce from 'lodash.debounce';
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 
@@ -23,6 +24,7 @@ const ready = ref(false)
 const synchronized = ref(false)
 const externalID = computed(() => tables.current!.externalID)
 let disposed = false
+let subscriptions: (() => void)[] = []
 let applyingRemote = false
 let refreshingTracks = false
 let pendingMix: TableSettingsPatch = {}
@@ -49,30 +51,13 @@ watch(snapshotMix, (mix, previous) => {
 
 const { setTitle, setActions } = useAppBar()
 
-function handlePlayback(message: WebSocketMessage) {
-  if (message.method === 'mixerReady') {
-    mixerEnabled.value = true
-    mixerSyncPending = true
-    return
-  }
-  if (message.method === 'mixerError') {
-    const payload = message.payload
-    mixerError.value = payload && typeof payload === 'object' &&
-      'message' in payload && typeof payload.message === 'string'
-      ? payload.message : 'Server mixing failed. Reconnect to retry.'
-    return
-  }
-  if (message.method === 'mixerAck' && message.payload && typeof message.payload === 'object' &&
-      'command' in message.payload && message.payload.command === 'mixSync') {
-    mixerError.value = ''
-    return
-  }
-  if (message.method === 'playbackError') {
+function handleSyncAll(payload: Snapshot) {
+  const settings = payload.settings
+  if (!settings) {
+    console.error('GM playback snapshot is missing table settings')
     error.value = 'Unable to synchronize playback. Reload the table and try again.'
     return
   }
-  if (message.method !== 'syncAll') return
-  const payload = message.payload as { tracks: AudioTrack[], settings: TableSettings }
   const localMix = [tables.failedSettings[externalID.value] ?? {}, ...savingMix, pendingMix]
     .reduce<TableSettingsPatch>((mix, patch) => ({
       ...mix, ...patch,
@@ -82,10 +67,10 @@ function handlePlayback(message: WebSocketMessage) {
   applyingRemote = true
   try {
     audioStore.loadTableMix({
-      ...payload.settings,
+      ...settings,
       ...localMix,
-      typeVolumes: { ...payload.settings.typeVolumes, ...localMix.typeVolumes },
-      trackVolumes: { ...payload.settings.trackVolumes, ...localMix.trackVolumes },
+      typeVolumes: { ...settings.typeVolumes, ...localMix.typeVolumes },
+      trackVolumes: { ...settings.trackVolumes, ...localMix.trackVolumes },
     })
     audioStore.syncTracks(payload.tracks.map(track => ({
       ...track, volume: localMix.trackVolumes?.[track.fileID] ?? track.volume,
@@ -129,7 +114,18 @@ watch(() => wsStore.isConnected, (connected) => {
 })
 
 onMounted(async () => {
-  wsStore.addMessageHandler(handlePlayback)
+  subscriptions = [
+    wsStore.on('syncAll', handleSyncAll),
+    wsStore.on('mixerReady', () => {
+      mixerEnabled.value = true
+      mixerSyncPending = true
+    }),
+    wsStore.on('mixerError', payload => { mixerError.value = payload.message }),
+    wsStore.on('mixerAck', payload => {
+      if (payload.command === 'mixSync') mixerError.value = ''
+    }),
+    wsStore.on('playbackError', payload => { error.value = payload.message }),
+  ]
   setTitle(tables.current?.name ?? 'Table')
   window.addEventListener('pagehide', flushMix)
   try {
@@ -156,7 +152,7 @@ onUnmounted(() => {
   flushMix()
   window.removeEventListener('pagehide', flushMix)
   ready.value = false
-  wsStore.removeMessageHandler(handlePlayback)
+  subscriptions.forEach(unsubscribe => unsubscribe())
   wsStore.disconnect()
   audioStore.clearTracks()
   audioStore.clearTableMix()
