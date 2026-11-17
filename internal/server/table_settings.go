@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/terrabitz/rpg-audio-streamer/internal/auth"
+	"github.com/terrabitz/rpg-audio-streamer/internal/events"
 )
 
 func (s *Server) handleTableSettings(w http.ResponseWriter, r *http.Request, token *auth.Token) {
@@ -41,7 +42,11 @@ func (s *Server) handleTableSettings(w http.ResponseWriter, r *http.Request, tok
 			s.tableError(w, err)
 			return
 		}
-		s.hub.SyncSettings(id.String(), *patch)
+		if !s.sendEvent(w, events.TableSettingsChanged, events.TableEvent[TableSettingsPatch]{
+			TableID: id.String(), Data: *patch,
+		}) {
+			return
+		}
 		respondJSON(w, http.StatusOK, settings)
 	default:
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)

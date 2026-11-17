@@ -33,7 +33,7 @@ const isRefreshing = ref(false)
 
 function handleRefresh() {
   isRefreshing.value = true
-  wsStore.sendMessage('syncRequest', {})
+  wsStore.sendEvent('playbackSyncRequested', {})
   setTimeout(() => {
     isRefreshing.value = false
   }, 1000)

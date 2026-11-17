@@ -127,7 +127,7 @@ func TestImportHTTP(t *testing.T) {
 		}
 	}
 	ts.store = importFailStore{Store: ts.store}
-	ts.processing = musicprocessing.New(ts.tempDir, ts.logger, ts.store, youtube.New(ts.logger), ts.hub.(musicprocessing.Notifier))
+	ts.processing = musicprocessing.New(ts.tempDir, ts.logger, ts.store, youtube.New(ts.logger), ts.hub)
 	request(ctx, "POST", validBody, true, 503)
 	entries, err := os.ReadDir(ts.tempDir)
 	if err != nil || len(entries) != 2 {

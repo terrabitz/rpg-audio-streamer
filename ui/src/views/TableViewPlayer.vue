@@ -26,7 +26,7 @@ const buttonLabel = computed(() => {
 
 onMounted(() => {
   audioStore.enabled = false
-  unsubscribe = wsStore.on('syncAll', payload => audioStore.syncTracks(payload.tracks))
+  unsubscribe = wsStore.on('playbackStateChanged', payload => audioStore.syncTracks(payload.tracks))
 })
 
 onUnmounted(() => {
@@ -35,7 +35,7 @@ onUnmounted(() => {
 })
 
 watch(() => wsStore.isConnected, (connected) => {
-  if (connected && audioStore.enabled) wsStore.sendMessage('syncRequest', {})
+  if (connected && audioStore.enabled) wsStore.sendEvent('playbackSyncRequested', {})
 })
 
 function handleAudioToggle() {

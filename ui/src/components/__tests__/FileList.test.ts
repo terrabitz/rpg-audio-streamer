@@ -29,7 +29,7 @@ it.each([0, 25])('sends the selected volume (%s) with the first play command', a
   vi.spyOn(types, 'fetchTrackTypes').mockResolvedValue()
   const ws = useWebSocketStore()
   ws.isConnected = true
-  const send = vi.spyOn(ws, 'sendMessage').mockImplementation(() => {})
+  const send = vi.spyOn(ws, 'sendEvent').mockImplementation(() => {})
   const wrapper = mount(FileList, {
     global: {
       plugins: [pinia],
@@ -46,7 +46,7 @@ it.each([0, 25])('sends the selected volume (%s) with the first play command', a
   await flushPromises()
   useAudioStore().updateTrackState('forest', { volume })
   await wrapper.get('[aria-label="Forest"]').trigger('click')
-  expect(send).toHaveBeenCalledWith('syncTrack', {
+  expect(send).toHaveBeenCalledWith('trackPlaybackChanged', {
     fileID: 'forest', isPlaying: true, duration: 0, volume,
   })
   wrapper.unmount()
@@ -122,7 +122,7 @@ it('applies pushed processing status and refreshes after reconnecting', async ()
   const stop = vi.fn()
   let pushStatus: (update: TrackStatusUpdate) => void = () => {}
   vi.spyOn(ws, 'on').mockImplementation((command, handler) => {
-    if (command === 'trackStatus') pushStatus = update => (handler as Parameters<typeof ws.on<'trackStatus'>>[1])(update, {})
+    if (command === 'trackStatusChanged') pushStatus = update => (handler as Parameters<typeof ws.on<'trackStatusChanged'>>[1])(update, {})
     return stop
   })
   const wrapper = mount(FileList, {

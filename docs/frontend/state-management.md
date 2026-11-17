@@ -17,7 +17,7 @@ polling. Initial loads and reconnect reconciliation fetch authoritative state.
 | `stores/auth.ts` | GM session role, credentials, and logout ([authentication](../backend/authentication.md)) |
 | `stores/files.ts`, `stores/trackTypes.ts`, `stores/tables.ts` | Library, track-type, table, and association metadata through the generated SDK |
 | `stores/audio.ts` | Per-file playback state, [synchronization](../playback/synchronization.md) reconciliation, fades, master/type volumes |
-| `stores/websocket.ts` | Socket connection/reconnection, typed command subscriptions and message history ([protocol](../playback/websocket-protocol.md)) |
+| `stores/websocket.ts` | Socket connection/reconnection, typed event sending/subscriptions and message history ([protocol](../playback/websocket-protocol.md)) |
 | `stores/debug.ts` | Development-only debug panel state |
 | `stores/clientPreferences.ts` | Browser-persisted [screen-awake](./screen-wake-lock.md) preference |
 | `composables/` | Shared app-bar state, browser origin, immutable partial-object patches, screen wake-lock lifecycle |
@@ -55,7 +55,7 @@ upload error handlers cannot report false success.
 ## Processing updates
 
 The GM table and library subscribe to
-[`trackStatus`](../playback/websocket-protocol.md), applying terminal processing
+[`trackStatusChanged`](../playback/websocket-protocol.md), applying terminal processing
 status and diagnostics to their track lists without polling. A push arriving
 before the upload response is held in a nonpersisted unmatched-status map
 until `addTrack()` adds the track. Successful library fetches clear that map.

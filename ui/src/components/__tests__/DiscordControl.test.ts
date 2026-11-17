@@ -3,7 +3,7 @@ import { enableAutoUnmount, flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { nextTick } from 'vue'
 import { useWebSocketStore } from '@/stores/websocket'
-import { CommandRouter } from '@/websocket/router'
+import { EventHub } from '@/websocket/router'
 import DiscordControl from '../DiscordControl.vue'
 
 const api = vi.hoisted(() => ({ get: vi.fn(), disconnect: vi.fn() }))
@@ -27,7 +27,7 @@ it('shows reconnect progress without a cancel action, then allows disconnecting 
   setActivePinia(pinia)
   const ws = useWebSocketStore()
   ws.isConnected = true
-  const router = new CommandRouter()
+  const router = new EventHub()
   vi.spyOn(ws, 'on').mockImplementation(router.on.bind(router))
   api.get.mockResolvedValue({ data: { enabled: true, state: 'connecting' } })
   api.disconnect.mockResolvedValue({ data: { enabled: true, state: 'disconnected' } })
@@ -60,7 +60,7 @@ it('shows reconnect progress without a cancel action, then allows disconnecting 
   await button.trigger('click')
   expect(api.disconnect).not.toHaveBeenCalled()
 
-  router.dispatch({ method: 'discordStatus', payload: { enabled: true, state: 'connected' } })
+  router.dispatch({ event: 'discordStatusChanged', payload: { enabled: true, state: 'connected' } })
   await nextTick()
   await vi.advanceTimersByTimeAsync(10_000)
   expect(api.get).toHaveBeenCalledTimes(1)

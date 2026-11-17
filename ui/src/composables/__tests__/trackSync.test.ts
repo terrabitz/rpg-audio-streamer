@@ -13,8 +13,8 @@ it('coalesces each track separately and preserves different partial fields', () 
   sync.send({ fileID: 'rain', currentTime: 4 })
   vi.advanceTimersByTime(100)
   expect(send.mock.calls).toEqual([
-    ['syncTrack', { fileID: 'music', isPlaying: true, currentTime: 3, volume: 0 }],
-    ['syncTrack', { fileID: 'rain', isPlaying: true, currentTime: 4 }],
+    ['trackPlaybackChanged', { fileID: 'music', isPlaying: true, currentTime: 3, volume: 0 }],
+    ['trackPlaybackChanged', { fileID: 'rain', isPlaying: true, currentTime: 4 }],
   ])
 })
 
@@ -24,7 +24,7 @@ it('flushes queued commands before an immediate update and cancels on leaving', 
   const sync = createTrackSync(send)
   sync.send({ fileID: 'music', isPlaying: true })
   sync.flush()
-  expect(send).toHaveBeenCalledExactlyOnceWith('syncTrack', { fileID: 'music', isPlaying: true })
+  expect(send).toHaveBeenCalledExactlyOnceWith('trackPlaybackChanged', { fileID: 'music', isPlaying: true })
   sync.send({ fileID: 'music', isPlaying: false })
   sync.cancel()
   vi.advanceTimersByTime(100)

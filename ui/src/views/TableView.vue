@@ -31,7 +31,7 @@ onMounted(async () => {
       audio.clearTracks()
       ws.disconnect()
     }),
-    ws.on('removeTrack', ({ fileID }) => {
+    ws.on('trackRemoved', ({ fileID }) => {
       audio.removeTrack(fileID)
       tables.tracks = tables.tracks.filter(track => track.id !== fileID)
     }),

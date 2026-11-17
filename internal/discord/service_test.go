@@ -10,9 +10,21 @@ import (
 	"testing"
 	"time"
 
+	"github.com/terrabitz/rpg-audio-streamer/internal/events"
 	"github.com/terrabitz/rpg-audio-streamer/internal/livemixer"
 	"github.com/terrabitz/rpg-audio-streamer/internal/mixer"
 )
+
+type statusSender func(string, Status)
+
+func (s statusSender) SendEvent(event string, payload any) error {
+	if event != events.DiscordStatusChanged {
+		return errors.New("unexpected event: " + event)
+	}
+	update := payload.(events.TableEvent[Status])
+	s(update.TableID, update.Data)
+	return nil
+}
 
 func TestConnectionStreamsExistingMixAndReservesBotUntilDisconnect(t *testing.T) {
 	mix := testMix(t)
@@ -110,12 +122,12 @@ func TestTransportExitRestoresReconnectableErrorState(t *testing.T) {
 	service, _ := New(Config{Token: "test-only"}, testMix(t))
 	defer service.Close()
 	updates := make(chan Status, 4)
-	service.SetStatusListener(func(tableID string, status Status) {
+	service.SetEventSender(statusSender(func(tableID string, status Status) {
 		if tableID != "table" {
 			t.Errorf("status crossed tables: %s", tableID)
 		}
 		updates <- status
-	})
+	}))
 	read, write := io.Pipe()
 	defer read.Close()
 	done := make(chan struct{})
@@ -149,7 +161,7 @@ func TestStatusListenerReportsDisconnectAndRestoreFailure(t *testing.T) {
 	service, _ := New(Config{Token: "test-only"}, testMix(t))
 	defer service.Close()
 	updates := make(chan Status, 4)
-	service.SetStatusListener(func(_ string, status Status) { updates <- status })
+	service.SetEventSender(statusSender(func(_ string, status Status) { updates <- status }))
 	service.open = func(ctx context.Context, _ Config) (*transport, error) {
 		done := make(chan struct{})
 		go func() { <-ctx.Done(); close(done) }()

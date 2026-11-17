@@ -51,7 +51,7 @@ consumers become observable error states.
 The first successful mixer sync of a GM table session follows an authoritative
 [playback snapshot](../playback/synchronization.md), so a reconnect sync
 includes the table's active tracks before attempting the saved destination
-once. Repeated syncs and status polling do not reconnect a manually
+once. Repeated playback updates and status reads do not reconnect a manually
 disconnected bot. Leaving a table or closing its last GM tab cancels pending
 reconnection and disconnects the connection. Returning creates a new session
 and attempts reconnection. Multiple GM tabs keep the bot active until the last

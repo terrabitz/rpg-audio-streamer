@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import { CommandRouter, parseMessage, type CommandArgs, type Message } from '@/websocket/router'
+import { EventHub, parseMessage, type EventArgs, type Message } from '@/websocket/router'
 
 const reconnectIntervalMs = 3000
 
@@ -25,7 +25,7 @@ function getWebSocketUrl(): string {
 
 export const useWebSocketStore = defineStore('websocket', () => {
   const isConnected = ref(false)
-  const router = new CommandRouter()
+  const router = new EventHub()
   const messageHistory = ref<StoredMessage[]>([])
   let socket: WebSocket | null = null
   let reconnectTimer: ReturnType<typeof setTimeout> | undefined
@@ -103,12 +103,12 @@ export const useWebSocketStore = defineStore('websocket', () => {
     router.dispatch(message)
   }
 
-  function sendMessage(...[method, payload]: CommandArgs) {
-    sendDebugMessage(method, payload)
+  function sendEvent(...[event, payload]: EventArgs) {
+    sendDebugEvent(event, payload)
   }
 
-  function sendDebugMessage(method: string, payload: unknown) {
-    const msg: Message = { method, payload }
+  function sendDebugEvent(event: string, payload: unknown) {
+    const msg: Message = { event, payload }
     if (!socket || socket.readyState !== WebSocket.OPEN) {
       throw new Error('WebSocket is not connected')
     }
@@ -142,8 +142,8 @@ export const useWebSocketStore = defineStore('websocket', () => {
     isConnected,
     connect,
     disconnect,
-    sendMessage,
-    sendDebugMessage,
+    sendEvent,
+    sendDebugEvent,
     on: router.on.bind(router),
     messageHistory,
     clearMessageHistory

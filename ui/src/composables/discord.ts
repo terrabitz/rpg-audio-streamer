@@ -27,7 +27,7 @@ export function useDiscord(tableID: string) {
   let refreshRevision = 0
   let statusRevision = 0
   const ws = useWebSocketStore()
-  const stopStatus = ws.on('discordStatus', applyStatus)
+  const stopStatus = ws.on('discordStatusChanged', applyStatus)
   const stopConnection = watch(() => ws.isConnected, connected => {
     if (connected) void refresh()
   }, { immediate: true })

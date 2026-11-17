@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/disgoorg/disgo/rest"
+	"github.com/terrabitz/rpg-audio-streamer/internal/events"
 	"github.com/terrabitz/rpg-audio-streamer/internal/livemixer"
 	"github.com/terrabitz/rpg-audio-streamer/internal/mixer"
 )
@@ -60,7 +61,7 @@ type Service struct {
 	apiMu     sync.Mutex
 	apiClient rest.Client
 	closeREST sync.Once
-	onStatus  func(string, Status)
+	events    events.Sender
 }
 
 type session struct {
@@ -93,10 +94,9 @@ func New(cfg Config, mix *livemixer.Service) (*Service, error) {
 	}, nil
 }
 
-// SetStatusListener installs a nonblocking observer before connections are accepted.
-// The observer runs under the service lock to preserve transition ordering.
-func (s *Service) SetStatusListener(listener func(string, Status)) {
-	s.onStatus = listener
+// SetEventSender installs the hub before connections are accepted.
+func (s *Service) SetEventSender(sender events.Sender) {
+	s.events = sender
 }
 
 func (s *Service) Connect(ctx context.Context, tableID string, target Destination) error {
@@ -285,8 +285,10 @@ func (s *Service) stream(current *session) error {
 
 func (s *Service) setStatus(tableID string, status Status) {
 	s.status[tableID] = status
-	if s.onStatus != nil {
-		s.onStatus(tableID, status)
+	if s.events != nil {
+		if err := s.events.SendEvent(events.DiscordStatusChanged, events.TableEvent[Status]{TableID: tableID, Data: status}); err != nil {
+			slog.Error("failed to queue Discord status event", "tableID", tableID, "error", err)
+		}
 	}
 }
 

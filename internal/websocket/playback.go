@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/terrabitz/rpg-audio-streamer/internal/auth"
+	"github.com/terrabitz/rpg-audio-streamer/internal/events"
 	"github.com/terrabitz/rpg-audio-streamer/internal/server"
 )
 
@@ -77,7 +78,8 @@ func (h *Hub) refreshPlayback() {
 	}
 }
 
-func (h *Hub) SyncSettings(tableID string, patch server.TableSettingsPatch) {
+func (h *Hub) handleTableSettingsChanged(event events.TableEvent[server.TableSettingsPatch], _ *Client) {
+	tableID, patch := event.TableID, event.Data
 	h.stateMu.Lock()
 	defer h.stateMu.Unlock()
 	// Concurrent HTTP patches can finish broadcasting in a different order.
@@ -214,7 +216,7 @@ func (h *Hub) updatePlayback(patch PlaybackPatch, c *Client) {
 	h.playback[c.Token.TableID] = states
 	h.sendState(c.Token.TableID, settings, "")
 	if h.mixer != nil {
-		h.applyMixer(c, SyncTrack, func() error {
+		h.applyMixer(c, events.TrackPlaybackChanged, func() error {
 			paused := false
 			for _, id := range stopped {
 				stop, err := json.Marshal(PlaybackPatch{FileID: id, IsPlaying: &paused})
@@ -308,15 +310,15 @@ func (h *Hub) sendState(tableID string, settings server.TableSettings, target st
 		if target != "" {
 			options = append(options, ToClientID(target))
 		}
-		if err := h.BroadcastPayload(SyncAll, snapshot, options...); err != nil {
+		if err := h.publishEvent(events.PlaybackStateChanged, snapshot, options...); err != nil {
 			h.logger.Error("failed to send playback state", "error", err)
 		}
 	}
 }
 
 func (h *Hub) playbackError(c *Client, err error) {
-	h.logger.Warn("playback command failed", "error", err, "tableID", c.Token.TableID)
-	if sendErr := c.SendPayload(PlaybackError, Failure{Message: "Unable to synchronize playback. Reload the table and try again."}); sendErr != nil {
+	h.logger.Warn("playback event failed", "error", err, "tableID", c.Token.TableID)
+	if sendErr := c.sendEvent(events.PlaybackFailed, Failure{Message: "Unable to synchronize playback. Reload the table and try again."}); sendErr != nil {
 		h.logger.Error("failed to send playback error", "error", sendErr)
 	}
 }

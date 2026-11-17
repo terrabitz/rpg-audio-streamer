@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/terrabitz/rpg-audio-streamer/internal/auth"
+	"github.com/terrabitz/rpg-audio-streamer/internal/events"
 )
 
 func (s *Server) handleFiles(w http.ResponseWriter, r *http.Request, token *auth.Token) {
@@ -216,9 +217,13 @@ func (s *Server) handleFileDelete(w http.ResponseWriter, r *http.Request, token 
 		http.Error(w, "Failed to remove track record", http.StatusInternalServerError)
 		return
 	}
-	s.hub.RemoveTrack("", trackID.String())
-
-	if err := os.RemoveAll(track.Path); err != nil {
+	removeErr := os.RemoveAll(track.Path)
+	if !s.sendEvent(w, events.TrackRemoved, events.TableEvent[events.TrackReference]{
+		Data: events.TrackReference{FileID: trackID.String()},
+	}) {
+		return
+	}
+	if removeErr != nil {
 		http.Error(w, "Failed to delete folder", http.StatusInternalServerError)
 		return
 	}

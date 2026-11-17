@@ -28,7 +28,7 @@ function sendDevMessage() {
     return
   }
 
-  wsStore.sendDebugMessage(debugStore.devMethod, parsedPayload)
+  wsStore.sendDebugEvent(debugStore.devEvent, parsedPayload)
   debugStore.clearForm()
 }
 </script>
@@ -47,7 +47,7 @@ function sendDevMessage() {
     <v-card class="mb-4">
       <v-card-title>Send Message</v-card-title>
       <v-card-text>
-        <v-text-field v-model="debugStore.devMethod" label="Method" variant="outlined" density="compact" />
+        <v-text-field v-model="debugStore.devEvent" label="Event" variant="outlined" density="compact" />
         <v-textarea v-model="debugStore.devPayload" label="Payload (JSON)" variant="outlined" density="compact" />
         <v-btn @click="sendDevMessage" color="primary" block>Send</v-btn>
       </v-card-text>
@@ -74,20 +74,20 @@ function sendDevMessage() {
                 <v-tooltip text="Repeat message">
                   <template v-slot:activator="{ props }">
                     <v-btn size="x-small" icon="$refresh" color="blue" variant="text" v-bind="props"
-                      @click="wsStore.sendDebugMessage(msg.method, msg.payload)"></v-btn>
+                      @click="wsStore.sendDebugEvent(msg.event, msg.payload)"></v-btn>
                   </template>
                 </v-tooltip>
                 <v-tooltip text="Copy to form">
                   <template v-slot:activator="{ props }">
                     <v-btn size="x-small" icon="$copy" color="blue" variant="text" v-bind="props" @click="() => {
-                      debugStore.devMethod = msg.method;
+                      debugStore.devEvent = msg.event;
                       debugStore.devPayload = JSON.stringify(msg.payload, null, 2);
                     }"></v-btn>
                   </template>
                 </v-tooltip>
               </div>
             </div>
-            <div class="font-weight-bold mt-1">{{ msg.method }}</div>
+            <div class="font-weight-bold mt-1">{{ msg.event }}</div>
             <pre class="message-payload">{{ JSON.stringify(msg.payload, null, 2) }}</pre>
           </div>
           <div v-if="wsStore.messageHistory.length === 0" class="text-grey text-center pa-4">

@@ -1,7 +1,7 @@
 ---
 type: Subsystem
 title: Live mixer
-description: Server-side table mixes driven by GM commands and published as PCM.
+description: Server-side table mixes driven by GM events and published as PCM.
 resource: internal/livemixer
 tags: [discord, audio, mixing, websocket]
 ---
@@ -14,13 +14,13 @@ synchronization remain available independently; the mixer supplies audio to
 Discord. Each table session wraps a [PCM mixer](./pcm-mixer.md) fed by
 [PCM sources](./pcm-source.md).
 
-## Commands
+## Events
 
 For an enabled service, the hub sends `mixerReady` to each authenticated GM
 connection (see [WebSocket protocol](../playback/websocket-protocol.md)). The GM
-answers with `mixSync`: a full snapshot of playing tracks and the current
+answers with `mixChanged`: a full snapshot of playing tracks and the current
 type-volume map. This happens on reconnect as well as initial connection.
-Existing `syncTrack` messages feed partial play/pause, seek, volume, repeating,
+`trackPlaybackChanged` events feed partial play/pause, seek, volume, repeating,
 and live [playback-region](../playback/playback-regions.md) changes into the
 mixer. Seek commands use `CrossfadeSeek` (see
 [seek crossfades](../playback/seek-crossfades.md)); fresh snapshots initialize a
@@ -29,7 +29,7 @@ seek transition.
 
 Track volumes are unscaled; the supplied type-volume map includes the GM master
 multiplier. The service applies that multiplier and caps effective gain at
-unity, matching browser per-track gain clamping. The GM sends `mixVolumes` for
+unity, matching browser per-track gain clamping. The GM sends `mixVolumesChanged` for
 live type-volume and master-volume changes. Play/resume commands include the
 GM's selected track volume, including unsaved and zero values. The hub also
 supplies the resolved track volume and playback region to the mixer on play, so
@@ -41,16 +41,16 @@ and are serialized with the accepted playback update, so Discord fades out the
 previous Music track while simultaneous track types continue playing. Frontend
 partial updates coalesce by track ID, preserving independent fields and updates
 to different tracks in the same debounce window. Immediate exclusivity and
-region changes flush queued commands first.
+region changes flush queued updates first.
 
 ## Authorization and errors
 
 The hub derives table identity and GM authorization from the authenticated
-socket, never the command payload. Targeted player `syncAll` responses do not
+socket, never the event payload. Targeted player `playbackStateChanged` responses do not
 mutate the mixer; untargeted full syncs replace it, including the empty
-snapshot on leaving a table. Mixer-only commands are ignored when disabled and
-never forwarded to players. Successful commands receive `mixerAck`; failures
-receive `mixerError` and are logged with table and command context. The GM
+snapshot on leaving a table. Mixer-only events are ignored when disabled and
+never forwarded to players. Successful events receive `mixerApplied`; failures
+receive `mixerFailed` and are logged with table and event context. The GM
 displays errors without stopping browser playback. A successful reconnect
 snapshot clears the error. Normal player broadcasts happen before mixer
 processing, so warming a decoder does not delay that broadcast.
@@ -86,7 +86,7 @@ removes it from all mixes (see
 [table track associations](../data/table-track-associations.md)). Table deletion
 and loss of its last GM connection discard the session and cancel its decoder
 processes; in-flight source preparation cannot recreate it. Multiple GMs share
-a table's mixer with last-accepted-command semantics. Mixer state is ephemeral,
+a table's mixer with last-accepted-event semantics. Mixer state is ephemeral,
 not stored in SQLite.
 
 ## Testing

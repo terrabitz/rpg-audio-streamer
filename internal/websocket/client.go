@@ -57,7 +57,10 @@ func (c *Client) Send(msg Message) error {
 
 func (c *Client) ReadPump() {
 	defer func() {
-		c.hub.unregister <- c
+		select {
+		case c.hub.unregister <- c:
+		case <-c.hub.done:
+		}
 		c.conn.Close()
 	}()
 

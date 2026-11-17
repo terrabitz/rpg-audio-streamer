@@ -313,10 +313,8 @@ type recordingWSRegisterer struct {
 	tokens chan *auth.Token
 }
 
-func (r *recordingWSRegisterer) CloseTable(string)                       {}
-func (r *recordingWSRegisterer) RemoveTrack(string, string)              {}
-func (r *recordingWSRegisterer) SyncSettings(string, TableSettingsPatch) {}
-func (r *recordingWSRegisterer) RevokePlayerAccess(string)               {}
+func (r *recordingWSRegisterer) SendEvent(string, any) error { return nil }
+func (r *recordingWSRegisterer) RevokePlayerAccess(string)   {}
 
 func (r *recordingWSRegisterer) Register(conn *websocket.Conn, token *auth.Token) {
 	defer conn.Close()

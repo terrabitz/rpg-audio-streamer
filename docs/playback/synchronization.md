@@ -22,18 +22,18 @@ URL (see [public table links](../backend/public-table-links.md)). All routing
 filters, including targeted full syncs and sync requests, also require a
 matching table.
 
-## Snapshots and commands
+## Snapshots and events
 
-Every GM and listening player requests a snapshot with `syncRequest` on
-connection and reconnection. The server replies directly with `syncAll`,
+Every GM and listening player requests a snapshot with `playbackSyncRequested` on
+connection and reconnection. The server replies directly with `playbackStateChanged`,
 including paused tracks and their positions; it does not need a connected GM.
 
-GMs submit partial `syncTrack` commands for play/pause, seek, volume, duration,
+GMs submit partial `trackPlaybackChanged` events for play/pause, seek, volume, duration,
 and live [playback-region](./playback-regions.md) edits. The server validates
-table membership and regions, applies commands serially, and broadcasts
-canonical snapshots to both roles, including the commanding GM. Omitted fields
+table membership and regions, applies events serially, and broadcasts
+canonical snapshots to both roles, including the originating GM. Omitted fields
 keep their current server values rather than being replaced by a stale browser
-snapshot. Players cannot change playback, and client-originated `syncAll`
+snapshot. Players cannot change playback, and client-originated `playbackStateChanged`
 messages are not accepted.
 
 The server enforces track-type exclusivity atomically: starting Music stops
@@ -76,7 +76,7 @@ per-type multipliers. Local autoplay failures do not pause the shared table.
 
 Leaving a GM table disconnects that browser without changing table playback.
 Deleting a table notifies and disconnects its active clients. Server-originated
-`removeTrack` messages stop removed or deleted tracks for both roles (see
+`trackRemoved` events stop removed or deleted tracks for both roles (see
 [table track associations](../data/table-track-associations.md)). Socket
 reconnects preserve table scope; leaving or switching tables cancels old
 retries and ignores stale socket callbacks.

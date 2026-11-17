@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/terrabitz/rpg-audio-streamer/internal/events"
 	"github.com/terrabitz/rpg-audio-streamer/internal/livemixer"
 	"github.com/terrabitz/rpg-audio-streamer/internal/mixer"
 	"github.com/terrabitz/rpg-audio-streamer/internal/server"
@@ -23,7 +24,7 @@ var (
 type playbackTestStore struct{}
 
 func routeSyncTrack(h *Hub, payload json.RawMessage, client *Client) {
-	h.handlers[SyncTrack](payload, client)
+	h.handlers[events.TrackPlaybackChanged](payload, client)
 }
 
 func (playbackTestStore) HasTableTrack(_ context.Context, _ uuid.UUID, id uuid.UUID) (bool, error) {
@@ -47,8 +48,8 @@ func TestSharedPlaybackAndRecovery(t *testing.T) {
 	for _, client := range clients {
 		client.Token.TableID = server.DefaultTableID.String()
 	}
-	command := fmt.Sprintf(`{"fileID":%q,"isPlaying":true,"duration":60}`, testTrackID.String())
-	routeSyncTrack(h, json.RawMessage(command), clients["gm"])
+	event := fmt.Sprintf(`{"fileID":%q,"isPlaying":true,"duration":60}`, testTrackID.String())
+	routeSyncTrack(h, json.RawMessage(event), clients["gm"])
 	for id, client := range clients {
 		snapshot := readPlayback(t, client)
 		if len(snapshot.Tracks) != 1 || !snapshot.Tracks[0].IsPlaying {
@@ -70,7 +71,7 @@ func TestSharedPlaybackAndRecovery(t *testing.T) {
 	state.updatedAt = time.Now().Add(-8 * time.Second)
 	h.playback[server.DefaultTableID.String()][testTrackID.String()] = state
 	delete(h.clients, clients["gm"])
-	h.handleSyncRequest(Empty{}, clients["otherGM"])
+	h.handlePlaybackSyncRequested(Empty{}, clients["otherGM"])
 	snapshot := readPlayback(t, clients["otherGM"])
 	if snapshot.Tracks[0].CurrentTime < 8 || !snapshot.Tracks[0].IsPlaying {
 		t.Fatalf("recovered state = %+v", snapshot)
@@ -89,7 +90,7 @@ func TestSharedPlaybackAndRecovery(t *testing.T) {
 		t.Fatalf("paused seek = %+v", snapshot)
 	}
 	if snapshot.Tracks[0].PositionVersion != 3 {
-		t.Fatalf("seek command version = %d", snapshot.Tracks[0].PositionVersion)
+		t.Fatalf("seek event version = %d", snapshot.Tracks[0].PositionVersion)
 	}
 	if snapshot.Tracks[0].SeekVersion != 1 {
 		t.Fatalf("seek version = %d; play/pause must not count as seeks", snapshot.Tracks[0].SeekVersion)
@@ -97,7 +98,7 @@ func TestSharedPlaybackAndRecovery(t *testing.T) {
 	routeSyncTrack(h, json.RawMessage(fmt.Sprintf(`{"fileID":%q,"playback":{"startTime":1,"endTime":null,"loopBackTime":null}}`, testTrackID)), clients["otherGM"])
 	snapshot = readPlayback(t, clients["otherGM"])
 	if snapshot.Tracks[0].PositionVersion != 3 || snapshot.Tracks[0].SeekVersion != 1 {
-		t.Fatal("marker edits must not issue a seek command")
+		t.Fatal("marker edits must not issue a seek event")
 	}
 }
 
@@ -124,9 +125,9 @@ func TestSeekSnapshotSeparatesTheLandingTargetFromTheAdvancingClock(t *testing.T
 					IsPlaying: tc.playing, updatedAt: time.Now(),
 				},
 			}
-			command := fmt.Sprintf(`{"fileID":%q,"currentTime":%v,"playback":{"startTime":%v,"endTime":%v,"loopBackTime":null}}`,
+			event := fmt.Sprintf(`{"fileID":%q,"currentTime":%v,"playback":{"startTime":%v,"endTime":%v,"loopBackTime":null}}`,
 				testTrackID, tc.target, tc.start, tc.end)
-			routeSyncTrack(h, json.RawMessage(command), clients["gm"])
+			routeSyncTrack(h, json.RawMessage(event), clients["gm"])
 			state := readPlayback(t, clients["gm"]).Tracks[0]
 			if state.SeekTarget == nil || *state.SeekTarget != tc.landing {
 				t.Fatalf("seek target = %v, want %v", state.SeekTarget, tc.landing)
@@ -153,8 +154,8 @@ func TestSeekNearBeginningRetainsTheCommandUntilTheFadeLands(t *testing.T) {
 					},
 				}
 				target := start + offset
-				command := fmt.Sprintf(`{"fileID":%q,"currentTime":%v,"playback":{"startTime":%v,"endTime":null,"loopBackTime":null}}`, testTrackID, target, start)
-				routeSyncTrack(h, json.RawMessage(command), clients["gm"])
+				event := fmt.Sprintf(`{"fileID":%q,"currentTime":%v,"playback":{"startTime":%v,"endTime":null,"loopBackTime":null}}`, testTrackID, target, start)
+				routeSyncTrack(h, json.RawMessage(event), clients["gm"])
 				snapshot := readPlayback(t, clients["gm"]).Tracks[0]
 				if snapshot.SeekTarget == nil || *snapshot.SeekTarget != target ||
 					snapshot.SeekLanding == nil || *snapshot.SeekLanding != start+2 ||
@@ -291,21 +292,21 @@ func TestPlaybackCommandsAreAtomicAndAuthorized(t *testing.T) {
 			}
 		}
 		if playing != 1 {
-			t.Fatalf("exclusive commands diverged: %+v", snapshot)
+			t.Fatalf("exclusive events diverged: %+v", snapshot)
 		}
 	}
 	mix := &testMixer{}
 	h.SetMixer(mix)
-	for _, command := range []string{
+	for _, event := range []string{
 		fmt.Sprintf(`{"fileID":%q,"volume":-1}`, testTrackID),
 		fmt.Sprintf(`{"fileID":%q,"playback":{"startTime":20,"endTime":10,"loopBackTime":null}}`, testTrackID),
 		`{"fileID":"00000000-0000-4000-8000-000000000099","isPlaying":true}`,
 		`null`,
 	} {
-		routeSyncTrack(h, json.RawMessage(command), clients["gm"])
+		routeSyncTrack(h, json.RawMessage(event), clients["gm"])
 		var message Message
-		if err := json.Unmarshal(<-clients["gm"].send, &message); err != nil || message.Method != "playbackError" {
-			t.Fatalf("invalid command response = %+v, %v", message, err)
+		if err := json.Unmarshal(<-clients["gm"].send, &message); err != nil || message.Event != "playbackFailed" {
+			t.Fatalf("invalid event response = %+v, %v", message, err)
 		}
 	}
 	routeSyncTrack(h, json.RawMessage(fmt.Sprintf(`{"fileID":%q,"isPlaying":false}`, testTrackID)), clients["player"])
@@ -313,13 +314,15 @@ func TestPlaybackCommandsAreAtomicAndAuthorized(t *testing.T) {
 		t.Fatal("player changed shared playback")
 	}
 	if len(mix.calls) != 0 {
-		t.Fatalf("rejected playback commands reached the mixer: %v", mix.calls)
+		t.Fatalf("rejected playback events reached the mixer: %v", mix.calls)
 	}
-	h.RemoveTrack(server.DefaultTableID.String(), testTrackID.String())
+	sendAndDrain(t, h, events.TrackRemoved, events.TableEvent[events.TrackReference]{
+		TableID: server.DefaultTableID.String(), Data: events.TrackReference{FileID: testTrackID.String()},
+	})
 	if _, ok := h.playback[server.DefaultTableID.String()][testTrackID.String()]; ok {
 		t.Fatal("removed track survives recovery")
 	}
-	h.CloseTable(server.DefaultTableID.String())
+	sendAndDrain(t, h, events.TableDeleted, server.DefaultTableID.String())
 	if _, ok := h.playback[server.DefaultTableID.String()]; ok {
 		t.Fatal("deleted table survives recovery")
 	}
@@ -357,7 +360,7 @@ func TestPlaybackExclusivityFadesMixerAudio(t *testing.T) {
 					readPlayback(t, client)
 				}
 				var response Message
-				if err := json.Unmarshal(<-clients["gm"].send, &response); err != nil || response.Method != "mixerAck" {
+				if err := json.Unmarshal(<-clients["gm"].send, &response); err != nil || response.Event != "mixerApplied" {
 					t.Fatalf("mixer response = %+v, %v", response, err)
 				}
 			}
@@ -460,8 +463,10 @@ func TestPlaybackRefreshAndSettings(t *testing.T) {
 	h.playback[tableID][testTrackID.String()] = state
 	mix := &testMixer{}
 	h.mixer = mix
-	h.SyncSettings(tableID, server.TableSettingsPatch{
-		TrackVolumes: map[string]float64{testTrackID.String(): 10},
+	sendAndDrain(t, h, events.TableSettingsChanged, events.TableEvent[server.TableSettingsPatch]{
+		TableID: tableID, Data: server.TableSettingsPatch{
+			TrackVolumes: map[string]float64{testTrackID.String(): 10},
+		},
 	})
 	if len(mix.calls) != 1 || mix.calls[0] != "update:"+tableID {
 		t.Fatalf("mixer did not receive the track volume update: %v", mix.calls)
@@ -497,7 +502,7 @@ func readPlayback(t *testing.T, client *Client) playbackSnapshot {
 		if err := json.Unmarshal(raw, &message); err != nil {
 			t.Fatal(err)
 		}
-		if message.Method != "syncAll" {
+		if message.Event != "playbackStateChanged" {
 			t.Fatalf("unexpected response: %s", raw)
 		}
 		if err := json.Unmarshal(message.Payload, &snapshot); err != nil {

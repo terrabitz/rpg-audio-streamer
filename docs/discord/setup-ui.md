@@ -41,7 +41,7 @@ without forgetting it.
 
 The composable fetches status once when the table WebSocket connects or
 reconnects. Server-side connection transitions arrive through the GM-only,
-table-scoped [`discordStatus` event](../playback/websocket-protocol.md), without
+table-scoped [`discordStatusChanged` event](../playback/websocket-protocol.md), without
 polling. Pushed status takes precedence over in-flight HTTP responses and clears
 resolved connection errors. The composable prevents duplicate commands,
 discards stale status/channel responses, and displays failures. Connection behavior is described in
