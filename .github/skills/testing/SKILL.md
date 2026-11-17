@@ -5,9 +5,10 @@ description: Add or run domain, SQLite integration, and full-app browser tests; 
 
 # Testing RPG Audio Streamer
 
-Read `docs/architecture.md` for the app's boundaries and data flow. Keep that
-document accurate when behavior, code structure, persistence, or interfaces
-change. Architecture descriptions belong there, not in this procedural skill.
+Read `docs/index.md` and the linked concepts for the app's boundaries and data
+flow. Keep those concepts accurate when behavior, code structure, persistence,
+or interfaces change, following the documentation skill. Architecture
+descriptions belong there, not in this procedural skill.
 Keep root `AGENTS.md` short.
 
 ## Setup and commands
@@ -68,9 +69,9 @@ go test ./internal/musicprocessing -run '^TestYouTubeIntegration$' -count=1 -tim
 cd ui && npm run test:e2e -- youtube-live.spec.ts --project=chromium-youtube
 ```
 
-The `pr-checks` workflow sets this public, non-secret link as plain workflow
-environment and installs `yt-dlp[default]` with pipx and Node.js in the Go and
-browser jobs, so both live tests run in CI.
+Live YouTube checks are opt-in and are not enabled by the `pr-checks` workflow.
+Set the public, non-secret link explicitly when running these external-service
+checks.
 
 The Go test scans and downloads the real video, persists processing state in
 temporary SQLite, converts it to HLS, checks waveform output, and decodes the
@@ -229,7 +230,7 @@ failed app paths with mocked responses or injected Pinia/localStorage state.
 2. Update queries/OpenAPI at their source and regenerate clients when needed.
    For WebSocket changes, keep the Go payload structs and browser payload
    interfaces aligned, and exercise the affected typed callbacks.
-3. Keep `docs/architecture.md` synchronized with changed app behavior and
-   boundaries; keep commands and testing procedures in this skill.
+3. Keep the affected `docs/` concepts synchronized with changed app behavior
+   and boundaries; keep commands and testing procedures in this skill.
 4. Run focused tests, the affected coverage gates, and relevant build/lint.
 5. Run browser journeys when HTTP, auth, playback, persistence, or UX changes.
