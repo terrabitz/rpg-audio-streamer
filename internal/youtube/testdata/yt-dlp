@@ -36,5 +36,14 @@ case "$1" in
   'https://www.youtube.com/watch?v=ddddddddddd') exec sleep 30 ;;
   'https://www.youtube.com/watch?v=eeeeeeeeeee') printf 'not audio' > "$output" ;;
   'https://www.youtube.com/watch?v=fffffffffff') truncate -s "$IMPORT_OVERSIZE_BYTES" "$output" ;;
+  'https://www.youtube.com/watch?v=lllllllllll')
+    echo '[youtube] Extracting URL: https://www.youtube.com/watch?v=lllllllllll'
+    i=1
+    while [ "$i" -le 40 ]; do
+      printf '[youtube] Download attempt %s\n' "$i"
+      i=$((i + 1))
+    done
+    echo 'ERROR: Sign in to confirm you are not a bot. <script>alert("untrusted output")</script>' >&2
+    exit 1 ;;
   *) echo 'Unexpected video URL' >&2; exit 1 ;;
 esac

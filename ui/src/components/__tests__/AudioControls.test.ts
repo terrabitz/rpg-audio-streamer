@@ -290,6 +290,34 @@ it('shows table-removal failures without closing the controls', async () => {
   wrapper.unmount()
 })
 
+it('shows failed processing diagnostics as text and retries removing the table association', async () => {
+  const { wrapper, deleteTrack, fetchWaveform } = mountControls(false)
+  const diagnostics = 'Command:\nyt-dlp -- source\n\nLogs:\n<script>alert("log")</script>\n\nError:\nexit status 1'
+  Object.assign(useFileStore().tracks[0]!, { status: 'failed', processingError: diagnostics })
+  await flushPromises()
+  expect(wrapper.find('[aria-label="Edit Forest"]').exists()).toBe(false)
+  await wrapper.get('[aria-label="View processing failure for Forest"]').trigger('click')
+  const dialog = wrapper.get('[role="dialog"][aria-label="Track processing failed"]')
+  expect(dialog.get('pre code').text()).toBe(diagnostics)
+  expect(dialog.find('script').exists()).toBe(false)
+  expect(dialog.findComponent({ name: 'TrackTypeSelector' }).exists()).toBe(false)
+  expect(dialog.findComponent({ name: 'TrackTimeline' }).exists()).toBe(false)
+  expect(fetchWaveform).not.toHaveBeenCalled()
+  const remove = dialog.get('[aria-label="Remove from table"]')
+  expect(remove.attributes('variant')).toBe('flat')
+  vi.spyOn(console, 'error').mockImplementation(() => {})
+  deleteTrack.mockRejectedValueOnce(new Error('offline'))
+  await remove.trigger('click')
+  await flushPromises()
+  expect(dialog.get('[role="alert"]').text()).toBe('Failed to remove track from table.')
+  expect(dialog.get('pre code').text()).toBe(diagnostics)
+  await remove.trigger('click')
+  await flushPromises()
+  expect(deleteTrack.mock.calls).toEqual([[null], [null]])
+  expect(wrapper.find('[role="dialog"]').exists()).toBe(false)
+  wrapper.unmount()
+})
+
 function mountControls(library = true) {
   const pinia = createPinia()
   setActivePinia(pinia)
@@ -328,6 +356,7 @@ function mountControls(library = true) {
         VSpacer: true,
         VTextField: true,
         VIcon: true,
+        VTooltip: true,
         TrackTypeSelector: true,
         VolumeSlider: true,
       },

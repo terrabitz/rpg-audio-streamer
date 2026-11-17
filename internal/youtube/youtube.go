@@ -113,24 +113,39 @@ func (c *Client) Resolve(sourceURL string) (string, error) {
 func (c *Client) Download(ctx context.Context, source, destination string) error {
 	cmd := videoCommand(ctx, "--no-part", "--max-filesize", "200M",
 		"--match-filter", "!is_live & duration <= 10800", "--output", destination, "--", source)
-	var stderr cappedOutput
-	cmd.Stderr = &stderr
+	output := cappedOutput{limit: 1 << 20}
+	cmd.Stdout, cmd.Stderr = &output, &output
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("retrieve YouTube audio: %w: %s", err, stderr.buf.String())
+		if ctx.Err() != nil {
+			err = fmt.Errorf("%w: %w", ctx.Err(), err)
+		}
+		return downloadError(cmd, &output, err)
 	}
 	info, err := os.Stat(destination)
 	if err != nil {
-		return fmt.Errorf("YouTube audio unavailable or exceeds import limits: %w", err)
+		return downloadError(cmd, &output, fmt.Errorf("YouTube audio unavailable or exceeds import limits: %w", err))
 	}
 	if !info.Mode().IsRegular() || info.Size() == 0 || info.Size() > maxImportBytes {
-		return fmt.Errorf("YouTube audio is empty or exceeds the 200 MiB limit")
+		return downloadError(cmd, &output, errors.New("YouTube audio is empty or exceeds the 200 MiB limit"))
 	}
 	return nil
 }
 
+func downloadError(cmd *exec.Cmd, output *cappedOutput, err error) error {
+	args := make([]string, len(cmd.Args))
+	for i, arg := range cmd.Args {
+		args[i] = "'" + strings.ReplaceAll(arg, "'", "'\\''") + "'"
+	}
+	logs := output.buf.String()
+	if output.truncated {
+		logs += "\n[Output truncated after 1 MiB]"
+	}
+	return fmt.Errorf("Command:\n%s\n\nLogs:\n%s\n\nError:\n%w", strings.Join(args, " "), logs, err)
+}
+
 func videoCommand(ctx context.Context, args ...string) *exec.Cmd {
 	base := []string{"--ignore-config", "--no-plugin-dirs", "--no-cache-dir", "--js-runtimes", "node",
-		"--no-playlist", "--no-progress", "--no-warnings", "--socket-timeout", "30",
+		"--no-playlist", "--no-progress", "--socket-timeout", "30",
 		"--retries", "2", "--format", "bestaudio/best"}
 	cmd := exec.CommandContext(ctx, "yt-dlp", append(base, args...)...)
 	cmd.WaitDelay = 2 * time.Second
@@ -167,8 +182,9 @@ func CanonicalURL(value string) (string, bool) {
 }
 
 type cappedOutput struct {
-	buf   bytes.Buffer
-	limit int
+	buf       bytes.Buffer
+	limit     int
+	truncated bool
 }
 
 func (b *cappedOutput) Write(p []byte) (int, error) {
@@ -176,6 +192,9 @@ func (b *cappedOutput) Write(p []byte) (int, error) {
 	limit := b.limit
 	if limit == 0 {
 		limit = 8 << 10
+	}
+	if len(p) > limit-b.buf.Len() {
+		b.truncated = true
 	}
 	if remaining := limit - b.buf.Len(); remaining > 0 {
 		if len(p) > remaining {

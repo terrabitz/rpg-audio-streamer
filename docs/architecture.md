@@ -272,12 +272,21 @@ Accepted uploads and imports close the dialog immediately and add a track with
 playback disabled while it processes. Processing tracks remain reorderable by
 dragging or keyboard. Their spinner replaces the three-dot menu in its existing
 slot, keeping the tile height unchanged. Hovering displays a processing tooltip.
+On failure, a warning icon replaces the spinner without changing tile height.
+Clicking a failed track or its warning icon, or activating the card by keyboard,
+opens a diagnostics dialog with a scrollable, selectable code-style log and a
+prominent Remove from table action. In the library, the same dialog uses the
+library's usage-aware deletion flow. Failed tracks do not show playback or metadata
+editing controls. YouTube retrieval failures include the shell-quoted command,
+combined stdout/stderr, and error; captured output is limited to 1 MiB with an
+explicit truncation notice. Diagnostics are persisted with the failed track and
+pushed to GMs, but omitted from public player track responses.
 When a job finishes, the processing service notifies the hub, which pushes `trackStatus`
 to every connected GM. The GM table and library apply it to their track lists
 and enable playback when ready. An update that arrives before the upload
 response is held until the response adds the track. Reloading, or reconnecting
-while tracks are still processing, refetches the authoritative status. Failed tracks display an error and retain their normal
-removal/deletion workflow without trying to load audio or waveforms. The seeded
+while tracks are still processing, refetches the authoritative status. Failed tracks
+do not try to load audio or waveforms. The seeded
 development launcher waits for each uploaded fixture to become ready before
 announcing its preview.
 The table-management list opens a table when its row is clicked. Each row's

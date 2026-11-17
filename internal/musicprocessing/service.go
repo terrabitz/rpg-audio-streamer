@@ -217,6 +217,7 @@ func (s *Service) process(ctx context.Context, next job) {
 	if jobCtx.Err() != nil {
 		message = "Audio processing timed out or was interrupted. Remove the track and try again."
 	}
+	message += "\n\n" + err.Error()
 	failureCtx, failureCancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer failureCancel()
 	if err := s.store.SetTrackProcessing(failureCtx, next.track.ID, "failed", message); err != nil {

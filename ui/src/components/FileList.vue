@@ -12,6 +12,8 @@
         <template #[`item.preview`]="{ item }">
           <v-progress-circular v-if="item.status === 'processing'" indeterminate size="20"
             :aria-label="`Processing ${item.name}`" title="Track is still processing" />
+          <v-btn v-else-if="item.status === 'failed'" icon="$warning" color="warning" variant="text" size="small"
+            :aria-label="`View processing failure for ${item.name}`" @click.stop="handlePlay(item.id)" />
           <v-btn v-else :icon="audioStore.tracks[item.id]?.isPlaying ? '$pause' : '$play'" variant="text" size="small"
             :disabled="!trackReady(item)"
             :aria-label="`${audioStore.tracks[item.id]?.isPlaying ? 'Pause preview' : 'Preview'} ${item.name}`"
@@ -27,6 +29,7 @@
         </template>
         <template #[`item.actions`]="{ item }">
           <AudioControls :fileID="item.id" :fileName="item.name" :deleteTrack="count => deleteFile(item, count)" library
+            :model-value="openedTrackID === item.id" @update:model-value="value => openedTrackID = value ? item.id : ''"
             @settings="settings => handleSettings(item.id, settings)" @seek="time => handleSeek(item.id, time)" @play="handlePlay(item.id)">
             <template #activator="{ open }">
               <v-btn icon="$dotsVertical" variant="text" size="small" :aria-label="`Edit ${item.name}`"
@@ -98,6 +101,7 @@
                   aria-describedby="track-reorder-help" aria-keyshortcuts="Alt+ArrowLeft Alt+ArrowRight"
                   @click.stop @keydown="handleKeydown($event, file.id)" />
                 <AudioControls :fileID="file.id" :fileName="file.name"
+                  :model-value="openedTrackID === file.id" @update:model-value="value => openedTrackID = value ? file.id : ''"
                   :deleteTrack="count => deleteFile(file, count)"
                   @settings="settings => handleSettings(file.id, settings)"
                   @volume="vol => handleVolume(file.id, vol)" @seek="time => handleSeek(file.id, time)"
@@ -138,6 +142,7 @@ const trackTypeStore = useTrackTypeStore()
 const dragging = ref(false)
 const { smAndDown } = useDisplay()
 const showNowPlaying = ref(false)
+const openedTrackID = ref('')
 const reorderAnnouncement = ref('')
 const plugins = defaultPreset.plugins.map(plugin => plugin === Feedback
   ? Feedback.configure({ feedback: 'clone', dropAnimation: { duration: 180 } })
@@ -282,7 +287,7 @@ function libraryRowProps({ item }: { item: Track }) {
     tabindex: 0,
     'aria-disabled': item.status === 'processing',
     'aria-busy': item.status === 'processing',
-    title: item.status === 'processing' ? 'Track is still processing' : item.processingError || undefined,
+    title: item.status === 'processing' ? 'Track is still processing' : item.status === 'failed' ? 'Processing failed. Click for details.' : undefined,
     class: ['library-track-row', { 'bg-grey-darken-3': audioStore.tracks[item.id]?.isPlaying }],
     onClick: () => handlePlay(item.id),
     onKeydown(event: KeyboardEvent) {
@@ -297,7 +302,12 @@ function libraryRowProps({ item }: { item: Track }) {
 const handlePlay = (fileID: string) => {
   if (dragging.value) return
   const file = fileStore.getTrackById(fileID)
-  if (!file || !trackReady(file)) return
+  if (!file) return
+  if (file.status === 'failed') {
+    openedTrackID.value = fileID
+    return
+  }
+  if (!trackReady(file)) return
   if (props.library) {
     previewTrack(fileID)
     return

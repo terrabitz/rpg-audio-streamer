@@ -114,6 +114,27 @@ func TestImportRejectsUnresolvedSource(t *testing.T) {
 	}
 }
 
+func TestImportPersistsAndNotifiesFailureDiagnostics(t *testing.T) {
+	service, store, notifier := testService(t)
+	const diagnostics = "Command:\nyt-dlp -- source\n\nLogs:\nDownload attempt\nERROR: blocked\n\nError:\nexit status 1"
+	service.downloader.(*blockingDownloader).downloadErr = errors.New(diagnostics)
+	track, err := service.Import(context.Background(), "Failed import", uuid.New(), uuid.Nil, "source")
+	if err != nil {
+		t.Fatal(err)
+	}
+	stop := runService(t, service)
+	waitStatus(t, store, track.ID, "failed")
+	stop()
+	got := store.get(track.ID)
+	if !strings.Contains(got.ProcessingError, diagnostics) {
+		t.Fatalf("lost persisted diagnostics: %q", got.ProcessingError)
+	}
+	sent := notifier.received()
+	if len(sent) != 1 || sent[0].ProcessingError != got.ProcessingError {
+		t.Fatalf("lost pushed diagnostics: %+v", sent)
+	}
+}
+
 func TestQueuedDeadlineAndAdmission(t *testing.T) {
 	service, store, _ := testService(t)
 	for range cap(service.jobs) {
@@ -261,8 +282,9 @@ func (s *memoryStore) get(id uuid.UUID) Track {
 var errUnsupported = errors.New("unsupported source")
 
 type blockingDownloader struct {
-	started    chan struct{}
-	resolveErr error
+	started     chan struct{}
+	resolveErr  error
+	downloadErr error
 }
 
 func (d *blockingDownloader) Resolve(source string) (string, error) {
@@ -271,6 +293,9 @@ func (d *blockingDownloader) Resolve(source string) (string, error) {
 
 func (d *blockingDownloader) Download(ctx context.Context, _, _ string) error {
 	close(d.started)
+	if d.downloadErr != nil {
+		return d.downloadErr
+	}
 	<-ctx.Done()
 	return ctx.Err()
 }

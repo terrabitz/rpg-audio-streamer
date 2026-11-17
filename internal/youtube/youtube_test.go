@@ -1,12 +1,14 @@
 package youtube
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -76,6 +78,43 @@ func TestScanUsesRequestContext(t *testing.T) {
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("scan did not stop after request cancellation")
+	}
+}
+
+func TestDownloadFailureDiagnostics(t *testing.T) {
+	fixtureDownloader(t)
+	destination := filepath.Join(t.TempDir(), "audio with 'quotes'")
+	err := testClient().Download(context.Background(), "https://www.youtube.com/watch?v=lllllllllll", destination)
+	if err == nil {
+		t.Fatal("download unexpectedly succeeded")
+	}
+	for _, detail := range []string{
+		"Command:\n'yt-dlp' '--ignore-config'", "'--format' 'bestaudio/best'",
+		"'--match-filter' '!is_live & duration <= 10800'",
+		"audio with '\\''quotes'\\''", "'--' 'https://www.youtube.com/watch?v=lllllllllll'",
+		"Logs:\n[youtube] Extracting URL:", "[youtube] Download attempt 40",
+		`ERROR: Sign in to confirm you are not a bot. <script>alert("untrusted output")</script>`,
+		"Error:\nexit status 1",
+	} {
+		if !strings.Contains(err.Error(), detail) {
+			t.Errorf("diagnostics missing %q:\n%s", detail, err)
+		}
+	}
+}
+
+func TestDownloadDiagnosticsReportOutputLimit(t *testing.T) {
+	output := cappedOutput{limit: 1 << 20}
+	logs := bytes.Repeat([]byte("x"), (1<<20)+1)
+	if n, err := output.Write(logs); n != len(logs) || err != nil {
+		t.Fatalf("capture output: %d, %v", n, err)
+	}
+	cause := errors.New("download failed")
+	err := downloadError(videoCommand(context.Background(), "--", "source"), &output, cause)
+	if !errors.Is(err, cause) || !strings.Contains(err.Error(), "[Output truncated after 1 MiB]") {
+		t.Fatalf("missing error or explicit truncation notice: %v", err)
+	}
+	if output.buf.Len() != 1<<20 {
+		t.Fatalf("output grew past its limit: %d", output.buf.Len())
 	}
 }
 

@@ -118,6 +118,13 @@ func TestImportHTTP(t *testing.T) {
 		if err != nil || result.Status != "failed" || result.ProcessingError == "" {
 			t.Fatalf("failed processing state = %+v, %v", result, err)
 		}
+		if tc.id == "bbbbbbbbbbb" {
+			for _, detail := range []string{"Command:\n'yt-dlp'", "Logs:\nVideo unavailable", "Error:\nexit status 1"} {
+				if !strings.Contains(result.ProcessingError, detail) {
+					t.Errorf("failed import lost %q: %s", detail, result.ProcessingError)
+				}
+			}
+		}
 	}
 	ts.store = importFailStore{Store: ts.store}
 	ts.processing = musicprocessing.New(ts.tempDir, ts.logger, ts.store, youtube.New(ts.logger), ts.hub.(musicprocessing.Notifier))
