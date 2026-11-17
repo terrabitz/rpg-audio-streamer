@@ -109,6 +109,13 @@ func TestConnectionFailureAndCancelledSetupAreObservable(t *testing.T) {
 func TestTransportExitRestoresReconnectableErrorState(t *testing.T) {
 	service, _ := New(Config{Token: "test-only"}, testMix(t))
 	defer service.Close()
+	updates := make(chan Status, 4)
+	service.SetStatusListener(func(tableID string, status Status) {
+		if tableID != "table" {
+			t.Errorf("status crossed tables: %s", tableID)
+		}
+		updates <- status
+	})
 	read, write := io.Pipe()
 	defer read.Close()
 	done := make(chan struct{})
@@ -122,6 +129,51 @@ func TestTransportExitRestoresReconnectableErrorState(t *testing.T) {
 	waitState(t, service, "error")
 	if service.Status("table").Error != "voice lost" {
 		t.Fatal("transport failure was hidden")
+	}
+	for _, state := range []string{"connecting", "connected", "error"} {
+		select {
+		case update := <-updates:
+			if update.State != state || update.Destination == nil || update.ChannelID != "2" {
+				t.Fatalf("unexpected transition: %+v; want %s with destination", update, state)
+			}
+			if state == "error" && update.Error != "voice lost" {
+				t.Fatalf("failure event lost diagnostics: %+v", update)
+			}
+		case <-time.After(time.Second):
+			t.Fatalf("missing %s event", state)
+		}
+	}
+}
+
+func TestStatusListenerReportsDisconnectAndRestoreFailure(t *testing.T) {
+	service, _ := New(Config{Token: "test-only"}, testMix(t))
+	defer service.Close()
+	updates := make(chan Status, 4)
+	service.SetStatusListener(func(_ string, status Status) { updates <- status })
+	service.open = func(ctx context.Context, _ Config) (*transport, error) {
+		done := make(chan struct{})
+		go func() { <-ctx.Done(); close(done) }()
+		return &transport{input: discardWriter{}, done: done}, nil
+	}
+	if err := service.Connect(context.Background(), "table", Destination{GuildID: "1", ChannelID: "2"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := service.Disconnect(context.Background(), "table"); err != nil {
+		t.Fatal(err)
+	}
+	service.Fail("table", errors.New("saved destination unavailable"))
+	for _, state := range []string{"connecting", "connected", "disconnected", "error"} {
+		select {
+		case update := <-updates:
+			if update.State != state || update.Destination == nil || update.ChannelID != "2" {
+				t.Fatalf("unexpected transition: %+v; want %s", update, state)
+			}
+			if state == "error" && update.Error != "saved destination unavailable" {
+				t.Fatalf("restore failure event lost diagnostics: %+v", update)
+			}
+		case <-time.After(time.Second):
+			t.Fatalf("missing %s event", state)
+		}
 	}
 }
 

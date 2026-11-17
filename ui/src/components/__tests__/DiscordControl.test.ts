@@ -1,5 +1,9 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import { enableAutoUnmount, flushPromises, mount } from '@vue/test-utils'
+import { createPinia, setActivePinia } from 'pinia'
+import { nextTick } from 'vue'
+import { useWebSocketStore } from '@/stores/websocket'
+import { CommandRouter } from '@/websocket/router'
 import DiscordControl from '../DiscordControl.vue'
 
 const api = vi.hoisted(() => ({ get: vi.fn(), disconnect: vi.fn() }))
@@ -19,11 +23,18 @@ afterEach(() => {
 
 it('shows reconnect progress without a cancel action, then allows disconnecting the connected stream', async () => {
   vi.useFakeTimers()
+  const pinia = createPinia()
+  setActivePinia(pinia)
+  const ws = useWebSocketStore()
+  ws.isConnected = true
+  const router = new CommandRouter()
+  vi.spyOn(ws, 'on').mockImplementation(router.on.bind(router))
   api.get.mockResolvedValue({ data: { enabled: true, state: 'connecting' } })
   api.disconnect.mockResolvedValue({ data: { enabled: true, state: 'disconnected' } })
   const wrapper = mount(DiscordControl, {
     props: { tableID: 'friday' },
     global: {
+      plugins: [pinia],
       stubs: {
         VTooltip: { template: '<slot name="activator" :props="{}" />' },
         VBtn: {
@@ -49,8 +60,10 @@ it('shows reconnect progress without a cancel action, then allows disconnecting 
   await button.trigger('click')
   expect(api.disconnect).not.toHaveBeenCalled()
 
-  api.get.mockResolvedValue({ data: { enabled: true, state: 'connected' } })
-  await vi.advanceTimersByTimeAsync(2000)
+  router.dispatch({ method: 'discordStatus', payload: { enabled: true, state: 'connected' } })
+  await nextTick()
+  await vi.advanceTimersByTimeAsync(10_000)
+  expect(api.get).toHaveBeenCalledTimes(1)
   expect(button.props()).toMatchObject({ loading: false, disabled: false, color: 'success' })
   expect(button.text()).toBe('Connected')
   await button.trigger('click')

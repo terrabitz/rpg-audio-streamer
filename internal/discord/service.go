@@ -60,6 +60,7 @@ type Service struct {
 	apiMu     sync.Mutex
 	apiClient rest.Client
 	closeREST sync.Once
+	onStatus  func(string, Status)
 }
 
 type session struct {
@@ -90,6 +91,12 @@ func New(cfg Config, mix *livemixer.Service) (*Service, error) {
 			Transport: discordRateLimitTransport{http.DefaultTransport},
 		},
 	}, nil
+}
+
+// SetStatusListener installs a nonblocking observer before connections are accepted.
+// The observer runs under the service lock to preserve transition ordering.
+func (s *Service) SetStatusListener(listener func(string, Status)) {
+	s.onStatus = listener
 }
 
 func (s *Service) Connect(ctx context.Context, tableID string, target Destination) error {
@@ -124,7 +131,7 @@ func (s *Service) Connect(ctx context.Context, tableID string, target Destinatio
 	runCtx, cancel := context.WithCancel(context.Background())
 	current := &session{tableID: tableID, target: target, ctx: runCtx, cancel: cancel, done: make(chan struct{}), ready: make(chan error, 1)}
 	s.active[tableID] = current
-	s.status[tableID] = Status{Enabled: true, State: "connecting", Destination: &current.target}
+	s.setStatus(tableID, Status{Enabled: true, State: "connecting", Destination: &current.target})
 	s.mu.Unlock()
 	go s.run(current)
 	select {
@@ -140,7 +147,7 @@ func (s *Service) Fail(tableID string, err error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.active[tableID] == nil {
-		s.status[tableID] = Status{Enabled: true, State: "error", Error: err.Error()}
+		s.setStatus(tableID, Status{Enabled: true, State: "error", Error: err.Error(), Destination: s.status[tableID].Destination})
 	}
 }
 
@@ -203,7 +210,7 @@ func (s *Service) run(current *session) {
 		if err != nil && !errors.Is(err, context.Canceled) {
 			status.State, status.Error = "error", err.Error()
 		}
-		s.status[current.tableID] = status
+		s.setStatus(current.tableID, status)
 	}
 	s.mu.Unlock()
 	if err != nil && !errors.Is(err, context.Canceled) {
@@ -238,7 +245,7 @@ func (s *Service) stream(current *session) error {
 	s.mu.Lock()
 	status := s.status[current.tableID]
 	status.State = "connected"
-	s.status[current.tableID] = status
+	s.setStatus(current.tableID, status)
 	s.mu.Unlock()
 	current.started.Do(func() { current.ready <- nil })
 	for {
@@ -273,6 +280,13 @@ func (s *Service) stream(current *session) error {
 				return fmt.Errorf("Discord PCM transport failed")
 			}
 		}
+	}
+}
+
+func (s *Service) setStatus(tableID string, status Status) {
+	s.status[tableID] = status
+	if s.onStatus != nil {
+		s.onStatus(tableID, status)
 	}
 }
 

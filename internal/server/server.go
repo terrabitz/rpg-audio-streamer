@@ -124,7 +124,10 @@ func New(cfg Config, logger *slog.Logger, auth Authenticator, store Store, hub W
 		if cfg.Discord.Token == "" {
 			return nil, fmt.Errorf("Discord streaming requires DISCORD_STREAMING_BOT_TOKEN")
 		}
-		consumer, ok := hub.(interface{ SetMixer(Mixer) })
+		consumer, ok := hub.(interface {
+			SetMixer(Mixer)
+			DiscordStatusChanged(string, discord.Status)
+		})
 		if !ok {
 			return nil, fmt.Errorf("Discord streaming requires a mixer-capable WebSocket hub")
 		}
@@ -138,6 +141,7 @@ func New(cfg Config, logger *slog.Logger, auth Authenticator, store Store, hub W
 			return nil, err
 		}
 		srv.discord = bot
+		bot.SetStatusListener(consumer.DiscordStatusChanged)
 		srv.discordMix = newDiscordMixer(srv.mixer, srv)
 		consumer.SetMixer(srv.discordMix)
 	}

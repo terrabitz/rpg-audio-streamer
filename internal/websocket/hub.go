@@ -10,33 +10,39 @@ import (
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	"github.com/terrabitz/rpg-audio-streamer/internal/auth"
+	"github.com/terrabitz/rpg-audio-streamer/internal/discord"
 	"github.com/terrabitz/rpg-audio-streamer/internal/server"
 )
 
 type Hub struct {
-	clientsMu  sync.RWMutex
-	clients    map[*Client]bool
-	broadcast  chan []byte
-	register   chan *Client
-	unregister chan *Client
-	logger     *slog.Logger
-	handlers   map[string]HandlerFunc
-	mixer      server.Mixer
-	stateMu    sync.Mutex
-	playback   map[string]map[string]playingTrack
-	store      PlaybackStore
+	clientsMu      sync.RWMutex
+	clients        map[*Client]bool
+	broadcast      chan []byte
+	register       chan *Client
+	unregister     chan *Client
+	logger         *slog.Logger
+	handlers       map[string]HandlerFunc
+	mixer          server.Mixer
+	stateMu        sync.Mutex
+	playback       map[string]map[string]playingTrack
+	store          PlaybackStore
+	discordMu      sync.Mutex
+	discordPending map[string]discord.Status
+	discordChanged chan struct{}
 }
 
 func NewHub(logger *slog.Logger, store PlaybackStore) *Hub {
 	hub := &Hub{
-		clients:    make(map[*Client]bool),
-		broadcast:  make(chan []byte),
-		register:   make(chan *Client),
-		unregister: make(chan *Client),
-		logger:     logger,
-		handlers:   make(map[string]HandlerFunc),
-		playback:   make(map[string]map[string]playingTrack),
-		store:      store,
+		clients:        make(map[*Client]bool),
+		broadcast:      make(chan []byte),
+		register:       make(chan *Client),
+		unregister:     make(chan *Client),
+		logger:         logger,
+		handlers:       make(map[string]HandlerFunc),
+		playback:       make(map[string]map[string]playingTrack),
+		store:          store,
+		discordPending: make(map[string]discord.Status),
+		discordChanged: make(chan struct{}, 1),
 	}
 
 	Handle(hub, Ping, hub.handlePing)
@@ -59,6 +65,8 @@ func (h *Hub) Run() {
 	defer ticker.Stop()
 	for {
 		select {
+		case <-h.discordChanged:
+			h.broadcastDiscordStatuses()
 		case <-ticker.C:
 			h.refreshPlayback()
 		case client := <-h.register:

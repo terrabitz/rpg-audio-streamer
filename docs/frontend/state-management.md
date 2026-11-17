@@ -8,6 +8,10 @@ tags: [frontend, state, persistence]
 
 # Client state
 
+Server-side changes reach connected browsers through
+[WebSocket events](../playback/websocket-protocol.md), not periodic HTTP
+polling. Initial loads and reconnect reconciliation fetch authoritative state.
+
 | Surface | Responsibility |
 | --- | --- |
 | `stores/auth.ts` | GM session role, credentials, and logout ([authentication](../backend/authentication.md)) |
