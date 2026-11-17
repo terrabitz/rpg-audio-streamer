@@ -30,17 +30,8 @@
             <v-text-field v-model="videoURL" label="YouTube URL" type="url" :disabled="isBusy"
               :loading="isScanning" :error-messages="scanError ? [scanError] : []"
               placeholder="https://www.youtube.com/watch?v=..." />
-            <v-text-field v-model="trackName" label="Track Name" maxlength="200" :disabled="isBusy || isScanning" />
-            <dl v-if="videoMetadata" class="d-flex flex-wrap ga-6 mb-4" aria-label="Video metadata">
-              <div>
-                <dt class="text-caption text-medium-emphasis">Duration</dt>
-                <dd>{{ videoDuration }}</dd>
-              </div>
-              <div>
-                <dt class="text-caption text-medium-emphasis">Audio size</dt>
-                <dd>{{ videoSize }}</dd>
-              </div>
-            </dl>
+            <v-text-field v-model="trackName" label="Track Name" maxlength="200"
+              :disabled="isBusy || isScanning || !videoMetadata" />
             <TrackTypeSelector v-model="selectedTypeId" :disabled="isBusy" />
           </v-form>
           <div v-else @dragover="handleDragOver" @dragleave="handleDragLeave" @drop="handleDrop"
@@ -54,7 +45,18 @@
             <div v-if="isDragging" class="drop-text">Drop files here</div>
           </div>
         </v-card-text>
-        <v-card-actions>
+        <v-card-actions :class="{ 'youtube-actions': source === 'youtube' }">
+          <dl v-if="source === 'youtube' && videoMetadata" class="video-metadata d-flex ga-4 text-body-2"
+            aria-label="Video metadata">
+            <div>
+              <dt class="text-caption text-medium-emphasis">Duration</dt>
+              <dd>{{ videoDuration }}</dd>
+            </div>
+            <div>
+              <dt class="text-caption text-medium-emphasis">Audio size</dt>
+              <dd>{{ videoSize }}</dd>
+            </div>
+          </dl>
           <v-spacer></v-spacer>
           <v-btn color="error" @click="showModal = false" :disabled="isBusy">Cancel</v-btn>
           <v-btn v-if="source === 'library'" color="success" @click="addTrack"
@@ -310,6 +312,19 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
+.youtube-actions {
+  min-height: 64px;
+}
+
+.video-metadata {
+  flex-shrink: 0;
+  margin: 0;
+}
+
+.video-metadata dd {
+  margin: 0;
+}
+
 .dragging {
   border: 2px dashed #1d1d1d;
   background-color: rgba(144, 238, 144, 0.95);

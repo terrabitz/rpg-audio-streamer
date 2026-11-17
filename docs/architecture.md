@@ -263,8 +263,9 @@ to the document body, independent of the uploader's app-bar or library placement
 upload failures remain inline while the dialog is open.
 YouTube imports are also available from the library's upload dialog. Pasting or
 editing a link triggers a debounced, cancellable metadata scan. It fills in the
-editable track name and displays duration and audio size as read-only text, not
-form inputs. Failed scans and limit violations turn the URL field red with the
+track name, which remains disabled until a scan succeeds. Duration and audio
+size appear as read-only text in the dialog's bottom-left footer, without shifting
+the track-type selector. Failed scans and limit violations turn the URL field red with the
 specific error and disable Import.
 Imports require a successful scan, nonblank display name, and track type.
 Accepted uploads and imports close the dialog immediately and add a track with

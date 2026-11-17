@@ -143,6 +143,7 @@ it('closes on acceptance and adds a processing track without waiting for convers
 it('auto-fills scanned metadata and puts limit errors on the URL field', async () => {
   const { wrapper, submit } = await prepareImport()
   expect(wrapper.findAllComponents({ name: 'VTextField' })[1]!.props('modelValue')).toBe('Forest')
+  expect(wrapper.findAllComponents({ name: 'VTextField' })[1]!.props('disabled')).toBe(false)
   const metadata = wrapper.get('dl[aria-label="Video metadata"]')
   expect(metadata.findAll('dt').map(term => term.text())).toEqual(['Duration', 'Audio size'])
   expect(metadata.findAll('dd').map(value => value.text())).toEqual(['0:00:12', '1.0 MiB'])
@@ -153,8 +154,39 @@ it('auto-fills scanned metadata and puts limit errors on the URL field', async (
   await vi.advanceTimersByTimeAsync(500)
   await flushPromises()
   expect(wrapper.findAllComponents({ name: 'VTextField' })[0]!.props('errorMessages')).toEqual(['Video exceeds the 3-hour limit'])
+  expect(wrapper.findAllComponents({ name: 'VTextField' })[1]!.props('disabled')).toBe(true)
   expect(submit().attributes('disabled')).toBeDefined()
   expect(postApiV1FilesImport).not.toHaveBeenCalled()
+  wrapper.unmount()
+})
+
+it('keeps the name disabled until scanning succeeds and disables it when the link is cleared', async () => {
+  vi.useFakeTimers()
+  const { wrapper } = await mountUploader()
+  await wrapper.getComponent({ name: 'VTabs' }).vm.$emit('update:modelValue', 'youtube')
+  await flushPromises()
+  const [url, name] = wrapper.findAllComponents({ name: 'VTextField' })
+  expect(name!.props('disabled')).toBe(true)
+  let release!: () => void
+  const pending = new Promise<void>(resolve => { release = resolve })
+  vi.mocked(postApiV1FilesScan).mockImplementationOnce(async () => {
+    await pending
+    return {
+      data: { url: 'https://youtu.be/aaaaaaaaaaa', name: 'Forest', duration: 12, sizeBytes: 1048576, sizeEstimated: false },
+      request: new Request('http://localhost'), response: new Response(),
+    }
+  })
+  await url!.vm.$emit('update:modelValue', 'https://youtu.be/aaaaaaaaaaa')
+  expect(name!.props('disabled')).toBe(true)
+  await vi.advanceTimersByTimeAsync(500)
+  await flushPromises()
+  expect(name!.props('disabled')).toBe(true)
+  release()
+  await flushPromises()
+  expect(name!.props('disabled')).toBe(false)
+  await url!.vm.$emit('update:modelValue', '')
+  await flushPromises()
+  expect(name!.props('disabled')).toBe(true)
   wrapper.unmount()
 })
 
@@ -231,7 +263,7 @@ async function mountUploader() {
   vi.spyOn(useFileStore(), 'fetchFiles').mockResolvedValue(undefined)
   const field = (name: string) => ({
     name,
-    props: ['modelValue', 'errorMessages', 'loading'],
+    props: ['modelValue', 'errorMessages', 'loading', 'disabled'],
     emits: ['update:modelValue'],
     template: '<div />',
   })
