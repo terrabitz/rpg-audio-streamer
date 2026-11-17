@@ -78,8 +78,8 @@ describe('WebSocket transport', () => {
     const ws = useWebSocketStore()
     const first = vi.fn()
     const second = vi.fn()
-    const unsubscribe = ws.on('trackRemoved', first)
-    ws.on('trackRemoved', second)
+    const unsubscribe = ws.onTrackRemoved(first)
+    ws.onTrackRemoved(second)
     await openSocket(ws)
     const message = { event: 'trackRemoved', senderId: 'gm', payload: { fileID: 'rain' } }
     latestSocket().onmessage?.(new MessageEvent('message', { data: JSON.stringify(message) }))
@@ -112,7 +112,7 @@ describe('WebSocket transport', () => {
   it('rejects malformed message envelopes and allows arbitrary debug commands', async () => {
     const ws = useWebSocketStore()
     const handler = vi.fn()
-    ws.on('trackRemoved', handler)
+    ws.onTrackRemoved(handler)
     await openSocket(ws)
     for (const message of [
       { event: 'trackRemoved' },
@@ -162,7 +162,7 @@ describe('WebSocket transport', () => {
     await next
     expect(latestSocket().url).toContain('?tableID=sunday')
     const handler = vi.fn()
-    ws.on('trackRemoved', handler)
+    ws.onTrackRemoved(handler)
     previous.onmessage?.(new MessageEvent('message', { data: '{"event":"trackPlaybackChanged","payload":{}}' }))
     previous.onerror?.(new Event('error'))
     previous.onclose?.(new CloseEvent('close', { code: 1006, wasClean: false }))

@@ -95,7 +95,7 @@ it('does not apply stale status snapshots or requests after disposal', async () 
 
 it('applies pushed transitions, ignores older HTTP responses, and unsubscribes on disposal', async () => {
   const router = new EventHub()
-  vi.spyOn(useWebSocketStore(), 'on').mockImplementation(router.on.bind(router))
+  vi.spyOn(useWebSocketStore(), 'onDiscordStatusChanged').mockImplementation(router.subscriptions.onDiscordStatusChanged)
   const discord = useDiscord('friday')
   let finish!: (value: unknown) => void
   api.get.mockImplementationOnce(() => new Promise(resolve => { finish = resolve }))

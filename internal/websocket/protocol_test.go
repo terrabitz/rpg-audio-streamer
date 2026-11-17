@@ -1,12 +1,14 @@
 package websocket
 
 import (
+	"context"
 	"encoding/json"
 	"math"
 	"testing"
 
 	"github.com/google/uuid"
 	"github.com/terrabitz/rpg-audio-streamer/internal/events"
+	"github.com/terrabitz/rpg-audio-streamer/internal/livemixer"
 	"github.com/terrabitz/rpg-audio-streamer/internal/server"
 )
 
@@ -45,8 +47,14 @@ func TestTypedCommandRegistration(t *testing.T) {
 
 func TestTypedMixerRejectsUndecodablePayloads(t *testing.T) {
 	hub, clients := testHub()
-	mix := &testMixer{}
-	hub.SetMixer(mix)
+	mix, err := livemixer.New(48000, func(context.Context, string, string) (livemixer.Clip, error) {
+		t.Error("undecodable payload reached the audio source")
+		return livemixer.Clip{}, nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(livemixer.Subscribe(hub, mix))
 	for _, input := range []string{
 		`{"event":"mixChanged","payload":{"tracks":"rain"}}`,
 		`{"event":"mixVolumesChanged","payload":{"typeVolumes":{"Music":"0"}}}`,
@@ -58,14 +66,11 @@ func TestTypedMixerRejectsUndecodablePayloads(t *testing.T) {
 			t.Fatalf("invalid event response = %+v, %v", message, err)
 		}
 	}
-	if len(mix.calls) != 0 {
-		t.Fatalf("undecodable events reached mixer: %v", mix.calls)
-	}
 }
 
 func TestPayloadSending(t *testing.T) {
 	hub, clients := testHub()
-	if err := hub.publishEvent(events.TrackRemoved, TrackReference{FileID: "rain"}, ToPlayersOnly()); err != nil {
+	if err := hub.publishEvent(events.TrackRemoved, TrackReference{FileID: "rain"}, events.Metadata{TargetClientID: clients["player"].ID}); err != nil {
 		t.Fatal(err)
 	}
 	var message Message
@@ -81,13 +86,14 @@ func TestPayloadSending(t *testing.T) {
 	if err := clients["gm"].sendEvent(events.Pong, json.RawMessage(`invalid`)); err == nil {
 		t.Fatal("invalid diagnostic JSON was sent")
 	}
-	if err := hub.publishEvent(events.PlaybackStateChanged, Snapshot{Tracks: []playingTrack{{Volume: math.NaN()}}}); err == nil {
+	if err := hub.publishEvent(events.PlaybackStateChanged, Snapshot{Tracks: []events.PlaybackTrack{{Volume: math.NaN()}}}, events.Metadata{}); err == nil {
 		t.Fatal("non-finite playback data was encoded")
 	}
 }
 
 func TestTrackProcessedNotifiesGMs(t *testing.T) {
 	hub, clients := testHub()
+	clients["otherGM"].Token.TableID = "friday"
 	id := uuid.New()
 	sendAndDrain(t, hub, events.TrackStatusChanged, server.Track{ID: id, Status: "failed", ProcessingError: "Conversion failed"})
 	var message Message

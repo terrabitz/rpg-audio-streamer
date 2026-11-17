@@ -172,7 +172,7 @@ const playingTracks = computed(() => tracks.value.flatMap(track => {
 
 watch(smAndDown, () => { showNowPlaying.value = false })
 
-const stopTrackStatus = wsStore.on('trackStatusChanged', (update) => {
+const stopTrackStatus = wsStore.onTrackStatusChanged((update) => {
   fileStore.applyTrackStatus(update)
   tables.tracks = tables.tracks.map(track => track.id === update.fileID ? withTrackStatus(track, update) : track)
 })

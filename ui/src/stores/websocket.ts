@@ -144,7 +144,7 @@ export const useWebSocketStore = defineStore('websocket', () => {
     disconnect,
     sendEvent,
     sendDebugEvent,
-    on: router.on.bind(router),
+    ...router.subscriptions,
     messageHistory,
     clearMessageHistory
   }

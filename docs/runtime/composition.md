@@ -27,4 +27,9 @@ lifetime context through `Start(ctx)`; neither the server nor the processing
 service stores a context.
 
 When [Discord streaming](../discord/voice-streaming.md) is configured, the
-process also runs the [live mixer](../discord/live-mixer.md).
+HTTP server owns and runs the [live mixer](../discord/live-mixer.md), with a
+Discord-aware wrapper for session restore and teardown. It registers the
+mixer's event adapter on the shared hub before accepting connections. The hub
+owns event dispatch and subscriptions, not the mixer service.
+Each accepted socket connection registers its own typed event listeners on
+that same bus and releases them when the connection ends.

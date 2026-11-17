@@ -8,6 +8,7 @@ import (
 )
 
 func (h *Hub) handlePing(payload json.RawMessage, c *Client) {
+	h.notifyRaw(events.Ping, payload, c.metadata())
 	if err := c.sendEvent(events.Pong, payload); err != nil {
 		h.logger.Error("failed to send pong message", "error", err)
 	}
@@ -24,7 +25,7 @@ func (h *Hub) handleBroadcast(payload json.RawMessage, c *Client) {
 		return
 	}
 	message.SenderID = c.ID
-	if err := h.publish(message, ExceptClient(c), ToTable(c.Token.TableID)); err != nil {
+	if err := h.publish(message, c.metadata()); err != nil {
 		h.logger.Error("failed to broadcast", "error", err)
 	}
 }
@@ -38,6 +39,7 @@ func (h *Hub) handlePlaybackSyncRequested(_ Empty, c *Client) {
 		return
 	}
 	h.sendState(c.Token.TableID, settings, c.ID)
+	h.notify(events.PlaybackSyncRequested, Empty{}, c.metadata())
 }
 
 func (h *Hub) handleTrackPlaybackChanged(payload PlaybackPatch, c *Client) {
@@ -48,46 +50,36 @@ func (h *Hub) handleTrackPlaybackChanged(payload PlaybackPatch, c *Client) {
 	h.updatePlayback(payload, c)
 }
 
-func (h *Hub) handleMixChanged(payload MixSnapshot, c *Client) {
-	if c.Token.Role != auth.RoleGM || h.mixer == nil {
+func (h *Hub) handleMixChanged(payload events.MixSnapshot, c *Client) {
+	if c.Token.Role != auth.RoleGM {
 		return
 	}
-	h.applyMixer(c, events.MixChanged, func() error {
-		raw, err := json.Marshal(payload)
-		if err != nil {
-			return err
-		}
-		return h.mixer.Sync(c.Token.TableID, raw)
-	})
+	h.notify(events.MixChanged, payload, c.metadata())
 }
 
-func (h *Hub) handleMixVolumesChanged(payload MixVolumePatch, c *Client) {
-	if c.Token.Role != auth.RoleGM || h.mixer == nil {
+func (h *Hub) handleMixVolumesChanged(payload events.MixVolumePatch, c *Client) {
+	if c.Token.Role != auth.RoleGM {
 		return
 	}
-	h.applyMixer(c, events.MixVolumesChanged, func() error {
-		raw, err := json.Marshal(payload)
-		if err != nil {
-			return err
-		}
-		return h.mixer.Volumes(c.Token.TableID, raw)
-	})
+	h.notify(events.MixVolumesChanged, payload, c.metadata())
 }
 
-func (h *Hub) applyMixer(c *Client, event string, apply func() error) {
-	if err := apply(); err != nil {
-		h.logger.Error("mixer event failed", "event", event, "tableID", c.Token.TableID, "error", err)
-		if err := c.sendEvent(events.MixerFailed, MixerFailure{
-			Event:   event,
-			Message: "Server mixing failed. Check the server logs and reconnect to retry.",
-		}); err != nil {
-			h.logger.Error("failed to report mixer event failure", "error", err)
-		}
+func (h *Hub) handleMixerReady(event events.ClientEvent[Empty], _ *Client) {
+	h.sendToClient(events.MixerReady, event.Data, event.TableID, event.ClientID)
+}
 
-		return
-	}
-	if err := c.sendEvent(events.MixerApplied, MixerResult{Event: event}); err != nil {
-		h.logger.Error("failed to report mixer event result", "error", err)
+func (h *Hub) handleMixerApplied(event events.ClientEvent[MixerResult], _ *Client) {
+	h.sendToClient(events.MixerApplied, event.Data, event.TableID, event.ClientID)
+}
+
+func (h *Hub) handleMixerFailed(event events.ClientEvent[MixerFailure], _ *Client) {
+	h.sendToClient(events.MixerFailed, event.Data, event.TableID, event.ClientID)
+}
+
+func (h *Hub) sendToClient(event string, payload any, tableID, clientID string) {
+	metadata := events.Metadata{TableID: tableID, TargetClientID: clientID}
+	if err := h.publishEvent(event, payload, metadata); err != nil {
+		h.logger.Error("failed to deliver client event", "event", event, "error", err)
 	}
 }
 
@@ -96,6 +88,10 @@ func (h *Hub) invalidEvent(event string, client *Client, err error) {
 	case events.TrackPlaybackChanged:
 		h.playbackError(client, err)
 	case events.MixChanged, events.MixVolumesChanged:
-		h.applyMixer(client, event, func() error { return err })
+		if sendErr := client.sendEvent(events.MixerFailed, events.MixerFailure{
+			Event: event, Message: "Server mixing failed. Check the server logs and reconnect to retry.",
+		}); sendErr != nil {
+			h.logger.Error("failed to report invalid mixer event", "error", sendErr)
+		}
 	}
 }

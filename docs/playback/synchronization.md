@@ -18,8 +18,8 @@ through the existing store interfaces. Messages use the
 
 Each connection has a server-validated table scope: the GM selects an existing
 table by its external ID, while players supply that public external ID from the
-URL (see [public table links](../backend/public-table-links.md)). All routing
-filters, including targeted full syncs and sync requests, also require a
+URL (see [public table links](../backend/public-table-links.md)). Socket event
+subscriptions, including targeted full syncs and sync requests, require a
 matching table.
 
 ## Snapshots and events
@@ -66,7 +66,9 @@ transition.
 
 ## Mixing
 
-GM snapshots carry unscaled track volume and saved table settings. Successful
+The hub publishes one canonical snapshot with unscaled track volumes and saved
+table settings. Each connection's typed socket listener projects that state
+into its role-specific wire payload. GM snapshots retain settings. Successful
 settings patches update connected GM mixes and listener playback without
 echoing remote changes back into another settings save. Player snapshots apply
 the table master volume once; each listener then applies their own master and

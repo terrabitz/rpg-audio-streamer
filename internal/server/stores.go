@@ -5,6 +5,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/terrabitz/rpg-audio-streamer/internal/discord"
+	"github.com/terrabitz/rpg-audio-streamer/internal/domain"
 	"github.com/terrabitz/rpg-audio-streamer/internal/musicprocessing"
 )
 
@@ -42,12 +43,7 @@ type TableStore interface {
 	SaveTrackToTable(context.Context, *Track, uuid.UUID) error
 }
 
-type TableSettings struct {
-	MasterVolume float64            `json:"masterVolume"`
-	TypeVolumes  map[string]float64 `json:"typeVolumes"`
-	TrackVolumes map[string]float64 `json:"trackVolumes"`
-	TrackOrder   []uuid.UUID        `json:"trackOrder"`
-}
+type TableSettings = domain.TableSettings
 
 type TableSettingsPatch struct {
 	MasterVolume *float64           `json:"masterVolume,omitempty"`

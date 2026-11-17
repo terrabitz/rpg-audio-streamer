@@ -200,7 +200,11 @@ it('keeps browser playback available without a server-mix monitoring toggle', as
 
 function routeMessages(ws: ReturnType<typeof useWebSocketStore>) {
   const router = new EventHub()
-  vi.spyOn(ws, 'on').mockImplementation(router.on.bind(router))
+  vi.spyOn(ws, 'onPlaybackStateChanged').mockImplementation(router.subscriptions.onPlaybackStateChanged)
+  vi.spyOn(ws, 'onMixerReady').mockImplementation(router.subscriptions.onMixerReady)
+  vi.spyOn(ws, 'onMixerApplied').mockImplementation(router.subscriptions.onMixerApplied)
+  vi.spyOn(ws, 'onMixerFailed').mockImplementation(router.subscriptions.onMixerFailed)
+  vi.spyOn(ws, 'onPlaybackFailed').mockImplementation(router.subscriptions.onPlaybackFailed)
   return (message: Message) => router.dispatch(message)
 }
 

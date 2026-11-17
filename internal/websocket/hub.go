@@ -9,7 +9,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	"github.com/terrabitz/rpg-audio-streamer/internal/auth"
 	"github.com/terrabitz/rpg-audio-streamer/internal/events"
@@ -17,19 +16,20 @@ import (
 )
 
 type Hub struct {
-	clientsMu      sync.RWMutex
-	clients        map[*Client]bool
-	eventQueue     chan queuedEvent
-	done           chan struct{}
-	register       chan *Client
-	unregister     chan *Client
-	logger         *slog.Logger
-	handlers       map[string]HandlerFunc
-	serverHandlers map[string]HandlerFunc
-	mixer          server.Mixer
-	stateMu        sync.Mutex
-	playback       map[string]map[string]playingTrack
-	store          PlaybackStore
+	clientsMu       sync.RWMutex
+	clients         map[*Client]bool
+	eventQueue      chan queuedEvent
+	done            chan struct{}
+	register        chan *Client
+	unregister      chan *Client
+	logger          *slog.Logger
+	handlers        map[string]HandlerFunc
+	serverHandlers  map[string]HandlerFunc
+	subscriptionsMu sync.RWMutex
+	subscriptions   map[string][]*subscription
+	stateMu         sync.Mutex
+	playback        map[string]map[string]playingTrack
+	store           PlaybackStore
 }
 
 const eventQueueCapacity = 256
@@ -54,6 +54,7 @@ func NewHub(logger *slog.Logger, store PlaybackStore) *Hub {
 		logger:         logger,
 		handlers:       make(map[string]HandlerFunc),
 		serverHandlers: make(map[string]HandlerFunc),
+		subscriptions:  make(map[string][]*subscription),
 		playback:       make(map[string]map[string]playingTrack),
 		store:          store,
 	}
@@ -69,13 +70,11 @@ func NewHub(logger *slog.Logger, store PlaybackStore) *Hub {
 	OnServerEvent(hub, events.TableSettingsChanged, hub.handleTableSettingsChanged)
 	OnServerEvent(hub, events.TrackStatusChanged, hub.handleTrackStatusChanged)
 	OnServerEvent(hub, events.DiscordStatusChanged, hub.handleDiscordStatusChanged)
+	OnServerEvent(hub, events.MixerReady, hub.handleMixerReady)
+	OnServerEvent(hub, events.MixerApplied, hub.handleMixerApplied)
+	OnServerEvent(hub, events.MixerFailed, hub.handleMixerFailed)
 
 	return hub
-}
-
-// SetMixer installs the optional consumer before the hub accepts connections.
-func (h *Hub) SetMixer(mixer server.Mixer) {
-	h.mixer = mixer
 }
 
 func (h *Hub) Run(ctx context.Context) {
@@ -83,9 +82,9 @@ func (h *Hub) Run(ctx context.Context) {
 	defer ticker.Stop()
 	defer func() {
 		close(h.done)
-		h.clientsMu.Lock()
-		defer h.clientsMu.Unlock()
-		for client := range h.clients {
+		var clients []*Client
+		h.ForEachClient(func(client *Client) { clients = append(clients, client) })
+		for _, client := range clients {
 			h.dropClient(client)
 		}
 	}()
@@ -98,32 +97,17 @@ func (h *Hub) Run(ctx context.Context) {
 		case <-ticker.C:
 			h.refreshPlayback()
 		case client := <-h.register:
-			h.clientsMu.Lock()
-			h.clients[client] = true
-			h.clientsMu.Unlock()
-			if h.mixer != nil && client.Token.Role == auth.RoleGM {
-				if err := client.sendEvent(events.MixerReady, Empty{}); err != nil {
-					h.logger.Error("failed to announce mixer", "error", err)
-				}
-			}
+			h.addClient(client)
+			h.notify(events.ClientConnected, Empty{}, client.metadata())
+			close(client.ready)
 		case client := <-h.unregister:
-			h.clientsMu.Lock()
-			if _, ok := h.clients[client]; ok {
-				h.dropClient(client)
-			}
-			h.clientsMu.Unlock()
+			h.dropClient(client)
 		}
 	}
 }
 
 func (h *Hub) Register(conn *websocket.Conn, token *auth.Token) {
-	client := &Client{
-		ID:    uuid.New().String(),
-		hub:   h,
-		conn:  conn,
-		send:  make(chan []byte, 256),
-		Token: token,
-	}
+	client := NewClient(h, conn, token)
 
 	h.logger.Debug("new websocket connection",
 		"clientId", client.ID,
@@ -135,65 +119,36 @@ func (h *Hub) Register(conn *websocket.Conn, token *auth.Token) {
 		conn.Close()
 		return
 	}
+	select {
+	case <-client.ready:
+	case <-h.done:
+		conn.Close()
+		return
+	}
 
 	go client.WritePump()
 	go client.ReadPump()
 }
 
-type BroadcastOption func(*Client) bool
-
-// Common broadcast filters
-func ToAll() BroadcastOption {
-	return func(_ *Client) bool { return true }
-}
-
-func ToGMOnly() BroadcastOption {
-	return func(c *Client) bool {
-		return c.Token.Role == "gm"
-	}
-}
-
-func ToPlayersOnly() BroadcastOption {
-	return func(c *Client) bool {
-		return c.Token.Role == "player"
-	}
-}
-
-func ExceptClient(excludeClient *Client) BroadcastOption {
-	return func(c *Client) bool {
-		return c != excludeClient
-	}
-}
-
-func ToClientID(clientID string) BroadcastOption {
-	return func(c *Client) bool {
-		return c.ID == clientID
-	}
-}
-
-func ToTable(tableID string) BroadcastOption {
-	return func(c *Client) bool {
-		return c.Token.TableID == tableID
-	}
+func (h *Hub) addClient(client *Client) {
+	h.clientsMu.Lock()
+	defer h.clientsMu.Unlock()
+	h.clients[client] = true
+	client.subscribe()
 }
 
 func (h *Hub) handleTableDeleted(tableID string, _ *Client) {
-	if h.mixer != nil {
-		h.mixer.CloseTable(tableID)
-	}
 	h.stateMu.Lock()
 	delete(h.playback, tableID)
 	h.stateMu.Unlock()
-	if err := h.publishEvent(events.TableDeleted, Empty{}, ToTable(tableID)); err != nil {
+	if err := h.publishEvent(events.TableDeleted, Empty{}, events.Metadata{TableID: tableID}); err != nil {
 		h.logger.Error("failed to announce table deletion", "error", err)
 	}
 	h.clientsMu.Lock()
 	defer h.clientsMu.Unlock()
 	for client := range h.clients {
 		if client.Token.TableID == tableID {
-			client.closed = true
-			close(client.send)
-			delete(h.clients, client)
+			h.removeClient(client)
 		}
 	}
 }
@@ -203,18 +158,13 @@ func (h *Hub) RevokePlayerAccess(tableID string) {
 	defer h.clientsMu.Unlock()
 	for client := range h.clients {
 		if client.Token.TableID == tableID && client.Token.Role == auth.RolePlayer {
-			client.closed = true
-			close(client.send)
-			delete(h.clients, client)
+			h.removeClient(client)
 		}
 	}
 }
 
 func (h *Hub) handleTrackRemoved(event events.TableEvent[events.TrackReference], _ *Client) {
 	tableID, trackID := event.TableID, event.Data.FileID
-	if h.mixer != nil {
-		h.mixer.RemoveTrack(tableID, trackID)
-	}
 	h.stateMu.Lock()
 	if tableID == "" {
 		for _, tracks := range h.playback {
@@ -224,94 +174,63 @@ func (h *Hub) handleTrackRemoved(event events.TableEvent[events.TrackReference],
 		delete(h.playback[tableID], trackID)
 	}
 	h.stateMu.Unlock()
-	opts := []BroadcastOption{}
-	if tableID != "" {
-		opts = append(opts, ToTable(tableID))
-	}
-
-	if err := h.publishEvent(events.TrackRemoved, TrackReference{FileID: trackID}, opts...); err != nil {
+	if err := h.publishEvent(events.TrackRemoved, TrackReference{FileID: trackID}, events.Metadata{TableID: tableID, Global: tableID == ""}); err != nil {
 		h.logger.Error("failed to announce track removal", "error", err)
 	}
 }
 
 func (h *Hub) handleTrackStatusChanged(track server.Track, _ *Client) {
 	update := TrackStatusUpdate{FileID: track.ID.String(), Status: track.Status, ProcessingError: track.ProcessingError}
-	if err := h.publishEvent(events.TrackStatusChanged, update, ToGMOnly()); err != nil {
+	if err := h.publishEvent(events.TrackStatusChanged, update, events.Metadata{Global: true}); err != nil {
 		h.logger.Error("failed to announce track processing status", "error", err)
 	}
 }
 
-func (h *Hub) publish(msg Message, opts ...BroadcastOption) error {
-	jsonMsg, err := json.Marshal(msg)
-	if err != nil {
-		return fmt.Errorf("couldn't marshal JSON: %w", err)
+func (h *Hub) publish(msg Message, metadata events.Metadata) error {
+	if !json.Valid(msg.Payload) {
+		return fmt.Errorf("invalid JSON event payload")
 	}
 
-	// Combine all filters using AND logic
-	filter := func(c *Client) bool {
-		for _, opt := range opts {
-			if !opt(c) {
-				return false
-			}
-		}
-		return true
-	}
-
-	// If no filters provided, broadcast to all
-	if len(opts) == 0 {
-		filter = ToAll()
-	}
-
-	h.clientsMu.Lock()
-	for client := range h.clients {
-		if filter(client) {
-			select {
-			case client.send <- jsonMsg:
-			default:
-				h.dropClient(client)
-			}
-		}
-	}
-	h.clientsMu.Unlock()
-
+	h.notifyRaw(msg.Event, msg.Payload, metadata)
 	return nil
 }
 
 func (h *Hub) dropClient(client *Client) {
-	client.closed = true
-	close(client.send)
-	delete(h.clients, client)
-	if h.mixer == nil || client.Token.Role != auth.RoleGM {
+	h.clientsMu.Lock()
+	if _, ok := h.clients[client]; !ok {
+		h.clientsMu.Unlock()
+		return
+	}
+	h.removeClient(client)
+	if client.Token.Role != auth.RoleGM {
+		h.clientsMu.Unlock()
 		return
 	}
 	for other := range h.clients {
 		if other.Token.Role == auth.RoleGM && other.Token.TableID == client.Token.TableID {
+			h.clientsMu.Unlock()
 			return
 		}
 	}
-	h.mixer.CloseTable(client.Token.TableID)
+	h.clientsMu.Unlock()
+	h.notify(events.TableSessionEnded, Empty{}, events.Metadata{TableID: client.Token.TableID})
 }
 
-// ForEachClient allows iterating over clients with a filter
-func (h *Hub) ForEachClient(fn func(*Client), opts ...BroadcastOption) {
-	filter := func(c *Client) bool {
-		for _, opt := range opts {
-			if !opt(c) {
-				return false
-			}
-		}
-		return true
+// removeClient requires clientsMu and does not publish lifecycle events.
+func (h *Hub) removeClient(client *Client) {
+	for _, stop := range client.subscriptions {
+		stop()
 	}
+	client.subscriptions = nil
+	client.closed = true
+	close(client.send)
+	delete(h.clients, client)
+}
 
-	if len(opts) == 0 {
-		filter = ToAll()
-	}
-
+func (h *Hub) ForEachClient(fn func(*Client)) {
 	h.clientsMu.RLock()
 	for client := range h.clients {
-		if filter(client) {
-			fn(client)
-		}
+		fn(client)
 	}
 	h.clientsMu.RUnlock()
 }

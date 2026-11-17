@@ -17,6 +17,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	"github.com/terrabitz/rpg-audio-streamer/internal/auth"
+	"github.com/terrabitz/rpg-audio-streamer/internal/events"
 )
 
 func TestRoutedTrackLifecycle(t *testing.T) {
@@ -313,8 +314,9 @@ type recordingWSRegisterer struct {
 	tokens chan *auth.Token
 }
 
-func (r *recordingWSRegisterer) SendEvent(string, any) error { return nil }
-func (r *recordingWSRegisterer) RevokePlayerAccess(string)   {}
+func (r *recordingWSRegisterer) SendEvent(string, any) error      { return nil }
+func (r *recordingWSRegisterer) RevokePlayerAccess(string)        {}
+func (r *recordingWSRegisterer) On(string, events.Handler) func() { return func() {} }
 
 func (r *recordingWSRegisterer) Register(conn *websocket.Conn, token *auth.Token) {
 	defer conn.Close()

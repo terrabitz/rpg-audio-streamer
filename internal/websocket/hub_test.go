@@ -15,13 +15,14 @@ import (
 	gorilla "github.com/gorilla/websocket"
 	"github.com/terrabitz/rpg-audio-streamer/internal/auth"
 	"github.com/terrabitz/rpg-audio-streamer/internal/events"
+	"github.com/terrabitz/rpg-audio-streamer/internal/livemixer"
 	"github.com/terrabitz/rpg-audio-streamer/internal/server"
 )
 
 func TestMixerReceivesOnlyTableScopedGMCommands(t *testing.T) {
 	hub, clients := testHub()
 	mix := &testMixer{}
-	hub.SetMixer(mix)
+	t.Cleanup(livemixer.Subscribe(hub, mix))
 	tableID := server.DefaultTableID.String()
 	clients["gm"].Token.TableID = tableID
 	clients["player"].Token.TableID = tableID
@@ -74,18 +75,22 @@ func TestMixerReceivesOnlyTableScopedGMCommands(t *testing.T) {
 func TestMixerStopsOnlyAfterLastGMLeaves(t *testing.T) {
 	hub, clients := testHub()
 	mix := &testMixer{}
-	hub.SetMixer(mix)
+	t.Cleanup(livemixer.Subscribe(hub, mix))
 	clients["gm"].Token.TableID = "friday"
 	clients["otherGM"].Token.TableID = "friday"
-	hub.clientsMu.Lock()
 	hub.dropClient(clients["gm"])
-	hub.clientsMu.Unlock()
 	if len(mix.calls) != 0 {
 		t.Fatal("one GM leaving stopped another GM's mix")
 	}
-	hub.clientsMu.Lock()
+	events.OnTableSessionEnded(hub, func(_ events.Empty, metadata events.Metadata) error {
+		hub.ForEachClient(func(client *Client) {
+			if client.Token.TableID == metadata.TableID && client.Token.Role == auth.RoleGM {
+				t.Error("table session ended with another GM connected")
+			}
+		})
+		return nil
+	})
 	hub.dropClient(clients["otherGM"])
-	hub.clientsMu.Unlock()
 	if len(mix.calls) != 1 || mix.calls[0] != "close:friday" {
 		t.Fatalf("last GM cleanup: %v", mix.calls)
 	}
@@ -170,13 +175,8 @@ func TestMessageRouting(t *testing.T) {
 	}
 }
 
-func TestBroadcastFiltersAndSlowClients(t *testing.T) {
+func TestClientSubscriptionsAndSlowConsumers(t *testing.T) {
 	hub, clients := testHub()
-	visited := map[string]bool{}
-	hub.ForEachClient(func(c *Client) { visited[c.ID] = true }, ToPlayersOnly(), ExceptClient(clients["player"]))
-	if len(visited) != 1 || !visited["otherPlayer"] {
-		t.Fatalf("AND filters visited = %v", visited)
-	}
 	count := 0
 	hub.ForEachClient(func(c *Client) { count++ })
 	if count != 4 {
@@ -184,7 +184,7 @@ func TestBroadcastFiltersAndSlowClients(t *testing.T) {
 	}
 	slow := clients["player"]
 	slow.send = make(chan []byte)
-	if err := hub.publish(Message{Event: "test", Payload: json.RawMessage(`{}`)}); err != nil {
+	if err := hub.publish(Message{Event: events.Broadcast, Payload: json.RawMessage(`{}`)}, events.Metadata{}); err != nil {
 		t.Fatal(err)
 	}
 	if _, ok := hub.clients[slow]; ok {
@@ -201,7 +201,7 @@ func TestBroadcastFiltersAndSlowClients(t *testing.T) {
 			t.Errorf("%s did not receive unfiltered broadcast", id)
 		}
 	}
-	if err := hub.publish(Message{Payload: json.RawMessage(`invalid`)}); err == nil {
+	if err := hub.publish(Message{Payload: json.RawMessage(`invalid`)}, events.Metadata{}); err == nil {
 		t.Fatal("invalid JSON should fail to marshal")
 	}
 	if err := clients["gm"].Send(Message{Payload: json.RawMessage(`invalid`)}); err == nil {
@@ -221,13 +221,14 @@ func TestWebSocketClientPumps(t *testing.T) {
 			return
 		}
 		client := NewClient(hub, conn, &auth.Token{Role: auth.RolePlayer})
+		hub.addClient(client)
 		writerDone := make(chan struct{})
 		go func() {
 			client.WritePump()
 			close(writerDone)
 		}()
 		client.ReadPump()
-		close(client.send)
+		hub.dropClient(client)
 		<-writerDone
 		close(finished)
 	})
@@ -389,7 +390,7 @@ func testHub() (*Hub, map[string]*Client) {
 		client := NewClient(hub, nil, &auth.Token{Role: role})
 		client.ID = id
 		clients[id] = client
-		hub.clients[client] = true
+		hub.addClient(client)
 	}
 	return hub, clients
 }

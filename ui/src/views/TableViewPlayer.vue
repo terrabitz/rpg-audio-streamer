@@ -26,7 +26,7 @@ const buttonLabel = computed(() => {
 
 onMounted(() => {
   audioStore.enabled = false
-  unsubscribe = wsStore.on('playbackStateChanged', payload => audioStore.syncTracks(payload.tracks))
+  unsubscribe = wsStore.onPlaybackStateChanged(payload => audioStore.syncTracks(payload.tracks))
 })
 
 onUnmounted(() => {

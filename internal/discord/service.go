@@ -7,11 +7,11 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
-	"strconv"
 	"sync"
 	"time"
 
 	"github.com/disgoorg/disgo/rest"
+	"github.com/terrabitz/rpg-audio-streamer/internal/domain"
 	"github.com/terrabitz/rpg-audio-streamer/internal/events"
 	"github.com/terrabitz/rpg-audio-streamer/internal/livemixer"
 	"github.com/terrabitz/rpg-audio-streamer/internal/mixer"
@@ -28,26 +28,9 @@ type Config struct {
 	ChannelID string
 }
 
-type Destination struct {
-	GuildID     string `json:"guildID"`
-	ChannelID   string `json:"channelID"`
-	GuildName   string `json:"guildName,omitempty"`
-	ChannelName string `json:"channelName,omitempty"`
-}
+type Destination = domain.Destination
 
-func (d Destination) Validate() error {
-	if !snowflake(d.GuildID) || !snowflake(d.ChannelID) {
-		return fmt.Errorf("select a valid Discord server and voice channel")
-	}
-	return nil
-}
-
-type Status struct {
-	Enabled bool   `json:"enabled"`
-	State   string `json:"state"`
-	*Destination
-	Error string `json:"error,omitempty"`
-}
+type Status = domain.DiscordStatus
 
 type Service struct {
 	mu        sync.Mutex
@@ -293,14 +276,5 @@ func (s *Service) setStatus(tableID string, status Status) {
 }
 
 func snowflake(value string) bool {
-	if value == "" || len(value) > 20 || value[0] == '0' {
-		return false
-	}
-	for _, digit := range value {
-		if digit < '0' || digit > '9' {
-			return false
-		}
-	}
-	_, err := strconv.ParseUint(value, 10, 64)
-	return err == nil
+	return domain.ValidDiscordID(value)
 }

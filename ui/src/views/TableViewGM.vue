@@ -115,16 +115,16 @@ watch(() => wsStore.isConnected, (connected) => {
 
 onMounted(async () => {
   subscriptions = [
-    wsStore.on('playbackStateChanged', handleSyncAll),
-    wsStore.on('mixerReady', () => {
+    wsStore.onPlaybackStateChanged(handleSyncAll),
+    wsStore.onMixerReady(() => {
       mixerEnabled.value = true
       mixerSyncPending = true
     }),
-    wsStore.on('mixerFailed', payload => { mixerError.value = payload.message }),
-    wsStore.on('mixerApplied', payload => {
+    wsStore.onMixerFailed(payload => { mixerError.value = payload.message }),
+    wsStore.onMixerApplied(payload => {
       if (payload.event === 'mixChanged') mixerError.value = ''
     }),
-    wsStore.on('playbackFailed', payload => { error.value = payload.message }),
+    wsStore.onPlaybackFailed(payload => { error.value = payload.message }),
   ]
   setTitle(tables.current?.name ?? 'Table')
   window.addEventListener('pagehide', flushMix)

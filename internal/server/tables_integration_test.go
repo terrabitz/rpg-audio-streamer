@@ -18,6 +18,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	"github.com/terrabitz/rpg-audio-streamer/internal/auth"
+	"github.com/terrabitz/rpg-audio-streamer/internal/events"
 	"github.com/terrabitz/rpg-audio-streamer/internal/musicprocessing"
 	"github.com/terrabitz/rpg-audio-streamer/internal/server"
 	"github.com/terrabitz/rpg-audio-streamer/internal/sqlitedatastore"
@@ -31,6 +32,7 @@ type testWSRegisterer struct {
 func (testWSRegisterer) Register(*websocket.Conn, *auth.Token) {}
 func (h testWSRegisterer) SendEvent(string, any) error         { return h.err }
 func (testWSRegisterer) RevokePlayerAccess(string)             {}
+func (testWSRegisterer) On(string, events.Handler) func()      { return func() {} }
 
 func TestTableHTTP(t *testing.T) {
 	ctx := context.Background()

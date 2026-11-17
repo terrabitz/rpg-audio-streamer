@@ -25,6 +25,7 @@ type playbackTestStore struct{}
 
 func routeSyncTrack(h *Hub, payload json.RawMessage, client *Client) {
 	h.handlers[events.TrackPlaybackChanged](payload, client)
+	drainEvents(h)
 }
 
 func (playbackTestStore) HasTableTrack(_ context.Context, _ uuid.UUID, id uuid.UUID) (bool, error) {
@@ -296,7 +297,7 @@ func TestPlaybackCommandsAreAtomicAndAuthorized(t *testing.T) {
 		}
 	}
 	mix := &testMixer{}
-	h.SetMixer(mix)
+	t.Cleanup(livemixer.Subscribe(h, mix))
 	for _, event := range []string{
 		fmt.Sprintf(`{"fileID":%q,"volume":-1}`, testTrackID),
 		fmt.Sprintf(`{"fileID":%q,"playback":{"startTime":20,"endTime":10,"loopBackTime":null}}`, testTrackID),
@@ -351,7 +352,7 @@ func TestPlaybackExclusivityFadesMixerAudio(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			h.SetMixer(mix)
+			t.Cleanup(livemixer.Subscribe(h, mix))
 			play := func(id uuid.UUID) {
 				t.Helper()
 				routeSyncTrack(h, json.RawMessage(fmt.Sprintf(
@@ -462,7 +463,7 @@ func TestPlaybackRefreshAndSettings(t *testing.T) {
 	state.updatedAt = time.Now()
 	h.playback[tableID][testTrackID.String()] = state
 	mix := &testMixer{}
-	h.mixer = mix
+	t.Cleanup(livemixer.Subscribe(h, mix))
 	sendAndDrain(t, h, events.TableSettingsChanged, events.TableEvent[server.TableSettingsPatch]{
 		TableID: tableID, Data: server.TableSettingsPatch{
 			TrackVolumes: map[string]float64{testTrackID.String(): 10},

@@ -6,7 +6,7 @@ import (
 )
 
 func (h *Hub) handleDiscordStatusChanged(event events.TableEvent[discord.Status], _ *Client) {
-	if err := h.publishEvent(events.DiscordStatusChanged, event.Data, ToGMOnly(), ToTable(event.TableID)); err != nil {
+	if err := h.publishEvent(events.DiscordStatusChanged, event.Data, events.Metadata{TableID: event.TableID}); err != nil {
 		h.logger.Error("failed to announce Discord status", "tableID", event.TableID, "error", err)
 	}
 }

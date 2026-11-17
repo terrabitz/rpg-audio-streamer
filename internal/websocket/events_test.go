@@ -11,17 +11,25 @@ import (
 	"github.com/terrabitz/rpg-audio-streamer/internal/events"
 )
 
-func TestEventQueueDoesNotWaitForHandlersAndPreservesAcceptedEvents(t *testing.T) {
+func TestEventQueueDoesNotWaitForSubscribersAndPreservesAcceptedEvents(t *testing.T) {
 	hub, _ := testHub()
 	started := make(chan struct{})
 	release := make(chan struct{})
 	delivered := make(chan int, eventQueueCapacity+1)
 	OnServerEvent(hub, "queued", func(payload map[string]int, _ *Client) {
+		hub.notify("queued", payload, events.Metadata{})
+	})
+	hub.On("queued", func(raw json.RawMessage, _ events.Metadata) error {
+		var payload map[string]int
+		if err := json.Unmarshal(raw, &payload); err != nil {
+			return err
+		}
 		if payload["sequence"] == 0 {
 			close(started)
 			<-release
 		}
 		delivered <- payload["sequence"]
+		return nil
 	})
 	ctx, cancel := context.WithCancel(context.Background())
 	finished := make(chan struct{})
@@ -72,7 +80,7 @@ func TestEventQueueDoesNotWaitForHandlersAndPreservesAcceptedEvents(t *testing.T
 			t.Fatalf("overflow = %v; want ErrEventQueueFull", err)
 		}
 	case <-time.After(time.Second):
-		t.Fatal("producer waited for the blocked handler")
+		t.Fatal("producer waited for the blocked subscriber")
 	}
 	close(release)
 	for i := 0; i <= eventQueueCapacity; i++ {

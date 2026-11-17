@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -36,17 +35,9 @@ type Authenticator interface {
 }
 
 type WSRegisterer interface {
-	events.Sender
+	events.Bus
 	Register(conn *websocket.Conn, token *auth.Token)
 	RevokePlayerAccess(tableID string)
-}
-
-type Mixer interface {
-	Update(tableID string, payload json.RawMessage) error
-	Sync(tableID string, payload json.RawMessage) error
-	Volumes(tableID string, payload json.RawMessage) error
-	CloseTable(tableID string)
-	RemoveTrack(tableID, trackID string)
 }
 
 type DiscordController interface {
@@ -123,12 +114,6 @@ func New(cfg Config, logger *slog.Logger, auth Authenticator, store Store, hub W
 		if cfg.Discord.Token == "" {
 			return nil, fmt.Errorf("Discord streaming requires DISCORD_STREAMING_BOT_TOKEN")
 		}
-		consumer, ok := hub.(interface {
-			SetMixer(Mixer)
-		})
-		if !ok {
-			return nil, fmt.Errorf("Discord streaming requires a mixer-capable WebSocket hub")
-		}
 		mix, err := livemixer.New(mixerSampleRate, srv.mixerSource)
 		if err != nil {
 			return nil, fmt.Errorf("initialize live mixer: %w", err)
@@ -141,7 +126,7 @@ func New(cfg Config, logger *slog.Logger, auth Authenticator, store Store, hub W
 		srv.discord = bot
 		bot.SetEventSender(hub)
 		srv.discordMix = newDiscordMixer(srv.mixer, srv)
-		consumer.SetMixer(srv.discordMix)
+		livemixer.Subscribe(hub, srv.discordMix)
 	}
 
 	return srv, nil

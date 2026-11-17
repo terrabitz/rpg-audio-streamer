@@ -28,7 +28,7 @@ it('shows reconnect progress without a cancel action, then allows disconnecting 
   const ws = useWebSocketStore()
   ws.isConnected = true
   const router = new EventHub()
-  vi.spyOn(ws, 'on').mockImplementation(router.on.bind(router))
+  vi.spyOn(ws, 'onDiscordStatusChanged').mockImplementation(router.subscriptions.onDiscordStatusChanged)
   api.get.mockResolvedValue({ data: { enabled: true, state: 'connecting' } })
   api.disconnect.mockResolvedValue({ data: { enabled: true, state: 'disconnected' } })
   const wrapper = mount(DiscordControl, {

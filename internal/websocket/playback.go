@@ -2,14 +2,12 @@ package websocket
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"math"
 	"sort"
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/terrabitz/rpg-audio-streamer/internal/auth"
 	"github.com/terrabitz/rpg-audio-streamer/internal/events"
 	"github.com/terrabitz/rpg-audio-streamer/internal/server"
 )
@@ -39,15 +37,7 @@ type playingTrack struct {
 	updatedAt       time.Time
 }
 
-type PlaybackPatch struct {
-	FileID      string                   `json:"fileID"`
-	IsPlaying   *bool                    `json:"isPlaying,omitempty"`
-	IsRepeating *bool                    `json:"isRepeating,omitempty"`
-	Volume      *float64                 `json:"volume,omitempty"`
-	CurrentTime *float64                 `json:"currentTime,omitempty"`
-	Duration    *float64                 `json:"duration,omitempty"`
-	Playback    *server.PlaybackSettings `json:"playback,omitempty"`
-}
+type PlaybackPatch = events.PlaybackPatch
 
 func (h *Hub) refreshPlayback() {
 	h.stateMu.Lock()
@@ -88,23 +78,21 @@ func (h *Hub) handleTableSettingsChanged(event events.TableEvent[server.TableSet
 		h.logger.Error("failed to synchronize table settings", "error", err, "tableID", tableID)
 		return
 	}
+	changes := make([]PlaybackPatch, 0, len(patch.TrackVolumes))
 	for id := range patch.TrackVolumes {
 		if track, ok := h.playback[tableID][id]; ok {
 			track.Volume = settings.TrackVolumes[id]
 			h.playback[tableID][id] = track
-			if h.mixer != nil && track.IsPlaying {
-				payload, err := json.Marshal(PlaybackPatch{FileID: id, Volume: &track.Volume})
-				if err != nil {
-					h.logger.Error("failed to encode mixer track volume", "error", err, "tableID", tableID)
-					continue
-				}
-				if err := h.mixer.Update(tableID, payload); err != nil {
-					h.logger.Error("failed to update mixer track volume", "error", err, "tableID", tableID, "fileID", id)
-				}
+			if track.IsPlaying {
+				changes = append(changes, PlaybackPatch{FileID: id, Volume: &track.Volume})
 			}
 		}
 	}
 	h.sendState(tableID, settings, "")
+	if len(changes) > 0 {
+		h.notify(events.PlaybackChanged, events.PlaybackChanges[PlaybackPatch]{Tracks: changes}, events.Metadata{TableID: tableID})
+	}
+	h.notify(events.TableSettingsChanged, settings, events.Metadata{TableID: tableID})
 }
 
 func (h *Hub) updatePlayback(patch PlaybackPatch, c *Client) {
@@ -215,29 +203,18 @@ func (h *Hub) updatePlayback(patch PlaybackPatch, c *Client) {
 	states[state.FileID] = state
 	h.playback[c.Token.TableID] = states
 	h.sendState(c.Token.TableID, settings, "")
-	if h.mixer != nil {
-		h.applyMixer(c, events.TrackPlaybackChanged, func() error {
-			paused := false
-			for _, id := range stopped {
-				stop, err := json.Marshal(PlaybackPatch{FileID: id, IsPlaying: &paused})
-				if err != nil {
-					return err
-				}
-				if err := h.mixer.Update(c.Token.TableID, stop); err != nil {
-					return err
-				}
-			}
-			if patch.IsPlaying != nil && *patch.IsPlaying {
-				patch.Volume = &state.Volume
-				patch.Playback = &state.Playback
-			}
-			payload, err := json.Marshal(patch)
-			if err != nil {
-				return err
-			}
-			return h.mixer.Update(c.Token.TableID, payload)
-		})
+	changes := make([]PlaybackPatch, 0, len(stopped)+1)
+	paused := false
+	for _, id := range stopped {
+		changes = append(changes, PlaybackPatch{FileID: id, IsPlaying: &paused})
 	}
+	if patch.IsPlaying != nil && *patch.IsPlaying {
+		patch.Volume = &state.Volume
+		patch.Playback = &state.Playback
+	}
+	changes = append(changes, patch)
+	h.notify(events.PlaybackChanged, events.PlaybackChanges[PlaybackPatch]{Tracks: changes}, c.metadata())
+	h.notify(events.TrackPlaybackChanged, patch, c.metadata())
 }
 
 func (h *Hub) resolvePlayback(tableID, fileID string) (server.Track, server.TrackType, server.TableSettings, error) {
@@ -288,31 +265,25 @@ func (h *Hub) tableSettings(tableID string) (server.TableSettings, error) {
 
 func (h *Hub) sendState(tableID string, settings server.TableSettings, target string) {
 	now := time.Now()
-	tracks := make([]playingTrack, 0, len(h.playback[tableID]))
+	tracks := make([]events.PlaybackTrack, 0, len(h.playback[tableID]))
 	for id, track := range h.playback[tableID] {
 		track = track.at(now)
 		h.playback[tableID][id] = track
-		tracks = append(tracks, track)
+		tracks = append(tracks, track.snapshot())
 	}
 	sort.Slice(tracks, func(i, j int) bool { return tracks[i].FileID < tracks[j].FileID })
-	for _, role := range []auth.Role{auth.RoleGM, auth.RolePlayer} {
-		outgoing := append([]playingTrack{}, tracks...)
-		if role == auth.RolePlayer {
-			for i := range outgoing {
-				outgoing[i].Volume *= settings.MasterVolume / 100
-			}
-		}
-		snapshot := Snapshot{Tracks: outgoing}
-		if role == auth.RoleGM {
-			snapshot.Settings = &settings
-		}
-		options := []BroadcastOption{ToTable(tableID), func(c *Client) bool { return c.Token.Role == role }}
-		if target != "" {
-			options = append(options, ToClientID(target))
-		}
-		if err := h.publishEvent(events.PlaybackStateChanged, snapshot, options...); err != nil {
-			h.logger.Error("failed to send playback state", "error", err)
-		}
+	snapshot := Snapshot{Tracks: tracks, Settings: &settings}
+	if err := h.publishEvent(events.PlaybackStateChanged, snapshot, events.Metadata{TableID: tableID, TargetClientID: target}); err != nil {
+		h.logger.Error("failed to send playback state", "error", err)
+	}
+}
+
+func (t playingTrack) snapshot() events.PlaybackTrack {
+	return events.PlaybackTrack{
+		FileID: t.FileID, Name: t.Name, IsPlaying: t.IsPlaying, Volume: t.Volume,
+		IsRepeating: t.IsRepeating, CurrentTime: t.CurrentTime, Duration: t.Duration,
+		TrackType: t.TrackType, Playback: t.Playback, PositionVersion: t.PositionVersion,
+		SeekVersion: t.SeekVersion, SeekTarget: t.SeekTarget, SeekLanding: t.SeekLanding,
 	}
 }
 

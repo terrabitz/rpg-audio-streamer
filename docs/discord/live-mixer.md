@@ -16,13 +16,25 @@ Discord. Each table session wraps a [PCM mixer](./pcm-mixer.md) fed by
 
 ## Events
 
-For an enabled service, the hub sends `mixerReady` to each authenticated GM
-connection (see [WebSocket protocol](../playback/websocket-protocol.md)). The GM
+`livemixer.Subscribe` registers the enabled mixer as an independent
+`events.Bus` consumer. Its adapter listens for `clientConnected`,
+`playbackChanged`, `mixChanged`, `mixVolumesChanged`, `trackRemoved`,
+`tableDeleted`, and `tableSessionEnded`; the hub has no mixer reference.
+Registration returns an unsubscribe function. The HTTP server owns the mixer
+and its Discord session lifecycle wrapper for the application's lifetime.
+The adapter uses the named, typed `events.OnClientConnected`,
+`events.OnPlaybackChanged`, and corresponding registration functions, just
+like socket event consumers; its callbacks do not decode raw JSON.
+
+The adapter answers each authenticated GM's `clientConnected` event with a
+targeted `mixerReady` event (see
+[WebSocket protocol](../playback/websocket-protocol.md)). The GM
 answers with `mixChanged`: a full snapshot of playing tracks and the current
 type-volume map. This happens on reconnect as well as initial connection.
-`trackPlaybackChanged` events feed partial play/pause, seek, volume, repeating,
-and live [playback-region](../playback/playback-regions.md) changes into the
-mixer. Seek commands use `CrossfadeSeek` (see
+Accepted `trackPlaybackChanged` inputs become canonical `playbackChanged`
+batches that feed partial play/pause, seek, volume, repeating, and live
+[playback-region](../playback/playback-regions.md) changes into the mixer.
+Persisted track-volume changes use the same batches. Seek changes use `CrossfadeSeek` (see
 [seek crossfades](../playback/seek-crossfades.md)); fresh snapshots initialize a
 paused engine at the requested position before starting playback, without a
 seek transition.
@@ -35,8 +47,8 @@ GM's selected track volume, including unsaved and zero values. The hub also
 supplies the resolved track volume and playback region to the mixer on play, so
 clients omitting volume still honor saved settings.
 
-When an exclusive track starts, the hub also sends pause commands for the
-displaced tracks to the mixer. These commands use the core's playback envelopes
+When an exclusive track starts, the hub includes pause patches for displaced
+tracks before the requested update in the same batch. These use the core's playback envelopes
 and are serialized with the accepted playback update, so Discord fades out the
 previous Music track while simultaneous track types continue playing. Frontend
 partial updates coalesce by track ID, preserving independent fields and updates
@@ -46,11 +58,13 @@ region changes flush queued updates first.
 ## Authorization and errors
 
 The hub derives table identity and GM authorization from the authenticated
-socket, never the event payload. Targeted player `playbackStateChanged` responses do not
-mutate the mixer; untargeted full syncs replace it, including the empty
-snapshot on leaving a table. Mixer-only events are ignored when disabled and
+socket, never the event payload. `playbackStateChanged` snapshots do not
+mutate the mixer; `mixChanged` replaces it, including an empty snapshot on
+leaving a table. Mixer-only events are ignored when disabled and
 never forwarded to players. Successful events receive `mixerApplied`; failures
-receive `mixerFailed` and are logged with table and event context. The GM
+receive `mixerFailed` and are logged with table and event context. The adapter
+queues these responses through the hub for delivery only to the originating GM.
+The GM
 displays errors without stopping browser playback. A successful reconnect
 snapshot clears the error. Normal player broadcasts happen before mixer
 processing, so warming a decoder does not delay that broadcast.
@@ -81,7 +95,9 @@ through Discord.
 
 ## Lifecycle
 
-Track disassociation removes the track from its table's mix; library deletion
+The adapter handles track-removal and table-lifecycle events independently of
+the hub's authoritative playback handling. Track disassociation removes the
+track from its table's mix; library deletion
 removes it from all mixes (see
 [table track associations](../data/table-track-associations.md)). Table deletion
 and loss of its last GM connection discard the session and cancel its decoder

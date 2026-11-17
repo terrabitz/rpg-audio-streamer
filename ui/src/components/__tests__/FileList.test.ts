@@ -121,8 +121,8 @@ it('applies pushed processing status and refreshes after reconnecting', async ()
   ws.isConnected = true
   const stop = vi.fn()
   let pushStatus: (update: TrackStatusUpdate) => void = () => {}
-  vi.spyOn(ws, 'on').mockImplementation((command, handler) => {
-    if (command === 'trackStatusChanged') pushStatus = update => (handler as Parameters<typeof ws.on<'trackStatusChanged'>>[1])(update, {})
+  vi.spyOn(ws, 'onTrackStatusChanged').mockImplementation(handler => {
+    pushStatus = update => handler(update, {})
     return stop
   })
   const wrapper = mount(FileList, {

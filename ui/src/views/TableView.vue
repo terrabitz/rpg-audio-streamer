@@ -26,12 +26,12 @@ onMounted(async () => {
   audio.clearTracks()
   ws.disconnect()
   subscriptions = [
-    ws.on('tableDeleted', () => {
+    ws.onTableDeleted(() => {
       error.value = 'This table has been deleted.'
       audio.clearTracks()
       ws.disconnect()
     }),
-    ws.on('trackRemoved', ({ fileID }) => {
+    ws.onTrackRemoved(({ fileID }) => {
       audio.removeTrack(fileID)
       tables.tracks = tables.tracks.filter(track => track.id !== fileID)
     }),
