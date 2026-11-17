@@ -5,9 +5,10 @@ description: Add or run domain, SQLite integration, and full-app browser tests; 
 
 # Testing RPG Audio Streamer
 
-Read `docs/architecture.md` for the app's boundaries and data flow. Keep that
-document accurate when behavior, code structure, persistence, or interfaces
-change. Architecture descriptions belong there, not in this procedural skill.
+Read `docs/index.md` and the linked concepts for the app's boundaries and data
+flow. Keep those concepts accurate when behavior, code structure, persistence,
+or interfaces change, following the documentation skill. Architecture
+descriptions belong there, not in this procedural skill.
 Keep root `AGENTS.md` short.
 
 ## Setup and commands
@@ -196,7 +197,7 @@ failed app paths with mocked responses or injected Pinia/localStorage state.
 2. Update queries/OpenAPI at their source and regenerate clients when needed.
    For WebSocket changes, keep the Go payload structs and browser payload
    interfaces aligned, and exercise the affected typed callbacks.
-3. Keep `docs/architecture.md` synchronized with changed app behavior and
-   boundaries; keep commands and testing procedures in this skill.
+3. Keep the affected `docs/` concepts synchronized with changed app behavior
+   and boundaries; keep commands and testing procedures in this skill.
 4. Run focused tests, the affected coverage gates, and relevant build/lint.
 5. Run browser journeys when HTTP, auth, playback, persistence, or UX changes.
