@@ -22,6 +22,7 @@ const (
 	MixerError    = "mixerError"
 	PlaybackError = "playbackError"
 	TrackStatus   = "trackStatus"
+	DiscordStatus = "discordStatus"
 )
 
 type Message struct {

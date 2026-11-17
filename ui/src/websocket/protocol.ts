@@ -1,4 +1,4 @@
-import type { PlaybackSettings, TableSettings, Track } from '@/client/apiClient'
+import type { DiscordStatus, PlaybackSettings, TableSettings, Track } from '@/client/apiClient'
 import type { AudioTrack } from '@/stores/audio'
 
 export interface PlaybackPatch {
@@ -61,4 +61,5 @@ export interface Payloads {
   mixerError: MixerFailure
   playbackError: Failure
   trackStatus: TrackStatusUpdate
+  discordStatus: DiscordStatus
 }

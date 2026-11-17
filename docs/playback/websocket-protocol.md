@@ -32,12 +32,17 @@ together; there is no WebSocket code generation or runtime schema registry.
 | `mixerError` | Server to client | Failed command name and message |
 | `playbackError` | Server to client | Error message |
 | `trackStatus` | Server to GMs | Track ID, `ready` or `failed` status, and optional processing diagnostics |
+| `discordStatus` | Server to table GMs | Discord enabled flag, connection state, optional destination and error |
 
 [Playback synchronization](./synchronization.md) describes the playback
 commands; the [live mixer](../discord/live-mixer.md) describes the mixer
 commands.
 The [processing service](../data/track-processing.md) sends `trackStatus` to all
 connected GMs, not just those viewing the affected table.
+The [Discord service](../discord/voice-streaming.md) queues connection changes
+for GM clients viewing that table. Pending transitions may coalesce into the
+latest state before delivery; clients fetch an authoritative snapshot on socket
+connection and reconnection.
 
 ## Backend handlers
 

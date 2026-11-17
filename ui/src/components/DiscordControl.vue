@@ -1,12 +1,12 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted } from 'vue'
+import { computed, onUnmounted } from 'vue'
 import { useDiscord } from '@/composables/discord'
 import discordLogo from '@/assets/discord.svg'
 
 const props = defineProps<{ tableID: string }>()
 const {
   status, setup, channels, guildID, channelID, dialog, loading, channelsLoading, error,
-  toggle, connect, loadSetup, selectGuild, refresh, dispose,
+  toggle, connect, loadSetup, selectGuild, dispose,
 } = useDiscord(props.tableID)
 const addServerID = '__add-server__'
 const serverOptions = computed(() => [
@@ -15,7 +15,6 @@ const serverOptions = computed(() => [
     ? [{ id: addServerID, name: '+ Add to server', isAddServer: true }]
     : []),
 ])
-let timer: ReturnType<typeof setInterval> | undefined
 
 function selectServer(id: string) {
   if (id === addServerID) {
@@ -25,15 +24,7 @@ function selectServer(id: string) {
   void selectGuild(id)
 }
 
-onMounted(() => {
-  void refresh()
-  timer = setInterval(() => { void refresh() }, 2000)
-})
-
-onUnmounted(() => {
-  clearInterval(timer)
-  dispose()
-})
+onUnmounted(dispose)
 </script>
 
 <template>
