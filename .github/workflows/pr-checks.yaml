@@ -7,8 +7,6 @@ on:
 permissions:
   contents: read
 
-env:
-  INTEGRATION_TEST_YT_DLP_LINK: https://www.youtube.com/watch?v=PyD9cMarVJk
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
