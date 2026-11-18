@@ -14,7 +14,9 @@ GM track tiles show their track type as a colored border instead of a visible
 badge, with a screen-reader label retaining the type name. Cards stay compact
 on hover, focus, and touch. Playing tiles have a background mixed
 from their track-type color, with a more saturated left portion showing elapsed
-progress through the playback region. Paused tiles keep the neutral surface.
+progress through the playback region. Paused tiles show the same position as a
+subtle grayscale fill against the neutral surface. Non-playing tile contents,
+including processing status icons, are monochrome; the type border stays colored.
 A 2 px white bar along the bottom shows track volume from left to right,
 independently of master volume. Tile names
 stay on one line with ellipsis overflow and a full-name hover title.

@@ -1,3 +1,4 @@
+import type { Locator, Page } from '@playwright/test'
 import { expect, test } from './fixtures'
 import { login, uploadTrack } from './helpers'
 
@@ -38,11 +39,71 @@ test('GM sees playback position and volume on track cards', async ({ page }, tes
     parseFloat((el as HTMLElement).style.getPropertyValue('--track-progress')),
   )).toBeGreaterThanOrEqual(58)
   await expect(tile.locator('.audio-control-tile')).toHaveCSS('background-image', /linear-gradient/)
+  const playingColors = await cardColors(page, tile)
+  expect(playingColors.contrast).toBeGreaterThan(0)
+  expect(new Set(playingColors.left).size).toBeGreaterThan(1)
   await page.screenshot({ path: testInfo.outputPath('card-indicators.png'), fullPage: true })
   await tile.click()
+  await page.mouse.move(600, 300)
   await expect(tile.locator('.audio-control-tile')).not.toHaveClass(/is-active/)
   await expect(tile.locator('.tile-volume')).toBeVisible()
+  await expect.poll(() => media.evaluate((el: HTMLMediaElement) => el.paused)).toBe(true)
+  await expect(tile.locator('.audio-control-tile')).toHaveCSS('background-image', /linear-gradient/)
+  await expect.poll(() => tile.locator('.audio-control-tile').evaluate(el =>
+    parseFloat((el as HTMLElement).style.getPropertyValue('--track-progress')),
+  )).toBeGreaterThanOrEqual(58)
+  const pausedColors = await cardColors(page, tile)
+  expect(pausedColors.contrast).toBeGreaterThan(0)
+  expect(pausedColors.contrast).toBeLessThan(playingColors.contrast)
+  expect(pausedColors.chromaticPixels).toBe(0)
+  await page.screenshot({ path: testInfo.outputPath('paused-card.png'), fullPage: true })
+  await tile.getByRole('button', { name: 'Edit Card Music', exact: true }).click()
+  const pausedPosition = page.getByRole('dialog').getByRole('slider', { name: 'Playback position for Card Music' })
+  await pausedPosition.press('Home')
+  await expect.poll(() => tile.locator('.audio-control-tile').evaluate(el =>
+    parseFloat((el as HTMLElement).style.getPropertyValue('--track-progress')),
+  )).toBe(0)
+  const startColors = await cardColors(page, tile)
+  expect(startColors.contrast).toBe(0)
+  await pausedPosition.press('End')
+  await expect.poll(() => tile.locator('.audio-control-tile').evaluate(el =>
+    parseFloat((el as HTMLElement).style.getPropertyValue('--track-progress')),
+  )).toBeGreaterThan(95)
+  const endColors = await cardColors(page, tile)
+  expect(endColors.contrast).toBe(0)
+  expect(endColors.left).not.toEqual(startColors.left)
+  await expect.poll(() => media.evaluate((el: HTMLMediaElement) => el.paused)).toBe(true)
 })
+
+async function cardColors(page: Page, card: Locator) {
+  const png = await card.screenshot({ animations: 'disabled' })
+  return page.evaluate(async data => {
+    const image = new Image()
+    image.src = `data:image/png;base64,${data}`
+    await image.decode()
+    const canvas = document.createElement('canvas')
+    canvas.width = image.width
+    canvas.height = image.height
+    const context = canvas.getContext('2d')
+    if (!context) throw new Error('Canvas must be available to inspect card colors')
+    context.drawImage(image, 0, 0)
+    const color = (x: number) => Array.from(context.getImageData(
+      Math.floor(image.width * x), Math.floor(image.height * 0.16), 1, 1,
+    ).data).slice(0, 3)
+    const left = color(0.25)
+    const right = color(0.85)
+    const pixels = context.getImageData(5, 5, image.width - 10, image.height - 10).data
+    let chromaticPixels = 0
+    for (let i = 0; i < pixels.length; i += 4) {
+      if (pixels[i] !== pixels[i + 1] || pixels[i] !== pixels[i + 2]) chromaticPixels++
+    }
+    return {
+      left,
+      chromaticPixels,
+      contrast: left.reduce((sum, channel, index) => sum + Math.abs(channel - (right[index] ?? 0)), 0),
+    }
+  }, png.toString('base64'))
+}
 
 for (const touch of [false, true]) {
   test(`GM plays a card from start using ${touch ? 'long press' : 'right click'}`, async ({ page }, testInfo) => {

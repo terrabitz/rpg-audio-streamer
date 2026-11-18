@@ -12,7 +12,7 @@
           <div class="track-menu-slot position-absolute top-0 right-0 d-flex align-center justify-center" @touchstart.stop>
             <v-progress-circular v-if="track?.status === 'processing'" indeterminate size="18" width="2"
               :aria-label="`Processing ${props.fileName}`" />
-            <v-btn v-else-if="failed" icon="$warning" color="warning" size="small" variant="text"
+            <v-btn v-else-if="failed" icon="$warning" size="small" variant="text"
               :aria-label="`View processing failure for ${props.fileName}`" @click.stop="openControls" />
             <v-btn v-else icon="$dotsVertical" size="small" variant="text" :aria-label="`Edit ${props.fileName}`"
               @click.stop="openControls" />
@@ -337,6 +337,9 @@ const emit = defineEmits<{
   position: relative;
   border: 2px solid v-bind('trackType?.color');
   border-radius: inherit;
+  background-image: linear-gradient(to right,
+    rgba(var(--v-theme-on-surface), 0.12) var(--track-progress),
+    transparent var(--track-progress));
   transition: background-color 0.3s ease;
   user-select: none;
 }
