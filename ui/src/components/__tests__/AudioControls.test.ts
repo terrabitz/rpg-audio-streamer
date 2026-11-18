@@ -387,6 +387,8 @@ function mountControls(library = true) {
           template: '<div v-if="modelValue" role="dialog"><slot /></div>',
         },
         VAlert: { template: '<div role="alert"><slot /></div>' },
+        ErrorToast: { props: ['modelValue'], template: '<div v-if="modelValue" role="alert">{{ modelValue }}</div>' },
+        VMessages: true,
         VCard: passthrough,
         VCardTitle: passthrough,
         VCardText: passthrough,
@@ -413,3 +415,27 @@ function mockUpdateTrack() {
     return updated
   })
 }
+
+it('never saves defaults from unopened controls when a configured track unmounts', async () => {
+  const { wrapper } = mountControls(false)
+  useFileStore().tracks[0]!.playback = { startTime: 10, endTime: 50, loopBackTime: 20 }
+  const update = mockUpdateTrack()
+  await flushPromises()
+  wrapper.unmount()
+  await flushPromises()
+  expect(update).not.toHaveBeenCalled()
+})
+
+it('saves only fields the GM edited when metadata changes in another tab', async () => {
+  const { wrapper } = mountControls()
+  const update = mockUpdateTrack()
+  await wrapper.get('[aria-label="Edit Forest"]').trigger('click')
+  useFileStore().tracks[0]!.playback = { startTime: 10, endTime: 50, loopBackTime: 20 }
+  await flushPromises()
+  await wrapper.getComponent({ name: 'VTextField' }).vm.$emit('update:modelValue', 'Rain')
+  await wrapper.get('[aria-label="Close track controls"]').trigger('click')
+  await flushPromises()
+  expect(update).toHaveBeenCalledExactlyOnceWith('forest', { name: 'Rain' })
+  expect(useFileStore().tracks[0]!.playback).toEqual({ startTime: 10, endTime: 50, loopBackTime: 20 })
+  wrapper.unmount()
+})

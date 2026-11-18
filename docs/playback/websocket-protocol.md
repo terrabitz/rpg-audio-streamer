@@ -33,6 +33,7 @@ types. These declarations are maintained together without code generation.
 | `mixerFailed` | Server to client | Failed event name in `event` and error message |
 | `playbackFailed` | Server to client | Error message |
 | `trackStatusChanged` | Server to GMs | Track ID, terminal processing status, and optional diagnostics |
+| `trackUpdated` | Server to GMs | Saved shared-library track metadata, including playback-region points |
 | `discordStatusChanged` | Server to table GMs | Enabled flag, connection state, optional destination and error |
 
 [Playback synchronization](./synchronization.md) describes playback events;
@@ -71,6 +72,9 @@ takes `TableEvent[TrackReference]`; an empty table ID means library-wide removal
 The server-only `tableSettingsChanged` takes `TableEvent[TableSettingsPatch]`
 and reconciles authoritative settings before publishing playback state.
 Processing sends its track model; Discord sends `TableEvent[discord.Status]`.
+Successful metadata saves send the track ID with `trackUpdated`; its handler
+reads canonical metadata, updates live regions across tables, and publishes the
+track model to GMs. The shared track model lives in `internal/domain`.
 Only the corresponding browser payloads leave the server.
 
 HTTP producers log rejected sends and report synchronization failure rather than

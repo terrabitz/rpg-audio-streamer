@@ -39,6 +39,8 @@ export const useAudioStore = defineStore('audio', {
   state: () => ({
     tracks: {} as Record<string, AudioTrack>,
     localPlayback: new Set<string>(),
+    blockedPlayback: new Set<string>(),
+    playbackAttempt: 0,
     enabled: false,
     masterVolume: 100,
     fadeStates: {} as Record<string, FadeStatus>,
@@ -70,6 +72,7 @@ export const useAudioStore = defineStore('audio', {
       this.enabled = false
       this.tracks = {}
       this.localPlayback.clear()
+      this.blockedPlayback.clear()
       this.fadeStates = {}
     },
     initTrack(fileID: string, name: string, typeID: string = "") {
@@ -89,6 +92,7 @@ export const useAudioStore = defineStore('audio', {
     removeTrack(fileID: string) {
       delete this.tracks[fileID]
       this.localPlayback.delete(fileID)
+      this.blockedPlayback.delete(fileID)
     },
     seekTrack(fileID: string, currentTime: number) {
       const track = this.tracks[fileID]
@@ -100,6 +104,10 @@ export const useAudioStore = defineStore('audio', {
     setLocalPlayback(fileID: string, playing: boolean) {
       if (playing && this.tracks[fileID]) this.localPlayback.add(fileID)
       else this.localPlayback.delete(fileID)
+    },
+    retryLocalPlayback() {
+      this.blockedPlayback.clear()
+      this.playbackAttempt++
     },
     getPlayingTracks() {
       return Object.values(this.tracks)

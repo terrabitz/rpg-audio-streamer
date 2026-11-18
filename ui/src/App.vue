@@ -3,6 +3,7 @@ import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router';
 import { useDisplay } from 'vuetify';
 import DevDebugPanel from './components/DevDebugPanel.vue';
+import ErrorToast from './components/ErrorToast.vue';
 import { useScreenWakeLock } from './composables/screenWakeLock';
 import { useAppBar } from './composables/useAppBar';
 import { useAuthStore } from './stores/auth';
@@ -88,7 +89,7 @@ onUnmounted(() => {
     <v-main>
       <RouterView :key="route.fullPath" />
     </v-main>
-    <v-snackbar :model-value="!!wakeLockError" @update:model-value="wakeLockError = ''">{{ wakeLockError }}</v-snackbar>
+    <ErrorToast v-model="wakeLockError" />
     <v-navigation-drawer location="right" v-if="debugStore.isDevMode" v-model="debugStore.showDebugPanel"
       :permanent="debugStore.showDebugPanel" width="400">
       <DevDebugPanel />

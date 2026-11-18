@@ -33,3 +33,11 @@ table URL updates to the new invite code (see
 
 On mobile layouts, the table options menu also includes
 [Keep screen awake](./screen-wake-lock.md).
+
+## Notifications
+
+Operation failures use `ErrorToast`: a compact error snackbar with a Dismiss
+action and a five-second timeout. Dismissing a notification does not discard
+unsaved edits or failed settings patches; their retry controls remain available.
+Form validation stays beside the relevant controls, and an unavailable or
+deleted table displays a persistent page-status message rather than a banner.

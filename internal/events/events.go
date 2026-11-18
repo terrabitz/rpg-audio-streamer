@@ -22,6 +22,7 @@ const (
 	MixerFailed           = "mixerFailed"
 	PlaybackFailed        = "playbackFailed"
 	TrackStatusChanged    = "trackStatusChanged"
+	TrackUpdated          = "trackUpdated"
 	DiscordStatusChanged  = "discordStatusChanged"
 	TableSettingsChanged  = "tableSettingsChanged"
 	ClientConnected       = "clientConnected"

@@ -63,7 +63,7 @@ onUnmounted(() => {
 <template>
   <v-container :fluid="auth.role === 'gm'" :class="auth.role === 'gm' ? 'pa-0' : 'py-2'">
     <v-progress-circular v-if="loading" indeterminate aria-label="Loading table" />
-    <v-alert v-else-if="error" type="error">{{ error }}</v-alert>
+    <p v-else-if="error" role="status" class="pa-4">{{ error }}</p>
     <template v-else-if="tables.current">
       <TableViewGM v-if="auth.role === 'gm'" />
       <TableViewPlayer v-else />

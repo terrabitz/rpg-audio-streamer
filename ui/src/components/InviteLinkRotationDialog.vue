@@ -3,6 +3,7 @@ import { ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import type { Table } from '@/client/apiClient'
 import { useTableStore } from '@/stores/tables'
+import ErrorToast from './ErrorToast.vue'
 
 const props = defineProps<{ table: Table | null }>()
 const emit = defineEmits<{ close: []; rotated: [] }>()
@@ -40,7 +41,7 @@ async function rotateInviteLink() {
     @update:model-value="!$event && emit('close')">
     <v-card title="Rotate invite link?">
       <v-card-text>
-        <v-alert v-if="error" type="error" class="mb-3">{{ error }}</v-alert>
+        <ErrorToast v-model="error" />
         Any active players will be disconnected and the current invite link will stop working.
         You will need to reshare the new link with your players.
       </v-card-text>

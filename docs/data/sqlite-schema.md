@@ -31,6 +31,12 @@ UUIDs are stored as BLOBs. Track creation timestamps are serialized as RFC3339
 text, with second precision. Partial updates preserve omitted name/type fields.
 Empty metadata collections are returned as JSON arrays, not `null`.
 
+Playback-region points occupy discrete `tracks.start_time`, `tracks.end_time`,
+and `tracks.loop_back_time` columns. Metadata patches only write these columns
+when the GM explicitly edits the region in the track-settings dialog.
+Playback snapshots, media duration reports, navigation, and refreshes do not
+persist region settings.
+
 ## Seeded track types
 
 The initial migration seeds:

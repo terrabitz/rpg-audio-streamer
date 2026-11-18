@@ -4,6 +4,7 @@ import { useWebSocketStore } from '@/stores/websocket'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import AudioPlayer from '../components/AudioPlayer.vue'
+import ErrorToast from '../components/ErrorToast.vue'
 import PlayerFileList from '../components/PlayerFileList.vue'
 import VolumeMixer from '../components/VolumeMixer.vue'
 import { useAudioStore } from '../stores/audio'
@@ -70,8 +71,8 @@ function disconnectAudio() {
 
 <template>
   <v-container>
-    <v-alert v-if="error" type="error" class="mb-4">{{ error }}</v-alert>
-    <AudioPlayer v-if="audioStore.enabled" :tableID="externalID" />
+    <ErrorToast v-model="error" />
+    <AudioPlayer v-if="audioStore.enabled" :tableID="externalID" @error="error = $event" />
 
     <div class="d-flex align-center mb-4">
       <v-btn size="x-large" @click="handleAudioToggle" :loading="connecting"

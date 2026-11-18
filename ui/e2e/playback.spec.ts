@@ -1,5 +1,5 @@
 import { expect, test } from './fixtures'
-import { expectEdgeToEdgeTable, expectTrackGridSpacing, expectCompactPlayingCard, login, createTable, addExistingTrack, deleteTable, deleteLibraryTrack, uploadTrack, navigate } from './helpers'
+import { expectEdgeToEdgeTable, expectTrackGridSpacing, expectCompactPlayingCard, dragTimelinePoint, login, createTable, addExistingTrack, deleteTable, deleteLibraryTrack, uploadTrack, navigate } from './helpers'
 
 for (const surface of ['sidebar', 'timeline'] as const) {
   test(`GM previews a seek in the ${surface} and commits on release`, async ({ page, browser }, testInfo) => {
@@ -663,4 +663,57 @@ test('tables share a library but isolate playback, removal, and deletion', async
     await playerContext.close()
     await sundayGM.close()
   }
+})
+
+test('GM refresh and other tabs preserve track settings while music plays', async ({ page, context }, testInfo) => {
+  test.slow()
+  await login(page)
+  await uploadTrack(page, 'Shared Settings', 'Music', 60)
+  const tableURL = page.url()
+  const tile = page.getByRole('group', { name: 'Shared Settings', exact: true })
+  await tile.getByRole('button', { name: 'Edit Shared Settings', exact: true }).click()
+  await dragTimelinePoint(page, 'Beginning for Shared Settings', 10)
+  await dragTimelinePoint(page, 'End for Shared Settings', 50)
+  await dragTimelinePoint(page, 'Loop-back point for Shared Settings', 20)
+  await page.getByRole('button', { name: 'Close track controls', exact: true }).click()
+  await tile.click()
+  await expect.poll(() => page.locator('[data-active="true"]').evaluate(
+    (media: HTMLMediaElement) => !media.paused && media.currentTime >= 10,
+  )).toBe(true)
+  const otherGM = await context.newPage()
+  await otherGM.goto(tableURL)
+  const otherTile = otherGM.getByRole('group', { name: 'Shared Settings', exact: true })
+  await expect(otherTile).toBeVisible()
+  await otherTile.getByRole('button', { name: 'Edit Shared Settings', exact: true }).click()
+  await expect(otherGM.getByRole('slider', { name: 'Beginning for Shared Settings', exact: true }))
+    .toHaveAttribute('aria-valuenow', '10')
+  // Keep the second editor open while the first GM changes shared metadata.
+  await tile.getByRole('button', { name: 'Edit Shared Settings', exact: true }).click()
+  await dragTimelinePoint(page, 'Beginning for Shared Settings', 12)
+  await page.getByRole('button', { name: 'Close track controls', exact: true }).click()
+  await expect(otherGM.getByRole('slider', { name: 'Beginning for Shared Settings', exact: true }))
+    .toHaveAttribute('aria-valuenow', '12')
+  await otherGM.getByRole('textbox', { name: 'Track Name', exact: true }).fill('Renamed Settings')
+  await otherGM.getByRole('button', { name: 'Close track controls', exact: true }).click()
+  await expect(page.getByRole('group', { name: 'Renamed Settings', exact: true })).toBeVisible()
+  await otherGM.reload()
+  await expect(otherGM.getByRole('group', { name: 'Renamed Settings', exact: true })).toBeVisible()
+  await navigate(otherGM, 'Tables')
+  await otherGM.goto(tableURL)
+  await page.reload()
+  const enableAudio = page.getByRole('button', { name: 'Enable local audio', exact: true })
+  await expect(page.getByRole('group', { name: 'Renamed Settings', exact: true })).toBeVisible()
+  if (await enableAudio.isVisible()) await enableAudio.click()
+  await page.getByRole('button', { name: 'Edit Renamed Settings', exact: true }).click()
+  for (const [point, time] of [['Beginning', '12'], ['End', '50'], ['Loop-back point', '20']] as const) {
+    await expect(page.getByRole('slider', { name: `${point} for Renamed Settings`, exact: true }))
+      .toHaveAttribute('aria-valuenow', time)
+  }
+  await page.getByRole('button', { name: 'Close track controls', exact: true }).click()
+  await expect.poll(() => page.locator('[data-active="true"]').evaluate(
+    (media: HTMLMediaElement) => !media.paused && media.currentTime >= 12 && media.currentTime < 50,
+  )).toBe(true)
+  await expect(page.getByText('Unable to play track.', { exact: false })).not.toBeVisible()
+  await page.screenshot({ path: testInfo.outputPath('gm-refresh-settings.png') })
+  await otherGM.close()
 })

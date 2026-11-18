@@ -157,6 +157,9 @@ func (s *Server) handleFileUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if !s.sendEvent(w, events.TrackUpdated, track.ID.String()) {
+		return
+	}
 	respondJSON(w, http.StatusOK, track)
 }
 

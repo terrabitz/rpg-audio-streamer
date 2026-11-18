@@ -2,6 +2,7 @@
 import AudioPlayer from '@/components/AudioPlayer.vue';
 import FileList from '@/components/FileList.vue';
 import TableActions from '@/components/TableActions.vue';
+import ErrorToast from '@/components/ErrorToast.vue';
 import { useAppBar } from '@/composables/useAppBar';
 import { useAudioStore } from '@/stores/audio';
 import { useFileStore } from '@/stores/files';
@@ -186,12 +187,11 @@ function effectiveTypeVolumes() {
 </script>
 
 <template>
-  <v-alert v-if="error" type="error">{{ error }}</v-alert>
-  <v-alert v-if="mixerError" type="error">{{ mixerError }}</v-alert>
-  <v-alert v-if="tables.settingsError" type="error" class="mb-4">
-    {{ tables.settingsError }}
-    <v-btn variant="text" @click="tables.saveSettings(externalID, {})">Retry saving</v-btn>
-  </v-alert>
+  <ErrorToast v-model="error" />
+  <ErrorToast v-model="mixerError" />
+  <ErrorToast v-model="tables.settingsError" />
+  <v-btn v-if="tables.failedSettings[externalID]" variant="text"
+    @click="tables.saveSettings(externalID, {})">Retry saving</v-btn>
   <AudioPlayer v-if="ready" :tableID="externalID" @error="error = $event" />
   <FileList v-if="ready && wsStore.isConnected && synchronized" />
 </template>

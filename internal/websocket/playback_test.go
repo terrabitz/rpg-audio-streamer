@@ -514,3 +514,84 @@ func readPlayback(t *testing.T, client *Client) playbackSnapshot {
 		return playbackSnapshot{}
 	}
 }
+
+func TestSavedTrackUpdatesReachGMsAndAllPlayingTables(t *testing.T) {
+	h, clients := testHub()
+	tableID := server.DefaultTableID.String()
+	for _, client := range clients {
+		client.Token.TableID = tableID
+	}
+	otherTableID := uuid.NewString()
+	clients["otherGM"].Token.TableID = otherTableID
+	fileID := testTrackID.String()
+	end, loop := 50.0, 20.0
+	store := &playbackTrackTestStore{
+		track: server.Track{
+			ID:       testTrackID,
+			Name:     "Updated music",
+			TypeID:   testTypeID,
+			Playback: server.PlaybackSettings{StartTime: 10, EndTime: &end, LoopBackTime: &loop},
+		},
+	}
+	h.store = store
+	for _, id := range []string{tableID, otherTableID} {
+		h.playback[id] = map[string]playingTrack{
+			fileID: {
+				FileID: fileID, Name: "Music", IsPlaying: true, IsRepeating: true,
+				Volume: 50, Duration: 60, CurrentTime: 25, PositionVersion: 7, SeekVersion: 2,
+				updatedAt: time.Now(),
+			},
+		}
+	}
+	changes := make(map[string]events.PlaybackPatch)
+	stop := events.OnPlaybackChanged(h, func(change events.PlaybackChanges[events.PlaybackPatch], metadata events.Metadata) error {
+		changes[metadata.TableID] = change.Tracks[0]
+		return nil
+	})
+	defer stop()
+	if err := h.SendEvent(events.TrackUpdated, fileID); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"gm", "otherGM"} {
+		client := clients[name]
+		var event Message
+		if err := json.Unmarshal(<-client.send, &event); err != nil {
+			t.Fatal(err)
+		}
+		var track server.Track
+		if err := json.Unmarshal(event.Payload, &track); err != nil || event.Event != events.TrackUpdated ||
+			track.Name != store.track.Name || track.Playback.StartTime != 10 {
+			t.Fatalf("%s metadata = %+v, %v", name, track, err)
+		}
+	}
+	for name, client := range clients {
+		snapshot := readPlayback(t, client)
+		state := snapshot.Tracks[0]
+		if state.Playback.StartTime != 10 || state.Playback.EndTime == nil || *state.Playback.EndTime != end ||
+			state.Playback.LoopBackTime == nil || *state.Playback.LoopBackTime != loop ||
+			state.CurrentTime < 25 || state.CurrentTime > 26 || !state.IsPlaying ||
+			state.PositionVersion != 7 || state.SeekVersion != 2 {
+			t.Fatalf("%s live state = %+v", name, state)
+		}
+		if len(client.send) != 0 {
+			t.Fatalf("%s received unexpected extra events", name)
+		}
+	}
+	if len(changes) != 2 {
+		t.Fatalf("mixer updates = %+v", changes)
+	}
+	for _, patch := range changes {
+		if patch.Playback == nil || patch.Playback.StartTime != 10 || patch.CurrentTime != nil || patch.IsPlaying != nil {
+			t.Fatalf("metadata update must not seek or toggle playback: %+v", patch)
+		}
+	}
+}
+
+type playbackTrackTestStore struct {
+	playbackTestStore
+	track server.Track
+}
+
+func (s *playbackTrackTestStore) GetTrackByID(context.Context, uuid.UUID) (server.Track, error) {
+	return s.track, nil
+}

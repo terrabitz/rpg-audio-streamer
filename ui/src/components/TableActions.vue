@@ -7,6 +7,7 @@ import { useTableStore } from '../stores/tables'
 import { useClientPreferencesStore } from '../stores/clientPreferences'
 import AudioUploader from './AudioUploader.vue'
 import InviteLinkRotationDialog from './InviteLinkRotationDialog.vue'
+import ErrorToast from './ErrorToast.vue'
 
 const tables = useTableStore()
 const clientPreferences = useClientPreferencesStore()
@@ -73,5 +74,5 @@ onUnmounted(() => clearTimeout(copiedTimer))
     </template>
   </AudioUploader>
   <InviteLinkRotationDialog :table="rotating" @close="rotating = null" />
-  <v-snackbar :model-value="!!error" @update:model-value="error = ''">{{ error }}</v-snackbar>
+  <ErrorToast v-model="error" />
 </template>

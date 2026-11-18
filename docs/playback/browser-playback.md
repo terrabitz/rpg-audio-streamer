@@ -38,6 +38,14 @@ replacement requests invalidate pending work, so delayed rejections from
 canceled requests cannot stop healthy playback; failures of current requests
 still surface.
 
+Browser autoplay rejection (`NotAllowedError`) marks only that browser's local
+audio as blocked. `AudioPlayer` offers **Enable local audio** so a user gesture
+can resume playback at the latest synchronized position. It does not send
+play/pause or seek commands to the shared table. Refreshing or opening another
+GM tab can require this gesture even when the table is already playing.
+Other playback failures use [temporary, dismissible notifications](../frontend/app-shell.md#notifications);
+the media timer stops retrying a failed source until playback is requested again.
+
 ## Gain ramps
 
 Track, master, and type-volume changes ramp the mixed gain over two seconds
