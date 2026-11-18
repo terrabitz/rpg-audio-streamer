@@ -39,10 +39,10 @@ describe('shared UI state', () => {
     expect(debug.showDebugPanel).toBe(true)
     debug.togglePanel()
     expect(debug.showDebugPanel).toBe(false)
-    debug.devMethod = 'ping'
+    debug.devEvent = 'ping'
     debug.devPayload = '{}'
     debug.clearForm()
-    expect(debug.devMethod).toBe('')
+    expect(debug.devEvent).toBe('')
     expect(debug.devPayload).toBe('')
   })
 })

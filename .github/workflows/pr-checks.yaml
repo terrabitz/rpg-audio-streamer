@@ -3,12 +3,10 @@ name: pr-checks
 on:
   workflow_dispatch:
   pull_request:
-  push:
-    branches: [main]
-
 
 permissions:
   contents: read
+
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -37,12 +35,14 @@ jobs:
               - 'sql/**'
               - 'sqlc.yaml'
               - 'Makefile'
+              - '.github/actions/**'
               - '.github/workflows/pr-checks.yaml'
             frontend:
               - 'ui/**'
               - 'scripts/**'
               - 'openapi.yaml'
               - 'Makefile'
+              - '.github/actions/**'
               - '.github/workflows/pr-checks.yaml'
             docker:
               - 'docker/**'
@@ -52,38 +52,41 @@ jobs:
               - 'main.go'
               - 'internal/**'
               - 'scripts/install-libdave.sh'
+              - 'scripts/build-ffmpeg.sh'
               - 'sql/**'
               - 'ui/**'
               - '.github/workflows/pr-checks.yaml'
               - '.github/workflows/docker-build.yaml'
 
   go:
-    name: Go Tests and Integration
+    name: Go Offline Tests and Coverage
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-environment
+        with:
+          frontend: 'false'
+      - name: Run offline Go tests and coverage
+        run: make test-go
+        env:
+          DISCORD_LIVE_INTEGRATION: '0'
+
+  go-discord:
+    name: Go Discord Integration
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
     concurrency:
       group: discord-live
       queue: max
     steps:
-      - name: Require a trusted PR
-        if: ${{ github.event_name == 'pull_request' && (github.event.pull_request.head.repo.full_name != github.repository || github.event.pull_request.user.login == 'dependabot[bot]') }}
-        run: |
-          echo "::error::Live Discord tests require repository secrets and cannot run on fork or Dependabot pull requests."
-          exit 1
       - uses: actions/checkout@v7
-      - name: Install FFmpeg
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
-      - uses: actions/setup-go@v7
+      - uses: ./.github/actions/setup-environment
         with:
-          go-version-file: go.mod
-      - name: Install libdave
-        run: |
-          sh scripts/install-libdave.sh "$RUNNER_TEMP/libdave"
-          printf 'PKG_CONFIG_PATH=%s/lib/pkgconfig\nLD_LIBRARY_PATH=%s/lib\n' "$RUNNER_TEMP/libdave" "$RUNNER_TEMP/libdave" >> "$GITHUB_ENV"
-      - name: Install dependencies
-        run: go mod download
-      - name: Run Go tests and live connection integration
-        run: make test-go
+          frontend: 'false'
+          media: 'false'
+      - name: Run live Discord connection integration
+        run: go test -count=1 -race ./internal/discord -run '^TestLiveVoiceConnection$'
         env:
           DISCORD_LIVE_INTEGRATION: '1'
           INTEGRATION_TEST_DISCORD_SERVER_ID: ${{ secrets.INTEGRATION_TEST_DISCORD_SERVER_ID }}
@@ -94,37 +97,37 @@ jobs:
     name: Full App UX
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-environment
+        with:
+          playwright: 'true'
+      - name: Run non-Discord app UX suite
+        working-directory: ui
+        run: npm run test:e2e -- --project=chromium --project=chromium-timing --project=chromium-youtube
+      - name: Retain non-Discord UX failure diagnostics
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: full-app-ux-attempt-${{ github.run_attempt }}
+          path: ui/test-results/
+          retention-days: 7
+
+  e2e-discord:
+    name: Discord App UX
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
     concurrency:
       group: discord-live
       queue: max
     steps:
-      - name: Require a trusted PR
-        if: ${{ github.event_name == 'pull_request' && (github.event.pull_request.head.repo.full_name != github.repository || github.event.pull_request.user.login == 'dependabot[bot]') }}
-        run: |
-          echo "::error::Live Discord tests require repository secrets and cannot run on fork or Dependabot pull requests."
-          exit 1
       - uses: actions/checkout@v7
-      - name: Install FFmpeg
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
-      - uses: actions/setup-go@v7
+      - uses: ./.github/actions/setup-environment
         with:
-          go-version-file: go.mod
-      - uses: actions/setup-node@v7
-        with:
-          node-version-file: ./ui/.nvmrc
-          cache: npm
-          cache-dependency-path: ui/package-lock.json
-      - name: Install libdave
-        run: |
-          sh scripts/install-libdave.sh "$RUNNER_TEMP/libdave"
-          printf 'PKG_CONFIG_PATH=%s/lib/pkgconfig\nLD_LIBRARY_PATH=%s/lib\n' "$RUNNER_TEMP/libdave" "$RUNNER_TEMP/libdave" >> "$GITHUB_ENV"
-      - name: Install dependencies
-        run: |
-          go mod download
-          npm ci --prefix ui
-          cd ui && npx playwright install --with-deps chromium
-      - name: Run full app UX suite
-        run: make test-e2e
+          playwright: 'true'
+      - name: Run live Discord app UX suite
+        working-directory: ui
+        run: npm run test:e2e -- --project=chromium-discord
         env:
           INTEGRATION_TEST_DISCORD_SERVER_ID: ${{ secrets.INTEGRATION_TEST_DISCORD_SERVER_ID }}
           INTEGRATION_TEST_DISCORD_VOICE_CHANNEL_ID: ${{ secrets.INTEGRATION_TEST_DISCORD_VOICE_CHANNEL_ID }}
@@ -142,12 +145,10 @@ jobs:
         working-directory: ./ui
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: ./.github/actions/setup-environment
         with:
-          node-version-file: ./ui/.nvmrc
-          cache: npm
-          cache-dependency-path: ui/package-lock.json
-      - run: npm ci
+          backend: 'false'
+          media: 'false'
       - run: npm run lint:check
 
   build:
@@ -160,12 +161,10 @@ jobs:
         working-directory: ./ui
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: ./.github/actions/setup-environment
         with:
-          node-version-file: ./ui/.nvmrc
-          cache: npm
-          cache-dependency-path: ui/package-lock.json
-      - run: npm ci
+          backend: 'false'
+          media: 'false'
       - run: npm run build
 
   unit:
@@ -178,25 +177,25 @@ jobs:
         working-directory: ./ui
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: ./.github/actions/setup-environment
         with:
-          node-version-file: ./ui/.nvmrc
-          cache: npm
-          cache-dependency-path: ui/package-lock.json
-      - run: npm ci
-      - run: node --test e2e/discord-config.test.ts e2e/discord-listener.test.ts
+          backend: 'false'
+          media: 'false'
+      - run: node --test e2e/discord-config.test.ts e2e/discord-listener.test.ts e2e/youtube-config.test.ts
       - run: npm run test:coverage
 
   docker:
     name: Build Docker Image
     needs: changes
+    permissions:
+      packages: write
     if: ${{ !cancelled() && (github.event_name == 'workflow_dispatch' || needs.changes.outputs.docker == 'true') }}
     uses: ./.github/workflows/docker-build.yaml
 
   pr-checks:
     name: PR Checks
     if: ${{ always() }}
-    needs: [changes, go, e2e, lint, build, unit, docker]
+    needs: [changes, go, go-discord, e2e, e2e-discord, lint, build, unit, docker]
     runs-on: ubuntu-latest
     steps:
       - name: Require all selected checks to pass

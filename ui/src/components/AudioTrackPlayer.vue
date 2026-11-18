@@ -1,16 +1,16 @@
 <template>
   <video ref="primary" :data-active="active === 0"
     style="display: none;" @ended="handleEnded(0)" @timeupdate="handleTimeUpdate(0)"
-    @loadedmetadata="handleMetadata(0)" />
+    @loadedmetadata="handleMetadata(0)" @playing="handlePlaying(0)" @pause="handlePlaying(0)" />
   <audio ref="secondary" :data-active="active === 1"
     style="display: none;" @ended="handleEnded(1)" @timeupdate="handleTimeUpdate(1)"
-    @loadedmetadata="handleMetadata(1)" />
+    @loadedmetadata="handleMetadata(1)" @playing="handlePlaying(1)" @pause="handlePlaying(1)" />
 </template>
 
 <script setup lang="ts">
 import Hls from 'hls.js'
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { defaultPlayback, playbackError, playbackRegion } from '@/composables/playback'
+import { defaultPlayback, playbackError, playbackRegion, seekLimit } from '@/composables/playback'
 import { useAudioStore, type AudioTrack } from '../stores/audio'
 import { useWebSocketStore } from '../stores/websocket'
 
@@ -23,30 +23,51 @@ const active = ref(0)
 const players: Hls[] = []
 const ready = [false, false]
 const bound = [false, false]
+const playRequests = new WeakMap<HTMLMediaElement, Promise<void>>()
 let timer: ReturnType<typeof setInterval> | undefined
 let disposed = false
-let overlap: { outgoing: number, incoming: number, start: number, end: number } | undefined
+let playbackFailed = false
+let overlap: { outgoing: number, incoming: number, start: number, end: number, seekStart?: number } | undefined
+let pendingSeek: number | undefined
 let envelope = 0
 let fade: { from: number, to: number, start: number } | undefined
 let mixedVolume = targetVolume()
 let volumeFade: { from: number, to: number, start: number } | undefined
 let positionVersion = audioStore.tracks[props.fileID]?.positionVersion
+let seekVersion = audioStore.tracks[props.fileID]?.seekVersion
 
 watch(() => audioStore.tracks[props.fileID]?.isPlaying, syncPlaying)
+watch(() => audioStore.playbackAttempt, syncPlaying)
 watch([
   () => audioStore.tracks[props.fileID]?.currentTime,
   () => audioStore.tracks[props.fileID]?.positionVersion,
+  () => audioStore.tracks[props.fileID]?.seekVersion,
 ], () => {
   const state = audioStore.tracks[props.fileID]
-  const media = element(active.value)
-  if (!state || !media || !ready[active.value]) return
+  if (!state) return
   const commanded = state.positionVersion !== positionVersion
+  const seek = state.seekVersion !== undefined && state.seekVersion > 0 && state.seekVersion !== seekVersion
   positionVersion = state.positionVersion
+  seekVersion = state.seekVersion
+  const media = element(active.value)
+  if (!media || !ready[active.value]) return
+  if (seek && state.isPlaying && !media.paused) {
+    cancelOverlap(overlapProgress() > 0)
+    pendingSeek = state.seekTarget ?? state.currentTime
+    bindHLS(1 - active.value)
+    tick()
+    return
+  }
   // Running media owns its handoff timing; only an explicit command may interrupt it.
-  if (!commanded && state.positionVersion !== undefined && state.isPlaying && !media.paused) return
-  if (Math.abs(media.currentTime - state.currentTime) > 0.5) {
+  if (!commanded && !seek && (state.positionVersion !== undefined || overlap?.seekStart !== undefined || pendingSeek !== undefined) &&
+      state.isPlaying && !media.paused) return
+  const time = seek
+    ? Math.max(state.playback?.startTime ?? 0, Math.min(state.seekTarget ?? state.currentTime, seekLimit(state.playback, state.duration)))
+    : state.currentTime
+  if (seek || Math.abs(media.currentTime - time) > 0.5) {
     cancelOverlap()
-    media.currentTime = state.currentTime
+    const current = element(active.value)
+    if (current) current.currentTime = time
   }
 })
 watch([
@@ -76,11 +97,13 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   disposed = true
+  audioStore.setLocalPlayback(props.fileID, false)
+  audioStore.blockedPlayback.delete(props.fileID)
   clearInterval(timer)
   for (const player of players) player.destroy()
-  for (const media of [primary.value, secondary.value]) {
+  for (const [index, media] of [primary.value, secondary.value].entries()) {
     if (!media) continue
-    media.pause()
+    pauseMedia(index)
     media.src = ''
   }
   if (audioStore.tracks[props.fileID]) audioStore.setFading(props.fileID, false)
@@ -106,6 +129,7 @@ function bindHLS(index: number) {
       syncPosition()
       syncPlaying()
     }
+    tick()
   })
   player.on(Hls.Events.LEVEL_LOADED, (_, data) => updateDuration(data.details.totalduration))
   player.on(Hls.Events.ERROR, (_, data) => {
@@ -114,18 +138,24 @@ function bindHLS(index: number) {
 }
 
 function syncPlaying() {
+  playbackFailed = false
   const state = audioStore.tracks[props.fileID]
+  if (!state?.isPlaying) {
+    audioStore.blockedPlayback.delete(props.fileID)
+    const interruptedSeek = pendingSeek !== undefined || overlap?.seekStart !== undefined
+    cancelOverlap()
+    if (interruptedSeek) updatePlaybackState({ seekTarget: null, seekLanding: null })
+  }
   const media = element(active.value)
   if (!state || !media || !ready[active.value] || disposed) return
-  if (state.isPlaying && state.isRepeating) bindHLS(1)
-  if (!state.isPlaying) cancelOverlap()
+  if (state.isPlaying) bindHLS(1 - active.value)
   const target = state.isPlaying ? 1 : 0
   fade = state.isRepeating && envelope !== target
     ? { from: envelope, to: target, start: performance.now() } : undefined
   if (!fade) envelope = target
   if (state.isPlaying && media.paused) {
     syncPosition()
-    void media.play().catch(reportPlaybackError)
+    playMedia(active.value)
   }
   tick()
 }
@@ -135,16 +165,31 @@ function syncRegion() {
   const media = element(active.value)
   if (!state || !media) return
   const { start, end, loop } = playbackRegion(state.playback, state.duration)
+  if (end > start && state.seekTarget != null &&
+      (state.seekTarget < start || state.seekTarget > seekLimit(state.playback, state.duration) ||
+        state.seekLanding != null && state.seekLanding > end)) {
+    updatePlaybackState({ seekTarget: null, seekLanding: null })
+  }
+  if (!overlap && media.currentTime < start && state.isPlaying && !media.paused) {
+    pendingSeek = start
+    bindHLS(1 - active.value)
+    tick()
+    return
+  }
   if (overlap) {
     // An in-flight handoff must survive edits, even if the outgoing source has ended.
     overlap.end = Math.min(overlap.end, end)
     const incoming = element(overlap.incoming)
     if (incoming) {
       const position = incoming.currentTime >= end ? loop : Math.max(start, incoming.currentTime)
-      if (incoming.currentTime !== position) incoming.currentTime = position
+      if (incoming.currentTime !== position) {
+        if (overlap.seekStart !== undefined) overlap.seekStart += position - incoming.currentTime
+        incoming.currentTime = position
+      }
     }
   }
   syncPosition(media.currentTime)
+  tick()
 }
 
 function syncPosition(currentTime?: number) {
@@ -155,13 +200,13 @@ function syncPosition(currentTime?: number) {
   const time = Math.max(start, currentTime ?? state.currentTime)
   const position = end > start ? Math.min(time, end) : time
   if (media.currentTime !== position) media.currentTime = position
-  updatePlaybackState({ currentTime: media.currentTime })
+  updatePlaybackState({ currentTime: playbackElement()?.currentTime ?? media.currentTime })
 }
 
 function tick() {
   const state = audioStore.tracks[props.fileID]
   const media = element(active.value)
-  if (disposed || !state || !media || !ready[active.value]) return
+  if (disposed || playbackFailed || !state || !media || !ready[active.value]) return
   advanceVolumeFade(performance.now())
   if (fade) {
     const progress = Math.min(1, (performance.now() - fade.start) / 2000)
@@ -169,7 +214,7 @@ function tick() {
     if (progress === 1) fade = undefined
   }
   if (!state.isPlaying) {
-    if (!fade) media.pause()
+    if (!fade) pauseMedia(active.value)
     applyVolumes()
     audioStore.setFading(props.fileID, !!fade || !!volumeFade)
     return
@@ -181,12 +226,25 @@ function tick() {
     reportPlaybackError(new Error(error))
     return
   }
+  if (pendingSeek !== undefined && ready[1 - active.value]) {
+    const target = Math.max(region.start, Math.min(pendingSeek, seekLimit(state.playback, state.duration)))
+    pendingSeek = undefined
+    const duration = Math.min(2, region.end - media.currentTime, region.end - region.start)
+    if (duration > 0 && !media.paused) {
+      const incoming = target - region.start <= 2 ? region.start : target - duration
+      startOverlap(incoming, media.currentTime + duration, true)
+    }
+    else {
+      media.currentTime = target
+      updatePlaybackState({ currentTime: target })
+    }
+  }
   if (state.isRepeating && !overlap && ready[1 - active.value] &&
       (media.ended || media.currentTime >= region.end ||
         !media.paused && media.currentTime >= region.end - region.fade)) {
     startOverlap(region.loop, region.end)
   }
-  if (overlap && (media.ended || media.currentTime >= overlap.end)) finishOverlap()
+  if (overlap && (media.ended || media.currentTime >= region.end || overlapProgress() >= 1)) finishOverlap()
   else if (!state.isRepeating && media.currentTime >= region.end) finishTrack()
   applyVolumes()
   if (audioStore.tracks[props.fileID]) audioStore.setFading(props.fileID, !!fade || !!overlap || !!volumeFade)
@@ -206,30 +264,38 @@ function targetVolume() {
     audioStore.getTypeVolume(state.trackType) / 100)
 }
 
-function startOverlap(loop: number, end: number) {
+function startOverlap(time: number, end: number, seek = false) {
   const outgoing = element(active.value)
   const incoming = element(1 - active.value)
   if (!outgoing || !incoming) return
-  incoming.currentTime = loop
+  incoming.currentTime = time
   incoming.volume = 0
-  overlap = { outgoing: active.value, incoming: 1 - active.value, start: outgoing.currentTime, end }
-  void incoming.play().catch(reportPlaybackError)
+  overlap = { outgoing: active.value, incoming: 1 - active.value, start: outgoing.currentTime, end,
+    seekStart: seek ? time : undefined }
+  playMedia(1 - active.value)
 }
 
 function finishOverlap() {
   if (!overlap) return
   const incoming = element(overlap.incoming)
   // Keep the outgoing element until the replacement has actually started.
-  if (!incoming || incoming.paused || incoming.readyState < 2) return
-  element(overlap.outgoing)?.pause()
+  if (!incoming || incoming.paused || incoming.seeking || incoming.readyState < 2) return
+  const completedSeek = overlap.seekStart !== undefined
+  pauseMedia(overlap.outgoing)
   active.value = overlap.incoming
   overlap = undefined
-  updatePlaybackState({ currentTime: incoming.currentTime })
+  updatePlaybackState({
+    currentTime: incoming.currentTime, ...(completedSeek ? { seekTarget: null, seekLanding: null } : {}),
+  })
 }
 
-function cancelOverlap() {
+function cancelOverlap(adoptSeek = true) {
+  pendingSeek = undefined
   if (!overlap) return
-  element(overlap.incoming)?.pause()
+  if (adoptSeek && overlap.seekStart !== undefined) {
+    pauseMedia(overlap.outgoing)
+    active.value = overlap.incoming
+  } else pauseMedia(overlap.incoming)
   overlap = undefined
   applyVolumes()
 }
@@ -238,10 +304,7 @@ function applyVolumes() {
   const state = audioStore.tracks[props.fileID]
   if (!state) return
   const volume = mixedVolume * envelope
-  const outgoing = overlap ? element(overlap.outgoing) : undefined
-  const incoming = overlap ? element(overlap.incoming) : undefined
-  const progress = overlap && outgoing && incoming && !incoming.paused && incoming.readyState >= 2
-    ? Math.min(1, Math.max(0, (outgoing.currentTime - overlap.start) / (overlap.end - overlap.start || 1))) : 0
+  const progress = overlapProgress()
   for (const index of [0, 1]) {
     const media = element(index)
     if (!media) continue
@@ -252,9 +315,18 @@ function applyVolumes() {
   }
 }
 
+function overlapProgress() {
+  const outgoing = overlap ? element(overlap.outgoing) : undefined
+  const incoming = overlap ? element(overlap.incoming) : undefined
+  if (!overlap || !outgoing || !incoming || incoming.paused || incoming.seeking || incoming.readyState < 2) return 0
+  const elapsed = overlap.seekStart !== undefined
+    ? incoming.currentTime - overlap.seekStart : outgoing.currentTime - overlap.start
+  return Math.min(1, Math.max(0, elapsed / (overlap.end - overlap.start || 1)))
+}
+
 function handleEnded(index: number) {
   if (disposed || index !== active.value || !audioStore.tracks[props.fileID]) return
-  if (audioStore.tracks[props.fileID]?.isRepeating) {
+  if (overlap || audioStore.tracks[props.fileID]?.isRepeating) {
     tick()
     finishOverlap()
   } else finishTrack()
@@ -263,7 +335,7 @@ function handleEnded(index: number) {
 function finishTrack() {
   cancelOverlap()
   const media = element(active.value)
-  media?.pause()
+  pauseMedia(active.value)
   const start = audioStore.tracks[props.fileID]?.playback?.startTime ?? 0
   if (media) media.currentTime = start
   envelope = 0
@@ -272,10 +344,18 @@ function finishTrack() {
 }
 
 function handleTimeUpdate(index: number) {
-  if (index !== active.value || disposed) return
+  if (disposed) return
+  if (index !== active.value && index !== overlap?.incoming) return
   tick()
-  const media = element(active.value)
-  if (media) updatePlaybackState({ currentTime: media.currentTime })
+  const media = playbackElement()
+  if (media && pendingSeek === undefined) updatePlaybackState({ currentTime: media.currentTime })
+}
+
+function handlePlaying(index: number) {
+  const media = element(index)
+  if (index !== active.value || disposed || !media) return
+  audioStore.setLocalPlayback(props.fileID, !media.paused)
+  if (!media.paused) audioStore.blockedPlayback.delete(props.fileID)
 }
 
 function handleMetadata(index: number) {
@@ -288,29 +368,64 @@ function updateDuration(duration: number) {
   updatePlaybackState({ duration })
   const ws = useWebSocketStore()
   if (audioStore.tableMix && audioStore.tracks[props.fileID]?.isPlaying && ws.isConnected) {
-    ws.sendMessage('syncTrack', { fileID: props.fileID, duration })
+    ws.sendEvent('trackPlaybackChanged', { fileID: props.fileID, duration })
   }
+}
+
+function playMedia(index: number) {
+  const media = element(index)
+  if (!media) return
+  const request = media.play()
+  playRequests.set(media, request)
+  void request.catch(cause => {
+    // Pausing or replacing a request makes its delayed rejection obsolete.
+    if (playRequests.get(media) !== request) return
+    reportPlaybackError(cause)
+  })
+}
+
+function pauseMedia(index: number) {
+  const media = element(index)
+  if (!media) return
+  playRequests.delete(media)
+  media.pause()
 }
 
 function element(index: number): HTMLMediaElement | null {
   return index === 0 ? primary.value : secondary.value
 }
 
+function playbackElement(): HTMLMediaElement | null {
+  return element(overlap?.seekStart !== undefined ? overlap.incoming : active.value)
+}
+
 function updatePlaybackState(updates: Partial<AudioTrack>) {
   if (disposed || !audioStore.tracks[props.fileID]) return
   const state = audioStore.tracks[props.fileID]
+  if (state.seekTarget != null && pendingSeek === undefined && overlap?.seekStart === undefined &&
+      updates.currentTime !== undefined && updates.currentTime >= (state.seekLanding ?? state.seekTarget)) {
+    updates = { ...updates, seekTarget: null, seekLanding: null }
+  }
   if (Object.entries(updates).every(([key, value]) => state[key as keyof AudioTrack] === value)) return
   audioStore.updateTrackState(props.fileID, updates)
 }
 
 function reportPlaybackError(cause: unknown) {
   if (disposed || !audioStore.tracks[props.fileID]) return
-  console.error(`Failed to play track ${props.fileID}:`, cause)
-  cancelOverlap()
+  playbackFailed = true
+  audioStore.setLocalPlayback(props.fileID, false)
+  audioStore.setFading(props.fileID, false)
+  cancelOverlap(false)
   fade = undefined
   envelope = 0
-  primary.value?.pause()
-  secondary.value?.pause()
+  pauseMedia(0)
+  pauseMedia(1)
+  if (cause instanceof DOMException && cause.name === 'NotAllowedError') {
+    console.warn(`Local audio requires user interaction for track ${props.fileID}:`, cause)
+    audioStore.blockedPlayback.add(props.fileID)
+    return
+  }
+  console.error(`Failed to play track ${props.fileID}:`, cause)
   if (!audioStore.tableMix) updatePlaybackState({ isPlaying: false })
   emit('error', 'Unable to play track. Try again or choose another track.')
 }

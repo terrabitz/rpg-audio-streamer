@@ -1,11 +1,13 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onMounted, onUnmounted, ref } from 'vue'
 import AudioUploader from '@/components/AudioUploader.vue'
 import FileList from '@/components/FileList.vue'
 import { useAppBar } from '@/composables/useAppBar'
 import { useAuthStore } from '@/stores/auth'
+import { useWebSocketStore } from '@/stores/websocket'
 
 const auth = useAuthStore()
+const wsStore = useWebSocketStore()
 const loading = ref(true)
 const { setTitle, setActions } = useAppBar()
 
@@ -14,7 +16,15 @@ onMounted(async () => {
   setActions([])
   await auth.checkAuthStatus()
   loading.value = false
+  if (auth.role !== 'gm') return
+  try {
+    await wsStore.connect()
+  } catch (error) {
+    console.error('Failed to connect for track updates:', error)
+  }
 })
+
+onUnmounted(() => wsStore.disconnect())
 </script>
 
 <template>

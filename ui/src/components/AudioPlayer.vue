@@ -1,5 +1,7 @@
 <template>
   <div>
+    <v-btn v-if="audioStore.blockedPlayback.size" class="ma-3" color="primary"
+      @click="audioStore.retryLocalPlayback()">Enable local audio</v-btn>
     <AudioTrackPlayer v-for="track in audioStore.tracks" :key="track.fileID" :fileID="track.fileID"
       :tableID="props.tableID" @error="$emit('error', $event)" />
   </div>

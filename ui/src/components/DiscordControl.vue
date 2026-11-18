@@ -1,12 +1,13 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted } from 'vue'
+import { computed, onUnmounted } from 'vue'
 import { useDiscord } from '@/composables/discord'
 import discordLogo from '@/assets/discord.svg'
+import ErrorToast from './ErrorToast.vue'
 
 const props = defineProps<{ tableID: string }>()
 const {
   status, setup, channels, guildID, channelID, dialog, loading, channelsLoading, error,
-  toggle, connect, loadSetup, selectGuild, refresh, dispose,
+  toggle, connect, loadSetup, selectGuild, dispose,
 } = useDiscord(props.tableID)
 const addServerID = '__add-server__'
 const serverOptions = computed(() => [
@@ -15,7 +16,6 @@ const serverOptions = computed(() => [
     ? [{ id: addServerID, name: '+ Add to server', isAddServer: true }]
     : []),
 ])
-let timer: ReturnType<typeof setInterval> | undefined
 
 function selectServer(id: string) {
   if (id === addServerID) {
@@ -25,15 +25,7 @@ function selectServer(id: string) {
   void selectGuild(id)
 }
 
-onMounted(() => {
-  void refresh()
-  timer = setInterval(() => { void refresh() }, 2000)
-})
-
-onUnmounted(() => {
-  clearInterval(timer)
-  dispose()
-})
+onUnmounted(dispose)
 </script>
 
 <template>
@@ -76,7 +68,6 @@ onUnmounted(() => {
           <p v-if="guildID && !loading && !channelsLoading && !channels.length" role="status">
             No regular voice channels found. Create one or check the bot's permissions.
           </p>
-          <v-alert v-if="error" type="error" density="compact" class="mt-3">{{ error }}</v-alert>
         </v-card-text>
         <v-card-actions>
           <v-btn :disabled="loading" @click="dialog = false">Cancel</v-btn>
@@ -86,7 +77,7 @@ onUnmounted(() => {
         </v-card-actions>
       </v-card>
     </v-dialog>
-    <v-alert v-if="error && !dialog" type="error" density="compact" class="mt-3">{{ error }}</v-alert>
+    <ErrorToast v-model="error" />
   </div>
 </template>
 

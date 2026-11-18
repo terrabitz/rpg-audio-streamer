@@ -22,14 +22,16 @@ type TableTrack struct {
 }
 
 type Track struct {
-	ID           []byte
-	CreatedAt    string
-	Name         string
-	Path         string
-	TypeID       []byte
-	StartTime    float64
-	EndTime      sql.NullFloat64
-	LoopBackTime sql.NullFloat64
+	ID              []byte
+	CreatedAt       string
+	Name            string
+	Path            string
+	TypeID          []byte
+	StartTime       float64
+	EndTime         sql.NullFloat64
+	LoopBackTime    sql.NullFloat64
+	Status          string
+	ProcessingError string
 }
 
 type TrackType struct {

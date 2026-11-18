@@ -4,10 +4,14 @@ import { useDisplay } from 'vuetify'
 import type { Table } from '@/client/apiClient'
 import { useBaseUrl } from '../composables/useBaseUrl'
 import { useTableStore } from '../stores/tables'
+import { useClientPreferencesStore } from '../stores/clientPreferences'
 import AudioUploader from './AudioUploader.vue'
 import InviteLinkRotationDialog from './InviteLinkRotationDialog.vue'
+import ErrorToast from './ErrorToast.vue'
 
 const tables = useTableStore()
+const clientPreferences = useClientPreferencesStore()
+const wakeLockSupported = 'wakeLock' in navigator
 const { mobile } = useDisplay()
 const { getBaseUrl } = useBaseUrl()
 const menuOpen = ref(false)
@@ -52,6 +56,15 @@ onUnmounted(() => clearTimeout(copiedTimer))
               <v-list-item v-bind="uploaderProps" title="Add Track" role="menuitem" @click="menuOpen = false" />
               <v-list-item :title="copied ? 'Copied to clipboard' : 'Copy invite link'" role="menuitem"
                 @click="copyInviteLink" />
+              <v-list-item title="Keep screen awake" role="menuitemcheckbox"
+                :aria-checked="clientPreferences.keepScreenAwake" :disabled="!wakeLockSupported"
+                :subtitle="wakeLockSupported ? undefined : 'Not supported by this browser'"
+                @click="clientPreferences.keepScreenAwake = !clientPreferences.keepScreenAwake">
+                <template #append>
+                  <v-checkbox-btn :model-value="clientPreferences.keepScreenAwake" :disabled="!wakeLockSupported"
+                    tabindex="-1" aria-hidden="true" style="pointer-events: none" />
+                </template>
+              </v-list-item>
             </template>
             <v-list-item title="Rotate invite link" role="menuitem" base-color="error"
               @click="rotating = tables.current" />
@@ -61,5 +74,5 @@ onUnmounted(() => clearTimeout(copiedTimer))
     </template>
   </AudioUploader>
   <InviteLinkRotationDialog :table="rotating" @close="rotating = null" />
-  <v-snackbar :model-value="!!error" @update:model-value="error = ''">{{ error }}</v-snackbar>
+  <ErrorToast v-model="error" />
 </template>

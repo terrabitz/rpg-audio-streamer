@@ -17,6 +17,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	"github.com/terrabitz/rpg-audio-streamer/internal/auth"
+	"github.com/terrabitz/rpg-audio-streamer/internal/events"
 )
 
 func TestRoutedTrackLifecycle(t *testing.T) {
@@ -132,7 +133,7 @@ func TestUploadValidation(t *testing.T) {
 		{"missing file", "", false, 400},
 		{"invalid type ID", "invalid", true, 400},
 		{"unknown type", uuid.NewString(), true, 400},
-		{"invalid audio", "1ec000a2-a7c9-11ee-a0e5-0242ac120002", true, 500},
+		{"invalid audio", "1ec000a2-a7c9-11ee-a0e5-0242ac120002", true, 202},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var body bytes.Buffer
@@ -160,6 +161,13 @@ func TestUploadValidation(t *testing.T) {
 			if rec.Code != tc.status {
 				t.Fatalf("status = %d; want %d: %s", rec.Code, tc.status, rec.Body)
 			}
+			if rec.Code == http.StatusAccepted {
+				ts.waitForProcessing(t)
+				tracks, err := ts.store.GetTracks(context.Background())
+				if err != nil || len(tracks) != 1 || tracks[0].Status != "failed" || tracks[0].ProcessingError == "" {
+					t.Fatalf("invalid audio processing state = %+v, %v", tracks, err)
+				}
+			}
 		})
 	}
 }
@@ -167,6 +175,7 @@ func TestUploadValidation(t *testing.T) {
 func TestWebSocketRoute(t *testing.T) {
 	ts := setupTestServer(t)
 	defer ts.cleanup(t)
+	ts.frontend = os.DirFS(t.TempDir())
 	reg := &recordingWSRegisterer{tokens: make(chan *auth.Token, 1)}
 	ts.hub = reg
 	httpServer := httptest.NewServer(ts.Handler())
@@ -211,6 +220,60 @@ func TestWebSocketRoute(t *testing.T) {
 	}
 }
 
+func TestFrontendRouting(t *testing.T) {
+	ts := setupTestServer(t)
+	defer ts.cleanup(t)
+	dir := t.TempDir()
+	if err := os.Mkdir(filepath.Join(dir, "assets"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	for name, content := range map[string]string{
+		"index.html":      "<html>SPA</html>",
+		"assets/app.js":   "console.log('app')",
+		"assets/main.css": "body {}",
+	} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ts.frontend = os.DirFS(dir)
+	handler := ts.Handler()
+	for _, tc := range []struct {
+		method, path, body string
+		status             int
+	}{
+		{"GET", "/", "<html>SPA</html>", 200},
+		{"GET", "/tables/123", "<html>SPA</html>", 200},
+		{"GET", "/assets/app.js", "console.log('app')", 200},
+		{"HEAD", "/assets/main.css", "", 200},
+		{"GET", "/assets/missing.js", "404 page not found\n", 404},
+		{"GET", "/assets/", "404 page not found\n", 404},
+		{"GET", "/api/v1/missing", "404 page not found\n", 404},
+		{"GET", "/api", "404 page not found\n", 404},
+		{"POST", "/tables/123", "method not allowed\n", 405},
+	} {
+		t.Run(tc.method+" "+tc.path, func(t *testing.T) {
+			rec := routedRequest(handler, tc.method, tc.path, "", false)
+			if rec.Code != tc.status || rec.Body.String() != tc.body {
+				t.Fatalf("response = %d %q; want %d %q", rec.Code, rec.Body.String(), tc.status, tc.body)
+			}
+		})
+	}
+}
+
+func TestFrontendConfiguration(t *testing.T) {
+	dir := t.TempDir()
+	if _, err := New(Config{FrontendDir: dir}, nil, nil, nil, nil, nil, nil); err == nil {
+		t.Fatal("missing frontend index should fail startup")
+	}
+	if err := os.WriteFile(filepath.Join(dir, "index.html"), []byte("index"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := New(Config{FrontendDir: dir}, nil, nil, nil, nil, nil, nil); err != nil {
+		t.Fatalf("valid frontend directory: %v", err)
+	}
+}
+
 func routedRequest(handler http.Handler, method, path, body string, authenticated bool) *httptest.ResponseRecorder {
 	req := httptest.NewRequest(method, path, strings.NewReader(body))
 	if authenticated {
@@ -251,10 +314,9 @@ type recordingWSRegisterer struct {
 	tokens chan *auth.Token
 }
 
-func (r *recordingWSRegisterer) CloseTable(string)                       {}
-func (r *recordingWSRegisterer) RemoveTrack(string, string)              {}
-func (r *recordingWSRegisterer) SyncSettings(string, TableSettingsPatch) {}
-func (r *recordingWSRegisterer) RevokePlayerAccess(string)               {}
+func (r *recordingWSRegisterer) SendEvent(string, any) error      { return nil }
+func (r *recordingWSRegisterer) RevokePlayerAccess(string)        {}
+func (r *recordingWSRegisterer) On(string, events.Handler) func() { return func() {} }
 
 func (r *recordingWSRegisterer) Register(conn *websocket.Conn, token *auth.Token) {
 	defer conn.Close()

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"sync"
 	"testing"
 
 	"github.com/google/uuid"
@@ -15,6 +16,7 @@ type MockTrackStore struct {
 	tracks       map[uuid.UUID]Track
 	trackTypes   map[uuid.UUID]TrackType
 	destinations map[uuid.UUID]discord.Destination
+	tracksMu     sync.RWMutex
 }
 
 func (m *MockTrackStore) GetTableDiscord(_ context.Context, id uuid.UUID) (*discord.Destination, error) {
@@ -57,6 +59,8 @@ func (m *MockTrackStore) RotateTableExternalID(ctx context.Context, id uuid.UUID
 const testDefaultExternalID = "ZGVmYXVsdC10YWJsZS1leHRlcm5hbC1pZA"
 
 func (m *MockTrackStore) CountTrackTables(ctx context.Context, id uuid.UUID) (int64, error) {
+	m.tracksMu.RLock()
+	defer m.tracksMu.RUnlock()
 	if _, ok := m.tracks[id]; !ok {
 		return 0, sql.ErrNoRows
 	}
@@ -64,11 +68,27 @@ func (m *MockTrackStore) CountTrackTables(ctx context.Context, id uuid.UUID) (in
 }
 
 func (m *MockTrackStore) SaveTrack(ctx context.Context, track *Track) error {
+	m.tracksMu.Lock()
+	defer m.tracksMu.Unlock()
 	m.tracks[track.ID] = *track
 	return nil
 }
 
+func (m *MockTrackStore) SetTrackProcessing(ctx context.Context, id uuid.UUID, status, message string) error {
+	m.tracksMu.Lock()
+	defer m.tracksMu.Unlock()
+	track, ok := m.tracks[id]
+	if !ok || track.Status != "processing" {
+		return sql.ErrNoRows
+	}
+	track.Status, track.ProcessingError = status, message
+	m.tracks[id] = track
+	return nil
+}
+
 func (m *MockTrackStore) GetTracks(ctx context.Context) ([]Track, error) {
+	m.tracksMu.RLock()
+	defer m.tracksMu.RUnlock()
 	var result []Track
 	for _, t := range m.tracks {
 		result = append(result, t)
@@ -77,14 +97,18 @@ func (m *MockTrackStore) GetTracks(ctx context.Context) ([]Track, error) {
 }
 
 func (m *MockTrackStore) GetTrackByID(ctx context.Context, trackID uuid.UUID) (Track, error) {
+	m.tracksMu.RLock()
+	defer m.tracksMu.RUnlock()
 	track, ok := m.tracks[trackID]
 	if !ok {
-		return Track{}, fmt.Errorf("track not found")
+		return Track{}, sql.ErrNoRows
 	}
 	return track, nil
 }
 
 func (m *MockTrackStore) DeleteTrack(ctx context.Context, trackID uuid.UUID) error {
+	m.tracksMu.Lock()
+	defer m.tracksMu.Unlock()
 	if _, ok := m.tracks[trackID]; !ok {
 		return fmt.Errorf("track not found")
 	}
@@ -101,6 +125,8 @@ func (m *MockTrackStore) DeleteTrackIfTableCount(ctx context.Context, trackID uu
 }
 
 func (m *MockTrackStore) UpdateTrack(ctx context.Context, trackID uuid.UUID, update UpdateTrackRequest) (Track, error) {
+	m.tracksMu.Lock()
+	defer m.tracksMu.Unlock()
 	track, ok := m.tracks[trackID]
 	if !ok {
 		return Track{}, fmt.Errorf("track not found")

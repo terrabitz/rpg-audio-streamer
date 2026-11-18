@@ -7,7 +7,7 @@ import { useAppBar } from '@/composables/useAppBar'
 import { useAuthStore } from '@/stores/auth'
 import { useAudioStore } from '@/stores/audio'
 import { useTableStore } from '@/stores/tables'
-import { useWebSocketStore, type WebSocketMessage } from '@/stores/websocket'
+import { useWebSocketStore } from '@/stores/websocket'
 
 const auth = useAuthStore()
 const audio = useAudioStore()
@@ -18,27 +18,24 @@ const { setTitle, setActions } = useAppBar()
 const loading = ref(true)
 const error = ref('')
 let disposed = false
-
-function handleTableMessage(message: WebSocketMessage) {
-  if (message.method === 'tableDeleted') {
-    error.value = 'This table has been deleted.'
-    audio.clearTracks()
-    ws.disconnect()
-  }
-  if (message.method === 'removeTrack' && message.payload && typeof message.payload === 'object'
-    && 'fileID' in message.payload && typeof message.payload.fileID === 'string') {
-    const fileID = message.payload.fileID
-    audio.removeTrack(fileID)
-    tables.tracks = tables.tracks.filter(track => track.id !== fileID)
-  }
-}
+let subscriptions: (() => void)[] = []
 
 onMounted(async () => {
   setActions([])
   setTitle('Table')
   audio.clearTracks()
   ws.disconnect()
-  ws.addMessageHandler(handleTableMessage)
+  subscriptions = [
+    ws.onTableDeleted(() => {
+      error.value = 'This table has been deleted.'
+      audio.clearTracks()
+      ws.disconnect()
+    }),
+    ws.onTrackRemoved(({ fileID }) => {
+      audio.removeTrack(fileID)
+      tables.tracks = tables.tracks.filter(track => track.id !== fileID)
+    }),
+  ]
   await auth.checkAuthStatus()
   if (disposed) return
   try {
@@ -57,7 +54,7 @@ onMounted(async () => {
 
 onUnmounted(() => {
   disposed = true
-  ws.removeMessageHandler(handleTableMessage)
+  subscriptions.forEach(unsubscribe => unsubscribe())
   setActions([])
   tables.clearCurrent()
 })
@@ -66,7 +63,7 @@ onUnmounted(() => {
 <template>
   <v-container :fluid="auth.role === 'gm'" :class="auth.role === 'gm' ? 'pa-0' : 'py-2'">
     <v-progress-circular v-if="loading" indeterminate aria-label="Loading table" />
-    <v-alert v-else-if="error" type="error">{{ error }}</v-alert>
+    <p v-else-if="error" role="status" class="pa-4">{{ error }}</p>
     <template v-else-if="tables.current">
       <TableViewGM v-if="auth.role === 'gm'" />
       <TableViewPlayer v-else />

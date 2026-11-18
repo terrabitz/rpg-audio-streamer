@@ -18,12 +18,17 @@ import (
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	"github.com/terrabitz/rpg-audio-streamer/internal/auth"
+	"github.com/terrabitz/rpg-audio-streamer/internal/events"
 	"github.com/terrabitz/rpg-audio-streamer/internal/middlewares"
+	"github.com/terrabitz/rpg-audio-streamer/internal/musicprocessing"
+	"github.com/terrabitz/rpg-audio-streamer/internal/youtube"
 )
 
 type testServer struct {
 	*Server
-	tempDir string
+	tempDir        string
+	stopProcessing context.CancelFunc
+	processingDone <-chan struct{}
 }
 
 type mockAuth struct {
@@ -53,10 +58,9 @@ type mockWSRegisterer struct {
 	t *testing.T
 }
 
-func (m *mockWSRegisterer) CloseTable(string)                       {}
-func (m *mockWSRegisterer) RemoveTrack(string, string)              {}
-func (m *mockWSRegisterer) SyncSettings(string, TableSettingsPatch) {}
-func (m *mockWSRegisterer) RevokePlayerAccess(string)               {}
+func (m *mockWSRegisterer) SendEvent(string, any) error      { return nil }
+func (m *mockWSRegisterer) RevokePlayerAccess(string)        {}
+func (m *mockWSRegisterer) On(string, events.Handler) func() { return func() {} }
 
 func (m *mockWSRegisterer) Register(conn *websocket.Conn, token *auth.Token) {
 	// For testing purposes, just verify the inputs are not nil
@@ -85,28 +89,64 @@ func setupTestServer(t *testing.T) *testServer {
 
 	mockTrackStore := NewMockTrackStore(t)
 	mockWSReg := &mockWSRegisterer{t: t}
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	videos := youtube.New(logger)
+	processing := musicprocessing.New(tempDir, logger, mockTrackStore, videos, mockWSReg)
+	if err := processing.Recover(context.Background()); err != nil {
+		t.Fatal(err)
+	}
 
 	// Create test server
 	srv, err := New(Config{
 		Port:      8080,
 		UploadDir: tempDir,
 		CORS:      middlewares.CorsConfig{},
-	}, slog.New(slog.NewTextHandler(io.Discard, nil)), mockAuth, mockTrackStore, mockWSReg)
+	}, logger, mockAuth, mockTrackStore, mockWSReg, processing, videos)
 	if err != nil {
 		t.Fatalf("failed to create server: %v", err)
 	}
 
+	ctx, cancel := context.WithCancel(context.Background())
+	finished := make(chan struct{})
+	go func() {
+		defer close(finished)
+		processing.Run(ctx)
+	}()
 	return &testServer{
-		Server:  srv,
-		tempDir: tempDir,
+		Server:         srv,
+		tempDir:        tempDir,
+		stopProcessing: cancel,
+		processingDone: finished,
 	}
 }
 
 func (ts *testServer) cleanup(t *testing.T) {
 	t.Helper()
+	ts.stopProcessing()
+	<-ts.processingDone
 	if err := os.RemoveAll(ts.tempDir); err != nil {
 		t.Errorf("failed to cleanup temp dir: %v", err)
 	}
+}
+
+func (ts *testServer) waitForProcessing(t *testing.T) {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		tracks, err := ts.store.GetTracks(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		pending := false
+		for _, track := range tracks {
+			pending = pending || track.Status == "processing"
+		}
+		if !pending {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("track processing did not finish")
 }
 
 func addAuthCookie(req *http.Request, token string) {
@@ -143,9 +183,10 @@ func TestUploadFile(t *testing.T) {
 
 		ts.handleFiles(rec, req, &auth.Token{Role: auth.RoleGM})
 
-		if rec.Code != http.StatusOK {
-			t.Errorf("expected status OK; got %v", rec.Code)
+		if rec.Code != http.StatusAccepted {
+			t.Errorf("expected status Accepted; got %v", rec.Code)
 		}
+		ts.waitForProcessing(t)
 
 		// Verify track metadata was saved
 		mockStore := ts.store.(*MockTrackStore)

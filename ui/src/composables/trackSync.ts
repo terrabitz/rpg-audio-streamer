@@ -3,12 +3,12 @@ import type { AudioTrack } from '@/stores/audio'
 
 type TrackPatch = Partial<AudioTrack> & { fileID: string }
 
-export function createTrackSync(send: (method: string, payload: TrackPatch) => void) {
+export function createTrackSync(send: (event: string, payload: TrackPatch) => void) {
   const pending = new Map<string, TrackPatch>()
   const flush = debounce(() => {
     const patches = [...pending.values()]
     pending.clear()
-    for (const patch of patches) send('syncTrack', patch)
+    for (const patch of patches) send('trackPlaybackChanged', patch)
   }, 100)
 
   return {
