@@ -70,6 +70,14 @@ Changing the source version, checksum, flags, or action invalidates the cache.
 The host build uses Ubuntu libraries; continue checking the packaged Debian image
 when changing build configuration or runtime dependencies.
 
+Run `go test ./internal/musicprocessing -run '^TestUploadAudioFormatsIntegration$' -count=1`
+for generated WAV, MP3, AAC/M4A, ALAC/M4A, FLAC, Opus/WebM, Vorbis/Ogg, and WMA
+upload coverage. Fixtures are temporary, and missing encoders or processing
+failures fail the test rather than skipping formats. Native Opus and Vorbis
+fixture encoding explicitly uses experimental mode; their production decoders
+do not require it. The test checks real SQLite processing state, multi-segment
+HLS, cached waveforms, and decoded audio after seeking.
+
 Compare uncompressed layer totals, rather than Docker's combined compressed and
 unpacked storage accounting, using
 `docker history --human=false --format '{{.Size}}' IMAGE | awk '{sum+=$1} END {print sum}'`.
