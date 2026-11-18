@@ -1,5 +1,3 @@
-ARG FFMPEG_VARIANT=debian
-
 # Stage 1: Build Vue frontend
 FROM node:24 AS frontend-builder
 
@@ -34,42 +32,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends python3-venv \
   && /opt/installer/bin/pip --python /opt/yt-dlp/bin/python install \
     --no-cache-dir --no-compile 'yt-dlp[default]'
 
-# Build the opt-in headless FFmpeg variant from Debian's signed source packages.
 FROM debian:trixie-slim AS ffmpeg-builder
 
-RUN sed -i 's/^Types: deb$/Types: deb deb-src/' /etc/apt/sources.list.d/debian.sources \
-  && apt-get update \
-  && apt-get install -y --no-install-recommends \
-    build-essential libmp3lame-dev libssl-dev nasm pkg-config \
-  && mkdir /src \
-  && cd /src \
-  && apt-get source ffmpeg
-
-RUN cd /src/ffmpeg-* \
-  && ./configure --prefix=/opt/ffmpeg \
-    --enable-shared --disable-static \
-    --disable-autodetect --disable-doc --disable-debug \
-    --disable-devices --enable-indev=lavfi \
-    --disable-ffplay --enable-version3 --enable-openssl --enable-libmp3lame \
-  && make -j2 ffmpeg ffprobe \
-  && make install \
-  && rm -rf /opt/ffmpeg/lib/pkgconfig \
-  && mkdir -p /opt/ffmpeg/licenses \
-  && cp COPYING.* LICENSE.md /opt/ffmpeg/licenses/
-
-# The default image retains Debian's complete FFmpeg feature set.
-FROM debian:trixie-slim AS ffmpeg-debian
-
 RUN apt-get update && apt-get install -y --no-install-recommends \
-  ca-certificates \
-  ffmpeg \
-  libstdc++6 \
-  nodejs \
-  python3 \
-  && rm -rf /var/lib/apt/lists
+  build-essential ca-certificates curl libmp3lame-dev libssl-dev nasm pkg-config xz-utils
+COPY scripts/build-ffmpeg.sh /build-ffmpeg.sh
+RUN sh /build-ffmpeg.sh /opt/ffmpeg
 
-# Experimental: native codecs and HTTPS, without desktop or hardware integrations.
-FROM debian:trixie-slim AS ffmpeg-minimal
+FROM debian:trixie-slim AS runtime
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
   ca-certificates \
@@ -82,8 +52,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY --from=ffmpeg-builder /opt/ffmpeg/bin/ /usr/local/bin/
 COPY --from=ffmpeg-builder /opt/ffmpeg/lib/ /usr/local/lib/
 COPY --from=ffmpeg-builder /opt/ffmpeg/licenses/ /usr/share/licenses/ffmpeg/
-
-FROM ffmpeg-${FFMPEG_VARIANT} AS runtime
 
 COPY --from=youtube-builder /opt/yt-dlp /opt/yt-dlp
 ENV PATH="/opt/yt-dlp/bin:${PATH}" \

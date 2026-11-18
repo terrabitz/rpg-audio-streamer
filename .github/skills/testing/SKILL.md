@@ -50,13 +50,25 @@ gate after focused checks. No documentation-only validation is needed.
 Mixer domain tests render known PCM buffers without sleeps; live-service tests
 own the render loop's context and bound waits for decoding and cancellation.
 
-### Container variants
+### Headless FFmpeg
 
-Build the default image with `docker build -f docker/Dockerfile -t rpg-audio-streamer:test .`.
-The experimental headless FFmpeg image is opt-in:
-`docker build -f docker/Dockerfile --build-arg FFMPEG_VARIANT=minimal -t rpg-audio-streamer:minimal .`.
-The default release workflow does not select this variant. Source builds require
-access to Debian's binary and source package repositories.
+Build the image with `docker build -f docker/Dockerfile -t rpg-audio-streamer:test .`.
+It always uses the headless FFmpeg build. On Debian/Ubuntu, install
+`build-essential ca-certificates curl libmp3lame-dev libssl-dev nasm pkg-config xz-utils`,
+then run `sh scripts/build-ffmpeg.sh "$HOME/.local/ffmpeg"`. The script downloads
+and verifies the pinned upstream source archive and installs FFmpeg, ffprobe,
+shared libraries, and licenses. Activate the installation with:
+
+```sh
+export PATH="$HOME/.local/ffmpeg/bin:$PATH"
+export LD_LIBRARY_PATH="$HOME/.local/ffmpeg/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+```
+
+The Go and browser CI jobs use `.github/actions/setup-ffmpeg` to compile with this
+script on cache misses and restore the whole installation on exact cache hits.
+Changing the source version, checksum, flags, or action invalidates the cache.
+The host build uses Ubuntu libraries; continue checking the packaged Debian image
+when changing build configuration or runtime dependencies.
 
 Compare uncompressed layer totals, rather than Docker's combined compressed and
 unpacked storage accounting, using

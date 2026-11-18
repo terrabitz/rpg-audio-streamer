@@ -1,0 +1,49 @@
+name: Set up FFmpeg
+description: Compile and cache the headless FFmpeg tools used by the runtime image.
+
+runs:
+  using: composite
+  steps:
+    - name: Identify build platform
+      id: platform
+      shell: bash
+      run: |
+        . /etc/os-release
+        printf 'release=%s-%s\n' "$ID" "$VERSION_ID" >> "$GITHUB_OUTPUT"
+
+    - name: Restore compiled FFmpeg
+      id: cache
+      uses: actions/cache/restore@v5
+      with:
+        path: ${{ runner.temp }}/ffmpeg
+        key: ffmpeg-${{ runner.os }}-${{ runner.arch }}-${{ steps.platform.outputs.release }}-${{ hashFiles('scripts/build-ffmpeg.sh', '.github/actions/setup-ffmpeg/action.yaml') }}
+
+    - name: Install runtime dependencies
+      shell: bash
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends libmp3lame0 libssl3t64
+
+    - name: Compile FFmpeg on cache miss
+      if: steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      run: |
+        sudo apt-get install -y --no-install-recommends \
+          build-essential ca-certificates curl libmp3lame-dev libssl-dev nasm pkg-config xz-utils
+        sh scripts/build-ffmpeg.sh "$RUNNER_TEMP/ffmpeg"
+
+    - name: Activate and check FFmpeg
+      shell: bash
+      run: |
+        echo "$RUNNER_TEMP/ffmpeg/bin" >> "$GITHUB_PATH"
+        export LD_LIBRARY_PATH="$RUNNER_TEMP/ffmpeg/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+        printf 'LD_LIBRARY_PATH=%s\n' "$LD_LIBRARY_PATH" >> "$GITHUB_ENV"
+        "$RUNNER_TEMP/ffmpeg/bin/ffmpeg" -version
+        "$RUNNER_TEMP/ffmpeg/bin/ffprobe" -version
+
+    - name: Cache compiled FFmpeg before running tests
+      if: steps.cache.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v5
+      with:
+        path: ${{ runner.temp }}/ffmpeg
+        key: ${{ steps.cache.outputs.cache-primary-key }}
