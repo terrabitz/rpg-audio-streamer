@@ -30,3 +30,16 @@ Buildx GitHub Actions cache scope. The image's runtime behavior is described in
 
 Pull requests that touch image inputs run the same builds without publishing
 (see [pull request checks](./pr-checks.md)).
+
+## Runtime image
+
+The Debian slim runtime includes FFmpeg, Node.js, Python, and the
+[YouTube downloader](../backend/youtube.md). A separate installer stage supplies
+the downloader's virtual environment without pip or precompiled Python bytecode;
+the runtime disables bytecode writes. Package indexes and build toolchains are
+not included.
+
+The Go executable and [libdave](../discord/voice-streaming.md) shared library are
+stripped of debugging symbols, while libdave's licenses remain in the image.
+Application files receive their ownership when copied into the runtime rather
+than being duplicated into a later ownership-change layer.

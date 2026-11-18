@@ -20,9 +20,19 @@ COPY main.go .
 COPY sql sql
 COPY internal internal
 
-RUN CGOENABLED=1 go build -o backend main.go
+RUN CGO_ENABLED=1 go build -ldflags="-s -w" -o backend main.go \
+  && strip --strip-unneeded /opt/libdave/lib/libdave.so
 
-# Stage 3: Create the final runtime image
+# Stage 3: Install the downloader without runtime installation tooling
+FROM debian:trixie-slim AS youtube-builder
+
+RUN apt-get update && apt-get install -y --no-install-recommends python3-venv \
+  && python3 -m venv /opt/installer \
+  && python3 -m venv --without-pip /opt/yt-dlp \
+  && /opt/installer/bin/pip --python /opt/yt-dlp/bin/python install \
+    --no-cache-dir --no-compile 'yt-dlp[default]'
+
+# Stage 4: Create the final runtime image
 FROM debian:trixie-slim
 
 # Install OS packages
@@ -31,25 +41,26 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   ffmpeg \
   libstdc++6 \
   nodejs \
-  python3-venv \
-  && python3 -m venv /opt/yt-dlp \
-  && /opt/yt-dlp/bin/pip install --no-cache-dir 'yt-dlp[default]'
+  python3 \
+  && rm -rf /var/lib/apt/lists
 
-ENV PATH="/opt/yt-dlp/bin:${PATH}"
+COPY --from=youtube-builder /opt/yt-dlp /opt/yt-dlp
+ENV PATH="/opt/yt-dlp/bin:${PATH}" \
+  PYTHONDONTWRITEBYTECODE=1
 
 # Set up directories
 WORKDIR /app
 
 # Copy built backend and frontend
-COPY --from=backend-builder /app/backend /app/backend
-COPY --from=frontend-builder /ui/dist /app/frontend
+COPY --from=backend-builder --chown=nobody:nogroup /app/backend /app/backend
+COPY --from=frontend-builder --chown=nobody:nogroup /ui/dist /app/frontend
 COPY --from=backend-builder /opt/libdave/lib/libdave.so /usr/local/lib/libdave.so
 COPY --from=backend-builder /opt/libdave/share/licenses/libdave /usr/share/licenses/libdave
 RUN ldconfig
 
 # Create directories and set permissions
 RUN mkdir -p /app/data/uploads \
-  && chown -R nobody:nogroup /app
+  && chown nobody:nogroup /app /app/data /app/data/uploads
 
 # Set default env vars for Docker layout
 ENV DB_PATH=/app/data/skaldbot.db \
