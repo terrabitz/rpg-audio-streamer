@@ -48,9 +48,11 @@ the media timer stops retrying a failed source until playback is requested again
 
 ## Gain ramps
 
-Track, master, and type-volume changes ramp the mixed gain over two seconds
-independently of play/pause fades and loop crossfades. A new adjustment starts
-from the current interpolated gain, including mute and non-repeating tracks.
+Shared volume changes ramp the mixed gain over two seconds independently of
+play/pause fades and loop crossfades. A new ramp starts from the current
+interpolated gain, including mute and non-repeating tracks. The player's local
+master and track-type sliders change gain immediately, even during a fade,
+without affecting the shared mix or interrupting playback transitions.
 
 ## Disposal
 

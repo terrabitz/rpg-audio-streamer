@@ -739,7 +739,7 @@ it('loops an excluded playhead into the committed loop-back point', async () => 
   } finally { player.unmount() }
 })
 
-async function mountPlaying(settings: Partial<ReturnType<typeof defaultPlayback>>) {
+async function mountPlaying(settings: Partial<ReturnType<typeof defaultPlayback>>, instantMixerVolume = false) {
   vi.useFakeTimers()
   const pinia = createPinia()
   setActivePinia(pinia)
@@ -757,7 +757,9 @@ async function mountPlaying(settings: Partial<ReturnType<typeof defaultPlayback>
     Object.defineProperty(this, 'paused', { configurable: true, value: true })
   })
   vi.spyOn(HTMLMediaElement.prototype, 'readyState', 'get').mockReturnValue(4)
-  const player = mount(AudioTrackPlayer, { props: { fileID: 'forest' }, global: { plugins: [pinia] } })
+  const player = mount(AudioTrackPlayer, {
+    props: { fileID: 'forest', instantMixerVolume }, global: { plugins: [pinia] },
+  })
   for (const events of hls.instances) events.manifestParsed?.()
   await vi.advanceTimersByTimeAsync(2100)
   return {
@@ -851,5 +853,43 @@ it('allows local autoplay recovery without pausing or seeking the shared table',
     expect(primary.paused).toBe(false)
     expect(primary.currentTime).toBe(25)
     expect(audio.tracks.forest?.isPlaying).toBe(true)
+  } finally { player.unmount() }
+})
+
+it('applies player mixer edits immediately without interrupting a loop crossfade or shared gain ramp', async () => {
+  const { player, audio, primary, secondary } = await mountPlaying({}, true)
+  try {
+    primary.currentTime = 58
+    await player.get('video').trigger('timeupdate')
+    primary.currentTime = 59
+    await player.get('video').trigger('timeupdate')
+    expect(primary.volume).toBeCloseTo(0.5)
+    expect(secondary.volume).toBeCloseTo(0.5)
+
+    audio.setMasterVolume(0)
+    await nextTick()
+    expect(primary.volume).toBe(0)
+    expect(secondary.volume).toBe(0)
+    audio.setMasterVolume(50)
+    await nextTick()
+    expect(primary.volume).toBeCloseTo(0.25)
+    expect(secondary.volume).toBeCloseTo(0.25)
+
+    audio.updateTrackState('forest', { volume: 0 })
+    await nextTick()
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(primary.volume).toBeCloseTo(0.125)
+    expect(secondary.volume).toBeCloseTo(0.125)
+
+    audio.setTypeVolume('Music', 50)
+    await nextTick()
+    expect(primary.volume).toBeCloseTo(0.0625)
+    expect(secondary.volume).toBeCloseTo(0.0625)
+    expect(primary.paused).toBe(false)
+    expect(secondary.paused).toBe(false)
+
+    await vi.advanceTimersByTimeAsync(1016)
+    expect(primary.volume).toBe(0)
+    expect(secondary.volume).toBe(0)
   } finally { player.unmount() }
 })
