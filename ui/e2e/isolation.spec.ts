@@ -1,4 +1,6 @@
+import { once } from 'node:events'
 import { access } from 'node:fs/promises'
+import { createConnection } from 'node:net'
 import { request, type APIRequestContext } from '@playwright/test'
 import { expect, test } from './fixtures'
 import { startApp } from './instance'
@@ -6,29 +8,39 @@ import { startApp } from './instance'
 test('stopping an app closes active WebSocket connections', { tag: '@infrastructure' }, async ({ browser }) => {
   const app = await startApp()
   const context = await browser.newContext({ baseURL: app.url })
+  const unusedConnection = createConnection({ host: '127.0.0.1', port: Number(new URL(app.url).port) })
+  const unusedClosed = once(unusedConnection, 'close')
   try {
+    // Keep a speculative preconnect open so every attempt exercises HTTP shutdown draining.
+    await once(unusedConnection, 'connect')
     const page = await context.newPage()
     await page.goto('/login')
     const response = await page.request.post('/api/v1/login', {
       data: { username: 'e2e-gm', password: 'e2e-password' },
     })
     expect(response.ok()).toBe(true)
-    await page.evaluate(async () => {
+    const connection = await page.evaluateHandle(async () => {
       const socket = new WebSocket(`ws://${location.host}/api/v1/ws`)
+      const closed = new Promise<void>(resolve => { socket.onclose = () => resolve() })
       await new Promise<void>((resolve, reject) => {
         socket.onopen = () => resolve()
         socket.onerror = () => reject(new Error('WebSocket connection failed'))
       })
+      return { socket, closed }
     })
     let timer: ReturnType<typeof setTimeout> | undefined
     try {
       await Promise.race([
         app.stop(),
-        new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error('App shutdown stalled')), 5000) }),
+        new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error('App shutdown stalled')), 20_000) }),
       ])
     } finally { clearTimeout(timer) }
+    await connection.evaluate(({ closed }) => closed)
+    await unusedClosed
+    expect(app.logs()).not.toContain('"msg":"HTTP shutdown failed"')
     await expect(access(app.scratch)).rejects.toMatchObject({ code: 'ENOENT' })
   } finally {
+    unusedConnection.destroy()
     await context.close()
     await app.stop()
   }
