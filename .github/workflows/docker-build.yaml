@@ -75,7 +75,7 @@ jobs:
 
       - name: Upload digest
         if: inputs.push
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: docker-digest-${{ matrix.arch }}
           path: ${{ runner.temp }}/digests/*
@@ -89,7 +89,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Download digests
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v8
         with:
           path: ${{ runner.temp }}/digests
           pattern: docker-digest-*
