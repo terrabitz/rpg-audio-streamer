@@ -86,6 +86,7 @@
         <p id="track-reorder-help" class="d-sr-only">
           Click a track to play or pause. Drag its handle to reorder, or focus a card or handle and press Alt + Left or Right.
           Use the three-dot button for track settings, volume, and playback position.
+          Right-click or long-press a card for playback actions.
         </p>
         <div class="d-sr-only" role="status">{{ reorderAnnouncement }}</div>
         <DragDropProvider :sensors="sensors" :plugins="plugins" @drag-start="startDrag" @drag-end="finishDrag">
@@ -94,12 +95,13 @@
               <v-card class="file-tile" role="group" tabindex="0" :aria-label="file.name" aria-describedby="track-reorder-help"
                 :aria-busy="file.status === 'processing'"
                 :class="{ 'is-processing': file.status === 'processing' }"
-                aria-keyshortcuts="Alt+ArrowLeft Alt+ArrowRight" @keydown="handleKeydown($event, file.id)"
-                @click="handlePlay(file.id)">
+                aria-keyshortcuts="Alt+ArrowLeft Alt+ArrowRight Shift+F10" @keydown="handleKeydown($event, file.id)"
+                @contextmenu.prevent="openContextMenu($event, file.id)"
+                v-touch-hold="event => openContextMenu(event, file.id)" @click="handlePlay(file.id)">
                 <v-btn class="track-drag-handle" icon="$drag" size="x-small" variant="text"
                   :aria-label="`Drag to reorder ${file.name}`" title="Drag to reorder"
                   aria-describedby="track-reorder-help" aria-keyshortcuts="Alt+ArrowLeft Alt+ArrowRight"
-                  @click.stop @keydown="handleKeydown($event, file.id)" />
+                  @click.stop @touchstart.stop @keydown="handleKeydown($event, file.id)" />
                 <AudioControls :fileID="file.id" :fileName="file.name"
                   :model-value="openedTrackID === file.id" @update:model-value="value => openedTrackID = value ? file.id : ''"
                   :deleteTrack="count => deleteFile(file, count)"
@@ -110,6 +112,13 @@
             </SortableTrack>
           </v-row>
         </DragDropProvider>
+        <v-menu v-model="showContextMenu" context-menu :target="contextPosition" :aria-label="`Playback actions for ${contextTrack?.name ?? ''}`">
+          <v-list role="menu">
+            <v-list-item role="menuitem" title="Play from start"
+              :disabled="!contextTrack || !trackReady(contextTrack) || !wsStore.isConnected"
+              @click="playFromStart" />
+          </v-list>
+        </v-menu>
       </div>
     </div>
   </v-container>
@@ -127,6 +136,7 @@ import { useTableStore } from '@/stores/tables'
 import { useWebSocketStore } from '@/stores/websocket'
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useDisplay } from 'vuetify'
+import { TouchHold as vTouchHold } from 'vuetify/directives'
 import { useAudioStore } from '../stores/audio'
 import AudioControls from './AudioControls.vue'
 import SortableTrack from './SortableTrack.vue'
@@ -144,6 +154,10 @@ const { smAndDown } = useDisplay()
 const showNowPlaying = ref(false)
 const openedTrackID = ref('')
 const reorderAnnouncement = ref('')
+const showContextMenu = ref(false)
+const contextTrackID = ref('')
+const contextPosition = ref<[number, number]>([0, 0])
+const contextTrack = computed(() => fileStore.getTrackById(contextTrackID.value))
 const plugins = defaultPreset.plugins.map(plugin => plugin === Feedback
   ? Feedback.configure({ feedback: 'clone', dropAnimation: { duration: 180 } })
   : plugin)
@@ -229,6 +243,27 @@ function startDrag() {
   dragging.value = true
 }
 
+function openContextMenu(event: { clientX: number; clientY: number }, fileID: string) {
+  contextTrackID.value = fileID
+  contextPosition.value = [event.clientX, event.clientY]
+  showContextMenu.value = true
+}
+
+function playFromStart() {
+  showContextMenu.value = false
+  const track = contextTrack.value
+  if (!track || !trackReady(track) || !wsStore.isConnected) return
+  const state = audioStore.tracks[track.id]
+  if (!state) return
+  wsStore.sendEvent('trackPlaybackChanged', {
+    fileID: track.id,
+    isPlaying: true,
+    currentTime: state.playback?.startTime ?? 0,
+    duration: state.duration,
+    volume: state.volume,
+  })
+}
+
 function finishDrag(event: DragEndEvent) {
   const { source } = event.operation
   if (!event.canceled && isSortable(source) && source.initialIndex !== source.index) {
@@ -248,6 +283,12 @@ async function handleKeydown(event: KeyboardEvent, fileID: string) {
   if (!file) return
   if (event.target !== event.currentTarget || !(event.currentTarget instanceof HTMLElement)) return
   const card = event.currentTarget
+  if ((event.key === 'ContextMenu' || event.shiftKey && event.key === 'F10') && card.classList.contains('file-tile')) {
+    event.preventDefault()
+    const bounds = card.getBoundingClientRect()
+    openContextMenu({ clientX: bounds.x, clientY: bounds.bottom }, fileID)
+    return
+  }
   if ((event.key === 'Enter' || event.key === ' ') && card.classList.contains('file-tile')) {
     event.preventDefault()
     handlePlay(fileID)
@@ -482,6 +523,8 @@ onUnmounted(() => {
   cursor: pointer;
   overflow: visible;
   transition: box-shadow 0.2s ease;
+  -webkit-touch-callout: none;
+  user-select: none;
 }
 
 .track-drag-handle {

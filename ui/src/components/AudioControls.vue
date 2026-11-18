@@ -1,13 +1,15 @@
 <template>
   <template v-if="trackType">
     <slot name="activator" :open="openControls">
-      <div class="audio-control-tile" :class="{ 'is-active': isActive }">
+      <div class="audio-control-tile" :class="{ 'is-active': isActive }" :style="{ '--track-progress': `${progress}%` }">
+        <div v-if="available && audioState" class="tile-volume" aria-hidden="true"
+          :style="{ width: `${audioState.volume}%` }" />
         <v-tooltip v-if="track?.status === 'processing'" activator="parent" text="Track is still processing" />
         <v-tooltip v-else-if="failed" activator="parent" text="Processing failed. Click for details." />
         <span class="d-sr-only">Track type: {{ trackType.name }}</span>
         <div class="track-heading pa-2 text-subtitle-1 position-relative">
           <span :title="props.fileName">{{ props.fileName }}</span>
-          <div class="track-menu-slot position-absolute top-0 right-0 d-flex align-center justify-center">
+          <div class="track-menu-slot position-absolute top-0 right-0 d-flex align-center justify-center" @touchstart.stop>
             <v-progress-circular v-if="track?.status === 'processing'" indeterminate size="18" width="2"
               :aria-label="`Processing ${props.fileName}`" />
             <v-btn v-else-if="failed" icon="$warning" color="warning" size="small" variant="text"
@@ -84,7 +86,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watchEffect } from 'vue';
 import type { PlaybackSettings, UpdateTrackRequest } from '@/client/apiClient';
-import { defaultPlayback, playbackError } from '@/composables/playback';
+import { defaultPlayback, playbackError, playbackRegion } from '@/composables/playback';
 import { useAudioStore } from '../stores/audio';
 import { TrackUsageChangedError, useFileStore } from '../stores/files';
 import { useTrackTypeStore } from '../stores/trackTypes';
@@ -118,6 +120,13 @@ const error = ref('');
 const saveFailed = ref(false);
 
 const isActive = computed(() => audioState.value?.isPlaying);
+const progress = computed(() => {
+  const state = audioState.value;
+  if (!state || state.duration <= 0) return 0;
+  const { start, end } = playbackRegion(state.playback, state.duration);
+  if (end <= start) return 0;
+  return Math.max(0, Math.min(100, (state.currentTime - start) / (end - start) * 100));
+});
 
 const editName = ref(props.fileName);
 const editTrackType = ref(trackType.value?.id || '');
@@ -334,6 +343,18 @@ const emit = defineEmits<{
 
 .audio-control-tile.is-active {
   background-color: color-mix(in srgb, v-bind('trackType?.color') 40%, rgb(var(--v-theme-surface)));
+  background-image: linear-gradient(to right,
+    color-mix(in srgb, v-bind('trackType?.color') 70%, rgb(var(--v-theme-surface))) var(--track-progress),
+    transparent var(--track-progress));
+}
+
+.tile-volume {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  height: 2px;
+  background: white;
+  pointer-events: none;
 }
 
 .track-heading:hover {

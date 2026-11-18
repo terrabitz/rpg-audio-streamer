@@ -12,8 +12,11 @@ tags: [frontend, layout, ordering]
 
 GM track tiles show their track type as a colored border instead of a visible
 badge, with a screen-reader label retaining the type name. Cards stay compact
-on hover, focus, and touch. Playing tiles have a saturated background mixed
-from their track-type color; paused tiles keep the neutral surface. Tile names
+on hover, focus, and touch. Playing tiles have a background mixed
+from their track-type color, with a more saturated left portion showing elapsed
+progress through the playback region. Paused tiles keep the neutral surface.
+A 2 px white bar along the bottom shows track volume from left to right,
+independently of master volume. Tile names
 stay on one line with ellipsis overflow and a full-name hover title.
 
 Card clicks or Enter/Space toggle playback for ready tracks, while the inline
@@ -21,6 +24,12 @@ controls do not trigger card clicks. Tiles open the
 [track editor](./track-editor.md); tracks still
 [processing or failed](./track-processing.md) use status indicators and failure
 diagnostics instead of playback controls.
+
+Right-clicking or long-pressing a card opens its context menu; keyboard users
+can use Shift + F10 or the context-menu key. **Play from start** starts or
+restarts the track at its configured playback-region beginning while retaining
+its volume. The action is disabled for unavailable tracks or a disconnected
+WebSocket. Touch scrolling and drag handles do not open the menu.
 
 ## Layout
 
