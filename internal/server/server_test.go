@@ -4,13 +4,16 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
 	"mime/multipart"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -616,4 +619,117 @@ func TestTrackTypes(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Errorf("expected status OK; got %v", rec.Code)
 	}
+}
+
+func TestShutdownClosesUnusedConnectionsAndDrainsActiveRequests(t *testing.T) {
+	ts := setupTestServer(t)
+	defer ts.cleanup(t)
+	requestCtx, releaseRequest := context.WithCancel(context.Background())
+	defer releaseRequest()
+	credentialsEntered := make(chan struct{})
+	ts.auth = &shutdownAuthenticator{
+		Authenticator: ts.auth,
+		entered:       credentialsEntered,
+		release:       requestCtx.Done(),
+	}
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	finished := make(chan struct{})
+	var serveErr error
+	go func() {
+		defer close(finished)
+		serveErr = ts.serve(ctx, listener)
+	}()
+	defer func() {
+		cancel()
+		releaseRequest()
+		listener.Close()
+		<-finished
+	}()
+
+	connection, err := net.Dial("tcp", listener.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer connection.Close()
+
+	// A completed request ensures the preceding preconnect has been accepted.
+	client := &http.Client{Timeout: 3 * time.Second}
+	defer client.CloseIdleConnections()
+	response, err := client.Get("http://" + listener.Addr().String() + "/api/v1/auth/status")
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+
+	requestFinished := make(chan struct{})
+	var requestErr error
+	go func() {
+		defer close(requestFinished)
+		response, err := client.Post(
+			"http://"+listener.Addr().String()+"/api/v1/login",
+			"application/json",
+			strings.NewReader(`{"username":"testuser","password":"testpass"}`),
+		)
+		if err != nil {
+			requestErr = err
+			return
+		}
+		defer response.Body.Close()
+		if response.StatusCode != http.StatusOK {
+			requestErr = fmt.Errorf("active request returned HTTP %d", response.StatusCode)
+		}
+	}()
+	defer func() {
+		releaseRequest()
+		<-requestFinished
+	}()
+	select {
+	case <-credentialsEntered:
+	case <-time.After(time.Second):
+		t.Fatal("login request did not reach authentication")
+	}
+
+	started := time.Now()
+	cancel()
+	if err := connection.SetReadDeadline(time.Now().Add(time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := connection.Read(make([]byte, 1)); err != io.EOF {
+		t.Fatalf("unused connection was not closed promptly: %v", err)
+	}
+	select {
+	case <-finished:
+		t.Fatal("shutdown returned before the active request completed")
+	default:
+	}
+	releaseRequest()
+	<-requestFinished
+	if requestErr != nil {
+		t.Fatalf("active request did not drain: %v", requestErr)
+	}
+	select {
+	case <-finished:
+		if serveErr != nil {
+			t.Fatal(serveErr)
+		}
+		t.Logf("shutdown completed in %s", time.Since(started))
+	case <-time.After(time.Second):
+		t.Fatal("shutdown did not finish after the active request drained")
+	}
+}
+
+type shutdownAuthenticator struct {
+	Authenticator
+	entered chan<- struct{}
+	release <-chan struct{}
+}
+
+func (a *shutdownAuthenticator) ValidateCredentials(credentials auth.Credentials) (*auth.Token, error) {
+	close(a.entered)
+	<-a.release
+	return a.Authenticator.ValidateCredentials(credentials)
 }

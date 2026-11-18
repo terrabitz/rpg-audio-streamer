@@ -18,6 +18,11 @@ binding a network listener. WebSocket upgrades bypass the API logging wrapper
 The optional API `--host` / `HOST` setting controls the listener interface;
 its empty default listens on all interfaces.
 
+On cancellation, the HTTP server closes accepted connections that have not
+supplied their first request headers, including browser speculative preconnects.
+Active HTTP requests drain within a five-second shutdown deadline; the
+[WebSocket hub](./composition.md) separately closes upgraded connections.
+
 ## Docker image
 
 The Docker image serves both the API and the UI on HTTP port 80 by default, with

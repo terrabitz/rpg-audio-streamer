@@ -13,12 +13,14 @@ test('stopping an app closes active WebSocket connections', { tag: '@infrastruct
       data: { username: 'e2e-gm', password: 'e2e-password' },
     })
     expect(response.ok()).toBe(true)
-    await page.evaluate(async () => {
+    const connection = await page.evaluateHandle(async () => {
       const socket = new WebSocket(`ws://${location.host}/api/v1/ws`)
+      const closed = new Promise<void>(resolve => { socket.onclose = () => resolve() })
       await new Promise<void>((resolve, reject) => {
         socket.onopen = () => resolve()
         socket.onerror = () => reject(new Error('WebSocket connection failed'))
       })
+      return { socket, closed }
     })
     let timer: ReturnType<typeof setTimeout> | undefined
     try {
@@ -27,6 +29,7 @@ test('stopping an app closes active WebSocket connections', { tag: '@infrastruct
         new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error('App shutdown stalled')), 5000) }),
       ])
     } finally { clearTimeout(timer) }
+    await connection.evaluate(({ closed }) => closed)
     await expect(access(app.scratch)).rejects.toMatchObject({ code: 'ENOENT' })
   } finally {
     await context.close()
