@@ -64,7 +64,14 @@ export PATH="$HOME/.local/ffmpeg/bin:$PATH"
 export LD_LIBRARY_PATH="$HOME/.local/ffmpeg/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 ```
 
-The Go and browser CI jobs use `.github/actions/setup-ffmpeg` to compile with this
+CI jobs use `.github/actions/setup-environment` for language and dependency
+installation. Its `backend`, `frontend`, and `media` inputs default to `'true'`;
+disable unneeded components per job. Set `playwright: 'true'` in browser jobs
+to install Chromium after frontend dependencies. Node is always installed.
+The cache warmer uses the default components without installing Chromium or
+running tests.
+
+Media setup delegates to `.github/actions/setup-ffmpeg` to compile with this
 script on cache misses and restore the whole installation on exact cache hits.
 Changing the source version, checksum, flags, or action invalidates the cache.
 The host build uses Ubuntu libraries; continue checking the packaged Debian image
@@ -159,12 +166,15 @@ streamer token, server ID and voice channel ID as environment variables to
 include the Go connection integration test in `make test-go`. Missing values
 fail the test.
 
-The `pr-checks` workflow runs the Go suite and full Playwright suite in separate
-jobs on pull requests, pushes to main, nightly, and manual dispatch. Configure
-the five names above as repository secrets. A shared concurrency group
-serializes both live tests across jobs and runs. Fork and Dependabot pull
-requests cannot access these secrets and fail the live checks rather than
-running untrusted code with them.
+The `pr-checks` workflow runs four independent jobs on pull requests and manual
+dispatch: offline Go coverage (including SQLite and media integration), the Go
+live Discord connection test, non-Discord Playwright projects, and the
+`chromium-discord` Playwright project. Configure the five names above as
+repository secrets. Only the two live Discord jobs receive those secrets and
+share a concurrency group; offline Go and non-Discord browser tests run without
+that lock. GitHub withholds repository secrets from fork and Dependabot pull
+requests. The live tests fail their configuration checks when required secrets
+are unavailable.
 
 ## Coverage policy
 
