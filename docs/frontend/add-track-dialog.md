@@ -21,12 +21,14 @@ Browsers that expose folder contents during drag-and-drop include audio from
 nested folders. Non-audio, empty, or unreadable dropped items are skipped and
 reported.
 
-Single files need a nonblank name, prefilled from the filename. A batch uses
-the filenames without extensions and shares the selected track type. The
-dialog uploads each file separately to the current table and library, or to
-the library alone when opened there. If some upload requests fail, only those
-files remain in the dialog for retry. The server-side processing is described
-in [track uploads](../data/track-uploads.md).
+Each track needs a nonblank name and a type. Names are prefilled from the
+filenames without extensions. The batch upload table lets GMs edit names and
+types per row, or select some or all rows and apply a type to just those rows.
+Selection only controls bulk edits; all rows are uploaded on confirmation.
+The dialog uploads each file separately to the current table and library, or
+to the library alone when opened there. If some upload requests fail, only
+those rows remain for retry, retaining their edited names and types. The
+server-side processing is described in [track uploads](../data/track-uploads.md).
 
 ## YouTube links
 

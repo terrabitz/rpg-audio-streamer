@@ -5,7 +5,7 @@
         <span>{{ props.tableID ? 'Drop audio to add to this table' : 'Drop audio to upload to the library' }}</span>
       </div>
     </Teleport>
-    <v-dialog persistent v-model="showModal" max-width="600px">
+    <v-dialog persistent v-model="showModal" :max-width="isBatch ? '800px' : '600px'" :scrollable="isBatch">
       <template v-slot:activator="{ props: activatorProps }">
         <slot name="activator" :props="activatorProps">
           <v-btn v-bind="activatorProps" :prepend-icon="props.tableID ? '$add' : '$upload'">
@@ -47,15 +47,49 @@
                   {{ fileNames.length === 1 ? fileNames[0] : `${fileNames.length} files selected` }}
                 </template>
               </v-file-input>
-              <v-text-field v-if="pendingFiles.length <= 1" v-model="uploadName" label="Track Name"
-                :disabled="isBusy" required />
-              <template v-else>
-                <p class="mb-1">These {{ pendingFiles.length }} files will share one track type.</p>
-                <ul class="upload-file-list mb-4" aria-label="Files to upload">
-                  <li v-for="(file, index) in pendingFiles" :key="index">{{ file.name }}</li>
-                </ul>
+              <template v-if="!isBatch">
+                <v-text-field v-model="singleUpload.name" label="Track Name" :disabled="isBusy" required />
+                <TrackTypeSelector v-model="singleUpload.typeID" :disabled="isBusy" />
               </template>
-              <TrackTypeSelector v-model="selectedTypeId" :disabled="isBusy" />
+              <template v-else>
+                <div class="bulk-type-controls mb-3">
+                  <v-select v-model="bulkTypeID" :items="typeOptions" item-title="name" item-value="id"
+                    label="Bulk track type" density="compact" hide-details
+                    :disabled="isBusy || selectedCount === 0" />
+                  <v-btn variant="tonal" :disabled="!canApplyBulkType"
+                    @click="applyBulkType">Apply to selected ({{ selectedCount }})</v-btn>
+                </div>
+                <v-table class="upload-table" density="compact" aria-label="Tracks to upload">
+                  <thead>
+                    <tr>
+                      <th scope="col">
+                        <input type="checkbox" aria-label="Select all tracks" :checked="allSelected"
+                          :indeterminate.prop="selectedCount > 0 && !allSelected" :disabled="isBusy"
+                          @change="setAllSelected(!allSelected)" />
+                      </th>
+                      <th scope="col">Name</th>
+                      <th scope="col">Type</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="row in pendingTracks" :key="row.id">
+                      <td>
+                        <input v-model="row.selected" type="checkbox" :aria-label="`Select ${row.file.name}`"
+                          :disabled="isBusy" />
+                      </td>
+                      <td>
+                        <v-text-field v-model="row.name" label="Track Name" density="compact" hide-details
+                          :disabled="isBusy" required />
+                        <span class="original-filename text-caption text-medium-emphasis">{{ row.file.name }}</span>
+                      </td>
+                      <td>
+                        <v-select v-model="row.typeID" :items="typeOptions" item-title="name" item-value="id"
+                          label="Track Type" density="compact" hide-details :disabled="isBusy" />
+                      </td>
+                    </tr>
+                  </tbody>
+                </v-table>
+              </template>
             </v-form>
             <p v-if="dropNotice" role="status" class="text-body-2">{{ dropNotice }}</p>
             <p v-if="fileUploadError" role="alert" class="text-error">{{ fileUploadError }}</p>
@@ -104,10 +138,12 @@ import { useFileStore } from '@/stores/files'
 import { useTableStore } from '@/stores/tables'
 import { useTrackTypeStore } from '@/stores/trackTypes'
 import debounce from 'lodash.debounce'
-import { computed, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue'
+import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import TrackTypeSelector from './TrackTypeSelector.vue'
 import ErrorToast from './ErrorToast.vue'
 import { audioFileAccept, collectDroppedAudio } from './audioFileDrop'
+
+type PendingTrack = { id: number, file: File, name: string, typeID: string, selected: boolean }
 
 const props = defineProps<{ tableID?: string }>()
 const tables = useTableStore()
@@ -123,8 +159,15 @@ const dropArea = ref<HTMLElement | null>(null)
 const isDragging = ref(false)
 const showModal = ref(false)
 const trackName = ref('')
-const uploadName = ref('')
-const pendingFiles = shallowRef<File[]>([])
+const pendingTracks = ref<PendingTrack[]>([])
+const emptyUpload = reactive({ name: '', typeID: '' })
+const singleUpload = computed(() => pendingTracks.value[0] ?? emptyUpload)
+const pendingFiles = computed(() => pendingTracks.value.map(row => row.file))
+const isBatch = computed(() => source.value === 'upload' && pendingTracks.value.length > 1)
+const bulkTypeID = ref('')
+const selectedCount = computed(() => pendingTracks.value.filter(row => row.selected).length)
+const allSelected = computed(() => pendingTracks.value.length > 0 && selectedCount.value === pendingTracks.value.length)
+let nextRowID = 0
 const isReadingDrop = ref(false)
 const dropNotice = ref('')
 const fileUploadError = ref('')
@@ -153,8 +196,10 @@ const loadingLibrary = ref(false)
 const libraryReady = ref(false)
 const isAdding = ref(false)
 const isBusy = computed(() => isUploading.value || isReadingDrop.value || isAdding.value || loadingLibrary.value)
-const canUpload = computed(() => !isBusy.value && !!selectedType.value &&
-  (pendingFiles.value.length > 1 || (pendingFiles.value.length === 1 && !!uploadName.value.trim())))
+const typeOptions = computed(() => trackTypes.trackTypes)
+const canApplyBulkType = computed(() => !isBusy.value && selectedCount.value > 0 && !!trackTypes.getTypeById(bulkTypeID.value))
+const canUpload = computed(() => !isBusy.value && pendingTracks.value.length > 0 &&
+  pendingTracks.value.every(row => row.name.trim() && trackTypes.getTypeById(row.typeID)))
 const availableTracks = computed(() => fileStore.tracks.filter(
   track => !tables.tracks.some(associated => associated.id === track.id),
 ))
@@ -195,6 +240,15 @@ watch([showModal, source], async ([open, selectedSource]) => {
   if (selectedSource === 'library' && props.tableID) await loadLibrary()
 })
 
+watch(isBatch, async (batch) => {
+  if (!batch || trackTypes.trackTypes.length) return
+  try {
+    await trackTypes.fetchTrackTypes()
+  } catch {
+    if (isBatch.value) fileUploadError.value = 'Could not load track types. Reopen the dialog to try again.'
+  }
+})
+
 async function loadLibrary() {
   if (!props.tableID) return
   const externalID = tables.current?.externalID
@@ -233,34 +287,32 @@ async function addTrack() {
 }
 
 async function submitForm() {
-  const typeID = selectedType.value?.id
-  if (!canUpload.value || !typeID) return
-  const files = pendingFiles.value
+  if (!canUpload.value) return
+  const rows = pendingTracks.value
   const tableID = props.tableID
-  const singleName = uploadName.value.trim()
-  const failed: File[] = []
+  const failed: PendingTrack[] = []
   isUploading.value = true
   fileUploadError.value = ''
   uploadStatus.value = null
   try {
-    for (const [index, file] of files.entries()) {
+    for (const [index, row] of rows.entries()) {
       if (disposed) return
-      if (files.length > 1) uploadProgress.value = { current: index + 1, total: files.length }
-      const name = files.length === 1 ? singleName : defaultTrackName(file)
+      if (rows.length > 1) uploadProgress.value = { current: index + 1, total: rows.length }
       try {
-        const { data } = await postApiV1Files<true>({ body: { files: file, name, typeID, tableID } })
+        const { data } = await postApiV1Files<true>({
+          body: { files: row.file, name: row.name.trim(), typeID: row.typeID, tableID },
+        })
         addProcessingTrack(data, tableID)
       } catch (error) {
         console.error('Upload error:', error)
-        failed.push(file)
+        failed.push(row)
       }
     }
-    const accepted = files.length - failed.length
+    const accepted = rows.length - failed.length
     if (failed.length) {
-      pendingFiles.value = failed
-      if (files.length > 1 && failed[0]) uploadName.value = defaultTrackName(failed[0])
-      fileUploadError.value = files.length === 1 ? 'Failed to upload file. Try again.'
-        : `${accepted} of ${files.length} tracks added. Retry the ${failed.length} remaining ${failed.length === 1 ? 'file' : 'files'}.`
+      pendingTracks.value = failed
+      fileUploadError.value = rows.length === 1 ? 'Failed to upload file. Try again.'
+        : `${accepted} of ${rows.length} tracks added. Retry the ${failed.length} remaining ${failed.length === 1 ? 'file' : 'files'}.`
       return
     }
     closeDialog()
@@ -274,17 +326,34 @@ async function submitForm() {
 function closeDialog() {
   showModal.value = false
   selectFiles(null)
+  emptyUpload.typeID = ''
   selectedTypeId.value = ''
   trackName.value = ''
   videoURL.value = ''
 }
 
 function selectFiles(value: File | File[] | null) {
-  pendingFiles.value = Array.isArray(value) ? value : value ? [value] : []
-  const first = pendingFiles.value[0]
-  uploadName.value = first ? defaultTrackName(first) : ''
+  const files = Array.isArray(value) ? value : value ? [value] : []
+  const typeID = files.length === 1 && pendingTracks.value.length <= 1 ? singleUpload.value.typeID : ''
+  pendingTracks.value = files.map(file => ({
+    id: nextRowID++, file, name: defaultTrackName(file), typeID, selected: false,
+  }))
+  emptyUpload.name = ''
+  bulkTypeID.value = ''
   dropNotice.value = ''
   fileUploadError.value = ''
+}
+
+function setAllSelected(selected: boolean) {
+  for (const row of pendingTracks.value) row.selected = selected
+}
+
+function applyBulkType() {
+  const type = trackTypes.getTypeById(bulkTypeID.value)
+  if (!type) return
+  for (const row of pendingTracks.value) {
+    if (row.selected) row.typeID = type.id
+  }
 }
 
 function defaultTrackName(file: File) {
@@ -429,11 +498,34 @@ onUnmounted(() => {
   margin: -20px;
 }
 
-.upload-file-list {
-  max-height: 10rem;
-  overflow: auto;
+.bulk-type-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.bulk-type-controls .v-select {
+  flex: 1 1 12rem;
+}
+
+.upload-table td {
+  padding-block: 6px;
+}
+
+.upload-table td:last-child {
+  min-width: 8rem;
+  width: 32%;
+}
+
+.upload-table input[type="checkbox"] {
+  appearance: auto;
+  accent-color: rgb(var(--v-theme-primary));
+}
+
+.original-filename {
+  display: block;
   overflow-wrap: anywhere;
-  padding-inline-start: 1.5rem;
 }
 
 .drop-text {
