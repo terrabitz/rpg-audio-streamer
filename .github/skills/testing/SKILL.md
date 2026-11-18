@@ -159,10 +159,13 @@ streamer token, server ID and voice channel ID as environment variables to
 include the Go connection integration test in `make test-go`. Missing values
 fail the test.
 
-The `pr-checks` workflow runs the Go suite and full Playwright suite in separate
-jobs on pull requests, pushes to main, nightly, and manual dispatch. Configure
-the five names above as repository secrets. A shared concurrency group
-serializes both live tests across jobs and runs. Fork and Dependabot pull
+The `pr-checks` workflow runs four independent jobs on pull requests and manual
+dispatch: offline Go coverage (including SQLite and media integration), the Go
+live Discord connection test, non-Discord Playwright projects, and the
+`chromium-discord` Playwright project. Configure the five names above as
+repository secrets. Only the two live Discord jobs receive those secrets and
+share a concurrency group; offline Go and non-Discord browser tests run without
+that lock. Fork and Dependabot pull
 requests cannot access these secrets and fail the live checks rather than
 running untrusted code with them.
 

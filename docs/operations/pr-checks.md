@@ -12,8 +12,22 @@ All pull requests run the Go tests, frontend domain tests, seeded development
 tests, and full-app browser suite in `pr-checks` (see
 [test layers](./test-layers.md)). `dorny/paths-filter` selects frontend
 lint/build and Docker checks for their inputs. Changes to the workflow select
-every check; manual runs also execute every check. Pushes to main, scheduled
-runs, and manual dispatch also run live tests.
+every check; manual runs also execute every check.
+
+Offline Go tests retain the internal coverage gate, including SQLite and media
+integration tests. Non-Discord Playwright projects run in their own job.
+Neither job receives Discord secrets or acquires the live Discord concurrency
+lock, so they can run alongside each other and the live checks.
+
+## Default-branch caches
+
+The `warm-caches` workflow installs Go modules, frontend dependencies, and
+FFmpeg on pushes to `main`, and supports manual dispatch. It uses the same
+runner, dependency manifests, setup actions, and cache keys as the PR jobs,
+so new pull requests can restore the default branch's Go module, npm download,
+and compiled FFmpeg caches. It runs no tests and requires no Discord secrets.
+These caches are immutable per key; dependency or FFmpeg build-input changes
+produce new entries.
 
 ## Docker checks
 
@@ -37,15 +51,12 @@ replace testing the packaged image for ABI and runtime dependency compatibility.
 
 ## Live Discord validation
 
-The Go and browser suites include live
-[Discord validation](../discord/voice-streaming.md) in separate jobs for trusted
-same-repository pull requests. Fork and Dependabot pull requests fail those
-credentialed checks without access to repository secrets. A shared concurrency
-queue serializes the jobs across runs.
-
-The separate Discord live workflow runs on pushes to `main`, nightly, and on
-manual dispatch from `main`. One concurrency group serializes its Go and
-Playwright tests across runs; pull request checks do not receive live secrets.
+The Go live voice connection test and the `chromium-discord` Playwright project
+run in dedicated jobs for trusted same-repository pull requests and manual
+dispatch. Fork and Dependabot pull requests fail those credentialed checks
+without access to repository secrets. Only these two jobs share the
+`discord-live` concurrency queue, serializing bot access across jobs and runs.
+The browser Discord job does not upload failure diagnostics.
 
 ## Required check
 

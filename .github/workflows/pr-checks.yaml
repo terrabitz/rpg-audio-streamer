@@ -57,18 +57,10 @@ jobs:
               - '.github/workflows/docker-build.yaml'
 
   go:
-    name: Go Tests and Integration
+    name: Go Offline Tests and Coverage
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    concurrency:
-      group: discord-live
-      queue: max
     steps:
-      - name: Require a trusted PR
-        if: ${{ github.event_name == 'pull_request' && (github.event.pull_request.head.repo.full_name != github.repository || github.event.pull_request.user.login == 'dependabot[bot]') }}
-        run: |
-          echo "::error::Live Discord tests require repository secrets and cannot run on fork or Dependabot pull requests."
-          exit 1
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
         with:
@@ -86,8 +78,36 @@ jobs:
         uses: ./.github/actions/setup-ffmpeg
       - name: Install dependencies
         run: go mod download
-      - name: Run Go tests and live connection integration
+      - name: Run offline Go tests and coverage
         run: make test-go
+        env:
+          DISCORD_LIVE_INTEGRATION: '0'
+
+  go-discord:
+    name: Go Discord Integration
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    concurrency:
+      group: discord-live
+      queue: max
+    steps:
+      - name: Require a trusted PR
+        if: ${{ github.event_name == 'pull_request' && (github.event.pull_request.head.repo.full_name != github.repository || github.event.pull_request.user.login == 'dependabot[bot]') }}
+        run: |
+          echo "::error::Live Discord tests require repository secrets and cannot run on fork or Dependabot pull requests."
+          exit 1
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Install libdave
+        run: |
+          sh scripts/install-libdave.sh "$RUNNER_TEMP/libdave"
+          printf 'PKG_CONFIG_PATH=%s/lib/pkgconfig\nLD_LIBRARY_PATH=%s/lib\n' "$RUNNER_TEMP/libdave" "$RUNNER_TEMP/libdave" >> "$GITHUB_ENV"
+      - name: Install dependencies
+        run: go mod download
+      - name: Run live Discord connection integration
+        run: go test -count=1 -race ./internal/discord -run '^TestLiveVoiceConnection$'
         env:
           DISCORD_LIVE_INTEGRATION: '1'
           INTEGRATION_TEST_DISCORD_SERVER_ID: ${{ secrets.INTEGRATION_TEST_DISCORD_SERVER_ID }}
@@ -98,15 +118,7 @@ jobs:
     name: Full App UX
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    concurrency:
-      group: discord-live
-      queue: max
     steps:
-      - name: Require a trusted PR
-        if: ${{ github.event_name == 'pull_request' && (github.event.pull_request.head.repo.full_name != github.repository || github.event.pull_request.user.login == 'dependabot[bot]') }}
-        run: |
-          echo "::error::Live Discord tests require repository secrets and cannot run on fork or Dependabot pull requests."
-          exit 1
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
         with:
@@ -129,14 +141,9 @@ jobs:
           go mod download
           npm ci --prefix ui
           cd ui && npx playwright install --with-deps chromium
-      - name: Run full app UX suite
-        run: make test-e2e
-        env:
-          INTEGRATION_TEST_DISCORD_SERVER_ID: ${{ secrets.INTEGRATION_TEST_DISCORD_SERVER_ID }}
-          INTEGRATION_TEST_DISCORD_VOICE_CHANNEL_ID: ${{ secrets.INTEGRATION_TEST_DISCORD_VOICE_CHANNEL_ID }}
-          INTEGRATION_TEST_DISCORD_BOT_STREAMER_TOKEN: ${{ secrets.INTEGRATION_TEST_DISCORD_BOT_STREAMER_TOKEN }}
-          INTEGRATION_TEST_DISCORD_BOT_STREAMER_CLIENT_ID: ${{ secrets.INTEGRATION_TEST_DISCORD_BOT_STREAMER_CLIENT_ID }}
-          INTEGRATION_TEST_DISCORD_BOT_LISTENER_TOKEN: ${{ secrets.INTEGRATION_TEST_DISCORD_BOT_LISTENER_TOKEN }}
+      - name: Run non-Discord app UX suite
+        working-directory: ui
+        run: npm run test:e2e -- --project=chromium --project=chromium-timing --project=chromium-youtube
       - name: Retain non-Discord UX failure diagnostics
         if: ${{ failure() }}
         uses: actions/upload-artifact@v7
@@ -144,6 +151,49 @@ jobs:
           name: full-app-ux-attempt-${{ github.run_attempt }}
           path: ui/test-results/
           retention-days: 7
+
+  e2e-discord:
+    name: Discord App UX
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    concurrency:
+      group: discord-live
+      queue: max
+    steps:
+      - name: Require a trusted PR
+        if: ${{ github.event_name == 'pull_request' && (github.event.pull_request.head.repo.full_name != github.repository || github.event.pull_request.user.login == 'dependabot[bot]') }}
+        run: |
+          echo "::error::Live Discord tests require repository secrets and cannot run on fork or Dependabot pull requests."
+          exit 1
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: ./ui/.nvmrc
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+      - name: Install libdave
+        run: |
+          sh scripts/install-libdave.sh "$RUNNER_TEMP/libdave"
+          printf 'PKG_CONFIG_PATH=%s/lib/pkgconfig\nLD_LIBRARY_PATH=%s/lib\n' "$RUNNER_TEMP/libdave" "$RUNNER_TEMP/libdave" >> "$GITHUB_ENV"
+      - name: Set up FFmpeg
+        uses: ./.github/actions/setup-ffmpeg
+      - name: Install dependencies
+        run: |
+          go mod download
+          npm ci --prefix ui
+          cd ui && npx playwright install --with-deps chromium
+      - name: Run live Discord app UX suite
+        working-directory: ui
+        run: npm run test:e2e -- --project=chromium-discord
+        env:
+          INTEGRATION_TEST_DISCORD_SERVER_ID: ${{ secrets.INTEGRATION_TEST_DISCORD_SERVER_ID }}
+          INTEGRATION_TEST_DISCORD_VOICE_CHANNEL_ID: ${{ secrets.INTEGRATION_TEST_DISCORD_VOICE_CHANNEL_ID }}
+          INTEGRATION_TEST_DISCORD_BOT_STREAMER_TOKEN: ${{ secrets.INTEGRATION_TEST_DISCORD_BOT_STREAMER_TOKEN }}
+          INTEGRATION_TEST_DISCORD_BOT_STREAMER_CLIENT_ID: ${{ secrets.INTEGRATION_TEST_DISCORD_BOT_STREAMER_CLIENT_ID }}
+          INTEGRATION_TEST_DISCORD_BOT_LISTENER_TOKEN: ${{ secrets.INTEGRATION_TEST_DISCORD_BOT_LISTENER_TOKEN }}
 
   lint:
     name: Frontend Lint
@@ -211,7 +261,7 @@ jobs:
   pr-checks:
     name: PR Checks
     if: ${{ always() }}
-    needs: [changes, go, e2e, lint, build, unit, docker]
+    needs: [changes, go, go-discord, e2e, e2e-discord, lint, build, unit, docker]
     runs-on: ubuntu-latest
     steps:
       - name: Require all selected checks to pass
