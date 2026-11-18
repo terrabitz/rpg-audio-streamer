@@ -305,10 +305,12 @@ type recordingNotifier struct {
 	tracks []Track
 }
 
-func (n *recordingNotifier) TrackProcessed(track Track) {
+func (n *recordingNotifier) SendEvent(_ string, payload any) error {
+	track := payload.(Track)
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	n.tracks = append(n.tracks, track)
+	return nil
 }
 
 func (n *recordingNotifier) received() []Track {

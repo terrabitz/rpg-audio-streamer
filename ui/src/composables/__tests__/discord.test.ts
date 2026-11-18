@@ -2,7 +2,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { nextTick } from 'vue'
 import { useWebSocketStore } from '@/stores/websocket'
-import { CommandRouter } from '@/websocket/router'
+import { EventHub } from '@/websocket/router'
 import { useDiscord } from '../discord'
 
 const api = vi.hoisted(() => ({
@@ -94,14 +94,14 @@ it('does not apply stale status snapshots or requests after disposal', async () 
 })
 
 it('applies pushed transitions, ignores older HTTP responses, and unsubscribes on disposal', async () => {
-  const router = new CommandRouter()
-  vi.spyOn(useWebSocketStore(), 'on').mockImplementation(router.on.bind(router))
+  const router = new EventHub()
+  vi.spyOn(useWebSocketStore(), 'onDiscordStatusChanged').mockImplementation(router.subscriptions.onDiscordStatusChanged)
   const discord = useDiscord('friday')
   let finish!: (value: unknown) => void
   api.get.mockImplementationOnce(() => new Promise(resolve => { finish = resolve }))
   const pending = discord.refresh()
   const push = (state: string, error?: string) => router.dispatch({
-    method: 'discordStatus', payload: { enabled: true, state, error },
+    event: 'discordStatusChanged', payload: { enabled: true, state, error },
   })
   push('connecting')
   expect(discord.status.value.state).toBe('connecting')

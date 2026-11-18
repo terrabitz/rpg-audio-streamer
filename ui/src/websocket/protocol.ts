@@ -36,7 +36,7 @@ export interface TrackStatusUpdate {
 }
 
 export interface MixerResult {
-  command: string
+  event: string
 }
 
 export interface Failure {
@@ -49,17 +49,17 @@ export interface Payloads {
   ping: unknown
   pong: unknown
   broadcast: unknown
-  syncRequest: Record<string, never>
-  syncTrack: PlaybackPatch
-  syncAll: Snapshot
-  removeTrack: TrackReference
+  playbackSyncRequested: Record<string, never>
+  trackPlaybackChanged: PlaybackPatch
+  playbackStateChanged: Snapshot
+  trackRemoved: TrackReference
   tableDeleted: Record<string, never>
-  mixSync: MixSnapshot
-  mixVolumes: MixVolumePatch
+  mixChanged: MixSnapshot
+  mixVolumesChanged: MixVolumePatch
   mixerReady: Record<string, never>
-  mixerAck: MixerResult
-  mixerError: MixerFailure
-  playbackError: Failure
-  trackStatus: TrackStatusUpdate
-  discordStatus: DiscordStatus
+  mixerApplied: MixerResult
+  mixerFailed: MixerFailure
+  playbackFailed: Failure
+  trackStatusChanged: TrackStatusUpdate
+  discordStatusChanged: DiscordStatus
 }

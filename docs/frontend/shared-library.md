@@ -18,7 +18,7 @@ preview playing at once. Resuming a paused preview continues from its current
 position and retains its loaded duration and playback region. Library previews
 reuse the HLS player (see [browser playback](../playback/browser-playback.md))
 without sending synchronization messages. The library opens a GM WebSocket
-only to receive [`trackStatus`](../playback/websocket-protocol.md) updates.
+only to receive [`trackStatusChanged`](../playback/websocket-protocol.md) updates.
 Preview state is cleared on leaving the library; it cannot become a table's
 playback state.
 

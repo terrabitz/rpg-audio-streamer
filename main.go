@@ -375,8 +375,15 @@ func startServer(ctx context.Context, cfg Config) error {
 		return fmt.Errorf("couldn't create server: %w", err)
 	}
 
-	// FIXME use cleaner shutdown handling
-	go hub.Run()
+	hubFinished := make(chan struct{})
+	go func() {
+		defer close(hubFinished)
+		hub.Run(runCtx)
+	}()
+	defer func() {
+		cancel()
+		<-hubFinished
+	}()
 
 	return srv.Start(runCtx)
 }

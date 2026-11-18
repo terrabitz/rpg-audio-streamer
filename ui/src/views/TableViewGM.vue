@@ -44,7 +44,7 @@ watch(snapshotMix, (mix, previous) => {
   if (mixerEnabled.value && wsStore.isConnected &&
       (mix.masterVolume !== previous.masterVolume ||
         JSON.stringify(mix.typeVolumes) !== JSON.stringify(previous.typeVolumes))) {
-    wsStore.sendMessage('mixVolumes', { typeVolumes: effectiveTypeVolumes() })
+    wsStore.sendEvent('mixVolumesChanged', { typeVolumes: effectiveTypeVolumes() })
   }
   saveMix()
 }, { flush: 'sync' })
@@ -81,7 +81,7 @@ function handleSyncAll(payload: Snapshot) {
   synchronized.value = true
   if (mixerSyncPending) {
     mixerSyncPending = false
-    wsStore.sendMessage('mixSync', {
+    wsStore.sendEvent('mixChanged', {
       tracks: adjustedTracks(),
       typeVolumes: effectiveTypeVolumes(),
     })
@@ -110,21 +110,21 @@ async function refreshTracks() {
 
 watch(() => wsStore.isConnected, (connected) => {
   synchronized.value = false
-  if (connected) wsStore.sendMessage('syncRequest', {})
+  if (connected) wsStore.sendEvent('playbackSyncRequested', {})
 })
 
 onMounted(async () => {
   subscriptions = [
-    wsStore.on('syncAll', handleSyncAll),
-    wsStore.on('mixerReady', () => {
+    wsStore.onPlaybackStateChanged(handleSyncAll),
+    wsStore.onMixerReady(() => {
       mixerEnabled.value = true
       mixerSyncPending = true
     }),
-    wsStore.on('mixerError', payload => { mixerError.value = payload.message }),
-    wsStore.on('mixerAck', payload => {
-      if (payload.command === 'mixSync') mixerError.value = ''
+    wsStore.onMixerFailed(payload => { mixerError.value = payload.message }),
+    wsStore.onMixerApplied(payload => {
+      if (payload.event === 'mixChanged') mixerError.value = ''
     }),
-    wsStore.on('playbackError', payload => { error.value = payload.message }),
+    wsStore.onPlaybackFailed(payload => { error.value = payload.message }),
   ]
   setTitle(tables.current?.name ?? 'Table')
   window.addEventListener('pagehide', flushMix)

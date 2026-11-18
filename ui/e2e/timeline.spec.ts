@@ -98,7 +98,7 @@ test('GM commits waveform marker drags only on release', async ({ page, browser 
   const regions: unknown[] = []
   page.on('websocket', socket => socket.on('framesent', frame => {
     const message = JSON.parse(frame.payload.toString())
-    if (message.method === 'syncTrack' && message.payload.playback) regions.push(message.payload.playback)
+    if (message.event === 'trackPlaybackChanged' && message.payload.playback) regions.push(message.payload.playback)
   }))
   await login(page)
   await uploadTrack(page, 'Release Markers', 'Music', 60)

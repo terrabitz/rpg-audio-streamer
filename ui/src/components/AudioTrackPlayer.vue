@@ -362,7 +362,7 @@ function updateDuration(duration: number) {
   updatePlaybackState({ duration })
   const ws = useWebSocketStore()
   if (audioStore.tableMix && audioStore.tracks[props.fileID]?.isPlaying && ws.isConnected) {
-    ws.sendMessage('syncTrack', { fileID: props.fileID, duration })
+    ws.sendEvent('trackPlaybackChanged', { fileID: props.fileID, duration })
   }
 }
 

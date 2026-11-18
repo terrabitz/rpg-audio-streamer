@@ -119,8 +119,9 @@ func TestYouTubeIntegration(t *testing.T) {
 
 type processedTracks chan musicprocessing.Track
 
-func (p processedTracks) TrackProcessed(track musicprocessing.Track) {
-	p <- track
+func (p processedTracks) SendEvent(_ string, payload any) error {
+	p <- payload.(musicprocessing.Track)
+	return nil
 }
 
 func youtubeIntegrationConfigFromEnv() (youtubeIntegrationConfig, error) {

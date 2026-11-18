@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -18,6 +17,7 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/terrabitz/rpg-audio-streamer/internal/auth"
 	"github.com/terrabitz/rpg-audio-streamer/internal/discord"
+	"github.com/terrabitz/rpg-audio-streamer/internal/events"
 	"github.com/terrabitz/rpg-audio-streamer/internal/livemixer"
 	"github.com/terrabitz/rpg-audio-streamer/internal/middlewares"
 	"github.com/terrabitz/rpg-audio-streamer/internal/musicprocessing"
@@ -35,19 +35,9 @@ type Authenticator interface {
 }
 
 type WSRegisterer interface {
+	events.Bus
 	Register(conn *websocket.Conn, token *auth.Token)
-	CloseTable(tableID string)
 	RevokePlayerAccess(tableID string)
-	RemoveTrack(tableID, trackID string)
-	SyncSettings(tableID string, patch TableSettingsPatch)
-}
-
-type Mixer interface {
-	Update(tableID string, payload json.RawMessage) error
-	Sync(tableID string, payload json.RawMessage) error
-	Volumes(tableID string, payload json.RawMessage) error
-	CloseTable(tableID string)
-	RemoveTrack(tableID, trackID string)
 }
 
 type DiscordController interface {
@@ -124,13 +114,6 @@ func New(cfg Config, logger *slog.Logger, auth Authenticator, store Store, hub W
 		if cfg.Discord.Token == "" {
 			return nil, fmt.Errorf("Discord streaming requires DISCORD_STREAMING_BOT_TOKEN")
 		}
-		consumer, ok := hub.(interface {
-			SetMixer(Mixer)
-			DiscordStatusChanged(string, discord.Status)
-		})
-		if !ok {
-			return nil, fmt.Errorf("Discord streaming requires a mixer-capable WebSocket hub")
-		}
 		mix, err := livemixer.New(mixerSampleRate, srv.mixerSource)
 		if err != nil {
 			return nil, fmt.Errorf("initialize live mixer: %w", err)
@@ -141,12 +124,21 @@ func New(cfg Config, logger *slog.Logger, auth Authenticator, store Store, hub W
 			return nil, err
 		}
 		srv.discord = bot
-		bot.SetStatusListener(consumer.DiscordStatusChanged)
+		bot.SetEventSender(hub)
 		srv.discordMix = newDiscordMixer(srv.mixer, srv)
-		consumer.SetMixer(srv.discordMix)
+		livemixer.Subscribe(hub, srv.discordMix)
 	}
 
 	return srv, nil
+}
+
+func (s *Server) sendEvent(w http.ResponseWriter, event string, payload any) bool {
+	if err := s.hub.SendEvent(event, payload); err != nil {
+		s.logger.Error("failed to send server event", "event", event, "error", err)
+		http.Error(w, "The change was saved, but live synchronization failed. Reload before retrying.", http.StatusServiceUnavailable)
+		return false
+	}
+	return true
 }
 
 func (s *Server) Start(ctx context.Context) error {

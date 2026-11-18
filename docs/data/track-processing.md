@@ -27,15 +27,15 @@ logged warning rather than failing the job. Failed processing records a
 remove staging. Server startup marks interrupted tasks failed and removes
 their partial files; tasks are not silently retried.
 
-Playback commands, mixer sources, and HTTP streams reject tracks that are not
+Playback events, mixer sources, and HTTP streams reject tracks that are not
 ready. The [processing UI](../frontend/track-processing.md) reflects these
 states without preventing reordering.
 
 ## Completion notifications
 
 After persisting a terminal status, the service notifies the hub through its
-`Notifier` dependency. The hub pushes
-[`trackStatus`](../playback/websocket-protocol.md) to every connected GM.
+`events.Sender` dependency using `SendEvent`. The hub pushes
+[`trackStatusChanged`](../playback/websocket-protocol.md) to every connected GM.
 Diagnostics are retained in SQLite and omitted from public player track
 responses. Browser handling of pushed updates, response races, and reconnects
 belongs to [client state](../frontend/state-management.md).

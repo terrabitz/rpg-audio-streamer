@@ -10,9 +10,21 @@ import (
 	"testing"
 	"time"
 
+	"github.com/terrabitz/rpg-audio-streamer/internal/events"
 	"github.com/terrabitz/rpg-audio-streamer/internal/livemixer"
 	"github.com/terrabitz/rpg-audio-streamer/internal/mixer"
 )
+
+type statusSender func(string, Status)
+
+func (s statusSender) SendEvent(event string, payload any) error {
+	if event != events.DiscordStatusChanged {
+		return errors.New("unexpected event: " + event)
+	}
+	update := payload.(events.TableEvent[Status])
+	s(update.TableID, update.Data)
+	return nil
+}
 
 func TestConnectionStreamsExistingMixAndReservesBotUntilDisconnect(t *testing.T) {
 	mix := testMix(t)
@@ -110,12 +122,12 @@ func TestTransportExitRestoresReconnectableErrorState(t *testing.T) {
 	service, _ := New(Config{Token: "test-only"}, testMix(t))
 	defer service.Close()
 	updates := make(chan Status, 4)
-	service.SetStatusListener(func(tableID string, status Status) {
+	service.SetEventSender(statusSender(func(tableID string, status Status) {
 		if tableID != "table" {
 			t.Errorf("status crossed tables: %s", tableID)
 		}
 		updates <- status
-	})
+	}))
 	read, write := io.Pipe()
 	defer read.Close()
 	done := make(chan struct{})
@@ -149,7 +161,7 @@ func TestStatusListenerReportsDisconnectAndRestoreFailure(t *testing.T) {
 	service, _ := New(Config{Token: "test-only"}, testMix(t))
 	defer service.Close()
 	updates := make(chan Status, 4)
-	service.SetStatusListener(func(_ string, status Status) { updates <- status })
+	service.SetEventSender(statusSender(func(_ string, status Status) { updates <- status }))
 	service.open = func(ctx context.Context, _ Config) (*transport, error) {
 		done := make(chan struct{})
 		go func() { <-ctx.Done(); close(done) }()
@@ -172,6 +184,69 @@ func TestStatusListenerReportsDisconnectAndRestoreFailure(t *testing.T) {
 				t.Fatalf("restore failure event lost diagnostics: %+v", update)
 			}
 		case <-time.After(time.Second):
+			t.Fatalf("missing %s event", state)
+		}
+	}
+}
+
+func TestStatusNotificationsDoNotBlockLifecycleAndKeepTransitionOrder(t *testing.T) {
+	service, _ := New(Config{Token: "test-only"}, testMix(t))
+	defer service.Close()
+	started := make(chan struct{})
+	release := make(chan struct{})
+	var released sync.Once
+	unblock := func() { released.Do(func() { close(release) }) }
+	defer unblock()
+	updates := make(chan string, 3)
+	service.SetEventSender(statusSender(func(_ string, status Status) {
+		if status.State == "connecting" {
+			close(started)
+			<-release
+		}
+		updates <- status.State
+	}))
+	service.open = func(ctx context.Context, _ Config) (*transport, error) {
+		done := make(chan struct{})
+		go func() { <-ctx.Done(); close(done) }()
+		return &transport{input: discardWriter{}, done: done}, nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	connected := make(chan error, 1)
+	go func() {
+		connected <- service.Connect(ctx, "table", Destination{GuildID: "1", ChannelID: "2"})
+	}()
+	select {
+	case <-started:
+	case <-ctx.Done():
+		t.Fatal("status notification did not start")
+	}
+	select {
+	case err := <-connected:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-ctx.Done():
+		t.Fatal("status notification blocked connection startup")
+	}
+	disconnected := make(chan error, 1)
+	go func() { disconnected <- service.Disconnect(ctx, "table") }()
+	select {
+	case err := <-disconnected:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-ctx.Done():
+		t.Fatal("status notification blocked disconnect")
+	}
+	unblock()
+	for _, state := range []string{"connecting", "connected", "disconnected"} {
+		select {
+		case update := <-updates:
+			if update != state {
+				t.Fatalf("status notification = %s; want %s", update, state)
+			}
+		case <-ctx.Done():
 			t.Fatalf("missing %s event", state)
 		}
 	}

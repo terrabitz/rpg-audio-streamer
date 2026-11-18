@@ -2,12 +2,14 @@ package websocket
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	"github.com/terrabitz/rpg-audio-streamer/internal/auth"
+	"github.com/terrabitz/rpg-audio-streamer/internal/events"
 )
 
 const (
@@ -16,13 +18,20 @@ const (
 	pingPeriod = 40 * time.Second
 )
 
+var (
+	ErrClientDisconnected = errors.New("client is disconnected")
+	ErrClientQueueFull    = errors.New("client send buffer is full")
+)
+
 type Client struct {
-	ID     string
-	hub    *Hub
-	conn   *websocket.Conn
-	send   chan []byte
-	Token  *auth.Token
-	closed bool
+	ID            string
+	hub           *Hub
+	conn          *websocket.Conn
+	send          chan []byte
+	ready         chan struct{}
+	Token         *auth.Token
+	closed        bool
+	subscriptions []func()
 }
 
 func NewClient(hub *Hub, conn *websocket.Conn, token *auth.Token) *Client {
@@ -31,8 +40,13 @@ func NewClient(hub *Hub, conn *websocket.Conn, token *auth.Token) *Client {
 		hub:   hub,
 		conn:  conn,
 		send:  make(chan []byte, 256),
+		ready: make(chan struct{}),
 		Token: token,
 	}
+}
+
+func (c *Client) metadata() events.Metadata {
+	return events.Metadata{TableID: c.Token.TableID, ClientID: c.ID, Role: c.Token.Role}
 }
 
 func (c *Client) Send(msg Message) error {
@@ -44,12 +58,12 @@ func (c *Client) Send(msg Message) error {
 	c.hub.clientsMu.RLock()
 	defer c.hub.clientsMu.RUnlock()
 	if c.closed {
-		return fmt.Errorf("client is disconnected")
+		return ErrClientDisconnected
 	}
 	select {
 	case c.send <- j:
 	default:
-		return fmt.Errorf("client send buffer is full")
+		return ErrClientQueueFull
 	}
 
 	return nil
@@ -57,7 +71,10 @@ func (c *Client) Send(msg Message) error {
 
 func (c *Client) ReadPump() {
 	defer func() {
-		c.hub.unregister <- c
+		select {
+		case c.hub.unregister <- c:
+		case <-c.hub.done:
+		}
 		c.conn.Close()
 	}()
 

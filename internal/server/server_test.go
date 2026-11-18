@@ -18,6 +18,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	"github.com/terrabitz/rpg-audio-streamer/internal/auth"
+	"github.com/terrabitz/rpg-audio-streamer/internal/events"
 	"github.com/terrabitz/rpg-audio-streamer/internal/middlewares"
 	"github.com/terrabitz/rpg-audio-streamer/internal/musicprocessing"
 	"github.com/terrabitz/rpg-audio-streamer/internal/youtube"
@@ -57,11 +58,9 @@ type mockWSRegisterer struct {
 	t *testing.T
 }
 
-func (m *mockWSRegisterer) CloseTable(string)                       {}
-func (m *mockWSRegisterer) RemoveTrack(string, string)              {}
-func (m *mockWSRegisterer) SyncSettings(string, TableSettingsPatch) {}
-func (m *mockWSRegisterer) RevokePlayerAccess(string)               {}
-func (m *mockWSRegisterer) TrackProcessed(Track)                    {}
+func (m *mockWSRegisterer) SendEvent(string, any) error      { return nil }
+func (m *mockWSRegisterer) RevokePlayerAccess(string)        {}
+func (m *mockWSRegisterer) On(string, events.Handler) func() { return func() {} }
 
 func (m *mockWSRegisterer) Register(conn *websocket.Conn, token *auth.Token) {
 	// For testing purposes, just verify the inputs are not nil

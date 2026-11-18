@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/terrabitz/rpg-audio-streamer/internal/events"
 )
 
 var ErrClosed = errors.New("music processing service is closed")
@@ -31,17 +32,12 @@ type Downloader interface {
 	Download(ctx context.Context, source, destination string) error
 }
 
-// Notifier observes tracks whose processing reached a terminal status.
-type Notifier interface {
-	TrackProcessed(Track)
-}
-
 type Service struct {
 	dir        string
 	logger     *slog.Logger
 	store      Store
 	downloader Downloader
-	notifier   Notifier
+	notifier   events.Sender
 	jobs       chan job
 	limit      chan struct{}
 	mu         sync.Mutex
@@ -54,7 +50,7 @@ type job struct {
 	deadline  time.Time
 }
 
-func New(dir string, logger *slog.Logger, store Store, downloader Downloader, notifier Notifier) *Service {
+func New(dir string, logger *slog.Logger, store Store, downloader Downloader, notifier events.Sender) *Service {
 	return &Service{dir: dir, logger: logger, store: store, downloader: downloader, notifier: notifier,
 		jobs: make(chan job, 16), limit: make(chan struct{}, 16)}
 }
@@ -229,7 +225,9 @@ func (s *Service) process(ctx context.Context, next job) {
 
 func (s *Service) notify(track Track, status, message string) {
 	track.Status, track.ProcessingError = status, message
-	s.notifier.TrackProcessed(track)
+	if err := s.notifier.SendEvent(events.TrackStatusChanged, track); err != nil {
+		s.logger.Error("failed to send track status event", "trackID", track.ID, "error", err)
+	}
 }
 
 func (s *Service) processAudio(ctx context.Context, next job) error {

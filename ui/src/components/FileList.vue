@@ -172,7 +172,7 @@ const playingTracks = computed(() => tracks.value.flatMap(track => {
 
 watch(smAndDown, () => { showNowPlaying.value = false })
 
-const stopTrackStatus = wsStore.on('trackStatus', (update) => {
+const stopTrackStatus = wsStore.onTrackStatusChanged((update) => {
   fileStore.applyTrackStatus(update)
   tables.tracks = tables.tracks.map(track => track.id === update.fileID ? withTrackStatus(track, update) : track)
 })
@@ -323,7 +323,7 @@ const handlePlay = (fileID: string) => {
   const state = audioStore.tracks[fileID]
   if (!state) return
 
-  wsStore.sendMessage('syncTrack', {
+  wsStore.sendEvent('trackPlaybackChanged', {
     fileID,
     isPlaying: !state.isPlaying,
     duration: state.duration,
@@ -360,7 +360,7 @@ function handleSettings(fileID: string, playback: PlaybackSettings) {
   if (!state) return
   audioStore.updateTrackState(fileID, { playback })
   if (!props.library && wsStore.isConnected) {
-    wsStore.sendMessage('syncTrack', {
+    wsStore.sendEvent('trackPlaybackChanged', {
       fileID, playback, duration: state.duration,
     })
   }
@@ -370,13 +370,13 @@ const handleVolume = (fileID: string, volume: number) => {
   audioStore.updateTrackState(fileID, { volume })
   const state = audioStore.tracks[fileID]
   if (!props.library && wsStore.isConnected && state?.isPlaying) {
-    wsStore.sendMessage('syncTrack', { fileID, volume, duration: state.duration })
+    wsStore.sendEvent('trackPlaybackChanged', { fileID, volume, duration: state.duration })
   }
 }
 
 const handleSeek = (fileID: string, time: number) => {
   if (!props.library && wsStore.isConnected) {
-    wsStore.sendMessage('syncTrack', { fileID, currentTime: time, duration: audioStore.tracks[fileID]?.duration })
+    wsStore.sendEvent('trackPlaybackChanged', { fileID, currentTime: time, duration: audioStore.tracks[fileID]?.duration })
   } else audioStore.seekTrack(fileID, time)
 }
 

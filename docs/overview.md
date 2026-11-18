@@ -36,7 +36,7 @@ flowchart LR
   YouTube --> YTDLP[yt-dlp]
   FFmpeg --> Uploads[HLS files on disk]
   API --> Uploads
-  Hub -.->|GM playback commands| Mix[Live table mixer]
+  Hub -.->|GM playback events| Mix[Live table mixer]
   Mix --> PCM[Standalone PCM core]
   Mix -->|Bounded HLS windows| FFmpeg
   Mix -.->|PCM subscription| Voice[Go Discord voice transport]
