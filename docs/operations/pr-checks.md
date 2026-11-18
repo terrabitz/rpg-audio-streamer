@@ -19,13 +19,25 @@ integration tests. Non-Discord Playwright projects run in their own job.
 Neither job receives Discord secrets or acquires the live Discord concurrency
 lock, so they can run alongside each other and the live checks.
 
+## Shared environment
+
+The local `setup-environment` composite action owns Node setup and optional
+backend, frontend, media, and Playwright installation for the Go, browser,
+frontend lint/build/coverage, and cache-warming jobs. Backend setup installs
+Go, Go modules, and libdave; frontend setup enables npm caching and installs
+the locked dependencies. Media setup installs yt-dlp and delegates FFmpeg
+installation and caching to `setup-ffmpeg`. Browser jobs also install Chromium
+and its system dependencies. Jobs select components independently;
+Node is available for frontend tooling and yt-dlp's JavaScript runtime.
+Shared-action changes select frontend lint and build checks.
+
 ## Default-branch caches
 
-The `warm-caches` workflow installs Go modules, frontend dependencies, and
-FFmpeg on pushes to `main`, and supports manual dispatch. It uses the same
-runner, dependency manifests, setup actions, and cache keys as the PR jobs,
-so new pull requests can restore the default branch's Go module, npm download,
-and compiled FFmpeg caches. It runs no tests and requires no Discord secrets.
+The `warm-caches` workflow uses `setup-environment` to install backend, frontend,
+and media dependencies on pushes to `main`, and supports manual dispatch.
+It uses the same runner, dependency manifests, setup actions, and cache keys as
+the PR jobs, so new pull requests can restore the default branch's Go module,
+npm download, and compiled FFmpeg caches. It runs no tests and requires no Discord secrets.
 These caches are immutable per key; dependency or FFmpeg build-input changes
 produce new entries.
 

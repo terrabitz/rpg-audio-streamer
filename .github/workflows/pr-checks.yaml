@@ -35,12 +35,14 @@ jobs:
               - 'sql/**'
               - 'sqlc.yaml'
               - 'Makefile'
+              - '.github/actions/**'
               - '.github/workflows/pr-checks.yaml'
             frontend:
               - 'ui/**'
               - 'scripts/**'
               - 'openapi.yaml'
               - 'Makefile'
+              - '.github/actions/**'
               - '.github/workflows/pr-checks.yaml'
             docker:
               - 'docker/**'
@@ -62,22 +64,9 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
+      - uses: ./.github/actions/setup-environment
         with:
-          go-version-file: go.mod
-      - uses: actions/setup-node@v7
-        with:
-          node-version-file: ./ui/.nvmrc
-      - name: Install yt-dlp
-        run: pipx install 'yt-dlp[default]'
-      - name: Install libdave
-        run: |
-          sh scripts/install-libdave.sh "$RUNNER_TEMP/libdave"
-          printf 'PKG_CONFIG_PATH=%s/lib/pkgconfig\nLD_LIBRARY_PATH=%s/lib\n' "$RUNNER_TEMP/libdave" "$RUNNER_TEMP/libdave" >> "$GITHUB_ENV"
-      - name: Set up FFmpeg
-        uses: ./.github/actions/setup-ffmpeg
-      - name: Install dependencies
-        run: go mod download
+          frontend: 'false'
       - name: Run offline Go tests and coverage
         run: make test-go
         env:
@@ -92,15 +81,10 @@ jobs:
       queue: max
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
+      - uses: ./.github/actions/setup-environment
         with:
-          go-version-file: go.mod
-      - name: Install libdave
-        run: |
-          sh scripts/install-libdave.sh "$RUNNER_TEMP/libdave"
-          printf 'PKG_CONFIG_PATH=%s/lib/pkgconfig\nLD_LIBRARY_PATH=%s/lib\n' "$RUNNER_TEMP/libdave" "$RUNNER_TEMP/libdave" >> "$GITHUB_ENV"
-      - name: Install dependencies
-        run: go mod download
+          frontend: 'false'
+          media: 'false'
       - name: Run live Discord connection integration
         run: go test -count=1 -race ./internal/discord -run '^TestLiveVoiceConnection$'
         env:
@@ -115,27 +99,9 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
+      - uses: ./.github/actions/setup-environment
         with:
-          go-version-file: go.mod
-      - uses: actions/setup-node@v7
-        with:
-          node-version-file: ./ui/.nvmrc
-          cache: npm
-          cache-dependency-path: ui/package-lock.json
-      - name: Install yt-dlp
-        run: pipx install 'yt-dlp[default]'
-      - name: Install libdave
-        run: |
-          sh scripts/install-libdave.sh "$RUNNER_TEMP/libdave"
-          printf 'PKG_CONFIG_PATH=%s/lib/pkgconfig\nLD_LIBRARY_PATH=%s/lib\n' "$RUNNER_TEMP/libdave" "$RUNNER_TEMP/libdave" >> "$GITHUB_ENV"
-      - name: Set up FFmpeg
-        uses: ./.github/actions/setup-ffmpeg
-      - name: Install dependencies
-        run: |
-          go mod download
-          npm ci --prefix ui
-          cd ui && npx playwright install --with-deps chromium
+          playwright: 'true'
       - name: Run non-Discord app UX suite
         working-directory: ui
         run: npm run test:e2e -- --project=chromium --project=chromium-timing --project=chromium-youtube
@@ -156,25 +122,9 @@ jobs:
       queue: max
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
+      - uses: ./.github/actions/setup-environment
         with:
-          go-version-file: go.mod
-      - uses: actions/setup-node@v7
-        with:
-          node-version-file: ./ui/.nvmrc
-          cache: npm
-          cache-dependency-path: ui/package-lock.json
-      - name: Install libdave
-        run: |
-          sh scripts/install-libdave.sh "$RUNNER_TEMP/libdave"
-          printf 'PKG_CONFIG_PATH=%s/lib/pkgconfig\nLD_LIBRARY_PATH=%s/lib\n' "$RUNNER_TEMP/libdave" "$RUNNER_TEMP/libdave" >> "$GITHUB_ENV"
-      - name: Set up FFmpeg
-        uses: ./.github/actions/setup-ffmpeg
-      - name: Install dependencies
-        run: |
-          go mod download
-          npm ci --prefix ui
-          cd ui && npx playwright install --with-deps chromium
+          playwright: 'true'
       - name: Run live Discord app UX suite
         working-directory: ui
         run: npm run test:e2e -- --project=chromium-discord
@@ -195,12 +145,10 @@ jobs:
         working-directory: ./ui
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: ./.github/actions/setup-environment
         with:
-          node-version-file: ./ui/.nvmrc
-          cache: npm
-          cache-dependency-path: ui/package-lock.json
-      - run: npm ci
+          backend: 'false'
+          media: 'false'
       - run: npm run lint:check
 
   build:
@@ -213,12 +161,10 @@ jobs:
         working-directory: ./ui
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: ./.github/actions/setup-environment
         with:
-          node-version-file: ./ui/.nvmrc
-          cache: npm
-          cache-dependency-path: ui/package-lock.json
-      - run: npm ci
+          backend: 'false'
+          media: 'false'
       - run: npm run build
 
   unit:
@@ -231,12 +177,10 @@ jobs:
         working-directory: ./ui
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: ./.github/actions/setup-environment
         with:
-          node-version-file: ./ui/.nvmrc
-          cache: npm
-          cache-dependency-path: ui/package-lock.json
-      - run: npm ci
+          backend: 'false'
+          media: 'false'
       - run: node --test e2e/discord-config.test.ts e2e/discord-listener.test.ts e2e/youtube-config.test.ts
       - run: npm run test:coverage
 

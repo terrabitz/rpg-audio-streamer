@@ -64,7 +64,14 @@ export PATH="$HOME/.local/ffmpeg/bin:$PATH"
 export LD_LIBRARY_PATH="$HOME/.local/ffmpeg/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 ```
 
-The Go and browser CI jobs use `.github/actions/setup-ffmpeg` to compile with this
+CI jobs use `.github/actions/setup-environment` for language and dependency
+installation. Its `backend`, `frontend`, and `media` inputs default to `'true'`;
+disable unneeded components per job. Set `playwright: 'true'` in browser jobs
+to install Chromium after frontend dependencies. Node is always installed.
+The cache warmer uses the default components without installing Chromium or
+running tests.
+
+Media setup delegates to `.github/actions/setup-ffmpeg` to compile with this
 script on cache misses and restore the whole installation on exact cache hits.
 Changing the source version, checksum, flags, or action invalidates the cache.
 The host build uses Ubuntu libraries; continue checking the packaged Debian image

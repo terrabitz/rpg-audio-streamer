@@ -1,0 +1,60 @@
+name: Set up CI environment
+description: Install the languages, dependencies, and native tools used by CI jobs.
+
+inputs:
+  backend:
+    description: Install Go, Go modules, and libdave.
+    default: 'true'
+  frontend:
+    description: Cache npm downloads and install frontend dependencies.
+    default: 'true'
+  media:
+    description: Install yt-dlp and set up cached FFmpeg.
+    default: 'true'
+  playwright:
+    description: Install Chromium and its system dependencies after frontend setup.
+    default: 'false'
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-go@v7
+      if: inputs.backend == 'true'
+      with:
+        go-version-file: go.mod
+    - uses: actions/setup-node@v7
+      with:
+        node-version-file: ./ui/.nvmrc
+        cache: ${{ inputs.frontend == 'true' && 'npm' || '' }}
+        cache-dependency-path: ui/package-lock.json
+    - name: Install yt-dlp
+      if: inputs.media == 'true'
+      shell: bash
+      run: pipx install 'yt-dlp[default]'
+    - name: Install libdave
+      if: inputs.backend == 'true'
+      shell: bash
+      working-directory: ${{ github.workspace }}
+      run: |
+        sh scripts/install-libdave.sh "$RUNNER_TEMP/libdave"
+        printf 'PKG_CONFIG_PATH=%s/lib/pkgconfig%s\nLD_LIBRARY_PATH=%s/lib%s\n' \
+          "$RUNNER_TEMP/libdave" "${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}" \
+          "$RUNNER_TEMP/libdave" "${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" >> "$GITHUB_ENV"
+    - name: Set up FFmpeg
+      if: inputs.media == 'true'
+      uses: ./.github/actions/setup-ffmpeg
+    - name: Install Go dependencies
+      if: inputs.backend == 'true'
+      shell: bash
+      working-directory: ${{ github.workspace }}
+      run: go mod download
+    - name: Install frontend dependencies
+      if: inputs.frontend == 'true'
+      shell: bash
+      working-directory: ${{ github.workspace }}/ui
+      run: npm ci
+    - name: Install Playwright Chromium
+      if: inputs.playwright == 'true'
+      shell: bash
+      working-directory: ${{ github.workspace }}/ui
+      run: npx playwright install --with-deps chromium
