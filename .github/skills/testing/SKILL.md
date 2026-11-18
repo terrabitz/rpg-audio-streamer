@@ -50,6 +50,24 @@ gate after focused checks. No documentation-only validation is needed.
 Mixer domain tests render known PCM buffers without sleeps; live-service tests
 own the render loop's context and bound waits for decoding and cancellation.
 
+### Container variants
+
+Build the default image with `docker build -f docker/Dockerfile -t rpg-audio-streamer:test .`.
+The experimental headless FFmpeg image is opt-in:
+`docker build -f docker/Dockerfile --build-arg FFMPEG_VARIANT=minimal -t rpg-audio-streamer:minimal .`.
+The default release workflow does not select this variant. Source builds require
+access to Debian's binary and source package repositories.
+
+Compare uncompressed layer totals, rather than Docker's combined compressed and
+unpacked storage accounting, using
+`docker history --human=false --format '{{.Size}}' IMAGE | awk '{sum+=$1} END {print sum}'`.
+Exercise uploads, HLS conversion, waveform generation, windowed PCM seeks, and
+Opus decoding with the candidate FFmpeg on `PATH`. Use an independently generated
+corpus for MP3, AAC/M4A, Opus/WebM, Vorbis/Ogg, FLAC, WAV, ALAC, and WMA; successful
+fixture encoding by the candidate alone does not establish input compatibility.
+Check the packaged downloader and Node runtime as well. A custom build's native
+codecs do not imply parity with Debian's optional external integrations.
+
 ### Live YouTube tests
 
 Both the Go music-processing integration test and the `chromium-youtube`

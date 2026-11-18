@@ -43,3 +43,14 @@ The Go executable and [libdave](../discord/voice-streaming.md) shared library ar
 stripped of debugging symbols, while libdave's licenses remain in the image.
 Application files receive their ownership when copied into the runtime rather
 than being duplicated into a later ownership-change layer.
+
+The default `FFMPEG_VARIANT=debian` uses Debian's full FFmpeg package. The opt-in
+`FFMPEG_VARIANT=minimal` builds FFmpeg and ffprobe from Debian's signed source
+packages with native codecs, MP3 encoding, OpenSSL-backed HTTPS, and virtual
+filter inputs. Its tools share the FFmpeg libraries instead of embedding
+duplicate copies. It omits optional external codec libraries, physical device
+capture, desktop, and hardware integrations. This avoids FFmpeg's graphics-driver
+and LLVM dependency tree, but does not preserve the full Debian feature set.
+Both variants use the same application, downloader, and libdave artifacts.
+The custom FFmpeg build includes its upstream license texts and uses
+LGPLv3-compatible configuration.
