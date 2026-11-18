@@ -52,9 +52,10 @@ replace testing the packaged image for ABI and runtime dependency compatibility.
 ## Live Discord validation
 
 The Go live voice connection test and the `chromium-discord` Playwright project
-run in dedicated jobs for trusted same-repository pull requests and manual
-dispatch. Fork and Dependabot pull requests fail those credentialed checks
-without access to repository secrets. Only these two jobs share the
+run in dedicated jobs for pull requests and manual dispatch. GitHub withholds
+repository secrets from fork and Dependabot pull requests; the live tests fail
+their configuration checks when required secrets are unavailable.
+Only these two jobs share the
 `discord-live` concurrency queue, serializing bot access across jobs and runs.
 The browser Discord job does not upload failure diagnostics.
 

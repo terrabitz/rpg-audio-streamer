@@ -165,9 +165,9 @@ live Discord connection test, non-Discord Playwright projects, and the
 `chromium-discord` Playwright project. Configure the five names above as
 repository secrets. Only the two live Discord jobs receive those secrets and
 share a concurrency group; offline Go and non-Discord browser tests run without
-that lock. Fork and Dependabot pull
-requests cannot access these secrets and fail the live checks rather than
-running untrusted code with them.
+that lock. GitHub withholds repository secrets from fork and Dependabot pull
+requests. The live tests fail their configuration checks when required secrets
+are unavailable.
 
 ## Coverage policy
 
