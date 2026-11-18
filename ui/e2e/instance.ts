@@ -34,7 +34,7 @@ export async function startApp(liveDiscord = false, youtubeFixture = false): Pro
       try {
         if (server && done) {
           server.kill('SIGTERM')
-          const timeout = setTimeout(() => server?.kill('SIGKILL'), 5000)
+          const timeout = setTimeout(() => server?.kill('SIGKILL'), 15_000)
           try { await done } finally { clearTimeout(timeout) }
         }
       } finally {
@@ -94,7 +94,13 @@ export async function startApp(liveDiscord = false, youtubeFixture = false): Pro
     server.stderr?.on('data', collect)
     done = new Promise((resolve, reject) => {
       server!.once('error', reject)
-      server!.once('exit', () => resolve())
+      server!.once('exit', (code, signal) => {
+        if (code === 0) {
+          resolve()
+          return
+        }
+        reject(new Error(`E2E API exited abnormally (code ${code}, signal ${signal})`))
+      })
     })
     void done.catch(() => {})
     await Promise.race([
@@ -104,9 +110,16 @@ export async function startApp(liveDiscord = false, youtubeFixture = false): Pro
     await verifyAPI(apiURL, secret)
     return { url: apiURL, scratch, logs: () => output, stop }
   } catch (error) {
-    await stop()
-    if (output) throw new Error(`E2E app startup failed:\n${output}`, { cause: error })
-    throw error
+    let failure = error
+    try {
+      await stop()
+    } catch (shutdownError) {
+      if (shutdownError !== error) {
+        failure = new AggregateError([error, shutdownError], 'E2E app startup and cleanup failed')
+      }
+    }
+    if (output) throw new Error(`E2E app startup failed:\n${output}`, { cause: failure })
+    throw failure
   }
 }
 

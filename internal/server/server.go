@@ -161,7 +161,7 @@ func (s *Server) Start(ctx context.Context) error {
 		defer close(shutdownDone)
 		select {
 		case <-ctx.Done():
-			shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+			shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
 			defer cancel()
 			if err := srv.Shutdown(shutdownCtx); err != nil {
 				s.logger.Error("HTTP shutdown failed", "error", err)
