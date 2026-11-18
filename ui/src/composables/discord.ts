@@ -1,4 +1,5 @@
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
+import { useWebSocketStore } from '@/stores/websocket'
 import {
   deleteApiV1TablesByTableIdDiscord,
   getApiV1TablesByTableIdDiscord,
@@ -23,7 +24,13 @@ export function useDiscord(tableID: string) {
   let revision = 0
   let selectionRevision = 0
   let disposed = false
-  let refreshing = false
+  let refreshRevision = 0
+  let statusRevision = 0
+  const ws = useWebSocketStore()
+  const stopStatus = ws.onDiscordStatusChanged(applyStatus)
+  const stopConnection = watch(() => ws.isConnected, connected => {
+    if (connected) void refresh()
+  }, { immediate: true })
 
   async function toggle() {
     if (loading.value || disposed || !status.value.enabled) return
@@ -88,6 +95,7 @@ export function useDiscord(tableID: string) {
 
   async function command(disconnecting: boolean) {
     const current = ++revision
+    const currentStatus = statusRevision
     loading.value = true
     error.value = ''
     try {
@@ -98,7 +106,7 @@ export function useDiscord(tableID: string) {
           ...options, body: { guildID: guildID.value, channelID: channelID.value },
         })
       if (!disposed && current === revision) {
-        status.value = data
+        if (currentStatus === statusRevision) applyStatus(data)
         dialog.value = false
       }
     } catch (cause) {
@@ -109,20 +117,25 @@ export function useDiscord(tableID: string) {
   }
 
   async function refresh() {
-    if (disposed || loading.value || refreshing) return
+    if (disposed) return
     const current = revision
-    refreshing = true
+    const request = ++refreshRevision
+    const currentStatus = statusRevision
     try {
       const { data } = await getApiV1TablesByTableIdDiscord<true>({ path: { tableID } })
-      if (!disposed && current === revision) {
-        status.value = data
-        if (data.error) error.value = data.error
+      if (!disposed && current === revision && request === refreshRevision && currentStatus === statusRevision) {
+        applyStatus(data)
       }
     } catch (cause) {
-      if (current === revision) report(cause, 'Unable to check the Discord connection.')
-    } finally {
-      refreshing = false
+      if (current === revision && request === refreshRevision && currentStatus === statusRevision) report(cause, 'Unable to check the Discord connection.')
     }
+  }
+
+  function applyStatus(update: DiscordStatus) {
+    if (disposed) return
+    statusRevision++
+    status.value = update
+    error.value = update.error ?? ''
   }
 
   function report(cause: unknown, fallback: string) {
@@ -132,6 +145,8 @@ export function useDiscord(tableID: string) {
 
   function dispose() {
     disposed = true
+    stopStatus()
+    stopConnection()
     revision++
     selectionRevision++
   }

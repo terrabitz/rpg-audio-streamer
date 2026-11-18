@@ -4,19 +4,12 @@ import (
 	"encoding/json"
 
 	"github.com/terrabitz/rpg-audio-streamer/internal/auth"
+	"github.com/terrabitz/rpg-audio-streamer/internal/events"
 )
 
-type Message struct {
-	Method   string          `json:"method"`
-	Payload  json.RawMessage `json:"payload"`
-	SenderID string          `json:"senderId"`
-}
-
 func (h *Hub) handlePing(payload json.RawMessage, c *Client) {
-	if err := c.Send(Message{
-		Method:  "pong",
-		Payload: payload,
-	}); err != nil {
+	h.notifyRaw(events.Ping, payload, c.metadata())
+	if err := c.sendEvent(events.Pong, payload); err != nil {
 		h.logger.Error("failed to send pong message", "error", err)
 	}
 }
@@ -26,15 +19,18 @@ func (h *Hub) handleBroadcast(payload json.RawMessage, c *Client) {
 		h.logger.Warn("unauthorized broadcast attempt", "role", c.Token.Role)
 		return
 	}
-
-	h.Broadcast(Message{
-		Method:   "broadcast",
-		SenderID: c.ID,
-		Payload:  payload,
-	}, ExceptClient(c), ToTable(c.Token.TableID))
+	message, err := newMessage(events.Broadcast, payload)
+	if err != nil {
+		h.logger.Error("failed to encode broadcast", "error", err)
+		return
+	}
+	message.SenderID = c.ID
+	if err := h.publish(message, c.metadata()); err != nil {
+		h.logger.Error("failed to broadcast", "error", err)
+	}
 }
 
-func (h *Hub) handleSyncRequest(payload json.RawMessage, c *Client) {
+func (h *Hub) handlePlaybackSyncRequested(_ Empty, c *Client) {
 	h.stateMu.Lock()
 	defer h.stateMu.Unlock()
 	settings, err := h.tableSettings(c.Token.TableID)
@@ -43,43 +39,59 @@ func (h *Hub) handleSyncRequest(payload json.RawMessage, c *Client) {
 		return
 	}
 	h.sendState(c.Token.TableID, settings, c.ID)
+	h.notify(events.PlaybackSyncRequested, Empty{}, c.metadata())
 }
 
-func (h *Hub) handleSyncTrack(payload json.RawMessage, c *Client) {
+func (h *Hub) handleTrackPlaybackChanged(payload PlaybackPatch, c *Client) {
 	if c.Token.Role != auth.RoleGM {
-		h.logger.Warn("unauthorized syncTrack command", "role", c.Token.Role)
+		h.logger.Warn("unauthorized track playback event", "role", c.Token.Role)
 		return
 	}
 	h.updatePlayback(payload, c)
 }
 
-func (h *Hub) handleMixSync(payload json.RawMessage, c *Client) {
-	if c.Token.Role != auth.RoleGM || h.mixer == nil {
+func (h *Hub) handleMixChanged(payload events.MixSnapshot, c *Client) {
+	if c.Token.Role != auth.RoleGM {
 		return
 	}
-	h.applyMixer(c, "mixSync", func() error { return h.mixer.Sync(c.Token.TableID, payload) })
+	h.notify(events.MixChanged, payload, c.metadata())
 }
 
-func (h *Hub) handleMixVolumes(payload json.RawMessage, c *Client) {
-	if c.Token.Role != auth.RoleGM || h.mixer == nil {
+func (h *Hub) handleMixVolumesChanged(payload events.MixVolumePatch, c *Client) {
+	if c.Token.Role != auth.RoleGM {
 		return
 	}
-	h.applyMixer(c, "mixVolumes", func() error { return h.mixer.Volumes(c.Token.TableID, payload) })
+	h.notify(events.MixVolumesChanged, payload, c.metadata())
 }
 
-func (h *Hub) applyMixer(c *Client, command string, apply func() error) {
-	method := "mixerAck"
-	message := ""
-	if err := apply(); err != nil {
-		h.logger.Error("mixer command failed", "command", command, "tableID", c.Token.TableID, "error", err)
-		method = "mixerError"
-		message = "Server mixing failed. Check the server logs and reconnect to retry."
+func (h *Hub) handleMixerReady(event events.ClientEvent[Empty], _ *Client) {
+	h.sendToClient(events.MixerReady, event.Data, event.TableID, event.ClientID)
+}
+
+func (h *Hub) handleMixerApplied(event events.ClientEvent[MixerResult], _ *Client) {
+	h.sendToClient(events.MixerApplied, event.Data, event.TableID, event.ClientID)
+}
+
+func (h *Hub) handleMixerFailed(event events.ClientEvent[MixerFailure], _ *Client) {
+	h.sendToClient(events.MixerFailed, event.Data, event.TableID, event.ClientID)
+}
+
+func (h *Hub) sendToClient(event string, payload any, tableID, clientID string) {
+	metadata := events.Metadata{TableID: tableID, TargetClientID: clientID}
+	if err := h.publishEvent(event, payload, metadata); err != nil {
+		h.logger.Error("failed to deliver client event", "event", event, "error", err)
 	}
-	payload, _ := json.Marshal(struct {
-		Command string `json:"command"`
-		Message string `json:"message,omitempty"`
-	}{Command: command, Message: message})
-	if err := c.Send(Message{Method: method, Payload: payload}); err != nil {
-		h.logger.Error("failed to report mixer command result", "error", err)
+}
+
+func (h *Hub) invalidEvent(event string, client *Client, err error) {
+	switch event {
+	case events.TrackPlaybackChanged:
+		h.playbackError(client, err)
+	case events.MixChanged, events.MixVolumesChanged:
+		if sendErr := client.sendEvent(events.MixerFailed, events.MixerFailure{
+			Event: event, Message: "Server mixing failed. Check the server logs and reconnect to retry.",
+		}); sendErr != nil {
+			h.logger.Error("failed to report invalid mixer event", "error", sendErr)
+		}
 	}
 }

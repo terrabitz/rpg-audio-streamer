@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"sync"
 	"testing"
 	"time"
 
@@ -88,6 +89,48 @@ func TestTrackLifecycle(t *testing.T) {
 	}
 }
 
+func TestConcurrentTrackProcessingAndPolling(t *testing.T) {
+	db, _ := migratedDatabase(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	types, err := db.GetTrackTypes(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var workers sync.WaitGroup
+	for range 24 {
+		workers.Go(func() {
+			track := server.Track{ID: uuid.New(), CreatedAt: time.Now().UTC().Truncate(time.Second),
+				Name: "Queued", TypeID: types[0].ID, Path: "/uploads/queued", Status: "processing"}
+			if err := db.SaveTrackToTable(ctx, &track, server.DefaultTableID); err != nil {
+				t.Error(err)
+				return
+			}
+			if err := db.SetTrackProcessing(ctx, track.ID, "ready", ""); err != nil {
+				t.Error(err)
+			}
+		})
+		workers.Go(func() {
+			if _, err := db.GetTracks(ctx); err != nil {
+				t.Error(err)
+			}
+			if _, err := db.GetTableTracks(ctx, server.DefaultTableID); err != nil {
+				t.Error(err)
+			}
+		})
+	}
+	workers.Wait()
+	tracks, err := db.GetTracks(ctx)
+	if err != nil || len(tracks) != 24 {
+		t.Fatalf("completed tracks = %d, %v", len(tracks), err)
+	}
+	for _, track := range tracks {
+		if !track.Ready() {
+			t.Errorf("track did not finish: %+v", track)
+		}
+	}
+}
+
 func TestSeededTrackTypes(t *testing.T) {
 	db, _ := migratedDatabase(t)
 	types, err := db.GetTrackTypes(context.Background())
@@ -145,6 +188,90 @@ func TestDatastoreCancellation(t *testing.T) {
 	}
 }
 
+func TestConcurrentTableReadsAndSettingsWrites(t *testing.T) {
+	db, _ := migratedDatabase(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	table, err := db.GetTable(ctx, server.DefaultTableID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	start := make(chan struct{})
+	results := make(chan error, 8)
+	for worker := range cap(results) {
+		go func() {
+			<-start
+			for range 25 {
+				var err error
+				if worker%2 == 0 {
+					volume := 50.0
+					_, err = db.UpdateTableSettings(ctx, table.ID, server.TableSettingsPatch{MasterVolume: &volume})
+				} else {
+					_, err = db.GetTableByExternalID(ctx, table.ExternalID)
+				}
+				if err != nil {
+					results <- err
+					return
+				}
+			}
+			results <- nil
+		}()
+	}
+	close(start)
+	for range cap(results) {
+		if err := <-results; err != nil {
+			t.Errorf("concurrent table access: %v", err)
+		}
+	}
+}
+
+func TestTrackProcessingPersistence(t *testing.T) {
+	db, path := migratedDatabase(t)
+	ctx := context.Background()
+	types, err := db.GetTrackTypes(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	track := server.Track{ID: uuid.New(), CreatedAt: time.Now().UTC().Truncate(time.Second),
+		Name: "Processing", TypeID: types[0].ID, Path: "/uploads/processing", Status: "processing"}
+	if err := db.SaveTrackToTable(ctx, &track, server.DefaultTableID); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := New(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.Close()
+	tracks, err := reopened.GetTableTracks(ctx, server.DefaultTableID)
+	if err != nil || len(tracks) != 1 || tracks[0].Status != "processing" {
+		t.Fatalf("persisted pending association = %+v, %v", tracks, err)
+	}
+	if err := reopened.SetTrackProcessing(ctx, track.ID, "failed", "Conversion failed"); err != nil {
+		t.Fatal(err)
+	}
+	got, err := reopened.GetTrackByID(ctx, track.ID)
+	if err != nil || got.Status != "failed" || got.ProcessingError != "Conversion failed" {
+		t.Fatalf("failed track = %+v, %v", got, err)
+	}
+	if err := reopened.SetTrackProcessing(ctx, track.ID, "ready", ""); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("terminal job changed status: %v", err)
+	}
+	track.ID, track.Status, track.ProcessingError = uuid.New(), "processing", ""
+	if err := reopened.SaveTrack(ctx, &track); err != nil {
+		t.Fatal(err)
+	}
+	if err := reopened.SetTrackProcessing(ctx, track.ID, "ready", ""); err != nil {
+		t.Fatal(err)
+	}
+	got, err = reopened.GetTrackByID(ctx, track.ID)
+	if err != nil || got.Status != "ready" || got.ProcessingError != "" {
+		t.Fatalf("ready track = %+v, %v", got, err)
+	}
+}
+
 func TestMigrationLifecycle(t *testing.T) {
 	db, err := New(filepath.Join(t.TempDir(), "migration.db"))
 	if err != nil {
@@ -162,7 +289,7 @@ func TestMigrationLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	version, err := m.Version()
-	if err != nil || version.Version != 7 || version.Dirty {
+	if err != nil || version.Version != 8 || version.Dirty {
 		t.Fatalf("version = %#v, %v", version, err)
 	}
 	if err := m.Up(); !errors.Is(err, migrate.ErrNoChange) {

@@ -1,4 +1,5 @@
 import { deleteApiV1FilesByTrackId, getApiV1Files, getApiV1FilesByTrackIdUsage, getApiV1FilesByTrackIdWaveform, postApiV1Files, putApiV1FilesByTrackId, type Track, type UpdateTrackRequest } from '@/client/apiClient'
+import type { TrackStatusUpdate } from '@/websocket/protocol'
 import { defineStore } from 'pinia'
 
 export class TrackUsageChangedError extends Error {
@@ -6,6 +7,12 @@ export class TrackUsageChangedError extends Error {
     super('Track table usage changed')
     this.name = 'TrackUsageChangedError'
   }
+}
+
+const unmatchedStatuses = new Map<string, TrackStatusUpdate>()
+
+export function withTrackStatus(track: Track, update: TrackStatusUpdate): Track {
+  return { ...track, status: update.status, processingError: update.processingError }
 }
 
 export const useFileStore = defineStore('files', {
@@ -19,9 +26,27 @@ export const useFileStore = defineStore('files', {
     }
   },
   actions: {
+    addTrack(track: Track) {
+      const update = unmatchedStatuses.get(track.id)
+      unmatchedStatuses.delete(track.id)
+      const added = update ? withTrackStatus(track, update) : track
+      this.tracks = [...this.tracks.filter(item => item.id !== track.id), added]
+      return added
+    },
+    applyTrackStatus(update: TrackStatusUpdate) {
+      const index = this.tracks.findIndex(track => track.id === update.fileID)
+      const track = this.tracks[index]
+      if (!track) {
+        // A processing notification can arrive before the upload response adds its track.
+        unmatchedStatuses.set(update.fileID, update)
+        return
+      }
+      this.tracks[index] = withTrackStatus(track, update)
+    },
     async fetchFiles() {
       try {
         const { data } = await getApiV1Files<true>()
+        unmatchedStatuses.clear()
         this.tracks = data
       } catch (error) {
         console.error('Error fetching files:', error)

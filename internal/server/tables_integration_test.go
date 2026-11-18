@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -17,17 +18,21 @@ import (
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	"github.com/terrabitz/rpg-audio-streamer/internal/auth"
+	"github.com/terrabitz/rpg-audio-streamer/internal/events"
+	"github.com/terrabitz/rpg-audio-streamer/internal/musicprocessing"
 	"github.com/terrabitz/rpg-audio-streamer/internal/server"
 	"github.com/terrabitz/rpg-audio-streamer/internal/sqlitedatastore"
+	"github.com/terrabitz/rpg-audio-streamer/internal/youtube"
 )
 
-type testWSRegisterer struct{}
+type testWSRegisterer struct {
+	err error
+}
 
-func (testWSRegisterer) Register(*websocket.Conn, *auth.Token)          {}
-func (testWSRegisterer) CloseTable(string)                              {}
-func (testWSRegisterer) RevokePlayerAccess(string)                      {}
-func (testWSRegisterer) RemoveTrack(string, string)                     {}
-func (testWSRegisterer) SyncSettings(string, server.TableSettingsPatch) {}
+func (testWSRegisterer) Register(*websocket.Conn, *auth.Token) {}
+func (h testWSRegisterer) SendEvent(string, any) error         { return h.err }
+func (testWSRegisterer) RevokePlayerAccess(string)             {}
+func (testWSRegisterer) On(string, events.Handler) func()      { return func() {} }
 
 func TestTableHTTP(t *testing.T) {
 	ctx := context.Background()
@@ -51,7 +56,10 @@ func TestTableHTTP(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	srv, err := server.New(server.Config{UploadDir: dir, DevMode: true}, logger, authenticator, db, testWSRegisterer{})
+	videos := youtube.New(logger)
+	hub := &testWSRegisterer{}
+	processing := musicprocessing.New(dir, logger, db, videos, hub)
+	srv, err := server.New(server.Config{UploadDir: dir, DevMode: true}, logger, authenticator, db, hub, processing, videos)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -119,6 +127,15 @@ func TestTableHTTP(t *testing.T) {
 	if initial.MasterVolume != 100 || initial.TrackOrder == nil || initial.TrackVolumes == nil || initial.TypeVolumes == nil {
 		t.Fatalf("default settings = %+v", initial)
 	}
+	hub.err = errors.New("event hub is closed")
+	rejected := request("PATCH", settingsPath, `{"masterVolume":0}`, "", true, http.StatusServiceUnavailable)
+	if !strings.Contains(rejected.Body.String(), "live synchronization failed") {
+		t.Fatalf("event failure was hidden: %s", rejected.Body)
+	}
+	if persisted := readSettings(request("GET", settingsPath, "", "", true, 200)); persisted.MasterVolume != 0 {
+		t.Fatal("event failure changed the outcome of the saved settings")
+	}
+	hub.err = nil
 	readSettings(request("PATCH", settingsPath, `{"masterVolume":0,"typeVolumes":{"Music":0,"Ambiance":60}}`, "", true, 200))
 	readSettings(request("PATCH", settingsPath, `{"typeVolumes":{"Ambiance":40}}`, "", true, 200))
 	saved := readSettings(request("GET", settingsPath, "", "", true, 200))
@@ -206,6 +223,31 @@ func TestTableHTTP(t *testing.T) {
 	var tracks []server.Track
 	if err := json.Unmarshal(list.Body.Bytes(), &tracks); err != nil || len(tracks) != 1 || tracks[0].ID != track.ID {
 		t.Fatalf("associated tracks = %v, %v", tracks, err)
+	}
+	const diagnostics = "Command:\nyt-dlp -- source\n\nLogs:\nERROR: blocked\n\nError:\nexit status 1"
+	failedTrack := server.Track{ID: uuid.New(), Name: "Failed import", TypeID: types[0].ID, CreatedAt: time.Now(),
+		Status: "failed", ProcessingError: diagnostics}
+	if err := db.SaveTrackToTable(ctx, &failedTrack, first.ID); err != nil {
+		t.Fatal(err)
+	}
+	for _, asGM := range []bool{false, true} {
+		rec := request("GET", firstPath+"/tracks", "", "", asGM, 200)
+		var listed []server.Track
+		if err := json.Unmarshal(rec.Body.Bytes(), &listed); err != nil || len(listed) != 2 {
+			t.Fatalf("failed track response = %s, %v", rec.Body, err)
+		}
+		var failed server.Track
+		for _, item := range listed {
+			if item.ID == failedTrack.ID {
+				failed = item
+			}
+		}
+		if failed.Status != "failed" || (asGM && failed.ProcessingError != diagnostics) || (!asGM && failed.ProcessingError != "") {
+			t.Fatalf("diagnostics visibility for GM=%v: %s", asGM, rec.Body)
+		}
+	}
+	if err := db.DeleteTrack(ctx, failedTrack.ID); err != nil {
+		t.Fatal(err)
 	}
 	stream := firstPath + "/stream/" + track.ID.String() + "/index.m3u8"
 	request("GET", stream, "", "", false, 200)

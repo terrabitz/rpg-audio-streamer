@@ -236,8 +236,12 @@ export async function uploadTrack(page: Page, name: string, typeName = 'Music', 
   await expect(page.getByText('Select a track type before uploading.', { exact: true })).toHaveCount(0)
   await expect(upload).toBeEnabled()
   await upload.click()
-  const toast = page.getByRole('status').filter({ hasText: 'File uploaded successfully!' })
+  const toast = page.getByRole('status').filter({ hasText: 'Track added' })
   await expect(toast).toBeVisible()
+  const item = new URL(page.url()).pathname === '/library'
+    ? page.getByRole('row').filter({ hasText: name })
+    : page.locator('.file-tile').filter({ hasText: name })
+  await expect(item).toHaveAttribute('aria-busy', 'false')
 }
 
 function audioFixture(frequency: number, duration: number) {

@@ -1,49 +1,62 @@
 <template>
   <template v-if="trackType">
     <slot name="activator" :open="openControls">
-      <div class="audio-control-tile" :class="{ 'is-active': isActive }">
+      <div class="audio-control-tile" :class="{ 'is-active': isActive }" :style="{ '--track-progress': `${progress}%` }">
+        <div v-if="available && audioState" class="tile-volume" aria-hidden="true"
+          :style="{ width: `${audioState.volume}%` }" />
+        <v-tooltip v-if="track?.status === 'processing'" activator="parent" text="Track is still processing" />
+        <v-tooltip v-else-if="failed" activator="parent" text="Processing failed. Click for details." />
         <span class="d-sr-only">Track type: {{ trackType.name }}</span>
         <div class="track-heading pa-2 text-subtitle-1 position-relative">
           <span :title="props.fileName">{{ props.fileName }}</span>
-          <v-btn icon="$dotsVertical" size="small" variant="text" :aria-label="`Edit ${props.fileName}`" @click.stop="openControls"
-            class="position-absolute top-0 right-0" />
+          <div class="track-menu-slot position-absolute top-0 right-0 d-flex align-center justify-center" @touchstart.stop>
+            <v-progress-circular v-if="track?.status === 'processing'" indeterminate size="18" width="2"
+              :aria-label="`Processing ${props.fileName}`" />
+            <v-btn v-else-if="failed" icon="$warning" size="small" variant="text"
+              :aria-label="`View processing failure for ${props.fileName}`" @click.stop="openControls" />
+            <v-btn v-else icon="$dotsVertical" size="small" variant="text" :aria-label="`Edit ${props.fileName}`"
+              @click.stop="openControls" />
+          </div>
         </div>
       </div>
     </slot>
 
-    <v-dialog v-model="showControls" max-width="480px" :persistent="isDeleting">
+    <v-dialog :model-value="showControls" :max-width="failed ? '800px' : '480px'" :persistent="isDeleting"
+      :aria-label="failed ? 'Track processing failed' : undefined"
+      @update:model-value="value => value ? showControls = true : closeControls()">
       <v-card>
         <v-card-title class="text-body-1">
           <v-btn icon="$close" size="small" variant="text" aria-label="Close track controls"
-            :disabled="isDeleting" @click="showControls = false" class="float-right" />
+            :disabled="isDeleting" @click="closeControls" class="float-right" />
+          <span v-if="failed">Processing failed: {{ props.fileName }}</span>
         </v-card-title>
         <v-card-text>
-          <v-alert v-if="error" type="error" class="mb-3">{{ error }}</v-alert>
-          <v-text-field v-model="editName" label="Track Name" variant="underlined" hide-details
-            class="pa-0 ma-0"></v-text-field>
-          <TrackTypeSelector v-model="editTrackType" />
-          <v-alert v-if="regionError" type="error" class="mb-3">{{ regionError }}</v-alert>
-          <TrackTimeline v-if="audioState" :model-value="editedPlayback" @update:model-value="previewPlayback" :duration="audioState.duration"
-            :current-time="audioState.currentTime" :name="props.fileName" :waveform="waveform"
-            show-play :is-playing="audioState.isPlaying"
-            :is-repeating="trackTypeStore.getTypeById(editTrackType)?.isRepeating"
-            :volume="props.library ? undefined : audioState.volume" :disabled="isSaving || isDeleting" class="mt-3"
-            @volume="$emit('volume', $event)" @seek="$emit('seek', $event)" @play="$emit('play')" />
+          <ErrorToast v-model="error" />
+          <pre v-if="failed" class="processing-diagnostics" tabindex="0" aria-label="Processing diagnostics"><code>{{ track?.processingError || 'No processing diagnostics are available.' }}</code></pre>
+          <template v-else>
+            <v-btn v-if="saveFailed" color="primary" variant="text" @click="saveTrackChanges">Retry saving</v-btn>
+            <v-text-field :model-value="editName" @update:model-value="changeName" label="Track Name" variant="underlined" hide-details
+              class="pa-0 ma-0"></v-text-field>
+            <TrackTypeSelector :model-value="editTrackType" @update:model-value="changeTrackType" />
+            <v-messages :messages="regionError" color="error" />
+            <TrackTimeline v-if="audioState && available" :model-value="editedPlayback" @update:model-value="previewPlayback" :duration="audioState.duration"
+              :current-time="audioState.currentTime" :seek-target="audioState.seekTarget" :seek-version="audioState.seekVersion"
+              :name="props.fileName" :waveform="waveform"
+              show-play :is-playing="audioState.isPlaying"
+              :is-repeating="trackTypeStore.getTypeById(editTrackType)?.isRepeating"
+              :volume="props.library ? undefined : audioState.volume" :disabled="isDeleting" class="mt-3"
+              @volume="$emit('volume', $event)" @seek="$emit('seek', $event)" @play="$emit('play')" />
+          </template>
         </v-card-text>
         <v-divider></v-divider>
         <v-card-actions>
-          <v-btn color="error" variant="text" prepend-icon="$delete" :loading="isDeleting && !showDeleteConfirmation"
-            :disabled="isSaving || isDeleting" :aria-label="props.library ? 'Delete track' : 'Remove from table'"
+          <v-btn color="error" :variant="failed ? 'flat' : 'text'" :block="failed" prepend-icon="$delete"
+            :loading="isDeleting && !showDeleteConfirmation"
+            :disabled="isSaving || isDeleting || (!failed && hasChanges)" :aria-label="deleteFromLibrary ? 'Delete track' : 'Remove from table'"
             @click="requestDelete">
-            {{ props.library ? 'Delete track' : 'Remove from table' }}
+            {{ deleteFromLibrary ? 'Delete track' : 'Remove from table' }}
           </v-btn>
-
-          <v-spacer />
-
-          <v-btn color="primary" variant="text" prepend-icon="$save" @click="saveTrackChanges" :loading="isSaving"
-            :disabled="!hasChanges || !!regionError || isDeleting">
-            Save Changes
-          </v-btn>
+          <v-spacer v-if="!failed" />
         </v-card-actions>
       </v-card>
     </v-dialog>
@@ -73,12 +86,13 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch, watchEffect } from 'vue';
 import type { PlaybackSettings, UpdateTrackRequest } from '@/client/apiClient';
-import { defaultPlayback, playbackError } from '@/composables/playback';
+import { defaultPlayback, playbackError, playbackRegion } from '@/composables/playback';
 import { useAudioStore } from '../stores/audio';
 import { TrackUsageChangedError, useFileStore } from '../stores/files';
 import { useTrackTypeStore } from '../stores/trackTypes';
 import TrackTypeSelector from './TrackTypeSelector.vue';
 import TrackTimeline from './TrackTimeline.vue';
+import ErrorToast from './ErrorToast.vue';
 
 const props = defineProps<{
   fileName: string
@@ -92,28 +106,54 @@ const trackTypeStore = useTrackTypeStore();
 const fileStore = useFileStore();
 
 const track = computed(() => fileStore.tracks.find(t => t.id === props.fileID));
+const available = computed(() => !track.value?.status || track.value.status === 'ready');
+const failed = computed(() => track.value?.status === 'failed');
+const deleteFromLibrary = computed(() => props.library || failed.value);
 const trackType = computed(() => track.value ? trackTypeStore.getTypeById(track.value.typeID) : null);
 const audioState = computed(() => audioStore.tracks[props.fileID]);
 
-const showControls = ref(false);
+const showControls = defineModel<boolean>({ default: false });
 const isSaving = ref(false);
 const isDeleting = ref(false);
 const showDeleteConfirmation = ref(false);
 const deleteTableCount = ref(0);
 const error = ref('');
+const saveFailed = ref(false);
 
 const isActive = computed(() => audioState.value?.isPlaying);
+const progress = computed(() => {
+  const state = audioState.value;
+  if (!state || state.duration <= 0) return 0;
+  const { start, end } = playbackRegion(state.playback, state.duration);
+  if (end <= start) return 0;
+  return Math.max(0, Math.min(100, (state.currentTime - start) / (end - start) * 100));
+});
 
 const editName = ref(props.fileName);
 const editTrackType = ref(trackType.value?.id || '');
 const editedPlayback = ref<PlaybackSettings>(defaultPlayback());
 const waveform = ref<number[]>();
-let hasPlaybackPreview = false;
+let saveTimer: ReturnType<typeof setTimeout> | undefined;
+let savePromise: Promise<void> | undefined;
+const pendingChanges = ref<Omit<UpdateTrackRequest, 'id'>>({});
 const regionError = computed(() => playbackError(editedPlayback.value, audioState.value?.duration));
+
+watch(track, value => {
+  if (!value) return;
+  if (pendingChanges.value.name === undefined) editName.value = value.name;
+  if (pendingChanges.value.typeID === undefined) editTrackType.value = value.typeID;
+  if (pendingChanges.value.playback === undefined) editedPlayback.value = { ...(value.playback ?? defaultPlayback()) };
+}, { deep: true });
 
 function openControls() {
   error.value = '';
-  if (props.library && track.value && !audioState.value) {
+  if (track.value) {
+    editName.value = track.value.name;
+    editTrackType.value = track.value.typeID;
+    editedPlayback.value = { ...(track.value.playback ?? defaultPlayback()) };
+    if (available.value) loadWaveform(track.value.id);
+  }
+  if (props.library && track.value && available.value && !audioState.value) {
     audioStore.initTrack(props.fileID, props.fileName, trackType.value?.name);
     audioStore.updateTrackState(props.fileID, {
       playback: track.value.playback ?? defaultPlayback(),
@@ -123,40 +163,47 @@ function openControls() {
   showControls.value = true;
 }
 
-// Computed property to check if there are any changes to save
-const hasChanges = computed(() => {
-  if (!track.value) return false;
-  return editName.value !== track.value.name || editTrackType.value !== track.value.typeID ||
-    JSON.stringify(editedPlayback.value) !== JSON.stringify(track.value.playback ?? defaultPlayback());
-});
+const hasChanges = computed(() => Object.keys(pendingChanges.value).length > 0);
 
-// Reset edit values when dialog opens
-watch(showControls, (open) => {
-  if (open && track.value) {
-    editName.value = track.value.name;
-    editTrackType.value = track.value.typeID;
-    editedPlayback.value = { ...(track.value.playback ?? defaultPlayback()) };
-    loadWaveform(track.value.id);
+async function closeControls() {
+  if (isDeleting.value) return;
+  if (failed.value) {
+    showControls.value = false;
+    return;
   }
-  if (!open) restorePlayback();
-});
+  await saveTrackChanges();
+  if (!saveFailed.value && !regionError.value && !hasChanges.value) showControls.value = false;
+}
+
+function changeName(name: string) {
+  editName.value = name;
+  pendingChanges.value.name = name;
+  scheduleSave();
+}
+
+function scheduleSave() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => { void saveTrackChanges(); }, 400);
+}
+
+function changeTrackType(typeID: string) {
+  editTrackType.value = typeID;
+  pendingChanges.value.typeID = typeID;
+  void saveTrackChanges();
+}
 
 function previewPlayback(playback: PlaybackSettings) {
   editedPlayback.value = playback;
+  pendingChanges.value.playback = { ...playback };
   if (regionError.value) return;
-  hasPlaybackPreview = true;
   emit('settings', { ...playback });
+  scheduleSave();
 }
 
-function restorePlayback() {
-  if (!hasPlaybackPreview) return;
-  hasPlaybackPreview = false;
-  if (track.value && audioState.value) {
-    emit('settings', { ...(track.value.playback ?? defaultPlayback()) });
-  }
-}
-
-onBeforeUnmount(restorePlayback);
+onBeforeUnmount(() => {
+  clearTimeout(saveTimer);
+  if (!failed.value && hasChanges.value && !saveFailed.value) void saveTrackChanges();
+});
 
 async function loadWaveform(trackID: string) {
   if (waveform.value) return;
@@ -170,7 +217,7 @@ async function loadWaveform(trackID: string) {
 
 async function requestDelete() {
   error.value = '';
-  if (!props.library) {
+  if (!deleteFromLibrary.value) {
     await confirmDelete(null);
     return;
   }
@@ -206,51 +253,35 @@ async function confirmDelete(expectedTableCount: number | null) {
     if (cause instanceof TrackUsageChangedError) {
       error.value = 'Table usage changed. Check the current count before deleting the track.';
     } else {
-      error.value = props.library ? 'Failed to delete track.' : 'Failed to remove track from table.';
+      error.value = deleteFromLibrary.value ? 'Failed to delete track.' : 'Failed to remove track from table.';
     }
   } finally {
     isDeleting.value = false;
   }
 }
 
-async function saveTrackChanges() {
-  error.value = ''
-  if (regionError.value) {
-    error.value = regionError.value;
-    return;
-  }
-  if (!track.value) {
-    console.warn('Cannot save track changes: track not found');
-    return;
-  }
+function saveTrackChanges(): Promise<void> {
+  clearTimeout(saveTimer);
+  if (savePromise) return savePromise;
+  savePromise = persistChanges().finally(() => { savePromise = undefined; });
+  return savePromise;
+}
 
+async function persistChanges() {
+  isSaving.value = true;
+  saveFailed.value = false;
+  error.value = '';
   try {
-    isSaving.value = true;
-
-    // Only update if values have changed
-    const updates: Omit<UpdateTrackRequest, 'id'> = {};
-
-    if (editName.value !== track.value.name) {
-      updates.name = editName.value;
-    }
-
-    if (editTrackType.value !== track.value.typeID) {
-      updates.typeID = editTrackType.value;
-    }
-    if (JSON.stringify(editedPlayback.value) !== JSON.stringify(track.value.playback ?? defaultPlayback())) {
-      updates.playback = editedPlayback.value;
-    }
-
-    // Only make API call if something has changed
-    if (Object.keys(updates).length > 0) {
+    while (hasChanges.value) {
+      if (!track.value) throw new Error('Track not found');
+      if (!editName.value.trim()) throw new Error('Track name cannot be empty');
+      if (regionError.value) throw new Error(regionError.value);
+      const updates = { ...pendingChanges.value };
       const updatedTrack = await fileStore.updateTrack(track.value.id, updates);
-      if (updatedTrack) {
-        emit('settings', updatedTrack.playback ?? defaultPlayback());
-        hasPlaybackPreview = false;
+      for (const key of ['name', 'typeID', 'playback'] as const) {
+        if (pendingChanges.value[key] === updates[key]) delete pendingChanges.value[key];
       }
-
-      // Update audio track state if track type changed (may affect isRepeating)
-      if (updates.typeID && updatedTrack) {
+      if (updates.typeID) {
         const newTrackType = trackTypeStore.getTypeById(updatedTrack.typeID);
         if (newTrackType) {
           audioStore.updateTrackState(props.fileID, {
@@ -260,12 +291,11 @@ async function saveTrackChanges() {
         }
       }
     }
-
-    // Close the dialog after successful save
-    showControls.value = false;
   } catch (cause) {
     console.error('Failed to update track:', cause);
-    error.value = 'Failed to update track.'
+    error.value = cause instanceof Error && cause.message === 'Track name cannot be empty'
+      ? cause.message : 'Failed to update track.';
+    saveFailed.value = true;
   } finally {
     isSaving.value = false;
   }
@@ -291,17 +321,49 @@ const emit = defineEmits<{
 </script>
 
 <style scoped>
+.processing-diagnostics {
+  max-height: 50dvh;
+  overflow: auto;
+  padding: 16px;
+  border-radius: 4px;
+  background: rgb(var(--v-theme-background));
+  font-family: monospace;
+  font-size: 0.8125rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
+.processing-diagnostics code {
+  font: inherit;
+}
+
 .audio-control-tile {
   height: 100%;
   position: relative;
   border: 2px solid v-bind('trackType?.color');
   border-radius: inherit;
+  background-image: linear-gradient(to right,
+    rgba(var(--v-theme-on-surface), 0.12) var(--track-progress),
+    transparent var(--track-progress));
   transition: background-color 0.3s ease;
   user-select: none;
 }
 
 .audio-control-tile.is-active {
   background-color: color-mix(in srgb, v-bind('trackType?.color') 40%, rgb(var(--v-theme-surface)));
+  background-image: linear-gradient(to right,
+    color-mix(in srgb, v-bind('trackType?.color') 70%, rgb(var(--v-theme-surface))) var(--track-progress),
+    transparent var(--track-progress));
+}
+
+.tile-volume {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  height: 2px;
+  background: white;
+  pointer-events: none;
 }
 
 .track-heading:hover {
@@ -319,6 +381,11 @@ const emit = defineEmits<{
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.track-menu-slot {
+  width: 36px;
+  height: 36px;
 }
 
 .position-absolute {

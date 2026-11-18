@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"math"
 	"runtime"
 	"sync/atomic"
@@ -25,12 +26,12 @@ func TestPartialCommandsChangeRenderedAudio(t *testing.T) {
 	assertSample(t, frames[12].Left, 0)
 	update(t, s, "table", `{"fileID":"tone","currentTime":3}`)
 	status := s.Status("table")
-	if status.Tracks[0].CurrentTime != 3 || !status.Tracks[0].IsPlaying {
+	if status.Tracks[0].CurrentTime != 1 || !status.Tracks[0].IsPlaying {
 		t.Fatalf("seek changed transport: %+v", status)
 	}
 	update(t, s, "table", `{"fileID":"tone","isPlaying":false}`)
 	s.Render("table", 6)
-	if s.Status("table").Tracks[0].CurrentTime != 3 {
+	if s.Status("table").Tracks[0].CurrentTime != 1 {
 		t.Fatal("paused cursor advanced")
 	}
 }
@@ -52,6 +53,78 @@ func TestSnapshotsVolumesAndTableIsolation(t *testing.T) {
 	s.RemoveTrack("", "tone")
 	if len(s.Status("second").Tracks) != 0 {
 		t.Fatal("deleted track retained")
+	}
+}
+
+func TestLiveSeekCrossfadesThePCMDeliveredToSubscribers(t *testing.T) {
+	s, err := New(2, func(context.Context, string, string) (Clip, error) {
+		frames := make([]mixer.Frame, 80)
+		for i := range frames {
+			frames[i].Left = float64(i) / 100
+		}
+		return Clip{Frames: frames}, nil
+	})
+	must(t, err)
+	update(t, s, "table", `{"fileID":"tone","isPlaying":true,"currentTime":10}`)
+	subscription, unsubscribe, err := s.Subscribe("table")
+	must(t, err)
+	defer unsubscribe()
+	update(t, s, "table", `{"fileID":"tone","currentTime":20}`)
+	frames := s.Render("table", 5)
+	for i, want := range []float64{0.20, 0.25, 0.30, 0.35, 0.40} {
+		assertSample(t, frames[i].Left, want)
+	}
+	var block []mixer.Frame
+	select {
+	case block = <-subscription.Frames():
+	default:
+		t.Fatal("seek audio was not delivered to the Discord PCM subscription")
+	}
+	for i := range frames {
+		assertSample(t, block[i].Left, frames[i].Left)
+	}
+	if got := s.Status("table").Tracks[0].CurrentTime; got != 20.5 {
+		t.Fatalf("seek did not land at the selected position: %v", got)
+	}
+	update(t, s, "table", `{"fileID":"tone","currentTime":5,"isPlaying":false}`)
+	assertSample(t, s.Render("table", 1)[0].Left, 0)
+	if got := s.Status("table").Tracks[0].CurrentTime; got != 5 {
+		t.Fatalf("paused seek advanced: %v", got)
+	}
+}
+
+func TestLiveSeekNearBeginningSendsTheFullOpeningToSubscribers(t *testing.T) {
+	for _, target := range []int{0, 1, 2} {
+		t.Run(fmt.Sprint(target), func(t *testing.T) {
+			s, err := New(2, func(context.Context, string, string) (Clip, error) {
+				frames := make([]mixer.Frame, 80)
+				for i := range frames {
+					frames[i].Left = float64(i) / 100
+				}
+				return Clip{Frames: frames}, nil
+			})
+			must(t, err)
+			update(t, s, "table", `{"fileID":"tone","isPlaying":true,"currentTime":10}`)
+			subscription, unsubscribe, err := s.Subscribe("table")
+			must(t, err)
+			defer unsubscribe()
+			update(t, s, "table", fmt.Sprintf(`{"fileID":"tone","currentTime":%d}`, target))
+			frames := s.Render("table", 5)
+			for i, want := range []float64{0.20, 0.16, 0.12, 0.08, 0.04} {
+				assertSample(t, frames[i].Left, want)
+			}
+			select {
+			case block := <-subscription.Frames():
+				for i := range frames {
+					assertSample(t, block[i].Left, frames[i].Left)
+				}
+			default:
+				t.Fatal("seek audio was not delivered to the Discord PCM subscription")
+			}
+			if got := s.Status("table").Tracks[0].CurrentTime; got != 2.5 {
+				t.Fatalf("seek continued at %v, want 2.5", got)
+			}
+		})
 	}
 }
 
@@ -95,14 +168,22 @@ func TestLiveRegionAndRepeatChangesDriveLoopBackAudio(t *testing.T) {
 	update(t, s, "table", `{"fileID":"tone","isPlaying":true}`)
 	update(t, s, "table", `{"fileID":"tone","isRepeating":true,"playback":{"startTime":1,"endTime":4,"loopBackTime":2},"currentTime":3.5}`)
 	frames := s.Render("table", 4)
-	for i, want := range []float64{0.35, 19.0 / 60, 17.0 / 60, 0.25} {
+	for i, want := range []float64{0.1, 7.0 / 60, 8.0 / 60, 9.0 / 60} {
 		assertSample(t, frames[i].Left, want)
 	}
 	update(t, s, "table", `{"fileID":"tone","isRepeating":false,"currentTime":4}`)
-	assertSample(t, s.Render("table", 1)[0].Left, 0)
+	s.Render("table", 7)
 	state := s.Status("table").Tracks[0]
-	if state.CurrentTime != 1 || state.IsPlaying {
-		t.Fatalf("end seek did not complete trimmed playback: %+v", state)
+	if state.CurrentTime != 13.0/6 || !state.IsPlaying {
+		t.Fatalf("end seek did not land before the trimmed tail: %+v", state)
+	}
+}
+
+func TestSnapshotInitializationPreservesTheFinalTailPosition(t *testing.T) {
+	s := testService(t)
+	must(t, s.Sync("table", json.RawMessage(`{"tracks":[{"fileID":"tone","currentTime":9,"isPlaying":true}]}`)))
+	if got := s.Status("table").Tracks[0].CurrentTime; got != 9 {
+		t.Fatalf("snapshot was clamped as a seek: %v", got)
 	}
 }
 
@@ -221,6 +302,29 @@ func TestRunRendersAndStopsOnCancellation(t *testing.T) {
 		}
 	default:
 		t.Fatal("renderer did not publish PCM")
+	}
+}
+
+func TestBlockClockRendersEveryBlockMissedDuringAStall(t *testing.T) {
+	start := time.Unix(0, 0)
+	clock := newBlockClock(start)
+	if due := clock.due(start.Add(19 * time.Millisecond)); due != 0 {
+		t.Fatalf("early wake rendered %d blocks", due)
+	}
+	if due := clock.due(start.Add(21 * time.Millisecond)); due != 1 {
+		t.Fatalf("steady tick rendered %d blocks", due)
+	}
+	if due := clock.due(start.Add(321 * time.Millisecond)); due != 15 {
+		t.Fatalf("300 ms stall rendered %d blocks, want 15", due)
+	}
+	if due := clock.due(start.Add(341 * time.Millisecond)); due != 1 {
+		t.Fatalf("tick after catching up rendered %d blocks", due)
+	}
+	if due := clock.due(start.Add(5 * time.Second)); due != maxCatchUpBlocks {
+		t.Fatalf("long stall rendered %d blocks, want bound %d", due, maxCatchUpBlocks)
+	}
+	if due := clock.due(start.Add(5*time.Second + 21*time.Millisecond)); due != 1 {
+		t.Fatalf("tick after a bounded catch-up rendered %d blocks", due)
 	}
 }
 

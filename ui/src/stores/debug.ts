@@ -4,7 +4,7 @@ import { ref } from 'vue'
 export const useDebugStore = defineStore('debug', () => {
   const isDevMode = ref(import.meta.env.VITE_DEV_MODE === 'true')
   const showDebugPanel = ref(false)
-  const devMethod = ref('')
+  const devEvent = ref('')
   const devPayload = ref('')
 
   function togglePanel() {
@@ -12,14 +12,14 @@ export const useDebugStore = defineStore('debug', () => {
   }
 
   function clearForm() {
-    devMethod.value = ''
+    devEvent.value = ''
     devPayload.value = ''
   }
 
   return {
     isDevMode,
     showDebugPanel,
-    devMethod,
+    devEvent,
     devPayload,
     togglePanel,
     clearForm

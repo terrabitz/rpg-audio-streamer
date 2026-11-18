@@ -7,11 +7,12 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
-	"strconv"
 	"sync"
 	"time"
 
 	"github.com/disgoorg/disgo/rest"
+	"github.com/terrabitz/rpg-audio-streamer/internal/domain"
+	"github.com/terrabitz/rpg-audio-streamer/internal/events"
 	"github.com/terrabitz/rpg-audio-streamer/internal/livemixer"
 	"github.com/terrabitz/rpg-audio-streamer/internal/mixer"
 )
@@ -27,39 +28,24 @@ type Config struct {
 	ChannelID string
 }
 
-type Destination struct {
-	GuildID     string `json:"guildID"`
-	ChannelID   string `json:"channelID"`
-	GuildName   string `json:"guildName,omitempty"`
-	ChannelName string `json:"channelName,omitempty"`
-}
+type Destination = domain.Destination
 
-func (d Destination) Validate() error {
-	if !snowflake(d.GuildID) || !snowflake(d.ChannelID) {
-		return fmt.Errorf("select a valid Discord server and voice channel")
-	}
-	return nil
-}
-
-type Status struct {
-	Enabled bool   `json:"enabled"`
-	State   string `json:"state"`
-	*Destination
-	Error string `json:"error,omitempty"`
-}
+type Status = domain.DiscordStatus
 
 type Service struct {
-	mu        sync.Mutex
-	cfg       Config
-	mix       *livemixer.Service
-	active    map[string]*session
-	status    map[string]Status
-	open      func(context.Context, Config) (*transport, error)
-	apiURL    string
-	http      *http.Client
-	apiMu     sync.Mutex
-	apiClient rest.Client
-	closeREST sync.Once
+	mu         sync.Mutex
+	cfg        Config
+	mix        *livemixer.Service
+	active     map[string]*session
+	status     map[string]Status
+	open       func(context.Context, Config) (*transport, error)
+	apiURL     string
+	http       *http.Client
+	apiMu      sync.Mutex
+	apiClient  rest.Client
+	closeREST  sync.Once
+	events     events.Sender
+	statusSent <-chan struct{}
 }
 
 type session struct {
@@ -90,6 +76,11 @@ func New(cfg Config, mix *livemixer.Service) (*Service, error) {
 			Transport: discordRateLimitTransport{http.DefaultTransport},
 		},
 	}, nil
+}
+
+// SetEventSender installs the hub before connections are accepted.
+func (s *Service) SetEventSender(sender events.Sender) {
+	s.events = sender
 }
 
 func (s *Service) Connect(ctx context.Context, tableID string, target Destination) error {
@@ -124,7 +115,7 @@ func (s *Service) Connect(ctx context.Context, tableID string, target Destinatio
 	runCtx, cancel := context.WithCancel(context.Background())
 	current := &session{tableID: tableID, target: target, ctx: runCtx, cancel: cancel, done: make(chan struct{}), ready: make(chan error, 1)}
 	s.active[tableID] = current
-	s.status[tableID] = Status{Enabled: true, State: "connecting", Destination: &current.target}
+	s.setStatus(tableID, Status{Enabled: true, State: "connecting", Destination: &current.target})
 	s.mu.Unlock()
 	go s.run(current)
 	select {
@@ -140,7 +131,7 @@ func (s *Service) Fail(tableID string, err error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.active[tableID] == nil {
-		s.status[tableID] = Status{Enabled: true, State: "error", Error: err.Error()}
+		s.setStatus(tableID, Status{Enabled: true, State: "error", Error: err.Error(), Destination: s.status[tableID].Destination})
 	}
 }
 
@@ -203,7 +194,7 @@ func (s *Service) run(current *session) {
 		if err != nil && !errors.Is(err, context.Canceled) {
 			status.State, status.Error = "error", err.Error()
 		}
-		s.status[current.tableID] = status
+		s.setStatus(current.tableID, status)
 	}
 	s.mu.Unlock()
 	if err != nil && !errors.Is(err, context.Canceled) {
@@ -238,7 +229,7 @@ func (s *Service) stream(current *session) error {
 	s.mu.Lock()
 	status := s.status[current.tableID]
 	status.State = "connected"
-	s.status[current.tableID] = status
+	s.setStatus(current.tableID, status)
 	s.mu.Unlock()
 	current.started.Do(func() { current.ready <- nil })
 	for {
@@ -276,15 +267,31 @@ func (s *Service) stream(current *session) error {
 	}
 }
 
-func snowflake(value string) bool {
-	if value == "" || len(value) > 20 || value[0] == '0' {
-		return false
+func (s *Service) setStatus(tableID string, status Status) {
+	s.status[tableID] = status
+	if s.events == nil {
+		return
 	}
-	for _, digit := range value {
-		if digit < '0' || digit > '9' {
-			return false
+	if status.Destination != nil {
+		destination := *status.Destination
+		status.Destination = &destination
+	}
+	sender := s.events
+	previous := s.statusSent
+	sent := make(chan struct{})
+	s.statusSent = sent
+	// Preserve transitions without running listeners under mu or delaying stream teardown.
+	go func() {
+		defer close(sent)
+		if previous != nil {
+			<-previous
 		}
-	}
-	_, err := strconv.ParseUint(value, 10, 64)
-	return err == nil
+		if err := sender.SendEvent(events.DiscordStatusChanged, events.TableEvent[Status]{TableID: tableID, Data: status}); err != nil {
+			slog.Error("failed to send Discord status event", "tableID", tableID, "error", err)
+		}
+	}()
+}
+
+func snowflake(value string) bool {
+	return domain.ValidDiscordID(value)
 }

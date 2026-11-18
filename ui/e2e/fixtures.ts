@@ -13,11 +13,12 @@ type TrackedPage = { page: Page; label: string; offsetMs: number }
 
 // In recording mode every page, including player pages from browser.newContext(),
 // is captured with its start offset so record.mjs can compose one time-aligned GIF per test.
-export const test = base.extend<{ app: AppInstance; recorder: void }>({
-  app: [async ({ browser }, use, testInfo) => {
+export const test = base.extend<{ app: AppInstance; recorder: void; youtubeFixture: boolean }>({
+  youtubeFixture: [false, { option: true }],
+  app: [async ({ browser, youtubeFixture }, use, testInfo) => {
     const existing = new Set(browser.contexts())
     const liveDiscord = testInfo.tags.includes('@discord')
-    const app = await startApp(liveDiscord)
+    const app = await startApp(liveDiscord, youtubeFixture)
     try {
       await use(app)
     } finally {

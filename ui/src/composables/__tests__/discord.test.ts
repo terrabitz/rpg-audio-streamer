@@ -1,4 +1,8 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
+import { createPinia, setActivePinia } from 'pinia'
+import { nextTick } from 'vue'
+import { useWebSocketStore } from '@/stores/websocket'
+import { EventHub } from '@/websocket/router'
 import { useDiscord } from '../discord'
 
 const api = vi.hoisted(() => ({
@@ -13,6 +17,7 @@ vi.mock('@/client/apiClient', () => ({
 }))
 
 beforeEach(() => {
+  setActivePinia(createPinia())
   api.get.mockResolvedValue({ data: { enabled: true, state: 'disconnected', guildID: '1', channelID: '2' } })
   api.connect.mockResolvedValue({ data: { enabled: true, state: 'connected', guildID: '1', channelID: '2' } })
   api.disconnect.mockResolvedValue({ data: { enabled: true, state: 'disconnected' } })
@@ -72,7 +77,7 @@ it('keeps connection errors visible and prevents duplicate commands', async () =
   expect(discord.loading.value).toBe(false)
 })
 
-it('does not apply stale status polling or requests after disposal', async () => {
+it('does not apply stale status snapshots or requests after disposal', async () => {
   const discord = useDiscord('friday')
   let finish!: (value: unknown) => void
   api.get.mockImplementationOnce(() => new Promise(resolve => { finish = resolve }))
@@ -86,6 +91,59 @@ it('does not apply stale status polling or requests after disposal', async () =>
   discord.dispose()
   await discord.toggle()
   expect(api.disconnect).not.toHaveBeenCalled()
+})
+
+it('applies pushed transitions, ignores older HTTP responses, and unsubscribes on disposal', async () => {
+  const router = new EventHub()
+  vi.spyOn(useWebSocketStore(), 'onDiscordStatusChanged').mockImplementation(router.subscriptions.onDiscordStatusChanged)
+  const discord = useDiscord('friday')
+  let finish!: (value: unknown) => void
+  api.get.mockImplementationOnce(() => new Promise(resolve => { finish = resolve }))
+  const pending = discord.refresh()
+  const push = (state: string, error?: string) => router.dispatch({
+    event: 'discordStatusChanged', payload: { enabled: true, state, error },
+  })
+  push('connecting')
+  expect(discord.status.value.state).toBe('connecting')
+  push('error', 'Voice lost')
+  expect(discord.error.value).toBe('Voice lost')
+  push('connected')
+  expect(discord.error.value).toBe('')
+  finish({ data: { enabled: true, state: 'disconnected' } })
+  await pending
+  expect(discord.status.value.state).toBe('connected')
+  push('disconnected')
+  expect(discord.status.value.state).toBe('disconnected')
+  discord.dispose()
+  push('connected')
+  expect(discord.status.value.state).toBe('disconnected')
+})
+
+it('fetches a snapshot on connection and reconnection without polling', async () => {
+  vi.useFakeTimers()
+  const ws = useWebSocketStore()
+  ws.isConnected = true
+  const discord = useDiscord('friday')
+  try {
+    await nextTick()
+    expect(api.get).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(10_000)
+    expect(api.get).toHaveBeenCalledTimes(1)
+    ws.isConnected = false
+    await nextTick()
+    ws.isConnected = true
+    await nextTick()
+    expect(api.get).toHaveBeenCalledTimes(2)
+    discord.dispose()
+    ws.isConnected = false
+    await nextTick()
+    ws.isConnected = true
+    await nextTick()
+    expect(api.get).toHaveBeenCalledTimes(2)
+  } finally {
+    discord.dispose()
+    vi.useRealTimers()
+  }
 })
 
 it('reports discovery and stream failures without exposing options when disabled', async () => {

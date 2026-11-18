@@ -11,20 +11,8 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/terrabitz/rpg-audio-streamer/internal/musicprocessing"
 )
-
-func TestWaveformFromSamples(t *testing.T) {
-	got := waveformFromSamples([]float32{0, 0.1, -0.5, 0.25, 0, 0}, 3)
-	if want := []float64{0.2, 1, 0}; !slices.Equal(got, want) {
-		t.Fatalf("peaks = %v; want %v", got, want)
-	}
-	if got := waveformFromSamples([]float32{0, 0}, 4); !slices.Equal(got, []float64{0, 0, 0, 0}) {
-		t.Fatalf("silent peaks = %v", got)
-	}
-	if got := waveformFromSamples(nil, 2); !slices.Equal(got, []float64{0, 0}) {
-		t.Fatalf("empty peaks = %v", got)
-	}
-}
 
 func TestRoutedWaveform(t *testing.T) {
 	ts := setupTestServer(t)
@@ -42,12 +30,12 @@ func TestRoutedWaveform(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("waveform = %d: %s", rec.Code, rec.Body)
 	}
-	var waveform Waveform
+	var waveform musicprocessing.Waveform
 	if err := json.Unmarshal(rec.Body.Bytes(), &waveform); err != nil {
 		t.Fatal(err)
 	}
 	peaks := waveform.Peaks
-	if len(peaks) != waveformPeaks || slices.Max(peaks) != 1 {
+	if len(peaks) != 400 || slices.Max(peaks) != 1 {
 		t.Fatalf("got %d peaks with maximum %v", len(peaks), slices.Max(peaks))
 	}
 	if quiet, loud := slices.Max(peaks[:len(peaks)/3]), slices.Min(peaks[len(peaks)*2/3:len(peaks)*9/10]); quiet > 0.05 || loud < 0.5 {
@@ -55,7 +43,7 @@ func TestRoutedWaveform(t *testing.T) {
 	}
 
 	cached := []byte(`{"peaks":[0.5,1]}`)
-	if err := os.WriteFile(filepath.Join(track.Path, waveformFile), cached, 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(track.Path, "waveform.json"), cached, 0600); err != nil {
 		t.Fatal(err)
 	}
 	rec = routedRequest(handler, http.MethodGet, "/api/v1/files/"+track.ID.String()+"/waveform", "", true)

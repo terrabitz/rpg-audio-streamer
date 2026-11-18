@@ -46,6 +46,11 @@ export function playbackError(settings: PlaybackSettings, duration = 0): string 
   return ''
 }
 
+export function seekLimit(settings: PlaybackSettings | undefined, duration: number) {
+  const { start, end } = playbackRegion(settings, duration)
+  return Math.max(start, end - 2)
+}
+
 export function playbackRegion(settings: PlaybackSettings | undefined, duration: number) {
   const start = settings?.startTime ?? 0
   const end = Math.min(settings?.endTime ?? duration, duration)

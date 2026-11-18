@@ -14,35 +14,37 @@ import (
 
 	gorilla "github.com/gorilla/websocket"
 	"github.com/terrabitz/rpg-audio-streamer/internal/auth"
+	"github.com/terrabitz/rpg-audio-streamer/internal/events"
+	"github.com/terrabitz/rpg-audio-streamer/internal/livemixer"
 	"github.com/terrabitz/rpg-audio-streamer/internal/server"
 )
 
 func TestMixerReceivesOnlyTableScopedGMCommands(t *testing.T) {
 	hub, clients := testHub()
 	mix := &testMixer{}
-	hub.SetMixer(mix)
+	t.Cleanup(livemixer.Subscribe(hub, mix))
 	tableID := server.DefaultTableID.String()
 	clients["gm"].Token.TableID = tableID
 	clients["player"].Token.TableID = tableID
-	send := func(sender, method, payload string) {
+	send := func(sender, event, payload string) {
 		t.Helper()
-		input, err := json.Marshal(Message{Method: method, Payload: json.RawMessage(payload)})
+		input, err := json.Marshal(Message{Event: event, Payload: json.RawMessage(payload)})
 		if err != nil {
 			t.Fatal(err)
 		}
 		hub.route(input, clients[sender])
 	}
-	send("player", "mixSync", `{"tracks":[]}`)
-	send("player", "mixVolumes", `{"typeVolumes":{}}`)
-	send("player", "syncTrack", `{"fileID":"rain"}`)
-	send("gm", "syncAll", `{"tracks":[],"to":"player"}`)
+	send("player", "mixChanged", `{"tracks":[]}`)
+	send("player", "mixVolumesChanged", `{"typeVolumes":{}}`)
+	send("player", "trackPlaybackChanged", `{"fileID":"rain"}`)
+	send("gm", "playbackStateChanged", `{"tracks":[],"to":"player"}`)
 	if len(mix.calls) != 0 {
 		t.Fatal("player or targeted listener sync changed mixer")
 	}
-	send("gm", "syncTrack", fmt.Sprintf(`{"fileID":%q,"volume":0}`, testTrackID))
-	send("gm", "mixVolumes", `{"typeVolumes":{"Music":0}}`)
-	send("gm", "mixSync", `{"tracks":[]}`)
-	send("gm", "syncAll", `{"tracks":[]}`)
+	send("gm", "trackPlaybackChanged", fmt.Sprintf(`{"fileID":%q,"volume":0}`, testTrackID))
+	send("gm", "mixVolumesChanged", `{"typeVolumes":{"Music":0}}`)
+	send("gm", "mixChanged", `{"tracks":[]}`)
+	send("gm", "playbackStateChanged", `{"tracks":[]}`)
 	want := []string{"update:" + tableID, "volumes:" + tableID, "sync:" + tableID}
 	if len(mix.calls) != len(want) {
 		t.Fatalf("calls: %v", mix.calls)
@@ -53,18 +55,18 @@ func TestMixerReceivesOnlyTableScopedGMCommands(t *testing.T) {
 		}
 	}
 	mix.err = errors.New("invalid seek")
-	send("gm", "syncTrack", fmt.Sprintf(`{"fileID":%q,"currentTime":1}`, testTrackID))
+	send("gm", "trackPlaybackChanged", fmt.Sprintf(`{"fileID":%q,"currentTime":1}`, testTrackID))
 	var last Message
 	for len(clients["gm"].send) > 0 {
 		if err := json.Unmarshal(<-clients["gm"].send, &last); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if last.Method != "mixerError" {
-		t.Fatalf("failed command was not reported: %+v", last)
+	if last.Event != "mixerFailed" {
+		t.Fatalf("failed event was not reported: %+v", last)
 	}
-	hub.RemoveTrack(tableID, testTrackID.String())
-	hub.CloseTable(tableID)
+	sendEvent(t, hub, events.TrackRemoved, events.TableEvent[events.TrackReference]{TableID: tableID, Data: events.TrackReference{FileID: testTrackID.String()}})
+	sendEvent(t, hub, events.TableDeleted, tableID)
 	if got := mix.calls[len(mix.calls)-2:]; got[0] != "remove:"+tableID+":"+testTrackID.String() || got[1] != "close:"+tableID {
 		t.Fatalf("cleanup: %v", got)
 	}
@@ -73,18 +75,22 @@ func TestMixerReceivesOnlyTableScopedGMCommands(t *testing.T) {
 func TestMixerStopsOnlyAfterLastGMLeaves(t *testing.T) {
 	hub, clients := testHub()
 	mix := &testMixer{}
-	hub.SetMixer(mix)
+	t.Cleanup(livemixer.Subscribe(hub, mix))
 	clients["gm"].Token.TableID = "friday"
 	clients["otherGM"].Token.TableID = "friday"
-	hub.clientsMu.Lock()
 	hub.dropClient(clients["gm"])
-	hub.clientsMu.Unlock()
 	if len(mix.calls) != 0 {
 		t.Fatal("one GM leaving stopped another GM's mix")
 	}
-	hub.clientsMu.Lock()
+	events.OnTableSessionEnded(hub, func(_ events.Empty, metadata events.Metadata) error {
+		hub.ForEachClient(func(client *Client) {
+			if client.Token.TableID == metadata.TableID && client.Token.Role == auth.RoleGM {
+				t.Error("table session ended with another GM connected")
+			}
+		})
+		return nil
+	})
 	hub.dropClient(clients["otherGM"])
-	hub.clientsMu.Unlock()
 	if len(mix.calls) != 1 || mix.calls[0] != "close:friday" {
 		t.Fatalf("last GM cleanup: %v", mix.calls)
 	}
@@ -116,21 +122,21 @@ func (m *testMixer) CloseTable(tableID string) {
 
 func TestMessageRouting(t *testing.T) {
 	for _, tc := range []struct {
-		name, sender, method, payload string
-		recipients                    []string
+		name, sender, event, payload string
+		recipients                   []string
 	}{
 		{"ping replies to sender", "player", "ping", `{"nonce":42}`, []string{"player"}},
 		{"GM broadcast excludes sender", "gm", "broadcast", `{"hello":"table"}`, []string{"otherGM", "player", "otherPlayer"}},
 		{"player cannot broadcast", "player", "broadcast", `{}`, nil},
-		{"missing target", "gm", "syncAll", `{"tracks":[],"to":"missing"}`, nil},
-		{"player cannot sync all", "player", "syncAll", `{"tracks":[]}`, nil},
-		{"invalid sync payload", "gm", "syncAll", `"not an object"`, nil},
-		{"player cannot sync track", "player", "syncTrack", `{}`, nil},
-		{"unknown method", "gm", "unknown", `{}`, nil},
+		{"missing target", "gm", "playbackStateChanged", `{"tracks":[],"to":"missing"}`, nil},
+		{"player cannot sync all", "player", "playbackStateChanged", `{"tracks":[]}`, nil},
+		{"invalid sync payload", "gm", "playbackStateChanged", `"not an object"`, nil},
+		{"player cannot sync track", "player", "trackPlaybackChanged", `{}`, nil},
+		{"unknown event", "gm", "unknown", `{}`, nil},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			hub, clients := testHub()
-			input, err := json.Marshal(Message{Method: tc.method, Payload: json.RawMessage(tc.payload)})
+			input, err := json.Marshal(Message{Event: tc.event, Payload: json.RawMessage(tc.payload)})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -149,14 +155,14 @@ func TestMessageRouting(t *testing.T) {
 					if err := json.Unmarshal(raw, &got); err != nil {
 						t.Fatal(err)
 					}
-					method := tc.method
-					if method == "ping" {
-						method = "pong"
+					event := tc.event
+					if event == "ping" {
+						event = "pong"
 					}
-					if got.Method != method || string(got.Payload) != tc.payload {
+					if got.Event != event || string(got.Payload) != tc.payload {
 						t.Errorf("message = %s", raw)
 					}
-					if method != "pong" && got.SenderID != tc.sender {
+					if event != "pong" && got.SenderID != tc.sender {
 						t.Errorf("sender = %q; want %q", got.SenderID, tc.sender)
 					}
 				default:
@@ -169,13 +175,8 @@ func TestMessageRouting(t *testing.T) {
 	}
 }
 
-func TestBroadcastFiltersAndSlowClients(t *testing.T) {
+func TestClientSubscriptionsAndSlowConsumers(t *testing.T) {
 	hub, clients := testHub()
-	visited := map[string]bool{}
-	hub.ForEachClient(func(c *Client) { visited[c.ID] = true }, ToPlayersOnly(), ExceptClient(clients["player"]))
-	if len(visited) != 1 || !visited["otherPlayer"] {
-		t.Fatalf("AND filters visited = %v", visited)
-	}
 	count := 0
 	hub.ForEachClient(func(c *Client) { count++ })
 	if count != 4 {
@@ -183,7 +184,7 @@ func TestBroadcastFiltersAndSlowClients(t *testing.T) {
 	}
 	slow := clients["player"]
 	slow.send = make(chan []byte)
-	if err := hub.Broadcast(Message{Method: "test", Payload: json.RawMessage(`{}`)}); err != nil {
+	if err := hub.publish(Message{Event: events.Broadcast, Payload: json.RawMessage(`{}`)}, events.Metadata{}); err != nil {
 		t.Fatal(err)
 	}
 	if _, ok := hub.clients[slow]; ok {
@@ -200,7 +201,7 @@ func TestBroadcastFiltersAndSlowClients(t *testing.T) {
 			t.Errorf("%s did not receive unfiltered broadcast", id)
 		}
 	}
-	if err := hub.Broadcast(Message{Payload: json.RawMessage(`invalid`)}); err == nil {
+	if err := hub.publish(Message{Payload: json.RawMessage(`invalid`)}, events.Metadata{}); err == nil {
 		t.Fatal("invalid JSON should fail to marshal")
 	}
 	if err := clients["gm"].Send(Message{Payload: json.RawMessage(`invalid`)}); err == nil {
@@ -220,13 +221,14 @@ func TestWebSocketClientPumps(t *testing.T) {
 			return
 		}
 		client := NewClient(hub, conn, &auth.Token{Role: auth.RolePlayer})
+		hub.addClient(client)
 		writerDone := make(chan struct{})
 		go func() {
 			client.WritePump()
 			close(writerDone)
 		}()
 		client.ReadPump()
-		close(client.send)
+		hub.dropClient(client)
 		<-writerDone
 		close(finished)
 	})
@@ -237,7 +239,7 @@ func TestWebSocketClientPumps(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer conn.Close()
-	if err := conn.WriteJSON(Message{Method: "ping", Payload: json.RawMessage(`"hello"`)}); err != nil {
+	if err := conn.WriteJSON(Message{Event: "ping", Payload: json.RawMessage(`"hello"`)}); err != nil {
 		t.Fatal(err)
 	}
 	conn.SetReadDeadline(time.Now().Add(3 * time.Second))
@@ -245,7 +247,7 @@ func TestWebSocketClientPumps(t *testing.T) {
 	if err := conn.ReadJSON(&response); err != nil {
 		t.Fatal(err)
 	}
-	if response.Method != "pong" || string(response.Payload) != `"hello"` {
+	if response.Event != "pong" || string(response.Payload) != `"hello"` {
 		t.Fatalf("response = %+v", response)
 	}
 	conn.Close()
@@ -266,15 +268,15 @@ func TestWebSocketClientPumps(t *testing.T) {
 
 func TestTableIsolation(t *testing.T) {
 	for _, tc := range []struct {
-		sender, method, payload string
+		sender, event, payload string
 	}{
 		{"gm", "broadcast", `{}`},
-		{"gm", "syncAll", `{"tracks":[]}`},
-		{"gm", "syncAll", `{"tracks":[],"to":"outsider"}`},
-		{"gm", "syncTrack", `{"fileID":"forest","isPlaying":true}`},
-		{"player", "syncRequest", `{}`},
+		{"gm", "playbackStateChanged", `{"tracks":[]}`},
+		{"gm", "playbackStateChanged", `{"tracks":[],"to":"outsider"}`},
+		{"gm", "trackPlaybackChanged", `{"fileID":"forest","isPlaying":true}`},
+		{"player", "playbackSyncRequested", `{}`},
 	} {
-		t.Run(tc.method+tc.payload, func(t *testing.T) {
+		t.Run(tc.event+tc.payload, func(t *testing.T) {
 			hub, clients := testHub()
 			for _, client := range clients {
 				client.Token.TableID = "friday"
@@ -284,7 +286,7 @@ func TestTableIsolation(t *testing.T) {
 			otherGM := NewClient(hub, nil, &auth.Token{Role: auth.RoleGM, TableID: "sunday"})
 			hub.clients[outsider] = true
 			hub.clients[otherGM] = true
-			input, err := json.Marshal(Message{Method: tc.method, Payload: json.RawMessage(tc.payload)})
+			input, err := json.Marshal(Message{Event: tc.event, Payload: json.RawMessage(tc.payload)})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -292,7 +294,7 @@ func TestTableIsolation(t *testing.T) {
 			if len(outsider.send) != 0 || len(otherGM.send) != 0 {
 				t.Fatal("message crossed table boundary")
 			}
-			if tc.method == "syncRequest" && len(clients["gm"].send) != 0 {
+			if tc.event == "playbackSyncRequested" && len(clients["gm"].send) != 0 {
 				t.Fatal("sync request was forwarded to a GM")
 			}
 		})
@@ -305,38 +307,38 @@ func TestTableDeletionAndTrackRemoval(t *testing.T) {
 	clients["player"].Token.TableID = "friday"
 	clients["otherGM"].Token.TableID = "sunday"
 	clients["otherPlayer"].Token.TableID = "sunday"
-	hub.RemoveTrack("friday", "forest")
+	sendEvent(t, hub, events.TrackRemoved, events.TableEvent[events.TrackReference]{TableID: "friday", Data: events.TrackReference{FileID: "forest"}})
 	for _, id := range []string{"gm", "player"} {
 		var message Message
 		if err := json.Unmarshal(<-clients[id].send, &message); err != nil {
 			t.Fatal(err)
 		}
-		if message.Method != "removeTrack" || string(message.Payload) != `{"fileID":"forest"}` {
+		if message.Event != "trackRemoved" || string(message.Payload) != `{"fileID":"forest"}` {
 			t.Fatalf("track removal = %+v", message)
 		}
 	}
 	if len(clients["otherPlayer"].send) != 0 {
 		t.Fatal("track removal crossed tables")
 	}
-	hub.CloseTable("friday")
+	sendEvent(t, hub, events.TableDeleted, "friday")
 	for _, id := range []string{"gm", "player"} {
 		client := clients[id]
 		if _, ok := hub.clients[client]; ok {
 			t.Fatal("deleted table client still registered")
 		}
 		var message Message
-		if err := json.Unmarshal(<-client.send, &message); err != nil || message.Method != "tableDeleted" {
+		if err := json.Unmarshal(<-client.send, &message); err != nil || message.Event != "tableDeleted" {
 			t.Fatalf("table deletion message = %+v, %v", message, err)
 		}
 		if _, open := <-client.send; open {
 			t.Fatal("deleted table send channel is open")
 		}
-		if err := client.Send(Message{Method: "ping"}); err == nil {
+		if err := client.Send(Message{Event: "ping"}); err == nil {
 			t.Fatal("disconnected client accepted direct message")
 		}
-		hub.route([]byte(`{"method":"syncRequest","payload":{}}`), client)
+		hub.route([]byte(`{"event":"playbackSyncRequested","payload":{}}`), client)
 	}
-	hub.RemoveTrack("", "forest")
+	sendEvent(t, hub, events.TrackRemoved, events.TableEvent[events.TrackReference]{TableID: "", Data: events.TrackReference{FileID: "forest"}})
 	if len(clients["otherPlayer"].send) != 1 {
 		t.Fatal("library deletion did not reach other table")
 	}
@@ -351,6 +353,7 @@ func TestRevokePlayerAccessDisconnectsOnlyPlayersInTable(t *testing.T) {
 		}
 	}
 	hub.RevokePlayerAccess("friday")
+	hub.route([]byte(`{"event":"ping","payload":{}}`), clients["player"])
 	for id, client := range clients {
 		_, registered := hub.clients[client]
 		disconnected := client.closed
@@ -380,7 +383,14 @@ func testHub() (*Hub, map[string]*Client) {
 		client := NewClient(hub, nil, &auth.Token{Role: role})
 		client.ID = id
 		clients[id] = client
-		hub.clients[client] = true
+		hub.addClient(client)
 	}
 	return hub, clients
+}
+
+func sendEvent(t *testing.T, hub *Hub, event string, payload any) {
+	t.Helper()
+	if err := hub.SendEvent(event, payload); err != nil {
+		t.Fatal(err)
+	}
 }

@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/terrabitz/rpg-audio-streamer/internal/auth"
+	"github.com/terrabitz/rpg-audio-streamer/internal/events"
 )
 
 func (s *Server) handleTables(w http.ResponseWriter, r *http.Request, token *auth.Token) {
@@ -94,7 +95,9 @@ func (s *Server) handleTable(w http.ResponseWriter, r *http.Request, token *auth
 			s.tableError(w, err)
 			return
 		}
-		s.hub.CloseTable(id.String())
+		if !s.sendEvent(w, events.TableDeleted, id.String()) {
+			return
+		}
 		w.WriteHeader(http.StatusNoContent)
 	default:
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -114,6 +117,11 @@ func (s *Server) handleTableTracks(w http.ResponseWriter, r *http.Request, token
 	if err != nil {
 		s.tableError(w, err)
 		return
+	}
+	if token.Role != auth.RoleGM {
+		for i := range tracks {
+			tracks[i].ProcessingError = ""
+		}
 	}
 	respondJSON(w, http.StatusOK, tracks)
 }
@@ -142,7 +150,11 @@ func (s *Server) handleTableTrack(w http.ResponseWriter, r *http.Request, token 
 		return
 	}
 	if r.Method == http.MethodDelete {
-		s.hub.RemoveTrack(id.String(), trackID.String())
+		if !s.sendEvent(w, events.TrackRemoved, events.TableEvent[events.TrackReference]{
+			TableID: id.String(), Data: events.TrackReference{FileID: trackID.String()},
+		}) {
+			return
+		}
 	}
 	w.WriteHeader(http.StatusNoContent)
 }

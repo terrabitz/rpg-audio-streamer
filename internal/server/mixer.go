@@ -39,6 +39,9 @@ func (s *Server) mixerSource(ctx context.Context, tableID, fileID string) (livem
 	if err != nil {
 		return livemixer.Clip{}, err
 	}
+	if !track.Ready() {
+		return livemixer.Clip{}, fmt.Errorf("track is not ready for playback")
+	}
 	trackType, err := s.store.GetTrackTypeByID(ctx, track.TypeID)
 	if err != nil {
 		return livemixer.Clip{}, err

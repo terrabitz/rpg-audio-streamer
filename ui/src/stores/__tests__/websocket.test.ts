@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
+import { nextTick, watch } from 'vue'
 import { useWebSocketStore } from '../websocket'
 
 beforeEach(() => {
@@ -28,13 +29,13 @@ describe('WebSocket transport', () => {
     expect(latestSocket().url).toBe(`ws://${window.location.host}/api/v1/ws`)
     await ws.connect()
     expect(TestSocket.instances).toHaveLength(1)
-    ws.sendMessage('ping', { nonce: 42 })
+    ws.sendEvent('ping', { nonce: 42 })
     expect(latestSocket().sent).toEqual([
-      JSON.stringify({ method: 'ping', payload: { nonce: 42 } }),
+      JSON.stringify({ event: 'ping', payload: { nonce: 42 } }),
     ])
     expect(ws.messageHistory).toEqual([
       expect.objectContaining({
-        method: 'ping',
+        event: 'ping',
         payload: { nonce: 42 },
         direction: 'sent',
         timestamp: expect.any(Number),
@@ -44,7 +45,7 @@ describe('WebSocket transport', () => {
     expect(ws.isConnected).toBe(false)
     expect(latestSocket().close).toHaveBeenCalledWith(1000, 'Client disconnected')
     ws.disconnect()
-    expect(() => ws.sendMessage('ping', {})).toThrow('WebSocket is not connected')
+    expect(() => ws.sendEvent('ping', {})).toThrow('WebSocket is not connected')
   })
 
   it('uses secure sockets and encodes the public table ID', async () => {
@@ -55,20 +56,38 @@ describe('WebSocket transport', () => {
     ws.disconnect()
   })
 
+  it('notifies history observers for sending, receiving, and clearing messages', async () => {
+    const ws = useWebSocketStore()
+    const lengths: number[] = []
+    const stop = watch(() => ws.messageHistory.length, length => lengths.push(length))
+    await openSocket(ws)
+    ws.sendEvent('ping', { nonce: 0 })
+    await nextTick()
+    latestSocket().onmessage?.(new MessageEvent('message', {
+      data: '{"event":"pong","payload":{"nonce":0}}',
+    }))
+    await nextTick()
+    ws.clearMessageHistory()
+    await nextTick()
+    expect(lengths).toEqual([1, 2, 0])
+    stop()
+    ws.disconnect()
+  })
+
   it('dispatches incoming messages, unregisters handlers, and clears history', async () => {
     const ws = useWebSocketStore()
     const first = vi.fn()
     const second = vi.fn()
-    ws.addMessageHandler(first)
-    ws.addMessageHandler(second)
+    const unsubscribe = ws.onTrackRemoved(first)
+    ws.onTrackRemoved(second)
     await openSocket(ws)
-    const message = { method: 'syncTrack', senderId: 'gm', payload: { fileID: 'rain' } }
+    const message = { event: 'trackRemoved', senderId: 'gm', payload: { fileID: 'rain' } }
     latestSocket().onmessage?.(new MessageEvent('message', { data: JSON.stringify(message) }))
-    expect(first).toHaveBeenCalledWith(message)
-    expect(second).toHaveBeenCalledWith(message)
+    expect(first).toHaveBeenCalledWith(message.payload, message)
+    expect(second).toHaveBeenCalledWith(message.payload, message)
     expect(ws.messageHistory[0]).toMatchObject({ ...message, direction: 'received' })
-    ws.removeMessageHandler(first)
-    ws.removeMessageHandler(first)
+    unsubscribe()
+    unsubscribe()
     latestSocket().onmessage?.(new MessageEvent('message', { data: JSON.stringify(message) }))
     expect(first).toHaveBeenCalledTimes(1)
     expect(second).toHaveBeenCalledTimes(2)
@@ -82,12 +101,32 @@ describe('WebSocket transport', () => {
 
   it('rejects connection failures and cannot send before connecting', async () => {
     const ws = useWebSocketStore()
-    expect(() => ws.sendMessage('ping', {})).toThrow('WebSocket is not connected')
+    expect(() => ws.sendEvent('ping', {})).toThrow('WebSocket is not connected')
     const pending = ws.connect()
     const error = new Event('error')
     latestSocket().onerror?.(error)
     await expect(pending).rejects.toBe(error)
     expect(ws.isConnected).toBe(false)
+  })
+
+  it('rejects malformed message envelopes and allows arbitrary debug commands', async () => {
+    const ws = useWebSocketStore()
+    const handler = vi.fn()
+    ws.onTrackRemoved(handler)
+    await openSocket(ws)
+    for (const message of [
+      { event: 'trackRemoved' },
+      { event: 42, payload: {} },
+      { event: 'trackRemoved', senderId: 42, payload: { fileID: 'rain' } },
+    ]) {
+      latestSocket().onmessage?.(new MessageEvent('message', { data: JSON.stringify(message) }))
+    }
+    expect(handler).not.toHaveBeenCalled()
+    expect(ws.messageHistory).toEqual([])
+    ws.sendDebugEvent('custom', { value: 0 })
+    expect(latestSocket().sent).toEqual(['{"event":"custom","payload":{"value":0}}'])
+    expect(ws.messageHistory).toHaveLength(1)
+    ws.disconnect()
   })
 
   it('reconnects abnormal closures after the retry interval with the same table ID', async () => {
@@ -123,8 +162,8 @@ describe('WebSocket transport', () => {
     await next
     expect(latestSocket().url).toContain('?tableID=sunday')
     const handler = vi.fn()
-    ws.addMessageHandler(handler)
-    previous.onmessage?.(new MessageEvent('message', { data: '{"method":"syncTrack","payload":{}}' }))
+    ws.onTrackRemoved(handler)
+    previous.onmessage?.(new MessageEvent('message', { data: '{"event":"trackPlaybackChanged","payload":{}}' }))
     previous.onerror?.(new Event('error'))
     previous.onclose?.(new CloseEvent('close', { code: 1006, wasClean: false }))
     expect(handler).not.toHaveBeenCalled()

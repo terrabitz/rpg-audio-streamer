@@ -76,6 +76,22 @@ export type Track = {
     path: string;
     typeID: string;
     playback?: PlaybackSettings;
+    status?: 'ready' | 'processing' | 'failed';
+    processingError?: string;
+};
+
+export type VideoMetadata = {
+    url: string;
+    name: string;
+    /**
+     * Duration in seconds.
+     */
+    duration: number;
+    /**
+     * Selected audio download size, or null when unavailable.
+     */
+    sizeBytes: number | null;
+    sizeEstimated: boolean;
 };
 
 /**
@@ -731,10 +747,107 @@ export type PostApiV1FilesErrors = {
 
 export type PostApiV1FilesResponses = {
     /**
-     * File uploaded successfully
+     * File received and track queued for background processing
      */
-    200: unknown;
+    202: Track;
 };
+
+export type PostApiV1FilesResponse = PostApiV1FilesResponses[keyof PostApiV1FilesResponses];
+
+export type PostApiV1FilesScanData = {
+    body: {
+        url: string;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/files/scan';
+};
+
+export type PostApiV1FilesScanErrors = {
+    /**
+     * Invalid video URL or request
+     */
+    400: unknown;
+    /**
+     * Authentication required
+     */
+    401: unknown;
+    /**
+     * Video violates duration, download-size, or live-stream limits
+     */
+    422: unknown;
+    /**
+     * Metadata unavailable
+     */
+    502: unknown;
+    /**
+     * yt-dlp unavailable
+     */
+    503: unknown;
+    /**
+     * Metadata scan timed out
+     */
+    504: unknown;
+};
+
+export type PostApiV1FilesScanResponses = {
+    /**
+     * Video metadata and selected audio size
+     */
+    200: VideoMetadata;
+};
+
+export type PostApiV1FilesScanResponse = PostApiV1FilesScanResponses[keyof PostApiV1FilesScanResponses];
+
+export type PostApiV1FilesImportData = {
+    body: {
+        /**
+         * YouTube watch, shorts, embed, live-video, or youtu.be single-video link.
+         */
+        url: string;
+        name: string;
+        typeID: string;
+        /**
+         * Optionally associate the imported track with this table atomically.
+         */
+        tableID?: string;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/files/import';
+};
+
+export type PostApiV1FilesImportErrors = {
+    /**
+     * Invalid link, name, or track type
+     */
+    400: unknown;
+    /**
+     * Authentication required
+     */
+    401: unknown;
+    /**
+     * Table not found
+     */
+    404: unknown;
+    /**
+     * Failed to prepare import
+     */
+    500: unknown;
+    /**
+     * yt-dlp is not installed
+     */
+    503: unknown;
+};
+
+export type PostApiV1FilesImportResponses = {
+    /**
+     * Track queued for background retrieval and conversion
+     */
+    202: Track;
+};
+
+export type PostApiV1FilesImportResponse = PostApiV1FilesImportResponses[keyof PostApiV1FilesImportResponses];
 
 export type DeleteApiV1FilesByTrackIdData = {
     body?: never;

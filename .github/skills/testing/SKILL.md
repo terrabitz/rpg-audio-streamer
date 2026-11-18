@@ -5,9 +5,10 @@ description: Add or run domain, SQLite integration, and full-app browser tests; 
 
 # Testing RPG Audio Streamer
 
-Read `docs/architecture.md` for the app's boundaries and data flow. Keep that
-document accurate when behavior, code structure, persistence, or interfaces
-change. Architecture descriptions belong there, not in this procedural skill.
+Read `docs/index.md` and the linked concepts for the app's boundaries and data
+flow. Keep those concepts accurate when behavior, code structure, persistence,
+or interfaces change, following the documentation skill. Architecture
+descriptions belong there, not in this procedural skill.
 Keep root `AGENTS.md` short.
 
 ## Setup and commands
@@ -49,6 +50,84 @@ gate after focused checks. No documentation-only validation is needed.
 Mixer domain tests render known PCM buffers without sleeps; live-service tests
 own the render loop's context and bound waits for decoding and cancellation.
 
+### Headless FFmpeg
+
+Build the image with `docker build -f docker/Dockerfile -t rpg-audio-streamer:test .`.
+It always uses the headless FFmpeg build. On Debian/Ubuntu, install
+`build-essential ca-certificates curl libmp3lame-dev libssl-dev nasm pkg-config xz-utils`,
+then run `sh scripts/build-ffmpeg.sh "$HOME/.local/ffmpeg"`. The script downloads
+and verifies the pinned upstream source archive and installs FFmpeg, ffprobe,
+shared libraries, and licenses. Activate the installation with:
+
+```sh
+export PATH="$HOME/.local/ffmpeg/bin:$PATH"
+export LD_LIBRARY_PATH="$HOME/.local/ffmpeg/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+```
+
+CI jobs use `.github/actions/setup-environment` for language and dependency
+installation. Its `backend`, `frontend`, and `media` inputs default to `'true'`;
+disable unneeded components per job. Set `playwright: 'true'` in browser jobs
+to install Chromium after frontend dependencies. Node is always installed.
+The cache warmer uses the default components without installing Chromium or
+running tests.
+
+Media setup delegates to `.github/actions/setup-ffmpeg` to compile with this
+script on cache misses and restore the whole installation on exact cache hits.
+Changing the source version, checksum, flags, or action invalidates the cache.
+The host build uses Ubuntu libraries; continue checking the packaged Debian image
+when changing build configuration or runtime dependencies.
+
+Run `go test ./internal/musicprocessing -run '^TestUploadAudioFormatsIntegration$' -count=1`
+for generated WAV, MP3, AAC/M4A, ALAC/M4A, FLAC, Opus/WebM, Vorbis/Ogg, and WMA
+upload coverage. Fixtures are temporary, and missing encoders or processing
+failures fail the test rather than skipping formats. Native Opus and Vorbis
+fixture encoding explicitly uses experimental mode; their production decoders
+do not require it. The test checks real SQLite processing state, multi-segment
+HLS, cached waveforms, and decoded audio after seeking.
+
+Compare uncompressed layer totals, rather than Docker's combined compressed and
+unpacked storage accounting, using
+`docker history --human=false --format '{{.Size}}' IMAGE | awk '{sum+=$1} END {print sum}'`.
+Exercise uploads, HLS conversion, waveform generation, windowed PCM seeks, and
+Opus decoding with the candidate FFmpeg on `PATH`. Use an independently generated
+corpus for MP3, AAC/M4A, Opus/WebM, Vorbis/Ogg, FLAC, WAV, ALAC, and WMA; successful
+fixture encoding by the candidate alone does not establish input compatibility.
+Check the packaged downloader and Node runtime as well. A custom build's native
+codecs do not imply parity with Debian's optional external integrations.
+
+### Live YouTube tests
+
+Both the Go music-processing integration test and the `chromium-youtube`
+browser project read `INTEGRATION_TEST_YT_DLP_LINK` into typed test
+configuration. With the variable absent, these tests skip; an explicitly empty
+or invalid value fails rather than falling back to a sample video. Other
+YouTube tests keep their deterministic external-downloader fixture,
+`internal/youtube/testdata/yt-dlp`.
+
+Use a public single-video URL within the application's three-hour and 200 MiB
+limits. Put a current `yt-dlp[default]`, Node.js 20 or newer, and FFmpeg on
+`PATH`, with the usual Go/libdave environment configured. For example:
+
+```sh
+export INTEGRATION_TEST_YT_DLP_LINK='https://www.youtube.com/watch?v=PyD9cMarVJk'
+go test ./internal/musicprocessing -run '^TestYouTubeIntegration$' -count=1 -timeout=20m
+cd ui && npm run test:e2e -- youtube-live.spec.ts --project=chromium-youtube
+```
+
+Live YouTube checks are opt-in and are not enabled by the `pr-checks` workflow.
+Set the public, non-secret link explicitly when running these external-service
+checks.
+
+The Go test scans and downloads the real video, persists processing state in
+temporary SQLite, converts it to HLS, checks waveform output, and decodes the
+result with FFmpeg. The browser test uses the real downloader and isolated app
+to scan, import, wait for readiness, reload, play actual browser media, and
+delete the track through the UI. Neither test substitutes network responses or
+the downloader. Availability, rate limits, and YouTube extractor changes fail
+the configured tests; they are not converted into skips. Downloads and app
+state are temporary. The live browser project allows seventeen minutes for
+the scan and bounded processing job and is excluded from recording mode.
+
 ### Live Discord tests
 
 Run `make test-e2e` only against an isolated, regular voice channel with
@@ -87,12 +166,15 @@ streamer token, server ID and voice channel ID as environment variables to
 include the Go connection integration test in `make test-go`. Missing values
 fail the test.
 
-The `pr-checks` workflow runs the Go suite and full Playwright suite in separate
-jobs on pull requests, pushes to main, nightly, and manual dispatch. Configure
-the five names above as repository secrets. A shared concurrency group
-serializes both live tests across jobs and runs. Fork and Dependabot pull
-requests cannot access these secrets and fail the live checks rather than
-running untrusted code with them.
+The `pr-checks` workflow runs four independent jobs on pull requests and manual
+dispatch: offline Go coverage (including SQLite and media integration), the Go
+live Discord connection test, non-Discord Playwright projects, and the
+`chromium-discord` Playwright project. Configure the five names above as
+repository secrets. Only the two live Discord jobs receive those secrets and
+share a concurrency group; offline Go and non-Discord browser tests run without
+that lock. GitHub withholds repository secrets from fork and Dependabot pull
+requests. The live tests fail their configuration checks when required secrets
+are unavailable.
 
 ## Coverage policy
 
@@ -102,9 +184,9 @@ running untrusted code with them.
   tests still run. Test-result caching is disabled so the combined profile uses
   the current run across all instrumented packages. Inspect `coverage.out` with
   `go tool cover -func=coverage.out` or `go tool cover -html=coverage.out`.
-- The frontend gate includes **every store and composable**, including files
-  without tests. Reports are in `ui/coverage/`. Generated SDK code and Vue
-  templates are outside this domain metric.
+- The frontend gate includes **every store, composable, and WebSocket router**,
+  including files without tests. Reports are in `ui/coverage/`. Generated SDK
+  code and Vue templates are outside this domain metric.
 - Browser tests establish observable UX and real integration, not a synthetic
   "80% E2E coverage" claim. They do not mock HTTP, SQLite, FFmpeg, WebSockets,
   HLS, or browser media playback.
@@ -146,9 +228,9 @@ injection.
 ## Full-app browser tests
 
 Playwright builds the Go executable and production UI once per run. Each test
-attempt starts its own API and Vite preview on loopback ports, with a temporary
+attempt starts its own Go server serving the production UI on a loopback port, with a temporary
 SQLite database, upload directory, and WebSocket hub. Its fixture closes browser
-contexts, stops the API and preview, and removes temporary state even when a
+contexts, stops the server, and removes temporary state even when a
 test fails. Except for the explicit live Discord configuration described above,
 no existing server, database, or uploads are used. Do not point these tests at a
 production environment. Public fixture credentials are `e2e-gm` /
@@ -157,8 +239,14 @@ production environment. Public fixture credentials are `e2e-gm` /
 The suite uses two workers; the timing-sensitive and live Discord projects each
 have a one-worker limit. Only the live Discord journey loads credentials or
 connects the bots; do not run multiple suite invocations against the same bots.
-The timing project disables Chromium audio output so its media clock does not
-depend on the host audio device; it still checks real media playback.
+All projects disable Chromium audio output so media clocks do not depend on the
+host audio device; they still check real media playback. Loop-editing journeys
+with continuous playback measurements belong in the timing project.
+Continuous marker-drag observations stop before releasing the pointer.
+Natural-loop drag checks restore a known playback region between markers and
+assert real loop handoffs. Both drag flows require progress in every half-second
+window; exact subsecond playback-rate invariants belong in deterministic
+component tests, not browser wall-clock comparisons affected by decoder warm-up.
 Recording mode uses one worker and excludes infrastructure and live Discord
 tests. Each test has a fresh browser session; use a
 separate browser context for players so a GM cookie cannot masquerade as player
@@ -178,8 +266,9 @@ instead of fixed `test.setTimeout()` values so recording mode's longer limits
 still apply.
 
 Failed non-Discord tests retain browser traces, screenshots, and bounded server
-logs in `ui/test-results/`. Live Discord tests disable these artifacts and the
-HTML report to protect credentials. Diagnose the underlying
+logs in `ui/test-results/`; CI uploads them as attempt-specific artifacts with
+seven-day retention when the job fails. Live Discord tests disable these artifacts
+and the HTML report to protect credentials. Diagnose the underlying
 behavior before changing selectors, timeouts, or assertions. Do not bypass
 failed app paths with mocked responses or injected Pinia/localStorage state.
 
@@ -187,7 +276,9 @@ failed app paths with mocked responses or injected Pinia/localStorage state.
 
 1. Add a regression assertion at the lowest meaningful layer.
 2. Update queries/OpenAPI at their source and regenerate clients when needed.
-3. Keep `docs/architecture.md` synchronized with changed app behavior and
-   boundaries; keep commands and testing procedures in this skill.
+   For WebSocket changes, keep the Go payload structs and browser payload
+   interfaces aligned, and exercise the affected typed callbacks.
+3. Keep the affected `docs/` concepts synchronized with changed app behavior
+   and boundaries; keep commands and testing procedures in this skill.
 4. Run focused tests, the affected coverage gates, and relevant build/lint.
 5. Run browser journeys when HTTP, auth, playback, persistence, or UX changes.

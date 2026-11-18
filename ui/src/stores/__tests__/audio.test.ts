@@ -127,6 +127,54 @@ describe('audio session state', () => {
     expect(audio.getTypeVolume('Ambiance')).toBe(55)
   })
 
+  it('keeps the local media clock between commands while still synchronizing control-only tracks', () => {
+    const audio = useAudioStore()
+    audio.enabled = true
+    audio.syncTracks([
+      { fileID: 'local', isPlaying: true, currentTime: 8, positionVersion: 1 },
+      { fileID: 'remote', isPlaying: true, currentTime: 8, positionVersion: 1 },
+    ])
+    audio.setLocalPlayback('local', true)
+    audio.updateTrackState('local', { currentTime: 9.5 })
+    audio.syncTracks([
+      { fileID: 'local', isPlaying: true, currentTime: 8.5, positionVersion: 1, volume: 30 },
+      { fileID: 'remote', isPlaying: true, currentTime: 10, positionVersion: 1 },
+    ])
+    expect(audio.tracks.local).toMatchObject({ currentTime: 9.5, volume: 30 })
+    expect(audio.tracks.remote?.currentTime).toBe(10)
+    audio.syncTracks([{ fileID: 'local', isPlaying: true, currentTime: 3, positionVersion: 2 }])
+    expect(audio.tracks.local?.currentTime).toBe(3)
+    audio.syncTracks([{ fileID: 'local', isPlaying: false, currentTime: 0, positionVersion: 2 }])
+    expect(audio.tracks.local).toMatchObject({ currentTime: 0, isPlaying: false })
+    audio.setLocalPlayback('local', false)
+    audio.syncTracks([{ fileID: 'local', isPlaying: true, currentTime: 12, positionVersion: 2 }])
+    expect(audio.tracks.local?.currentTime).toBe(12)
+  })
+
+  it('lets locally buffering playback retain its seek target until its own fade finishes', () => {
+    const audio = useAudioStore()
+    audio.enabled = true
+    audio.syncTracks([
+      { fileID: 'local', isPlaying: true, currentTime: 10, positionVersion: 1 },
+      { fileID: 'remote', isPlaying: true, currentTime: 10, positionVersion: 1 },
+    ])
+    audio.setLocalPlayback('local', true)
+    audio.syncTracks([
+      { fileID: 'local', isPlaying: true, currentTime: 0, seekTarget: 1, seekLanding: 2, positionVersion: 2 },
+      { fileID: 'remote', isPlaying: true, currentTime: 0, seekTarget: 1, seekLanding: 2, positionVersion: 2 },
+    ])
+    audio.syncTracks([
+      { fileID: 'local', isPlaying: true, currentTime: 3, seekTarget: null, seekLanding: null, positionVersion: 2 },
+      { fileID: 'remote', isPlaying: true, currentTime: 3, seekTarget: null, seekLanding: null, positionVersion: 2 },
+    ])
+    expect(audio.tracks.local?.seekTarget).toBe(1)
+    expect(audio.tracks.local?.seekLanding).toBe(2)
+    expect(audio.tracks.remote?.seekTarget).toBeNull()
+    audio.updateTrackState('local', { seekTarget: null })
+    audio.syncTracks([{ fileID: 'local', isPlaying: true, currentTime: 1, seekTarget: 1, positionVersion: 2 }])
+    expect(audio.tracks.local?.seekTarget).toBeNull()
+  })
+
   it('keeps idle GM library entries when restoring server playback', () => {
     const audio = useAudioStore()
     audio.enabled = true

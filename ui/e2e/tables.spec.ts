@@ -18,6 +18,8 @@ test('GM creates, renames, opens, and deletes tables', async ({ page }) => {
   await expect(page).toHaveURL(/\/tables$/)
   await page.getByLabel('Table name', { exact: true }).fill('Friday group')
   await page.getByRole('button', { name: 'Save table', exact: true }).click()
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+  await expect(page.getByRole('link', { name: 'Open Friday group', exact: true })).toBeVisible()
   await page.reload()
   await page.getByRole('link', { name: 'Open Friday group', exact: true }).click()
   await expect(page.getByRole('banner')).toContainText('Friday group')
@@ -275,7 +277,7 @@ test('deleting a shared library track confirms affected tables in a follow-up di
     await addExistingTrack(sundayGM, 'Shared Forest')
     await confirmation.getByRole('button', { name: 'Confirm delete track', exact: true }).click()
     await expect(confirmation).toHaveCount(0)
-    await expect(editor).toContainText('Table usage changed.')
+    await expect(page.getByRole('alert').filter({ hasText: 'Table usage changed.' })).toBeVisible()
     await expect(row).toBeVisible()
 
     await page.getByRole('button', { name: 'Delete track', exact: true }).click()
@@ -310,8 +312,8 @@ test('library row previews stay local while a table is streaming', async ({ page
 
   const playerContext = await browser.newContext()
   const library = await context.newPage()
-  const previewSockets: string[] = []
-  library.on('websocket', socket => previewSockets.push(socket.url()))
+  const previewMessages: (string | Buffer)[] = []
+  library.on('websocket', socket => socket.on('framesent', frame => previewMessages.push(frame.payload)))
   try {
     const player = await playerContext.newPage()
     await player.goto(defaultTableURL)
@@ -347,7 +349,7 @@ test('library row previews stay local while a table is streaming', async ({ page
     await expect.poll(() => library.locator('video').evaluate(
       (el: HTMLVideoElement) => !el.paused && el.currentTime > 0,
     )).toBe(true)
-    expect(previewSockets).toEqual([])
+    expect(previewMessages).toEqual([])
     await expect(player.locator('video')).toHaveCount(1)
     await expect(player.locator('video')).toHaveAttribute('src', playerSource)
     await expect.poll(() => player.locator('video').evaluate(
@@ -369,7 +371,7 @@ test('library row previews stay local while a table is streaming', async ({ page
   await deleteLibraryTrack(page, 'Live Music', 1)
 })
 
-test('GM controls desktop playback from a phone and recovers after every GM leaves', async ({ page, browser }) => {
+test('GM controls desktop playback from a phone and recovers after every GM leaves', { tag: '@timing' }, async ({ page, browser }) => {
   test.slow()
   await login(page)
   const defaultTableURL = new URL(page.url()).pathname
@@ -400,30 +402,32 @@ test('GM controls desktop playback from a phone and recovers after every GM leav
     const seek = phoneTrack.getByRole('slider', { name: 'Playback position for Remote Music', exact: true })
     await seek.press('Home')
     for (let i = 0; i < 10; i++) await seek.press('ArrowRight')
-    await expect.poll(() => page.locator('video').evaluate((el: HTMLVideoElement) => el.currentTime)).toBeGreaterThanOrEqual(9)
+    const desktopAudio = page.locator('[data-active="true"]')
+    const playerAudio = player.locator('[data-active="true"]')
+    await expect.poll(() => desktopAudio.evaluate((el: HTMLMediaElement) => el.currentTime)).toBeGreaterThanOrEqual(9)
     const volume = phoneTrack.getByRole('slider', { name: 'Volume for Remote Music', exact: true })
     await volume.press('Home')
     await expect(page.getByRole('group', { name: 'Playing Remote Music', exact: true })
       .getByRole('slider', { name: 'Volume for Remote Music', exact: true })).toHaveAttribute('aria-valuenow', '0')
-    await expect.poll(() => player.locator('video').evaluate((el: HTMLVideoElement) => el.volume)).toBe(0)
+    await expect.poll(() => playerAudio.evaluate((el: HTMLMediaElement) => el.volume)).toBe(0)
     await phone.getByRole('button', { name: 'Close now playing', exact: true }).tap()
     await navigate(phone, 'Tables')
     await navigate(page, 'Tables')
-    const before = await player.locator('video').evaluate((el: HTMLVideoElement) => el.currentTime)
-    await expect.poll(() => player.locator('video').evaluate((el: HTMLVideoElement) => el.currentTime)).toBeGreaterThan(before + 1)
+    const before = await playerAudio.evaluate((el: HTMLMediaElement) => el.currentTime)
+    await expect.poll(() => playerAudio.evaluate((el: HTMLMediaElement) => el.currentTime)).toBeGreaterThan(before + 1)
     await page.getByRole('link', { name: 'Open My Table', exact: true }).click()
     await expect(page.getByRole('group', { name: 'Playing Remote Music', exact: true })).toBeVisible()
     await page.reload()
     await expect(page.getByRole('group', { name: 'Playing Remote Music', exact: true })).toBeVisible()
     await expect.poll(async () => {
-      const desktopTime = await page.locator('video').evaluate((el: HTMLVideoElement) => el.currentTime)
-      const playerTime = await player.locator('video').evaluate((el: HTMLVideoElement) => el.currentTime)
+      const desktopTime = await desktopAudio.evaluate((el: HTMLMediaElement) => el.currentTime)
+      const playerTime = await playerAudio.evaluate((el: HTMLMediaElement) => el.currentTime)
       return Math.abs(desktopTime - playerTime)
     }).toBeLessThan(2)
     await phone.getByRole('link', { name: 'Open My Table', exact: true }).click()
     await phone.getByRole('button', { name: 'Now playing (1)', exact: true }).tap()
     await phoneTrack.getByRole('button', { name: 'Pause Remote Music', exact: true }).tap()
-    await expect.poll(() => player.locator('video').evaluate((el: HTMLVideoElement) => el.paused)).toBe(true)
+    await expect.poll(() => playerAudio.evaluate((el: HTMLMediaElement) => el.paused)).toBe(true)
   } finally {
     await phoneContext.close()
     await playerContext.close()
@@ -431,7 +435,7 @@ test('GM controls desktop playback from a phone and recovers after every GM leav
   await deleteLibraryTrack(page, 'Remote Music', 1)
 })
 
-test('failed audio conversion is shown as an upload error', async ({ page }) => {
+test('failed audio conversion is shown on the track', async ({ page }) => {
   await login(page)
   await openUploadDialog(page)
   await page.getByLabel('Select a file', { exact: true }).setInputFiles({
@@ -442,6 +446,19 @@ test('failed audio conversion is shown as an upload error', async ({ page }) => 
   await page.getByRole('combobox', { name: 'Track Type', exact: true }).press('ArrowDown')
   await page.getByRole('option', { name: 'Music', exact: true }).click()
   await page.getByRole('button', { name: 'Upload', exact: true }).click()
-  await expect(page.getByText('Failed to upload file', { exact: true })).toBeVisible()
-  await expect(page.locator('.file-tile')).toHaveCount(0)
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+  const tile = page.locator('.file-tile').filter({ hasText: 'invalid' })
+  await expect(tile).toHaveAttribute('aria-busy', 'false')
+  const warning = tile.getByRole('button', { name: 'View processing failure for invalid', exact: true })
+  await expect(warning).toBeVisible()
+  const textColor = await tile.locator('.track-heading').evaluate(el => getComputedStyle(el).color)
+  await expect(warning).toHaveCSS('color', textColor)
+  await tile.click()
+  const diagnostics = page.getByRole('dialog', { name: 'Track processing failed', exact: true })
+    .getByLabel('Processing diagnostics', { exact: true })
+  await expect(diagnostics).toContainText('Audio processing failed')
+  await expect(diagnostics).toContainText('convert audio to HLS')
+  await page.getByRole('button', { name: 'Delete track', exact: true }).click()
+  await page.getByRole('button', { name: 'Confirm delete track', exact: true }).click()
+  await expect(tile).toHaveCount(0)
 })

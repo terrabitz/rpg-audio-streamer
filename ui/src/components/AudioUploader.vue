@@ -12,12 +12,12 @@
         <v-card-title>
           <span class="headline">{{ props.tableID ? 'Add Track' : 'Upload Track' }}</span>
         </v-card-title>
-        <v-tabs v-if="props.tableID" v-model="source" :disabled="isBusy">
-          <v-tab value="library">From library</v-tab>
+        <v-tabs v-model="source" :disabled="isBusy">
+          <v-tab v-if="props.tableID" value="library">From library</v-tab>
           <v-tab value="upload">Upload new</v-tab>
+          <v-tab value="youtube">YouTube link</v-tab>
         </v-tabs>
         <v-card-text>
-          <v-alert v-if="uploadStatus?.type === 'error'" type="error" class="mb-3">{{ uploadStatus.message }}</v-alert>
           <template v-if="source === 'library'">
             <v-select v-model="selectedTrack" :items="availableTracks" item-title="name" item-value="id"
               label="Library track" :loading="loadingLibrary" :disabled="isBusy || !libraryReady" hide-details />
@@ -25,6 +25,14 @@
               No unused tracks in the library. Upload a new track instead.
             </p>
           </template>
+          <v-form v-else-if="source === 'youtube'" @submit.prevent="importTrack">
+            <v-text-field v-model="videoURL" label="YouTube URL" type="url" :disabled="isBusy"
+              :loading="isScanning" :error-messages="scanError ? [scanError] : []"
+              placeholder="https://www.youtube.com/watch?v=..." />
+            <v-text-field v-model="trackName" label="Track Name" maxlength="200"
+              :disabled="isBusy || isScanning || !videoMetadata" />
+            <TrackTypeSelector v-model="selectedTypeId" :disabled="isBusy" />
+          </v-form>
           <div v-else @dragover="handleDragOver" @dragleave="handleDragLeave" @drop="handleDrop"
             :class="{ 'dragging': isDragging }" class="drop-area">
             <v-form v-model="formValid" @submit.prevent>
@@ -36,37 +44,57 @@
             <div v-if="isDragging" class="drop-text">Drop files here</div>
           </div>
         </v-card-text>
-        <v-card-actions>
+        <v-card-actions :class="{ 'youtube-actions': source === 'youtube' }">
+          <dl v-if="source === 'youtube' && videoMetadata" class="video-metadata d-flex ga-4 text-body-2"
+            aria-label="Video metadata">
+            <div>
+              <dt class="text-caption text-medium-emphasis">Duration</dt>
+              <dd>{{ videoDuration }}</dd>
+            </div>
+            <div>
+              <dt class="text-caption text-medium-emphasis">Audio size</dt>
+              <dd>{{ videoSize }}</dd>
+            </div>
+          </dl>
           <v-spacer></v-spacer>
           <v-btn color="error" @click="showModal = false" :disabled="isBusy">Cancel</v-btn>
           <v-btn v-if="source === 'library'" color="success" @click="addTrack"
             :disabled="isBusy || !libraryReady || !selectedTrack" :loading="isAdding">Add to table</v-btn>
+          <v-btn v-else-if="source === 'youtube'" color="success" @click="importTrack"
+            :disabled="isBusy || isScanning || !videoMetadata || !trackName.trim() || !selectedType"
+            :loading="isUploading">Import</v-btn>
           <v-btn v-else color="success" @click="submitForm"
             :disabled="isBusy || !formValid || !trackFile || !trackName.trim() || !selectedType"
             :loading="isUploading">Upload</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
-    <v-snackbar :model-value="!!uploadStatus && !showModal" :color="uploadStatus?.type"
+    <ErrorToast v-model="uploadError" />
+    <v-snackbar :model-value="uploadStatus?.type === 'success' && !showModal" :color="uploadStatus?.type"
       attach="body" location="bottom center" :timeout="4000" min-width="0" max-width="calc(100vw - 32px)"
       @update:model-value="uploadStatus = null">{{ uploadStatus?.message }}</v-snackbar>
   </div>
 </template>
 
 <script setup lang="ts">
-import { postApiV1Files } from '@/client/apiClient'
+import { postApiV1Files, postApiV1FilesImport, postApiV1FilesScan, type Track, type VideoMetadata } from '@/client/apiClient'
 import { useFileStore } from '@/stores/files'
 import { useTableStore } from '@/stores/tables'
 import { useTrackTypeStore } from '@/stores/trackTypes'
 import debounce from 'lodash.debounce'
 import { computed, onUnmounted, ref, watch } from 'vue'
 import TrackTypeSelector from './TrackTypeSelector.vue'
+import ErrorToast from './ErrorToast.vue'
 
 const props = defineProps<{ tableID?: string }>()
 const tables = useTableStore()
 const trackTypes = useTrackTypeStore()
 const isUploading = ref(false)
 const uploadStatus = ref<{ type: 'success' | 'error', message: string } | null>(null)
+const uploadError = computed({
+  get: () => uploadStatus.value?.type === 'error' ? uploadStatus.value.message : '',
+  set: () => { uploadStatus.value = null },
+})
 const fileStore = useFileStore()
 const isDragging = ref(false)
 const showModal = ref(false)
@@ -75,7 +103,22 @@ const trackName = ref('')
 const trackFile = ref<File | null>(null)
 const selectedTypeId = ref('')
 const selectedType = computed(() => trackTypes.getTypeById(selectedTypeId.value))
-const source = ref<'library' | 'upload'>(props.tableID ? 'library' : 'upload')
+const source = ref<'library' | 'upload' | 'youtube'>(props.tableID ? 'library' : 'upload')
+const videoURL = ref('')
+const videoMetadata = ref<VideoMetadata | null>(null)
+const isScanning = ref(false)
+const scanError = ref('')
+let scanController: AbortController | undefined
+let scanRevision = 0
+const videoDuration = computed(() => {
+  const seconds = Math.round(videoMetadata.value?.duration ?? 0)
+  return `${Math.floor(seconds / 3600)}:${String(Math.floor(seconds / 60) % 60).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`
+})
+const videoSize = computed(() => {
+  const metadata = videoMetadata.value
+  if (!metadata?.sizeBytes) return 'Unknown'
+  return `${metadata.sizeEstimated ? '~ ' : ''}${(metadata.sizeBytes / (1024 * 1024)).toFixed(1)} MiB`
+})
 const selectedTrack = ref<string | null>(null)
 const loadingLibrary = ref(false)
 const libraryReady = ref(false)
@@ -84,6 +127,35 @@ const isBusy = computed(() => isUploading.value || isAdding.value || loadingLibr
 const availableTracks = computed(() => fileStore.tracks.filter(
   track => !tables.tracks.some(associated => associated.id === track.id),
 ))
+
+const scanVideo = debounce(async (url: string, revision: number) => {
+  const controller = new AbortController()
+  scanController = controller
+  try {
+    const { data } = await postApiV1FilesScan<true>({ body: { url }, signal: controller.signal })
+    if (revision !== scanRevision) return
+    videoMetadata.value = data
+    trackName.value = data.name
+  } catch (error) {
+    if (controller.signal.aborted || revision !== scanRevision) return
+    console.error('Video scan failed:', error)
+    scanError.value = typeof error === 'string' && error.trim() ? error.trim() : 'Failed to scan video. Please try again.'
+  } finally {
+    if (revision === scanRevision) isScanning.value = false
+  }
+}, 500)
+
+watch([videoURL, source, showModal], ([url, selectedSource, open]) => {
+  scanRevision++
+  scanVideo.cancel()
+  scanController?.abort()
+  videoMetadata.value = null
+  scanError.value = ''
+  isScanning.value = false
+  if (!open || selectedSource !== 'youtube' || !url.trim()) return
+  isScanning.value = true
+  scanVideo(url.trim(), scanRevision)
+})
 
 watch([showModal, source], async ([open, selectedSource]) => {
   if (!open) return
@@ -143,6 +215,41 @@ async function submitForm() {
   selectedTypeId.value = ''
 }
 
+async function importTrack() {
+  const name = trackName.value.trim()
+  const url = videoMetadata.value?.url
+  const typeID = selectedType.value?.id
+  if (isBusy.value || isScanning.value || !url || !name || !typeID) return
+  isUploading.value = true
+  uploadStatus.value = null
+  try {
+    const { data } = await postApiV1FilesImport<true>({
+      body: { url, name, typeID, tableID: props.tableID },
+    })
+    addProcessingTrack(data)
+    videoURL.value = ''
+    trackName.value = ''
+    selectedTypeId.value = ''
+  } catch (error) {
+    console.error('Import error:', error)
+    uploadStatus.value = {
+      type: 'error',
+      message: typeof error === 'string' && error.trim() ? error.trim() : 'Failed to import audio. Please try again.',
+    }
+  } finally {
+    isUploading.value = false
+  }
+}
+
+function addProcessingTrack(track: Track) {
+  const added = fileStore.addTrack(track)
+  if (props.tableID && tables.current?.id === props.tableID) {
+    tables.tracks = [...tables.tracks.filter(item => item.id !== track.id), added]
+  }
+  showModal.value = false
+  uploadStatus.value = { type: 'success', message: 'Track added' }
+}
+
 async function uploadTrack() {
   const files = trackFile.value
   const name = trackName.value.trim()
@@ -154,10 +261,8 @@ async function uploadTrack() {
 
   isUploading.value = true
   uploadStatus.value = null
-  let uploaded = false
-
   try {
-    await postApiV1Files<true>({
+    const { data } = await postApiV1Files<true>({
       body: {
         files,
         name,
@@ -166,18 +271,15 @@ async function uploadTrack() {
       }
     })
 
-    uploaded = true
-    await fileStore.fetchFiles()
-    if (props.tableID && tables.current) await tables.fetchTracks(tables.current.externalID)
-    uploadStatus.value = { type: 'success', message: 'File uploaded successfully!' }
+    addProcessingTrack(data)
     return true
   } catch (error) {
     uploadStatus.value = {
       type: 'error',
-      message: uploaded ? 'Track uploaded, but failed to refresh tracks. Reload the page before uploading again.' : 'Failed to upload file',
+      message: 'Failed to upload file',
     }
     console.error('Upload error:', error)
-    return uploaded
+    return false
   } finally {
     isUploading.value = false
   }
@@ -206,10 +308,28 @@ const handleDrop = (event: DragEvent) => {
   trackFile.value = dataTransfer.files[0]
 }
 
-onUnmounted(() => handleDragLeave.cancel())
+onUnmounted(() => {
+  handleDragLeave.cancel()
+  scanRevision++
+  scanVideo.cancel()
+  scanController?.abort()
+})
 </script>
 
 <style scoped>
+.youtube-actions {
+  min-height: 64px;
+}
+
+.video-metadata {
+  flex-shrink: 0;
+  margin: 0;
+}
+
+.video-metadata dd {
+  margin: 0;
+}
+
 .dragging {
   border: 2px dashed #1d1d1d;
   background-color: rgba(144, 238, 144, 0.95);

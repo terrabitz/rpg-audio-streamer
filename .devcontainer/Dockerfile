@@ -11,4 +11,9 @@ RUN apt-get update \
   && apt install -y \
   ffmpeg \
   git-lfs \
+  python3-venv \
+  && python3 -m venv /opt/yt-dlp \
+  && /opt/yt-dlp/bin/pip install --no-cache-dir 'yt-dlp[default]' \
   && go install github.com/sqlc-dev/sqlc/cmd/sqlc@latest
+
+ENV PATH="/opt/yt-dlp/bin:${PATH}"

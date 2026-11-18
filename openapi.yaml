@@ -134,6 +134,31 @@ components:
           format: uuid
         playback:
           $ref: "#/components/schemas/PlaybackSettings"
+        status:
+          type: string
+          enum: [ready, processing, failed]
+          default: ready
+        processingError:
+          type: string
+
+    VideoMetadata:
+      type: object
+      required: [url, name, duration, sizeBytes, sizeEstimated]
+      properties:
+        url:
+          type: string
+          format: uri
+        name:
+          type: string
+        duration:
+          type: number
+          description: Duration in seconds.
+        sizeBytes:
+          type: [integer, "null"]
+          format: int64
+          description: Selected audio download size, or null when unavailable.
+        sizeEstimated:
+          type: boolean
 
     PlaybackSettings:
       type: object
@@ -684,10 +709,99 @@ paths:
                   format: uuid
                   description: Optionally associate the upload with this table atomically.
       responses:
-        "200":
-          description: File uploaded successfully
+        "202":
+          description: File received and track queued for background processing
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Track"
         "403":
           description: Not authorized
+
+  /api/v1/files/scan:
+    post:
+      summary: Scan a YouTube video and validate import limits without downloading audio
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [url]
+              properties:
+                url:
+                  type: string
+                  format: uri
+      responses:
+        "200":
+          description: Video metadata and selected audio size
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VideoMetadata"
+        "400":
+          description: Invalid video URL or request
+        "401":
+          description: Authentication required
+        "422":
+          description: Video violates duration, download-size, or live-stream limits
+        "502":
+          description: Metadata unavailable
+        "503":
+          description: yt-dlp unavailable
+        "504":
+          description: Metadata scan timed out
+
+  /api/v1/files/import:
+    post:
+      summary: Import one public YouTube video's audio using yt-dlp
+      description: Queues background retrieval and conversion. Requires yt-dlp, Node.js, and FFmpeg on the server. Playlists and live streams are not supported. Imports are limited to 3 hours, 200 MiB of source audio, and 15 minutes of background processing.
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [url, name, typeID]
+              properties:
+                url:
+                  type: string
+                  format: uri
+                  description: YouTube watch, shorts, embed, live-video, or youtu.be single-video link.
+                name:
+                  type: string
+                  minLength: 1
+                  maxLength: 200
+                typeID:
+                  type: string
+                  format: uuid
+                tableID:
+                  type: string
+                  format: uuid
+                  description: Optionally associate the imported track with this table atomically.
+      responses:
+        "202":
+          description: Track queued for background retrieval and conversion
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Track"
+        "400":
+          description: Invalid link, name, or track type
+        "401":
+          description: Authentication required
+        "404":
+          description: Table not found
+        "500":
+          description: Failed to prepare import
+        "503":
+          description: yt-dlp is not installed
 
   /api/v1/files/{trackID}:
     delete:

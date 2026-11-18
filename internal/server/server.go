@@ -2,20 +2,26 @@ package server
 
 import (
 	"context"
-	"encoding/json"
+	"errors"
 	"fmt"
 	"io/fs"
 	"log/slog"
 	"net"
 	"net/http"
 	"os"
+	"path"
 	"strconv"
+	"strings"
+	"time"
 
 	"github.com/gorilla/websocket"
 	"github.com/terrabitz/rpg-audio-streamer/internal/auth"
 	"github.com/terrabitz/rpg-audio-streamer/internal/discord"
+	"github.com/terrabitz/rpg-audio-streamer/internal/events"
 	"github.com/terrabitz/rpg-audio-streamer/internal/livemixer"
 	"github.com/terrabitz/rpg-audio-streamer/internal/middlewares"
+	"github.com/terrabitz/rpg-audio-streamer/internal/musicprocessing"
+	"github.com/terrabitz/rpg-audio-streamer/internal/youtube"
 )
 
 const (
@@ -29,19 +35,9 @@ type Authenticator interface {
 }
 
 type WSRegisterer interface {
+	events.Bus
 	Register(conn *websocket.Conn, token *auth.Token)
-	CloseTable(tableID string)
 	RevokePlayerAccess(tableID string)
-	RemoveTrack(tableID, trackID string)
-	SyncSettings(tableID string, patch TableSettingsPatch)
-}
-
-type Mixer interface {
-	Update(tableID string, payload json.RawMessage) error
-	Sync(tableID string, payload json.RawMessage) error
-	Volumes(tableID string, payload json.RawMessage) error
-	CloseTable(tableID string)
-	RemoveTrack(tableID, trackID string)
 }
 
 type DiscordController interface {
@@ -66,25 +62,34 @@ type Server struct {
 	mixer      *livemixer.Service
 	discord    DiscordController
 	discordMix *discordMixer
+	processing *musicprocessing.Service
+	videos     VideoScanner
+}
+
+type VideoScanner interface {
+	Scan(ctx context.Context, sourceURL string) (youtube.VideoMetadata, error)
 }
 
 type Config struct {
 	Host                    string
 	Port                    int
 	UploadDir               string
+	FrontendDir             string
 	DevMode                 bool
 	CORS                    middlewares.CorsConfig
 	DiscordStreamingEnabled bool
 	Discord                 discord.Config
 }
 
-func New(cfg Config, logger *slog.Logger, auth Authenticator, store Store, hub WSRegisterer) (*Server, error) {
+func New(cfg Config, logger *slog.Logger, auth Authenticator, store Store, hub WSRegisterer, processing *musicprocessing.Service, videos VideoScanner) (*Server, error) {
 	srv := &Server{
-		logger: logger,
-		cfg:    cfg,
-		hub:    hub,
-		auth:   auth,
-		store:  store,
+		logger:     logger,
+		cfg:        cfg,
+		hub:        hub,
+		auth:       auth,
+		store:      store,
+		processing: processing,
+		videos:     videos,
 		upgrader: websocket.Upgrader{
 			ReadBufferSize:  1024,
 			WriteBufferSize: 1024,
@@ -94,13 +99,20 @@ func New(cfg Config, logger *slog.Logger, auth Authenticator, store Store, hub W
 		},
 	}
 
+	if cfg.FrontendDir != "" {
+		srv.frontend = os.DirFS(cfg.FrontendDir)
+		info, err := fs.Stat(srv.frontend, "index.html")
+		if err != nil {
+			return nil, fmt.Errorf("open frontend index: %w", err)
+		}
+		if !info.Mode().IsRegular() {
+			return nil, fmt.Errorf("frontend index is not a regular file")
+		}
+	}
+
 	if cfg.DiscordStreamingEnabled {
 		if cfg.Discord.Token == "" {
 			return nil, fmt.Errorf("Discord streaming requires DISCORD_STREAMING_BOT_TOKEN")
-		}
-		consumer, ok := hub.(interface{ SetMixer(Mixer) })
-		if !ok {
-			return nil, fmt.Errorf("Discord streaming requires a mixer-capable WebSocket hub")
 		}
 		mix, err := livemixer.New(mixerSampleRate, srv.mixerSource)
 		if err != nil {
@@ -112,20 +124,24 @@ func New(cfg Config, logger *slog.Logger, auth Authenticator, store Store, hub W
 			return nil, err
 		}
 		srv.discord = bot
+		bot.SetEventSender(hub)
 		srv.discordMix = newDiscordMixer(srv.mixer, srv)
-		consumer.SetMixer(srv.discordMix)
+		livemixer.Subscribe(hub, srv.discordMix)
 	}
 
 	return srv, nil
 }
 
-func (s *Server) Start() error {
-	// Ensure upload directory exists
-	if err := os.MkdirAll(s.cfg.UploadDir, os.ModePerm); err != nil {
-		return fmt.Errorf("failed to create upload directory: %w", err)
+func (s *Server) sendEvent(w http.ResponseWriter, event string, payload any) bool {
+	if err := s.hub.SendEvent(event, payload); err != nil {
+		s.logger.Error("failed to send server event", "event", event, "error", err)
+		http.Error(w, "The change was saved, but live synchronization failed. Reload before retrying.", http.StatusServiceUnavailable)
+		return false
 	}
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	return true
+}
+
+func (s *Server) Start(ctx context.Context) error {
 	if s.discord != nil {
 		defer s.discord.Close()
 	}
@@ -135,13 +151,37 @@ func (s *Server) Start() error {
 		Addr:    net.JoinHostPort(s.cfg.Host, strconv.Itoa(s.cfg.Port)),
 		Handler: s.Handler(),
 	}
+	stopped := make(chan struct{})
+	shutdownDone := make(chan struct{})
+	defer func() {
+		close(stopped)
+		<-shutdownDone
+	}()
+	go func() {
+		defer close(shutdownDone)
+		select {
+		case <-ctx.Done():
+			shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+			defer cancel()
+			if err := srv.Shutdown(shutdownCtx); err != nil {
+				s.logger.Error("HTTP shutdown failed", "error", err)
+				if err := srv.Close(); err != nil {
+					s.logger.Error("HTTP connection cleanup failed", "error", err)
+				}
+			}
+		case <-stopped:
+		}
+	}()
 
 	s.logger.Info("starting server",
 		slog.String("host", s.cfg.Host),
 		slog.Int("port", s.cfg.Port),
 		slog.Bool("devMode", s.cfg.DevMode),
 	)
-	return srv.ListenAndServe()
+	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		return err
+	}
+	return nil
 }
 
 // Handler serves the same HTTP and WebSocket routes used by Start.
@@ -160,9 +200,50 @@ func (s *Server) Handler() http.Handler {
 	// NOTE, we want to register this separately, because we don't want to apply
 	// the same default middleware we apply to the API routes.
 	mux.HandleFunc("/api/v1/ws", s.tableWebSocketMiddleware(s.handleWebSocket))
-	mux.Handle("/", apiHandler)
+	mux.Handle("/api", apiHandler)
+	mux.Handle("/api/", apiHandler)
+	if s.frontend != nil {
+		mux.HandleFunc("/", s.serveFrontend)
+	} else {
+		mux.Handle("/", apiHandler)
+	}
 
 	return mux
+}
+
+func (s *Server) serveFrontend(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		w.Header().Set("Allow", "GET, HEAD")
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	name := strings.TrimPrefix(r.URL.Path, "/")
+	if name == "" {
+		name = "index.html"
+	}
+	if !fs.ValidPath(name) {
+		http.NotFound(w, r)
+		return
+	}
+	info, err := fs.Stat(s.frontend, name)
+	if err != nil && !os.IsNotExist(err) {
+		s.logger.Error("stat frontend file", slog.String("path", name), slog.Any("error", err))
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	if err == nil && info.IsDir() {
+		http.NotFound(w, r)
+		return
+	}
+	if os.IsNotExist(err) {
+		if path.Ext(name) != "" {
+			http.NotFound(w, r)
+			return
+		}
+		name = "index.html"
+	}
+	http.ServeFileFS(w, r, s.frontend, name)
 }
 
 func (s *Server) registerHandlers() *http.ServeMux {
@@ -175,6 +256,8 @@ func (s *Server) registerHandlers() *http.ServeMux {
 
 	// Protected endpoints with role validation
 	mux.HandleFunc("/api/v1/files", s.gmOnlyMiddleware(s.handleFiles))
+	mux.HandleFunc("/api/v1/files/import", s.gmOnlyMiddleware(s.handleImport))
+	mux.HandleFunc("/api/v1/files/scan", s.gmOnlyMiddleware(s.handleScan))
 	mux.HandleFunc("/api/v1/files/{trackID}", s.gmOnlyMiddleware(s.handleFile))
 	mux.HandleFunc("/api/v1/files/{trackID}/usage", s.gmOnlyMiddleware(s.handleFileUsage))
 	mux.HandleFunc("/api/v1/files/{trackID}/waveform", s.gmOnlyMiddleware(s.handleFileWaveform))

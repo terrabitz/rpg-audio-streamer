@@ -1,13 +1,12 @@
-import { spawn, type ChildProcess } from 'node:child_process'
+import { execFileSync, spawn, type ChildProcess } from 'node:child_process'
 import { createHmac, randomBytes } from 'node:crypto'
 import { once } from 'node:events'
-import { mkdtemp, rm } from 'node:fs/promises'
-import { createServer, type Socket } from 'node:net'
+import { chmod, copyFile, mkdir, mkdtemp, rm } from 'node:fs/promises'
+import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { delimiter, join } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import { fileURLToPath } from 'node:url'
-import { preview, type PreviewServer } from 'vite'
 import { discordTestConfig } from './discord-config'
 
 const root = fileURLToPath(new URL('../..', import.meta.url))
@@ -22,35 +21,24 @@ export type AppInstance = {
   stop: () => Promise<void>
 }
 
-export async function startApp(liveDiscord = false): Promise<AppInstance> {
+export async function startApp(liveDiscord = false, youtubeFixture = false): Promise<AppInstance> {
   const binary = process.env.E2E_SERVER_BINARY
   if (!binary) throw new Error('E2E server binary was not built by global setup')
   const scratch = await mkdtemp(join(tmpdir(), 'rpg-audio-e2e-'))
   let server: ChildProcess | undefined
-  let frontend: PreviewServer | undefined
   let done: Promise<void> | undefined
   let stopping: Promise<void> | undefined
   let output = ''
-  const sockets = new Set<Socket>()
   const stop = () => {
     stopping ??= (async () => {
       try {
-        if (frontend) {
-          await new Promise<void>((resolve, reject) => {
-            frontend!.httpServer.close(error => error ? reject(error) : resolve())
-            for (const socket of sockets) socket.destroy()
-          })
+        if (server && done) {
+          server.kill('SIGTERM')
+          const timeout = setTimeout(() => server?.kill('SIGKILL'), 15_000)
+          try { await done } finally { clearTimeout(timeout) }
         }
       } finally {
-        try {
-          if (server && done) {
-            server.kill('SIGTERM')
-            const timeout = setTimeout(() => server?.kill('SIGKILL'), 5000)
-            try { await done } finally { clearTimeout(timeout) }
-          }
-        } finally {
-          await rm(scratch, { recursive: true, force: true, maxRetries: 3 })
-        }
+        await rm(scratch, { recursive: true, force: true, maxRetries: 3 })
       }
     })()
     return stopping
@@ -61,11 +49,23 @@ export async function startApp(liveDiscord = false): Promise<AppInstance> {
     const secret = randomBytes(32).toString('hex')
     const discord = liveDiscord ? discordTestConfig(root) : undefined
     const env = { ...process.env }
+    if (youtubeFixture) {
+      const bin = join(scratch, 'bin')
+      await mkdir(bin)
+      const downloader = join(bin, 'yt-dlp')
+      await copyFile(join(root, 'internal/youtube/testdata/yt-dlp'), downloader)
+      await chmod(downloader, 0o700)
+      const audio = join(scratch, 'import.wav')
+      execFileSync('ffmpeg', ['-v', 'error', '-f', 'lavfi', '-i', 'sine=frequency=440:duration=12', audio])
+      env.PATH = `${bin}${delimiter}${env.PATH ?? ''}`
+      env.IMPORT_AUDIO_FIXTURE = audio
+      env.IMPORT_RELEASE_FILE = join(scratch, 'import-release')
+    }
     for (const name of Object.keys(env)) {
       if (name.startsWith('DISCORD_') || name.startsWith('INTEGRATION_TEST_DISCORD_')) delete env[name]
     }
     for (const name of [
-      'HOST', 'PORT', 'CORS_ORIGINS', 'LOG_FORMAT', 'LOG_LEVEL', 'UPLOAD_DIR',
+      'HOST', 'PORT', 'CORS_ORIGINS', 'LOG_FORMAT', 'LOG_LEVEL', 'UPLOAD_DIR', 'FRONTEND_DIR',
       'ROOT_USERNAME', 'ROOT_PASSWORD_HASH', 'TOKEN_SECRET', 'TOKEN_DURATION',
       'TOKEN_ISSUER', 'TOKEN_AUDIENCE', 'DEV_MODE', 'DB_PATH',
     ]) delete env[name]
@@ -73,6 +73,7 @@ export async function startApp(liveDiscord = false): Promise<AppInstance> {
       'serve', '--host', '127.0.0.1', '--port', String(port), '--dev-mode',
       '--root-username', 'e2e-gm', '--root-password-hash', passwordHash,
       '--db-path', join(scratch, 'app.db'), '--upload-dir', join(scratch, 'uploads'),
+      '--frontend-dir', join(ui, 'dist'),
     ], {
       cwd: scratch,
       stdio: liveDiscord ? 'ignore' : ['ignore', 'pipe', 'pipe'],
@@ -93,7 +94,13 @@ export async function startApp(liveDiscord = false): Promise<AppInstance> {
     server.stderr?.on('data', collect)
     done = new Promise((resolve, reject) => {
       server!.once('error', reject)
-      server!.once('exit', () => resolve())
+      server!.once('exit', (code, signal) => {
+        if (code === 0) {
+          resolve()
+          return
+        }
+        reject(new Error(`E2E API exited abnormally (code ${code}, signal ${signal})`))
+      })
     })
     void done.catch(() => {})
     await Promise.race([
@@ -101,28 +108,18 @@ export async function startApp(liveDiscord = false): Promise<AppInstance> {
       done.then(() => { throw new Error('E2E API exited before becoming ready') }),
     ])
     await verifyAPI(apiURL, secret)
-    frontend = await preview({
-      root: ui,
-      envDir: scratch,
-      logLevel: 'error',
-      preview: {
-        host: '127.0.0.1',
-        port: 0,
-        strictPort: true,
-        proxy: { '/api': { target: apiURL, ws: true, changeOrigin: true } },
-      },
-    })
-    frontend.httpServer.on('connection', socket => {
-      sockets.add(socket)
-      socket.once('close', () => sockets.delete(socket))
-    })
-    const address = frontend.httpServer.address()
-    if (!address || typeof address === 'string') throw new Error('E2E preview did not bind a TCP port')
-    return { url: `http://127.0.0.1:${address.port}`, scratch, logs: () => output, stop }
+    return { url: apiURL, scratch, logs: () => output, stop }
   } catch (error) {
-    await stop()
-    if (output) throw new Error(`E2E app startup failed:\n${output}`, { cause: error })
-    throw error
+    let failure = error
+    try {
+      await stop()
+    } catch (shutdownError) {
+      if (shutdownError !== error) {
+        failure = new AggregateError([error, shutdownError], 'E2E app startup and cleanup failed')
+      }
+    }
+    if (output) throw new Error(`E2E app startup failed:\n${output}`, { cause: failure })
+    throw failure
   }
 }
 

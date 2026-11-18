@@ -6,6 +6,7 @@ import { useAppBar } from '@/composables/useAppBar'
 import { useAuthStore } from '@/stores/auth'
 import { useTableStore } from '@/stores/tables'
 import InviteLinkRotationDialog from '@/components/InviteLinkRotationDialog.vue'
+import ErrorToast from '@/components/ErrorToast.vue'
 
 const auth = useAuthStore()
 const tables = useTableStore()
@@ -97,7 +98,7 @@ async function deleteTable() {
     <v-progress-circular v-if="loading" indeterminate aria-label="Loading tables" />
     <template v-else-if="auth.role === 'gm'">
       <h1 class="text-h4 mb-4">Tables</h1>
-      <v-alert v-if="error && !showEditor && !deleting" type="error" class="mb-4">{{ error }}</v-alert>
+      <ErrorToast v-model="error" />
       <v-btn color="primary" class="mb-4" @click="editTable(null)">Create table</v-btn>
       <p v-if="!tables.tables.length">No tables yet. Create a table for your group.</p>
       <v-list>
@@ -125,13 +126,17 @@ async function deleteTable() {
           </template>
         </v-list-item>
       </v-list>
-      <v-snackbar :model-value="!!notice" :color="noticeColor"
-        @update:model-value="notice = ''">{{ notice }}</v-snackbar>
+      <v-snackbar :model-value="!!notice" :color="noticeColor" :timeout="5000"
+        @update:model-value="notice = ''">
+        {{ notice }}
+        <template #actions>
+          <v-btn variant="text" aria-label="Dismiss notification" @click="notice = ''">Dismiss</v-btn>
+        </template>
+      </v-snackbar>
       <v-dialog v-model="showEditor" max-width="450">
         <v-card :title="editing ? 'Rename table' : 'Create table'">
           <v-form @submit.prevent="save">
             <v-card-text>
-              <v-alert v-if="error" type="error" class="mb-3">{{ error }}</v-alert>
               <v-text-field v-model="name" label="Table name" maxlength="200" autofocus />
             </v-card-text>
             <v-card-actions>
@@ -145,7 +150,6 @@ async function deleteTable() {
       <v-dialog :model-value="!!deleting" max-width="450" @update:model-value="deleting = null">
         <v-card title="Delete table?">
           <v-card-text>
-            <v-alert v-if="error" type="error" class="mb-3">{{ error }}</v-alert>
             Delete {{ deleting?.name }} and its invite code? Tracks will remain in the library.
           </v-card-text>
           <v-card-actions>
