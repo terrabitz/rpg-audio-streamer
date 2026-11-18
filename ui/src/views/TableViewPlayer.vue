@@ -72,7 +72,7 @@ function disconnectAudio() {
 <template>
   <v-container>
     <ErrorToast v-model="error" />
-    <AudioPlayer v-if="audioStore.enabled" :tableID="externalID" @error="error = $event" />
+    <AudioPlayer v-if="audioStore.enabled" :tableID="externalID" instant-mixer-volume @error="error = $event" />
 
     <div class="d-flex align-center mb-4">
       <v-btn size="x-large" @click="handleAudioToggle" :loading="connecting"

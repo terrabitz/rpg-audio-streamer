@@ -9,12 +9,12 @@
 
 <script setup lang="ts">
 import Hls from 'hls.js'
-import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { defaultPlayback, playbackError, playbackRegion, seekLimit } from '@/composables/playback'
 import { useAudioStore, type AudioTrack } from '../stores/audio'
 import { useWebSocketStore } from '../stores/websocket'
 
-const props = defineProps<{ fileID: string, tableID?: string }>()
+const props = defineProps<{ fileID: string, tableID?: string, instantMixerVolume?: boolean }>()
 const emit = defineEmits<{ error: [message: string] }>()
 const audioStore = useAudioStore()
 const primary = ref<HTMLVideoElement | null>(null)
@@ -32,6 +32,7 @@ let pendingSeek: number | undefined
 let envelope = 0
 let fade: { from: number, to: number, start: number } | undefined
 let mixedVolume = targetVolume()
+const immediateMixerGain = computed(() => props.instantMixerVolume ? mixerGain() : 1)
 let volumeFade: { from: number, to: number, start: number } | undefined
 let positionVersion = audioStore.tracks[props.fileID]?.positionVersion
 let seekVersion = audioStore.tracks[props.fileID]?.seekVersion
@@ -85,6 +86,7 @@ watch(targetVolume, (target) => {
   advanceVolumeFade(now)
   volumeFade = mixedVolume !== target ? { from: mixedVolume, to: target, start: now } : undefined
 })
+watch(immediateMixerGain, applyVolumes)
 
 onMounted(() => {
   if (!Hls.isSupported()) {
@@ -258,10 +260,13 @@ function advanceVolumeFade(now: number) {
 }
 
 function targetVolume() {
-  const state = audioStore.tracks[props.fileID]
-  if (!state) return 0
-  return Math.max(0, state.volume / 100 * audioStore.mixMasterVolume / 100 *
-    audioStore.getTypeVolume(state.trackType) / 100)
+  const trackVolume = audioStore.tracks[props.fileID]?.volume ?? 0
+  return Math.max(0, trackVolume / 100 * (props.instantMixerVolume ? 1 : mixerGain()))
+}
+
+function mixerGain() {
+  const trackType = audioStore.tracks[props.fileID]?.trackType ?? ''
+  return audioStore.mixMasterVolume / 100 * audioStore.getTypeVolume(trackType) / 100
 }
 
 function startOverlap(time: number, end: number, seek = false) {
@@ -303,7 +308,7 @@ function cancelOverlap(adoptSeek = true) {
 function applyVolumes() {
   const state = audioStore.tracks[props.fileID]
   if (!state) return
-  const volume = mixedVolume * envelope
+  const volume = mixedVolume * immediateMixerGain.value * envelope
   const progress = overlapProgress()
   for (const index of [0, 1]) {
     const media = element(index)
