@@ -50,6 +50,44 @@ gate after focused checks. No documentation-only validation is needed.
 Mixer domain tests render known PCM buffers without sleeps; live-service tests
 own the render loop's context and bound waits for decoding and cancellation.
 
+### Headless FFmpeg
+
+Build the image with `docker build -f docker/Dockerfile -t rpg-audio-streamer:test .`.
+It always uses the headless FFmpeg build. On Debian/Ubuntu, install
+`build-essential ca-certificates curl libmp3lame-dev libssl-dev nasm pkg-config xz-utils`,
+then run `sh scripts/build-ffmpeg.sh "$HOME/.local/ffmpeg"`. The script downloads
+and verifies the pinned upstream source archive and installs FFmpeg, ffprobe,
+shared libraries, and licenses. Activate the installation with:
+
+```sh
+export PATH="$HOME/.local/ffmpeg/bin:$PATH"
+export LD_LIBRARY_PATH="$HOME/.local/ffmpeg/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+```
+
+The Go and browser CI jobs use `.github/actions/setup-ffmpeg` to compile with this
+script on cache misses and restore the whole installation on exact cache hits.
+Changing the source version, checksum, flags, or action invalidates the cache.
+The host build uses Ubuntu libraries; continue checking the packaged Debian image
+when changing build configuration or runtime dependencies.
+
+Run `go test ./internal/musicprocessing -run '^TestUploadAudioFormatsIntegration$' -count=1`
+for generated WAV, MP3, AAC/M4A, ALAC/M4A, FLAC, Opus/WebM, Vorbis/Ogg, and WMA
+upload coverage. Fixtures are temporary, and missing encoders or processing
+failures fail the test rather than skipping formats. Native Opus and Vorbis
+fixture encoding explicitly uses experimental mode; their production decoders
+do not require it. The test checks real SQLite processing state, multi-segment
+HLS, cached waveforms, and decoded audio after seeking.
+
+Compare uncompressed layer totals, rather than Docker's combined compressed and
+unpacked storage accounting, using
+`docker history --human=false --format '{{.Size}}' IMAGE | awk '{sum+=$1} END {print sum}'`.
+Exercise uploads, HLS conversion, waveform generation, windowed PCM seeks, and
+Opus decoding with the candidate FFmpeg on `PATH`. Use an independently generated
+corpus for MP3, AAC/M4A, Opus/WebM, Vorbis/Ogg, FLAC, WAV, ALAC, and WMA; successful
+fixture encoding by the candidate alone does not establish input compatibility.
+Check the packaged downloader and Node runtime as well. A custom build's native
+codecs do not imply parity with Debian's optional external integrations.
+
 ### Live YouTube tests
 
 Both the Go music-processing integration test and the `chromium-youtube`

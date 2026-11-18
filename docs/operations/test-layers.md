@@ -20,6 +20,14 @@ Each browser test attempt owns a separate server, datastore, upload directory,
 and WebSocket state; the built UI and server executable are shared as immutable
 artifacts.
 
+Go upload integration tests generate PCM/WAV, MP3, AAC/M4A, ALAC/M4A, FLAC,
+Opus/WebM, Vorbis/Ogg, and WMA tones and process them through the production
+music service with real SQLite. They check ready-state persistence,
+multi-segment AAC HLS, pre-generated normalized waveforms, and non-silent stereo
+PCM at the expected frequency after seeking past the first segment. These
+synthetic round trips exercise the FFmpeg on `PATH`; they do not establish
+compatibility with every independently encoded input.
+
 Live YouTube integration uses the production YouTube and processing services,
 real SQLite, yt-dlp, and FFmpeg. Its separate browser project exercises import,
 readiness, persistence, browser playback, and UI deletion. Deterministic

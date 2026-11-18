@@ -30,3 +30,27 @@ Buildx GitHub Actions cache scope. The image's runtime behavior is described in
 
 Pull requests that touch image inputs run the same builds without publishing
 (see [pull request checks](./pr-checks.md)).
+
+## Runtime image
+
+The Debian slim runtime includes FFmpeg, Node.js, Python, and the
+[YouTube downloader](../backend/youtube.md). A separate installer stage supplies
+the downloader's virtual environment without pip or precompiled Python bytecode;
+the runtime disables bytecode writes. Package indexes and build toolchains are
+not included.
+
+The Go executable and [libdave](../discord/voice-streaming.md) shared library are
+stripped of debugging symbols, while libdave's licenses remain in the image.
+Application files receive their ownership when copied into the runtime rather
+than being duplicated into a later ownership-change layer.
+
+The image builds FFmpeg and ffprobe from a pinned, checksum-verified upstream
+source archive using `scripts/build-ffmpeg.sh`, shared with
+[CI](./pr-checks.md). The build includes native codecs, MP3 encoding,
+OpenSSL-backed HTTPS, and virtual
+filter inputs. Its tools share the FFmpeg libraries instead of embedding
+duplicate copies. It omits optional external codec libraries, physical device
+capture, desktop, and hardware integrations. This avoids FFmpeg's graphics-driver
+and LLVM dependency tree, but does not preserve the full Debian feature set.
+The custom FFmpeg build includes its upstream license texts and uses
+LGPLv3-compatible configuration.

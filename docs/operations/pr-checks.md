@@ -22,6 +22,19 @@ as the [release pipeline](./release-pipeline.md) without pushing or publishing
 a manifest, and check that the Dockerfile's Go and Node base images match
 `go.mod` and `ui/.nvmrc`, since dependency bumps do not update the Dockerfile.
 
+## FFmpeg in tests
+
+The Go and browser jobs compile the headless FFmpeg tools using the same pinned
+source archive and build script as the [runtime image](./release-pipeline.md).
+The local `setup-ffmpeg` action caches the installation, including ffprobe and
+shared libraries, by operating system release, architecture, and the build script
+and action contents. Exact cache hits skip compilation; runtime dependencies
+are still installed. Both suites put this installation first on `PATH`.
+
+CI builds against Ubuntu's libraries while the image builds against Debian's.
+Sharing the source and configuration aligns media capabilities, but does not
+replace testing the packaged image for ABI and runtime dependency compatibility.
+
 ## Live Discord validation
 
 The Go and browser suites include live
