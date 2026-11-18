@@ -48,7 +48,7 @@ it('shows reconnect progress without a cancel action, then allows disconnecting 
         VSelect: true,
         VListItem: true,
         VSpacer: true,
-        VAlert: true,
+        ErrorToast: true,
       },
     },
   })

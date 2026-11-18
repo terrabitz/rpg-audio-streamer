@@ -96,7 +96,7 @@ it('keeps a replacement seek playing when the canceled play request rejects late
   } finally { player.unmount() }
 })
 
-it.each(['AbortError', 'NotAllowedError'])('reports an uncanceled %s play failure', async (name) => {
+it.each(['AbortError', 'NotSupportedError'])('reports an uncanceled %s play failure', async (name) => {
   const { player, audio, primary, secondary } = await mountPlaying({})
   vi.spyOn(console, 'error').mockImplementation(() => {})
   vi.mocked(secondary.play).mockRejectedValueOnce(new DOMException('Playback failed', name))
@@ -813,6 +813,7 @@ it('reports fatal playback errors without treating recoverable HLS events as fai
     props: { fileID: 'forest' },
     global: { plugins: [pinia] },
   })
+
   try {
     await nextTick()
     hls.events.error?.('error', { fatal: false })
@@ -826,4 +827,29 @@ it('reports fatal playback errors without treating recoverable HLS events as fai
   } finally {
     player.unmount()
   }
+})
+
+it('allows local autoplay recovery without pausing or seeking the shared table', async () => {
+  const { player, audio, primary, secondary } = await mountPlaying({})
+  vi.spyOn(console, 'warn').mockImplementation(() => {})
+  audio.loadTableMix({ masterVolume: 100, typeVolumes: {}, trackVolumes: {}, trackOrder: [] })
+  vi.mocked(secondary.play).mockRejectedValueOnce(new DOMException('User gesture required', 'NotAllowedError'))
+  try {
+    primary.currentTime = 10
+    audio.seekTrack('forest', 20)
+    await nextTick()
+    await flushPromises()
+    expect(audio.tracks.forest?.isPlaying).toBe(true)
+    expect(audio.blockedPlayback.has('forest')).toBe(true)
+    expect(player.emitted('error')).toBeUndefined()
+    audio.updateTrackState('forest', { currentTime: 25 })
+    await nextTick()
+    audio.retryLocalPlayback()
+    await nextTick()
+    await flushPromises()
+    expect(audio.blockedPlayback.size).toBe(0)
+    expect(primary.paused).toBe(false)
+    expect(primary.currentTime).toBe(25)
+    expect(audio.tracks.forest?.isPlaying).toBe(true)
+  } finally { player.unmount() }
 })

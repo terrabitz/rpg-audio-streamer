@@ -1,6 +1,6 @@
 <template>
   <v-container :fluid="!props.library" :class="{ 'pa-0': !props.library }">
-    <v-alert v-if="error" type="error" class="mb-4">{{ error }}</v-alert>
+    <ErrorToast v-model="error" />
     <template v-if="props.library">
       <AudioPlayer @error="error = $event" />
       <v-data-table :headers="libraryHeaders" :items="tracks" :loading="loading" density="compact" hover
@@ -144,6 +144,7 @@ import AudioPlayer from './AudioPlayer.vue'
 import PlayingTrackList from './PlayingTrackList.vue'
 import DiscordControl from './DiscordControl.vue'
 import VolumeSlider from './VolumeSlider.vue'
+import ErrorToast from './ErrorToast.vue'
 
 const fileStore = useFileStore()
 const audioStore = useAudioStore()
@@ -189,6 +190,10 @@ watch(smAndDown, () => { showNowPlaying.value = false })
 const stopTrackStatus = wsStore.onTrackStatusChanged((update) => {
   fileStore.applyTrackStatus(update)
   tables.tracks = tables.tracks.map(track => track.id === update.fileID ? withTrackStatus(track, update) : track)
+})
+const stopTrackUpdates = wsStore.onTrackUpdated(track => {
+  fileStore.addTrack(track)
+  tables.tracks = tables.tracks.map(item => item.id === track.id ? track : item)
 })
 
 watch(() => wsStore.isConnected, async (connected) => {
@@ -423,6 +428,7 @@ const handleSeek = (fileID: string, time: number) => {
 
 onUnmounted(() => {
   stopTrackStatus()
+  stopTrackUpdates()
   if (props.library) audioStore.clearTracks()
 })
 </script>

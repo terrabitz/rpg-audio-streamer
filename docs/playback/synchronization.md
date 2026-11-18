@@ -36,6 +36,12 @@ keep their current server values rather than being replaced by a stale browser
 snapshot. Players cannot change playback, and client-originated `playbackStateChanged`
 messages are not accepted.
 
+Saved library metadata is broadcast to every connected GM with `trackUpdated`.
+The hub reads the current saved track under its playback lock, reconciles its
+region into every table already holding that track, and notifies listeners and
+live mixers without issuing a seek or play/pause command. Open editors update
+untouched fields from this metadata instead of saving stale copies on close.
+
 The server enforces track-type exclusivity atomically: starting Music stops
 other Music tracks, while Ambiance and One-Shot can overlap (see
 [seeded track types](../data/sqlite-schema.md)).

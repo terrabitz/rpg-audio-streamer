@@ -18,7 +18,6 @@
           <v-tab value="youtube">YouTube link</v-tab>
         </v-tabs>
         <v-card-text>
-          <v-alert v-if="uploadStatus?.type === 'error'" type="error" class="mb-3">{{ uploadStatus.message }}</v-alert>
           <template v-if="source === 'library'">
             <v-select v-model="selectedTrack" :items="availableTracks" item-title="name" item-value="id"
               label="Library track" :loading="loadingLibrary" :disabled="isBusy || !libraryReady" hide-details />
@@ -70,7 +69,8 @@
         </v-card-actions>
       </v-card>
     </v-dialog>
-    <v-snackbar :model-value="!!uploadStatus && !showModal" :color="uploadStatus?.type"
+    <ErrorToast v-model="uploadError" />
+    <v-snackbar :model-value="uploadStatus?.type === 'success' && !showModal" :color="uploadStatus?.type"
       attach="body" location="bottom center" :timeout="4000" min-width="0" max-width="calc(100vw - 32px)"
       @update:model-value="uploadStatus = null">{{ uploadStatus?.message }}</v-snackbar>
   </div>
@@ -84,12 +84,17 @@ import { useTrackTypeStore } from '@/stores/trackTypes'
 import debounce from 'lodash.debounce'
 import { computed, onUnmounted, ref, watch } from 'vue'
 import TrackTypeSelector from './TrackTypeSelector.vue'
+import ErrorToast from './ErrorToast.vue'
 
 const props = defineProps<{ tableID?: string }>()
 const tables = useTableStore()
 const trackTypes = useTrackTypeStore()
 const isUploading = ref(false)
 const uploadStatus = ref<{ type: 'success' | 'error', message: string } | null>(null)
+const uploadError = computed({
+  get: () => uploadStatus.value?.type === 'error' ? uploadStatus.value.message : '',
+  set: () => { uploadStatus.value = null },
+})
 const fileStore = useFileStore()
 const isDragging = ref(false)
 const showModal = ref(false)

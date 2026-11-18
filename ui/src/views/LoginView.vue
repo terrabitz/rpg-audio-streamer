@@ -2,6 +2,7 @@
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
+import ErrorToast from '../components/ErrorToast.vue'
 
 const auth = useAuthStore()
 const router = useRouter()
@@ -33,9 +34,7 @@ async function handleSubmit() {
           <v-form @submit.prevent="handleSubmit">
             <v-text-field v-model="username" label="Username" required></v-text-field>
             <v-text-field v-model="password" label="Password" type="password" required></v-text-field>
-            <v-alert v-if="error" type="error" class="mb-4">
-              {{ error }}
-            </v-alert>
+            <ErrorToast v-model="error" />
             <v-btn type="submit" color="primary" block :loading="auth.loading">
               Login
             </v-btn>

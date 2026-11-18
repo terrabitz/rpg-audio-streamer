@@ -36,6 +36,7 @@ export class EventHub {
     onMixerFailed: (handler: Handler<'mixerFailed'>) => this.on('mixerFailed', handler),
     onPlaybackFailed: (handler: Handler<'playbackFailed'>) => this.on('playbackFailed', handler),
     onTrackStatusChanged: (handler: Handler<'trackStatusChanged'>) => this.on('trackStatusChanged', handler),
+    onTrackUpdated: (handler: Handler<'trackUpdated'>) => this.on('trackUpdated', handler),
     onDiscordStatusChanged: (handler: Handler<'discordStatusChanged'>) => this.on('discordStatusChanged', handler),
   }
 

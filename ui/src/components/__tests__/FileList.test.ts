@@ -110,7 +110,7 @@ async function mountTableCards() {
         VCard: { template: '<div><slot /></div>' },
         SortableTrack: { template: '<div><slot /></div>' },
         DragDropProvider: { template: '<div><slot /></div>' },
-        AudioControls: true, PlayingTrackList: true, VolumeSlider: true, VBtn: true,
+        AudioControls: true, PlayingTrackList: true, VolumeSlider: true, VBtn: true, ErrorToast: true,
         VMenu: { props: ['modelValue'], template: '<div v-if="modelValue"><slot /></div>' },
         VList: { template: '<div><slot /></div>' },
         VListItem: { props: ['disabled', 'title'], template: '<button :disabled="disabled">{{ title }}</button>' },
@@ -151,6 +151,7 @@ it('preserves audio metadata when resuming a library preview', async () => {
         },
         AudioPlayer: true,
         AudioControls: true,
+        ErrorToast: true,
       },
     },
   })
@@ -200,7 +201,7 @@ it('applies pushed processing status and refreshes after reconnecting', async ()
       plugins: [pinia],
       stubs: {
         VContainer: { template: '<div><slot /></div>' },
-        VAlert: { template: '<div role="alert"><slot /></div>' },
+        ErrorToast: { props: ['modelValue'], template: '<div role="alert">{{ modelValue }}</div>' },
         VDataTable: true, VProgressCircular: true, VBtn: true, AudioPlayer: true, AudioControls: true,
       },
     },

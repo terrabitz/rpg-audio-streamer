@@ -26,6 +26,7 @@ const bound = [false, false]
 const playRequests = new WeakMap<HTMLMediaElement, Promise<void>>()
 let timer: ReturnType<typeof setInterval> | undefined
 let disposed = false
+let playbackFailed = false
 let overlap: { outgoing: number, incoming: number, start: number, end: number, seekStart?: number } | undefined
 let pendingSeek: number | undefined
 let envelope = 0
@@ -36,6 +37,7 @@ let positionVersion = audioStore.tracks[props.fileID]?.positionVersion
 let seekVersion = audioStore.tracks[props.fileID]?.seekVersion
 
 watch(() => audioStore.tracks[props.fileID]?.isPlaying, syncPlaying)
+watch(() => audioStore.playbackAttempt, syncPlaying)
 watch([
   () => audioStore.tracks[props.fileID]?.currentTime,
   () => audioStore.tracks[props.fileID]?.positionVersion,
@@ -96,6 +98,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
   disposed = true
   audioStore.setLocalPlayback(props.fileID, false)
+  audioStore.blockedPlayback.delete(props.fileID)
   clearInterval(timer)
   for (const player of players) player.destroy()
   for (const [index, media] of [primary.value, secondary.value].entries()) {
@@ -135,8 +138,10 @@ function bindHLS(index: number) {
 }
 
 function syncPlaying() {
+  playbackFailed = false
   const state = audioStore.tracks[props.fileID]
   if (!state?.isPlaying) {
+    audioStore.blockedPlayback.delete(props.fileID)
     const interruptedSeek = pendingSeek !== undefined || overlap?.seekStart !== undefined
     cancelOverlap()
     if (interruptedSeek) updatePlaybackState({ seekTarget: null, seekLanding: null })
@@ -201,7 +206,7 @@ function syncPosition(currentTime?: number) {
 function tick() {
   const state = audioStore.tracks[props.fileID]
   const media = element(active.value)
-  if (disposed || !state || !media || !ready[active.value]) return
+  if (disposed || playbackFailed || !state || !media || !ready[active.value]) return
   advanceVolumeFade(performance.now())
   if (fade) {
     const progress = Math.min(1, (performance.now() - fade.start) / 2000)
@@ -350,6 +355,7 @@ function handlePlaying(index: number) {
   const media = element(index)
   if (index !== active.value || disposed || !media) return
   audioStore.setLocalPlayback(props.fileID, !media.paused)
+  if (!media.paused) audioStore.blockedPlayback.delete(props.fileID)
 }
 
 function handleMetadata(index: number) {
@@ -406,13 +412,20 @@ function updatePlaybackState(updates: Partial<AudioTrack>) {
 
 function reportPlaybackError(cause: unknown) {
   if (disposed || !audioStore.tracks[props.fileID]) return
+  playbackFailed = true
   audioStore.setLocalPlayback(props.fileID, false)
-  console.error(`Failed to play track ${props.fileID}:`, cause)
-  cancelOverlap()
+  audioStore.setFading(props.fileID, false)
+  cancelOverlap(false)
   fade = undefined
   envelope = 0
   pauseMedia(0)
   pauseMedia(1)
+  if (cause instanceof DOMException && cause.name === 'NotAllowedError') {
+    console.warn(`Local audio requires user interaction for track ${props.fileID}:`, cause)
+    audioStore.blockedPlayback.add(props.fileID)
+    return
+  }
+  console.error(`Failed to play track ${props.fileID}:`, cause)
   if (!audioStore.tableMix) updatePlaybackState({ isPlaying: false })
   emit('error', 'Unable to play track. Try again or choose another track.')
 }
