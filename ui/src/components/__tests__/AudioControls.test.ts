@@ -11,6 +11,39 @@ const CONFIRMATION = '[role="dialog"][aria-label="Delete track?"]'
 
 afterEach(() => vi.restoreAllMocks())
 
+it('shows region-relative progress and independent track volume without changing card size', async () => {
+  const { wrapper } = mountControls(false)
+  const audio = useAudioStore()
+  audio.initTrack('forest', 'Forest', 'Music')
+  audio.updateTrackState('forest', {
+    isPlaying: true, duration: 100, currentTime: 40, volume: 50,
+    playback: { startTime: 10, endTime: 60, loopBackTime: null },
+  })
+  await flushPromises()
+  const tile = wrapper.get('.audio-control-tile')
+  expect(tile.classes()).toContain('is-active')
+  expect(tile.attributes('style')).toContain('--track-progress: 60%')
+  expect(wrapper.get('.tile-volume').attributes('style')).toContain('width: 50%')
+  audio.updateTrackState('forest', { isPlaying: false, currentTime: 50 })
+  await flushPromises()
+  expect(tile.classes()).not.toContain('is-active')
+  expect(tile.attributes('style')).toContain('--track-progress: 80%')
+  audio.setMasterVolume(0)
+  await flushPromises()
+  expect(wrapper.get('.tile-volume').attributes('style')).toContain('width: 50%')
+  for (const [currentTime, volume, progress] of [[0, 0, 0], [100, 100, 100]]) {
+    audio.updateTrackState('forest', { currentTime, volume })
+    await flushPromises()
+    expect(tile.attributes('style')).toContain(`--track-progress: ${progress}%`)
+    expect(wrapper.get('.tile-volume').attributes('style')).toContain(`width: ${volume}%`)
+  }
+  audio.updateTrackState('forest', { isPlaying: false, duration: 0 })
+  await flushPromises()
+  expect(tile.classes()).not.toContain('is-active')
+  expect(tile.attributes('style')).toContain('--track-progress: 0%')
+  wrapper.unmount()
+})
+
 it('wires the timeline, waveform, and play toggle without a restart button', async () => {
   const { wrapper, fetchWaveform } = mountControls(false)
   useAudioStore().initTrack('forest', 'Forest', 'Music')

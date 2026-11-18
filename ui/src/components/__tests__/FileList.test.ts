@@ -16,6 +16,77 @@ vi.mock('vuetify', async (importOriginal) => ({
 }))
 
 it.each([0, 25])('sends the selected volume (%s) with the first play command', async (volume) => {
+  const { wrapper, send } = await mountTableCards()
+  useAudioStore().updateTrackState('forest', { volume })
+  await wrapper.get('[aria-label="Forest"]').trigger('click')
+  expect(send).toHaveBeenCalledWith('trackPlaybackChanged', {
+    fileID: 'forest', isPlaying: true, duration: 0, volume,
+  })
+  wrapper.unmount()
+})
+
+it.each([false, true])('plays from the configured start through the context menu (playing: %s)', async (isPlaying) => {
+  const { wrapper, send } = await mountTableCards()
+  useAudioStore().updateTrackState('forest', {
+    isPlaying, duration: 100, currentTime: 60, volume: 25,
+    playback: { startTime: 10, endTime: 90, loopBackTime: null },
+  })
+  await wrapper.get('[aria-label="Forest"]').trigger('contextmenu', { clientX: 120, clientY: 80 })
+  expect(send).not.toHaveBeenCalled()
+  await wrapper.get('[role="menuitem"]').trigger('click')
+  expect(send).toHaveBeenCalledExactlyOnceWith('trackPlaybackChanged', {
+    fileID: 'forest', isPlaying: true, duration: 100, currentTime: 10, volume: 25,
+  })
+  expect(wrapper.find('[role="menu"]').exists()).toBe(false)
+  wrapper.unmount()
+})
+
+it('long-presses without toggling playback and cancels a scrolling gesture', async () => {
+  vi.useFakeTimers()
+  const { wrapper, send } = await mountTableCards()
+  try {
+    const tile = wrapper.get('[aria-label="Forest"]')
+    await tile.trigger('touchstart', { touches: [{ clientX: 20, clientY: 20 }] })
+    await vi.advanceTimersByTimeAsync(500)
+    const release = new Event('touchend', { cancelable: true, bubbles: true })
+    tile.element.dispatchEvent(release)
+    expect(release.defaultPrevented).toBe(true)
+    expect(wrapper.find('[role="menu"]').exists()).toBe(true)
+    expect(send).not.toHaveBeenCalled()
+    await wrapper.get('[role="menuitem"]').trigger('click')
+    send.mockClear()
+    await tile.trigger('touchstart', { touches: [{ clientX: 20, clientY: 20 }] })
+    await tile.trigger('touchmove', { touches: [{ clientX: 20, clientY: 40 }] })
+    await vi.advanceTimersByTimeAsync(500)
+    expect(wrapper.find('[role="menu"]').exists()).toBe(false)
+    await tile.trigger('touchstart', { touches: [{ clientX: 20, clientY: 20 }] })
+    await tile.trigger('touchcancel')
+    await vi.advanceTimersByTimeAsync(500)
+    expect(wrapper.find('[role="menu"]').exists()).toBe(false)
+    expect(send).not.toHaveBeenCalled()
+  } finally {
+    wrapper.unmount()
+    vi.useRealTimers()
+  }
+})
+
+it('disables restart when disconnected or processing and supports a keyboard menu', async () => {
+  const { wrapper, send } = await mountTableCards()
+  const tile = wrapper.get('[aria-label="Forest"]')
+  await tile.trigger('keydown', { key: 'F10', shiftKey: true })
+  expect(wrapper.find('[role="menu"]').exists()).toBe(true)
+  useWebSocketStore().isConnected = false
+  await flushPromises()
+  expect(wrapper.get('[role="menuitem"]').attributes('disabled')).toBeDefined()
+  useWebSocketStore().isConnected = true
+  useFileStore().tracks[0]!.status = 'processing'
+  await flushPromises()
+  expect(wrapper.get('[role="menuitem"]').attributes('disabled')).toBeDefined()
+  expect(send).not.toHaveBeenCalled()
+  wrapper.unmount()
+})
+
+async function mountTableCards() {
   const pinia = createPinia()
   setActivePinia(pinia)
   const files = useFileStore()
@@ -40,17 +111,15 @@ it.each([0, 25])('sends the selected volume (%s) with the first play command', a
         SortableTrack: { template: '<div><slot /></div>' },
         DragDropProvider: { template: '<div><slot /></div>' },
         AudioControls: true, PlayingTrackList: true, VolumeSlider: true, VBtn: true,
+        VMenu: { props: ['modelValue'], template: '<div v-if="modelValue"><slot /></div>' },
+        VList: { template: '<div><slot /></div>' },
+        VListItem: { props: ['disabled', 'title'], template: '<button :disabled="disabled">{{ title }}</button>' },
       },
     },
   })
   await flushPromises()
-  useAudioStore().updateTrackState('forest', { volume })
-  await wrapper.get('[aria-label="Forest"]').trigger('click')
-  expect(send).toHaveBeenCalledWith('trackPlaybackChanged', {
-    fileID: 'forest', isPlaying: true, duration: 0, volume,
-  })
-  wrapper.unmount()
-})
+  return { wrapper, send }
+}
 
 it('preserves audio metadata when resuming a library preview', async () => {
   const pinia = createPinia()
