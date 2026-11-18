@@ -34,7 +34,7 @@ export async function startApp(liveDiscord = false, youtubeFixture = false): Pro
       try {
         if (server && done) {
           server.kill('SIGTERM')
-          const timeout = setTimeout(() => server?.kill('SIGKILL'), 5000)
+          const timeout = setTimeout(() => server?.kill('SIGKILL'), 15_000)
           try { await done } finally { clearTimeout(timeout) }
         }
       } finally {

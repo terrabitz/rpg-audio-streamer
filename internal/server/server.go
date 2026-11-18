@@ -12,7 +12,6 @@ import (
 	"path"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -148,37 +147,9 @@ func (s *Server) Start(ctx context.Context) error {
 	}
 	go s.RunMixer(ctx)
 
-	listener, err := net.Listen("tcp", net.JoinHostPort(s.cfg.Host, strconv.Itoa(s.cfg.Port)))
-	if err != nil {
-		return err
-	}
-	return s.serve(ctx, listener)
-}
-
-func (s *Server) serve(ctx context.Context, listener net.Listener) error {
-	var connectionsMu sync.Mutex
-	pending := make(map[net.Conn]struct{})
-	shuttingDown := false
-	closePending := func(conn net.Conn) {
-		if err := conn.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
-			s.logger.Error("unused HTTP connection cleanup failed", "error", err)
-		}
-	}
 	srv := &http.Server{
+		Addr:    net.JoinHostPort(s.cfg.Host, strconv.Itoa(s.cfg.Port)),
 		Handler: s.Handler(),
-		ConnState: func(conn net.Conn, state http.ConnState) {
-			connectionsMu.Lock()
-			defer connectionsMu.Unlock()
-			if state != http.StateNew {
-				delete(pending, conn)
-				return
-			}
-			if shuttingDown {
-				closePending(conn)
-				return
-			}
-			pending[conn] = struct{}{}
-		},
 	}
 	stopped := make(chan struct{})
 	shutdownDone := make(chan struct{})
@@ -190,14 +161,7 @@ func (s *Server) serve(ctx context.Context, listener net.Listener) error {
 		defer close(shutdownDone)
 		select {
 		case <-ctx.Done():
-			// net/http keeps unused speculative preconnects in StateNew for five seconds.
-			connectionsMu.Lock()
-			shuttingDown = true
-			for conn := range pending {
-				closePending(conn)
-			}
-			connectionsMu.Unlock()
-			shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+			shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
 			defer cancel()
 			if err := srv.Shutdown(shutdownCtx); err != nil {
 				s.logger.Error("HTTP shutdown failed", "error", err)
@@ -214,7 +178,7 @@ func (s *Server) serve(ctx context.Context, listener net.Listener) error {
 		slog.Int("port", s.cfg.Port),
 		slog.Bool("devMode", s.cfg.DevMode),
 	)
-	if err := srv.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
+	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		return err
 	}
 	return nil

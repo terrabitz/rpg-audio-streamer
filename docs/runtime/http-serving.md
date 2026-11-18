@@ -18,9 +18,9 @@ binding a network listener. WebSocket upgrades bypass the API logging wrapper
 The optional API `--host` / `HOST` setting controls the listener interface;
 its empty default listens on all interfaces.
 
-On cancellation, the HTTP server closes accepted connections that have not
-supplied their first request headers, including browser speculative preconnects.
-Active HTTP requests drain within a five-second shutdown deadline; the
+On cancellation, the HTTP server uses Go's standard graceful shutdown with a
+ten-second deadline. This allows unused browser speculative preconnects to age
+out while active HTTP requests finish. The
 [WebSocket hub](./composition.md) separately closes upgraded connections.
 
 ## Docker image
