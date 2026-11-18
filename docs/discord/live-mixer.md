@@ -63,7 +63,8 @@ mutate the mixer; `mixChanged` replaces it, including an empty snapshot on
 leaving a table. Mixer-only events are ignored when disabled and
 never forwarded to players. Successful events receive `mixerApplied`; failures
 receive `mixerFailed` and are logged with table and event context. The adapter
-queues these responses through the hub for delivery only to the originating GM.
+dispatches these responses synchronously through the hub for buffered socket
+delivery only to the originating GM.
 The GM
 displays errors without stopping browser playback. A successful reconnect
 snapshot clears the error. Normal player broadcasts happen before mixer

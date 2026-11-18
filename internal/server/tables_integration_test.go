@@ -127,13 +127,13 @@ func TestTableHTTP(t *testing.T) {
 	if initial.MasterVolume != 100 || initial.TrackOrder == nil || initial.TrackVolumes == nil || initial.TypeVolumes == nil {
 		t.Fatalf("default settings = %+v", initial)
 	}
-	hub.err = errors.New("event queue is full")
+	hub.err = errors.New("event hub is closed")
 	rejected := request("PATCH", settingsPath, `{"masterVolume":0}`, "", true, http.StatusServiceUnavailable)
 	if !strings.Contains(rejected.Body.String(), "live synchronization failed") {
-		t.Fatalf("queue failure was hidden: %s", rejected.Body)
+		t.Fatalf("event failure was hidden: %s", rejected.Body)
 	}
 	if persisted := readSettings(request("GET", settingsPath, "", "", true, 200)); persisted.MasterVolume != 0 {
-		t.Fatal("queue failure changed the outcome of the saved settings")
+		t.Fatal("event failure changed the outcome of the saved settings")
 	}
 	hub.err = nil
 	readSettings(request("PATCH", settingsPath, `{"masterVolume":0,"typeVolumes":{"Music":0,"Ambiance":60}}`, "", true, 200))

@@ -30,7 +30,7 @@ func TestTypedCommandRegistration(t *testing.T) {
 		`{"event":"trackPlaybackChanged","payload":{"fileID":"rain","playback":{"startTime":"0"}}}`,
 		`{"event":"trackPlaybackChanged"}`,
 	} {
-		routeAndDrain(t, hub, []byte(input), clients["gm"])
+		hub.route([]byte(input), clients["gm"])
 	}
 	if len(received) != 2 {
 		t.Fatalf("typed handler received undecodable events: %+v", received)
@@ -60,7 +60,7 @@ func TestTypedMixerRejectsUndecodablePayloads(t *testing.T) {
 		`{"event":"mixVolumesChanged","payload":{"typeVolumes":{"Music":"0"}}}`,
 		`{"event":"mixVolumesChanged","payload":{"typeVolumes":[]}}`,
 	} {
-		routeAndDrain(t, hub, []byte(input), clients["gm"])
+		hub.route([]byte(input), clients["gm"])
 		var message Message
 		if err := json.Unmarshal(<-clients["gm"].send, &message); err != nil || message.Event != events.MixerFailed {
 			t.Fatalf("invalid event response = %+v, %v", message, err)
@@ -95,7 +95,7 @@ func TestTrackProcessedNotifiesGMs(t *testing.T) {
 	hub, clients := testHub()
 	clients["otherGM"].Token.TableID = "friday"
 	id := uuid.New()
-	sendAndDrain(t, hub, events.TrackStatusChanged, server.Track{ID: id, Status: "failed", ProcessingError: "Conversion failed"})
+	sendEvent(t, hub, events.TrackStatusChanged, server.Track{ID: id, Status: "failed", ProcessingError: "Conversion failed"})
 	var message Message
 	if err := json.Unmarshal(<-clients["gm"].send, &message); err != nil {
 		t.Fatal(err)

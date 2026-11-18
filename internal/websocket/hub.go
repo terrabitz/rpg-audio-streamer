@@ -18,7 +18,8 @@ import (
 type Hub struct {
 	clientsMu       sync.RWMutex
 	clients         map[*Client]bool
-	eventQueue      chan queuedEvent
+	lifecycleMu     sync.Mutex
+	inFlight        sync.WaitGroup
 	done            chan struct{}
 	register        chan *Client
 	unregister      chan *Client
@@ -32,22 +33,11 @@ type Hub struct {
 	store           PlaybackStore
 }
 
-const eventQueueCapacity = 256
-
-var (
-	ErrEventQueueFull = errors.New("websocket event queue is full")
-	ErrHubClosed      = errors.New("websocket hub is closed")
-)
-
-type queuedEvent struct {
-	message Message
-	client  *Client
-}
+var ErrHubClosed = errors.New("websocket hub is closed")
 
 func NewHub(logger *slog.Logger, store PlaybackStore) *Hub {
 	hub := &Hub{
 		clients:        make(map[*Client]bool),
-		eventQueue:     make(chan queuedEvent, eventQueueCapacity),
 		done:           make(chan struct{}),
 		register:       make(chan *Client),
 		unregister:     make(chan *Client),
@@ -81,7 +71,10 @@ func (h *Hub) Run(ctx context.Context) {
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 	defer func() {
+		h.lifecycleMu.Lock()
 		close(h.done)
+		h.lifecycleMu.Unlock()
+		h.inFlight.Wait()
 		var clients []*Client
 		h.ForEachClient(func(client *Client) { clients = append(clients, client) })
 		for _, client := range clients {
@@ -92,8 +85,6 @@ func (h *Hub) Run(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			return
-		case event := <-h.eventQueue:
-			h.dispatch(event)
 		case <-ticker.C:
 			h.refreshPlayback()
 		case client := <-h.register:
@@ -245,23 +236,7 @@ func (h *Hub) SendEvent(event string, payload any) error {
 	if err != nil {
 		return fmt.Errorf("encode event %q: %w", event, err)
 	}
-	return h.enqueue(queuedEvent{message: message})
-}
-
-func (h *Hub) enqueue(event queuedEvent) error {
-	select {
-	case <-h.done:
-		return ErrHubClosed
-	default:
-	}
-	select {
-	case h.eventQueue <- event:
-		return nil
-	case <-h.done:
-		return ErrHubClosed
-	default:
-		return ErrEventQueueFull
-	}
+	return h.dispatch(message, nil)
 }
 
 func (h *Hub) route(message []byte, c *Client) {
@@ -271,26 +246,28 @@ func (h *Hub) route(message []byte, c *Client) {
 		return
 	}
 	msg.SenderID = c.ID
-	if err := h.enqueue(queuedEvent{message: msg, client: c}); err != nil {
-		h.logger.Error("could not queue websocket event", "event", msg.Event, "error", err)
-		// Reconnect reconciliation must replace any unapplied client intent.
+	if err := h.dispatch(msg, c); err != nil {
+		h.logger.Error("could not handle websocket event", "event", msg.Event, "error", err)
 		if c.conn != nil {
 			c.conn.Close()
 		}
 	}
 }
 
-func (h *Hub) dispatch(event queuedEvent) {
-	msg, c := event.message, event.client
+func (h *Hub) dispatch(msg Message, c *Client) error {
+	if err := h.beginDispatch(); err != nil {
+		return err
+	}
+	defer h.inFlight.Done()
 	if c == nil {
 		h.serverHandlers[msg.Event](msg.Payload, nil)
-		return
+		return nil
 	}
 	h.clientsMu.RLock()
 	closed := c.closed
 	h.clientsMu.RUnlock()
 	if closed {
-		return
+		return nil
 	}
 	fn, ok := h.handlers[msg.Event]
 	if !ok {
@@ -298,7 +275,7 @@ func (h *Hub) dispatch(event queuedEvent) {
 			slog.String("event", msg.Event),
 			slog.String("senderId", msg.SenderID),
 		)
-		return
+		return nil
 	}
 
 	h.logger.Debug("executing WS handler",
@@ -308,4 +285,18 @@ func (h *Hub) dispatch(event queuedEvent) {
 	)
 
 	fn(msg.Payload, c)
+	return nil
+}
+
+func (h *Hub) beginDispatch() error {
+	h.lifecycleMu.Lock()
+	defer h.lifecycleMu.Unlock()
+	select {
+	case <-h.done:
+		return ErrHubClosed
+	default:
+		// Admission must finish before shutdown starts waiting, including nested sends.
+		h.inFlight.Add(1)
+		return nil
+	}
 }

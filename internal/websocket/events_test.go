@@ -5,32 +5,54 @@ import (
 	"encoding/json"
 	"errors"
 	"math"
+	"slices"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/terrabitz/rpg-audio-streamer/internal/events"
 )
 
-func TestEventQueueDoesNotWaitForSubscribersAndPreservesAcceptedEvents(t *testing.T) {
+func TestSendEventWaitsForSubscribersAndAllowsNestedEvents(t *testing.T) {
+	hub, _ := testHub()
+	var handled []string
+	OnServerEvent(hub, "outer", func(payload Empty, _ *Client) {
+		hub.notify("outer", payload, events.Metadata{})
+	})
+	OnServerEvent(hub, "inner", func(Empty, *Client) {
+		handled = append(handled, "inner")
+	})
+	hub.On("outer", func(json.RawMessage, events.Metadata) error {
+		handled = append(handled, "before")
+		if err := hub.SendEvent("inner", Empty{}); err != nil {
+			return err
+		}
+		handled = append(handled, "after")
+		return nil
+	})
+	if err := hub.SendEvent("outer", Empty{}); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(handled, []string{"before", "inner", "after"}) {
+		t.Fatalf("SendEvent returned before nested handlers finished: %v", handled)
+	}
+}
+
+func TestBlockedEventOnlyBlocksItsCallerAndShutdownWaits(t *testing.T) {
 	hub, _ := testHub()
 	started := make(chan struct{})
 	release := make(chan struct{})
-	delivered := make(chan int, eventQueueCapacity+1)
-	OnServerEvent(hub, "queued", func(payload map[string]int, _ *Client) {
-		hub.notify("queued", payload, events.Metadata{})
+	var released sync.Once
+	unblock := func() { released.Do(func() { close(release) }) }
+	OnServerEvent(hub, "blocked", func(payload Empty, _ *Client) {
+		hub.notify("blocked", payload, events.Metadata{})
 	})
-	hub.On("queued", func(raw json.RawMessage, _ events.Metadata) error {
-		var payload map[string]int
-		if err := json.Unmarshal(raw, &payload); err != nil {
-			return err
-		}
-		if payload["sequence"] == 0 {
-			close(started)
-			<-release
-		}
-		delivered <- payload["sequence"]
+	hub.On("blocked", func(json.RawMessage, events.Metadata) error {
+		close(started)
+		<-release
 		return nil
 	})
+	OnServerEvent(hub, "independent", func(Empty, *Client) {})
 	ctx, cancel := context.WithCancel(context.Background())
 	finished := make(chan struct{})
 	go func() {
@@ -46,58 +68,56 @@ func TestEventQueueDoesNotWaitForSubscribersAndPreservesAcceptedEvents(t *testin
 		}
 	}
 	defer func() {
-		select {
-		case <-release:
-		default:
-			close(release)
-		}
+		unblock()
 		cancel()
 		waitStopped()
 	}()
-	if err := hub.SendEvent("queued", map[string]int{"sequence": 0}); err != nil {
-		t.Fatal(err)
-	}
+	sent := make(chan error, 1)
+	go func() { sent <- hub.SendEvent("blocked", Empty{}) }()
 	select {
 	case <-started:
 	case <-time.After(time.Second):
 		t.Fatal("hub did not start the first event")
 	}
-	enqueued := make(chan error, 1)
-	go func() {
-		for i := 1; i <= eventQueueCapacity; i++ {
-			payload := map[string]int{"sequence": i}
-			if err := hub.SendEvent("queued", payload); err != nil {
-				enqueued <- err
-				return
-			}
-			payload["sequence"] = -1
-		}
-		enqueued <- hub.SendEvent("queued", map[string]int{"sequence": -2})
-	}()
 	select {
-	case err := <-enqueued:
-		if !errors.Is(err, ErrEventQueueFull) {
-			t.Fatalf("overflow = %v; want ErrEventQueueFull", err)
+	case err := <-sent:
+		t.Fatalf("SendEvent returned before its subscriber finished: %v", err)
+	default:
+	}
+	independent := make(chan error, 1)
+	go func() { independent <- hub.SendEvent("independent", Empty{}) }()
+	select {
+	case err := <-independent:
+		if err != nil {
+			t.Fatal(err)
 		}
 	case <-time.After(time.Second):
-		t.Fatal("producer waited for the blocked subscriber")
-	}
-	close(release)
-	for i := 0; i <= eventQueueCapacity; i++ {
-		select {
-		case sequence := <-delivered:
-			if sequence != i {
-				t.Fatalf("event %d was lost, reordered, or mutated: got %d", i, sequence)
-			}
-		case <-time.After(time.Second):
-			t.Fatalf("event %d was not delivered", i)
-		}
+		t.Fatal("an unrelated producer waited for the blocked subscriber")
 	}
 	cancel()
-	waitStopped()
-	if err := hub.SendEvent("queued", map[string]int{}); !errors.Is(err, ErrHubClosed) {
-		t.Fatalf("stopped hub accepted an event: %v", err)
+	select {
+	case <-hub.done:
+	case <-time.After(time.Second):
+		t.Fatal("hub did not stop accepting events")
 	}
+	select {
+	case <-finished:
+		t.Fatal("hub stopped before an in-flight handler finished")
+	default:
+	}
+	if err := hub.SendEvent("blocked", Empty{}); !errors.Is(err, ErrHubClosed) {
+		t.Fatalf("stopping hub accepted an event: %v", err)
+	}
+	unblock()
+	select {
+	case err := <-sent:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("released event did not finish")
+	}
+	waitStopped()
 }
 
 func TestServerEventsCannotBePublishedBySocketClients(t *testing.T) {
@@ -105,7 +125,7 @@ func TestServerEventsCannotBePublishedBySocketClients(t *testing.T) {
 	called := false
 	OnServerEvent(hub, events.TableDeleted, func(string, *Client) { called = true })
 	for _, id := range []string{"gm", "player"} {
-		routeAndDrain(t, hub, []byte(`{"event":"tableDeleted","payload":"friday"}`), clients[id])
+		hub.route([]byte(`{"event":"tableDeleted","payload":"friday"}`), clients[id])
 	}
 	if called {
 		t.Fatal("untrusted socket event reached a server-only handler")
@@ -125,7 +145,7 @@ func TestServerEventsCannotBePublishedBySocketClients(t *testing.T) {
 
 func TestEventSenderComesFromAuthenticatedSocket(t *testing.T) {
 	hub, clients := testHub()
-	routeAndDrain(t, hub, []byte(`{"event":"broadcast","senderId":"forged","payload":{"nonce":0}}`), clients["gm"])
+	hub.route([]byte(`{"event":"broadcast","senderId":"forged","payload":{"nonce":0}}`), clients["gm"])
 	var message Message
 	if err := json.Unmarshal(<-clients["player"].send, &message); err != nil {
 		t.Fatal(err)

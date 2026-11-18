@@ -23,7 +23,7 @@ tags: [backend, go]
 | `ui/e2e` | Full-app browser journeys and Discord listener audio validation ([test layers](../operations/test-layers.md)) |
 | `internal/sqlitedatastore` | Domain-to-SQLite mapping, migrations, context-aware datastore implementation ([schema](../data/sqlite-schema.md)) |
 | `internal/sqlitedatastore/sqlitedb` | Generated sqlc models and query implementations |
-| `internal/websocket` | [Authoritative live table playback](../playback/synchronization.md), bounded [event dispatch](../playback/websocket-protocol.md), scoped socket subscriptions, connection lifecycle, read/write pumps |
+| `internal/websocket` | [Authoritative live table playback](../playback/synchronization.md), synchronous [event dispatch](../playback/websocket-protocol.md), scoped socket subscriptions, connection lifecycle, read/write pumps |
 
 ## Boundaries
 

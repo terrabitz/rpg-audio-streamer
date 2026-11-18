@@ -1,7 +1,7 @@
 ---
 type: Protocol
 title: WebSocket protocol
-description: Event envelope, typed dispatch, recipient routing, and bounded delivery queues.
+description: Event envelope, synchronous typed dispatch, subscriptions, and recipient routing.
 resource: internal/events/events.go
 tags: [playback, websocket, protocol]
 ---
@@ -44,13 +44,21 @@ Socket sender identity always comes from the authenticated connection.
 ## Backend dispatch
 
 Go producers depend on `events.Sender` and call `SendEvent(name, payload)`.
-The hub owns a 256-entry FIFO queue shared by server and incoming socket events.
-It serializes server payloads before enqueueing, so producers may reuse or mutate
-their values afterward. Submission never waits for a handler, mixer cleanup, or
-socket delivery. A full queue returns `ErrEventQueueFull`; a stopped hub returns
-`ErrHubClosed`. Encoding errors also reject submission.
+The hub serializes the payload and runs handlers and subscribers synchronously
+on the caller's goroutine. Returning means those callbacks have finished, not
+that a browser has received its buffered socket frame. There is no shared event
+queue. Unknown server events, encoding failures, and shutdown reject sends;
+shutdown returns `ErrHubClosed`. Handler and subscriber failures are logged;
+they are not returned by `SendEvent`.
 
-The hub runs handlers serially. `OnEvent(hub, name, func(payload T, client *Client))`
+Socket events run on their connection's read pump, preserving per-connection
+order. Independent callers can dispatch concurrently, so consumers protect
+their own state and callers own cross-event ordering. Playback mutations and
+snapshots share the hub's state lock. Callers that need asynchronous dispatch
+start their own goroutine; [Discord status notifications](../discord/voice-streaming.md)
+use this boundary without reordering transitions.
+
+`OnEvent(hub, name, func(payload T, client *Client))`
 registers authenticated client handlers; `OnServerEvent` registers trusted Go
 producer handlers. Registration happens before the hub starts, and registering
 the same name replaces that origin's callback. A browser cannot invoke a
@@ -65,16 +73,14 @@ and reconciles authoritative settings before publishing playback state.
 Processing sends its track model; Discord sends `TableEvent[discord.Status]`.
 Only the corresponding browser payloads leave the server.
 
-HTTP producers log rejected submissions and report synchronization failure rather
-than success; the database change may already be saved. Background processing
-and Discord producers log submission failures. A socket producer that fills the
-queue is disconnected so reconnect reconciliation can restore authoritative
-state. Slow socket recipients are disconnected independently. Accepted events
-are not coalesced; process shutdown ends delivery and closes clients.
+HTTP producers log rejected sends and report synchronization failure rather than
+success; the database change may already be saved. Background processing and
+Discord producers log send failures. Slow socket recipients are disconnected
+independently. Shutdown rejects new dispatches, waits for in-flight handlers,
+and then closes clients.
 
-Connection registration and player-access revocation remain synchronous
-transport controls. Revocation cannot be rejected by the event queue, and
-queued events from disconnected clients are ignored.
+Connection registration and player-access revocation are synchronous transport
+controls. Events arriving from disconnected clients are ignored.
 
 ## Shared server subscriptions
 
@@ -91,8 +97,9 @@ The hub implements the bus without owning its consumers. Each registration retur
 independent, idempotent unsubscribe function. Registration is concurrency-safe;
 callbacks run in registration order using a dispatch snapshot, so changes to
 subscriptions affect subsequent dispatches. Callback errors are logged without
-preventing other subscribers from running. Callbacks run serially on the hub
-loop, not on producer goroutines. Each listener receives its own decoded payload,
+preventing other subscribers from running. Within one dispatch, callbacks run
+serially on the caller's goroutine; separate dispatches may overlap.
+Each listener receives its own decoded payload,
 so changing a slice, map, or pointer cannot affect another listener.
 
 Subscribers observe authorized events with table, client, and role scope
@@ -128,7 +135,7 @@ The [mixer event adapter](../discord/live-mixer.md) subscribes independently and
 submits targeted `mixerReady`, `mixerApplied`, and `mixerFailed` responses as
 `ClientEvent` wrappers. Only their inner payloads reach the specified table and
 client. Connection observers run before socket reads begin, ensuring readiness
-is queued before the initial playback-sync request.
+is placed in the socket's output buffer before the initial playback-sync request.
 
 ## Browser subscriptions
 

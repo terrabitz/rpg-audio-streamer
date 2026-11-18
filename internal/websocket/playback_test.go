@@ -25,7 +25,6 @@ type playbackTestStore struct{}
 
 func routeSyncTrack(h *Hub, payload json.RawMessage, client *Client) {
 	h.handlers[events.TrackPlaybackChanged](payload, client)
-	drainEvents(h)
 }
 
 func (playbackTestStore) HasTableTrack(_ context.Context, _ uuid.UUID, id uuid.UUID) (bool, error) {
@@ -317,13 +316,13 @@ func TestPlaybackCommandsAreAtomicAndAuthorized(t *testing.T) {
 	if len(mix.calls) != 0 {
 		t.Fatalf("rejected playback events reached the mixer: %v", mix.calls)
 	}
-	sendAndDrain(t, h, events.TrackRemoved, events.TableEvent[events.TrackReference]{
+	sendEvent(t, h, events.TrackRemoved, events.TableEvent[events.TrackReference]{
 		TableID: server.DefaultTableID.String(), Data: events.TrackReference{FileID: testTrackID.String()},
 	})
 	if _, ok := h.playback[server.DefaultTableID.String()][testTrackID.String()]; ok {
 		t.Fatal("removed track survives recovery")
 	}
-	sendAndDrain(t, h, events.TableDeleted, server.DefaultTableID.String())
+	sendEvent(t, h, events.TableDeleted, server.DefaultTableID.String())
 	if _, ok := h.playback[server.DefaultTableID.String()]; ok {
 		t.Fatal("deleted table survives recovery")
 	}
@@ -464,7 +463,7 @@ func TestPlaybackRefreshAndSettings(t *testing.T) {
 	h.playback[tableID][testTrackID.String()] = state
 	mix := &testMixer{}
 	t.Cleanup(livemixer.Subscribe(h, mix))
-	sendAndDrain(t, h, events.TableSettingsChanged, events.TableEvent[server.TableSettingsPatch]{
+	sendEvent(t, h, events.TableSettingsChanged, events.TableEvent[server.TableSettingsPatch]{
 		TableID: tableID, Data: server.TableSettingsPatch{
 			TrackVolumes: map[string]float64{testTrackID.String(): 10},
 		},

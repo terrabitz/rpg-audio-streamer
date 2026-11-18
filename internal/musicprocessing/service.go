@@ -226,7 +226,7 @@ func (s *Service) process(ctx context.Context, next job) {
 func (s *Service) notify(track Track, status, message string) {
 	track.Status, track.ProcessingError = status, message
 	if err := s.notifier.SendEvent(events.TrackStatusChanged, track); err != nil {
-		s.logger.Error("failed to queue track status event", "trackID", track.ID, "error", err)
+		s.logger.Error("failed to send track status event", "trackID", track.ID, "error", err)
 	}
 }
 

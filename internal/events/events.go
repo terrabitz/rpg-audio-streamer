@@ -35,8 +35,8 @@ type Event struct {
 	SenderID string          `json:"senderId,omitempty"`
 }
 
-// Sender accepts an event without waiting for handlers or socket delivery.
-// An error means the event was not accepted.
+// Sender dispatches an event synchronously; socket delivery remains buffered.
+// SendEvent reports admission and encoding errors; handler failures are logged.
 type Sender interface {
 	SendEvent(event string, payload any) error
 }

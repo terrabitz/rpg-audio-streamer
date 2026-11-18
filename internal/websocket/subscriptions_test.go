@@ -39,7 +39,7 @@ func TestSubscriptionsAreIndependentAndIsolateFailuresAndPayloads(t *testing.T) 
 		return nil
 	})
 	send := func() {
-		sendAndDrain(t, hub, events.TrackRemoved, events.TableEvent[events.TrackReference]{
+		sendEvent(t, hub, events.TrackRemoved, events.TableEvent[events.TrackReference]{
 			TableID: "friday", Data: events.TrackReference{FileID: "rain"},
 		})
 	}
@@ -181,7 +181,7 @@ func TestSocketSubscriptionsAreRemovedWithTheirConnection(t *testing.T) {
 			case "revocation":
 				hub.RevokePlayerAccess("friday")
 			case "table deletion":
-				sendAndDrain(t, hub, events.TableDeleted, "friday")
+				sendEvent(t, hub, events.TableDeleted, "friday")
 			}
 			if !client.closed || count() != baseline {
 				t.Fatalf("connection left subscriptions behind: closed=%v subscriptions=%d baseline=%d", client.closed, count(), baseline)
@@ -194,7 +194,7 @@ func TestLibraryBroadcastDoesNotCrossIntoTableSubscriptions(t *testing.T) {
 	hub, clients := testHub()
 	clients["otherGM"].Token.TableID = "friday"
 	clients["player"].Token.TableID = "friday"
-	routeAndDrain(t, hub, []byte(`{"event":"broadcast","payload":{"hello":"library"}}`), clients["gm"])
+	hub.route([]byte(`{"event":"broadcast","payload":{"hello":"library"}}`), clients["gm"])
 	for id, client := range clients {
 		want := 0
 		if id == "otherPlayer" {

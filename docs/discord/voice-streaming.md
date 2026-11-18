@@ -48,6 +48,13 @@ Disconnecting, closing the table mix, loss of its last GM, or renderer shutdown
 ends the subscription and voice connection. Transport failures and slow PCM
 consumers become observable error states.
 
+Status notifications use producer-owned goroutines to call the
+[synchronous event bus](../playback/websocket-protocol.md). Each notification
+waits for its predecessor, preserving transition order without running event
+listeners under the service mutex. Connection startup and teardown do not wait
+for notifications, so a slow or reentrant listener cannot stall voice lifecycle
+cleanup.
+
 The first successful mixer sync of a GM table session follows an authoritative
 [playback snapshot](../playback/synchronization.md), so a reconnect sync
 includes the table's active tracks before attempting the saved destination

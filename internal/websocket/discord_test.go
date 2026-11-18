@@ -16,9 +16,9 @@ func TestDiscordStatusReachesOnlyTableGMs(t *testing.T) {
 			client.Token.TableID = "sunday"
 		}
 	}
-	sendAndDrain(t, hub, events.DiscordStatusChanged, events.TableEvent[discord.Status]{TableID: "friday", Data: discord.Status{Enabled: true, State: "connecting"}})
+	sendEvent(t, hub, events.DiscordStatusChanged, events.TableEvent[discord.Status]{TableID: "friday", Data: discord.Status{Enabled: true, State: "connecting"}})
 	<-clients["gm"].send
-	sendAndDrain(t, hub, events.DiscordStatusChanged, events.TableEvent[discord.Status]{TableID: "friday", Data: discord.Status{
+	sendEvent(t, hub, events.DiscordStatusChanged, events.TableEvent[discord.Status]{TableID: "friday", Data: discord.Status{
 		Enabled: true, State: "error", Error: "voice lost",
 		Destination: &discord.Destination{GuildID: "1", ChannelID: "2"},
 	}})
@@ -47,7 +47,6 @@ func TestDiscordStatusReachesOnlyTableGMs(t *testing.T) {
 			t.Fatal("table GM did not receive status")
 		}
 	}
-	drainEvents(hub)
 	if len(clients["gm"].send) != 0 {
 		t.Fatal("pending updates were not drained")
 	}

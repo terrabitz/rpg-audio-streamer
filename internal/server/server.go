@@ -134,7 +134,7 @@ func New(cfg Config, logger *slog.Logger, auth Authenticator, store Store, hub W
 
 func (s *Server) sendEvent(w http.ResponseWriter, event string, payload any) bool {
 	if err := s.hub.SendEvent(event, payload); err != nil {
-		s.logger.Error("failed to queue server event", "event", event, "error", err)
+		s.logger.Error("failed to send server event", "event", event, "error", err)
 		http.Error(w, "The change was saved, but live synchronization failed. Reload before retrying.", http.StatusServiceUnavailable)
 		return false
 	}

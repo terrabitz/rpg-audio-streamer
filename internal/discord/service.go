@@ -33,18 +33,19 @@ type Destination = domain.Destination
 type Status = domain.DiscordStatus
 
 type Service struct {
-	mu        sync.Mutex
-	cfg       Config
-	mix       *livemixer.Service
-	active    map[string]*session
-	status    map[string]Status
-	open      func(context.Context, Config) (*transport, error)
-	apiURL    string
-	http      *http.Client
-	apiMu     sync.Mutex
-	apiClient rest.Client
-	closeREST sync.Once
-	events    events.Sender
+	mu         sync.Mutex
+	cfg        Config
+	mix        *livemixer.Service
+	active     map[string]*session
+	status     map[string]Status
+	open       func(context.Context, Config) (*transport, error)
+	apiURL     string
+	http       *http.Client
+	apiMu      sync.Mutex
+	apiClient  rest.Client
+	closeREST  sync.Once
+	events     events.Sender
+	statusSent <-chan struct{}
 }
 
 type session struct {
@@ -268,11 +269,27 @@ func (s *Service) stream(current *session) error {
 
 func (s *Service) setStatus(tableID string, status Status) {
 	s.status[tableID] = status
-	if s.events != nil {
-		if err := s.events.SendEvent(events.DiscordStatusChanged, events.TableEvent[Status]{TableID: tableID, Data: status}); err != nil {
-			slog.Error("failed to queue Discord status event", "tableID", tableID, "error", err)
-		}
+	if s.events == nil {
+		return
 	}
+	if status.Destination != nil {
+		destination := *status.Destination
+		status.Destination = &destination
+	}
+	sender := s.events
+	previous := s.statusSent
+	sent := make(chan struct{})
+	s.statusSent = sent
+	// Preserve transitions without running listeners under mu or delaying stream teardown.
+	go func() {
+		defer close(sent)
+		if previous != nil {
+			<-previous
+		}
+		if err := sender.SendEvent(events.DiscordStatusChanged, events.TableEvent[Status]{TableID: tableID, Data: status}); err != nil {
+			slog.Error("failed to send Discord status event", "tableID", tableID, "error", err)
+		}
+	}()
 }
 
 func snowflake(value string) bool {

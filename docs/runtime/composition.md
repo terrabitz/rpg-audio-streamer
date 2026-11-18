@@ -21,7 +21,8 @@ produces the Argon2id password hash used in configuration.
 The CLI owns the signal-cancelled application context, recovers interrupted
 processing before serving, and runs the processing service and WebSocket hub
 with `Run(ctx)`. Shutdown cancels workers, drains accepted processing jobs into
-a failed state, stops hub event delivery, closes socket clients, and waits for
+a failed state, stops hub event admission, waits for in-flight dispatches,
+closes socket clients, and waits for
 both services before closing the datastore. The HTTP server receives its
 lifetime context through `Start(ctx)`; neither the server nor the processing
 service stores a context.

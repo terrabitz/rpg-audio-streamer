@@ -32,7 +32,7 @@ func TestMixerReceivesOnlyTableScopedGMCommands(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		routeAndDrain(t, hub, input, clients[sender])
+		hub.route(input, clients[sender])
 	}
 	send("player", "mixChanged", `{"tracks":[]}`)
 	send("player", "mixVolumesChanged", `{"typeVolumes":{}}`)
@@ -65,8 +65,8 @@ func TestMixerReceivesOnlyTableScopedGMCommands(t *testing.T) {
 	if last.Event != "mixerFailed" {
 		t.Fatalf("failed event was not reported: %+v", last)
 	}
-	sendAndDrain(t, hub, events.TrackRemoved, events.TableEvent[events.TrackReference]{TableID: tableID, Data: events.TrackReference{FileID: testTrackID.String()}})
-	sendAndDrain(t, hub, events.TableDeleted, tableID)
+	sendEvent(t, hub, events.TrackRemoved, events.TableEvent[events.TrackReference]{TableID: tableID, Data: events.TrackReference{FileID: testTrackID.String()}})
+	sendEvent(t, hub, events.TableDeleted, tableID)
 	if got := mix.calls[len(mix.calls)-2:]; got[0] != "remove:"+tableID+":"+testTrackID.String() || got[1] != "close:"+tableID {
 		t.Fatalf("cleanup: %v", got)
 	}
@@ -140,7 +140,7 @@ func TestMessageRouting(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			routeAndDrain(t, hub, input, clients[tc.sender])
+			hub.route(input, clients[tc.sender])
 			for id, client := range clients {
 				want := false
 				for _, recipient := range tc.recipients {
@@ -207,7 +207,7 @@ func TestClientSubscriptionsAndSlowConsumers(t *testing.T) {
 	if err := clients["gm"].Send(Message{Payload: json.RawMessage(`invalid`)}); err == nil {
 		t.Fatal("invalid direct message should fail to marshal")
 	}
-	routeAndDrain(t, hub, []byte(`invalid`), clients["gm"])
+	hub.route([]byte(`invalid`), clients["gm"])
 }
 
 func TestWebSocketClientPumps(t *testing.T) {
@@ -241,12 +241,6 @@ func TestWebSocketClientPumps(t *testing.T) {
 	defer conn.Close()
 	if err := conn.WriteJSON(Message{Event: "ping", Payload: json.RawMessage(`"hello"`)}); err != nil {
 		t.Fatal(err)
-	}
-	select {
-	case event := <-hub.eventQueue:
-		hub.dispatch(event)
-	case <-time.After(3 * time.Second):
-		t.Fatal("socket event was not queued")
 	}
 	conn.SetReadDeadline(time.Now().Add(3 * time.Second))
 	var response Message
@@ -296,7 +290,7 @@ func TestTableIsolation(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			routeAndDrain(t, hub, input, clients[tc.sender])
+			hub.route(input, clients[tc.sender])
 			if len(outsider.send) != 0 || len(otherGM.send) != 0 {
 				t.Fatal("message crossed table boundary")
 			}
@@ -313,7 +307,7 @@ func TestTableDeletionAndTrackRemoval(t *testing.T) {
 	clients["player"].Token.TableID = "friday"
 	clients["otherGM"].Token.TableID = "sunday"
 	clients["otherPlayer"].Token.TableID = "sunday"
-	sendAndDrain(t, hub, events.TrackRemoved, events.TableEvent[events.TrackReference]{TableID: "friday", Data: events.TrackReference{FileID: "forest"}})
+	sendEvent(t, hub, events.TrackRemoved, events.TableEvent[events.TrackReference]{TableID: "friday", Data: events.TrackReference{FileID: "forest"}})
 	for _, id := range []string{"gm", "player"} {
 		var message Message
 		if err := json.Unmarshal(<-clients[id].send, &message); err != nil {
@@ -326,7 +320,7 @@ func TestTableDeletionAndTrackRemoval(t *testing.T) {
 	if len(clients["otherPlayer"].send) != 0 {
 		t.Fatal("track removal crossed tables")
 	}
-	sendAndDrain(t, hub, events.TableDeleted, "friday")
+	sendEvent(t, hub, events.TableDeleted, "friday")
 	for _, id := range []string{"gm", "player"} {
 		client := clients[id]
 		if _, ok := hub.clients[client]; ok {
@@ -342,9 +336,9 @@ func TestTableDeletionAndTrackRemoval(t *testing.T) {
 		if err := client.Send(Message{Event: "ping"}); err == nil {
 			t.Fatal("disconnected client accepted direct message")
 		}
-		routeAndDrain(t, hub, []byte(`{"event":"playbackSyncRequested","payload":{}}`), client)
+		hub.route([]byte(`{"event":"playbackSyncRequested","payload":{}}`), client)
 	}
-	sendAndDrain(t, hub, events.TrackRemoved, events.TableEvent[events.TrackReference]{TableID: "", Data: events.TrackReference{FileID: "forest"}})
+	sendEvent(t, hub, events.TrackRemoved, events.TableEvent[events.TrackReference]{TableID: "", Data: events.TrackReference{FileID: "forest"}})
 	if len(clients["otherPlayer"].send) != 1 {
 		t.Fatal("library deletion did not reach other table")
 	}
@@ -358,9 +352,8 @@ func TestRevokePlayerAccessDisconnectsOnlyPlayersInTable(t *testing.T) {
 			client.Token.TableID = "sunday"
 		}
 	}
-	hub.route([]byte(`{"event":"ping","payload":{}}`), clients["player"])
 	hub.RevokePlayerAccess("friday")
-	drainEvents(hub)
+	hub.route([]byte(`{"event":"ping","payload":{}}`), clients["player"])
 	for id, client := range clients {
 		_, registered := hub.clients[client]
 		disconnected := client.closed
@@ -395,27 +388,9 @@ func testHub() (*Hub, map[string]*Client) {
 	return hub, clients
 }
 
-func routeAndDrain(t *testing.T, hub *Hub, message []byte, client *Client) {
-	t.Helper()
-	hub.route(message, client)
-	drainEvents(hub)
-}
-
-func sendAndDrain(t *testing.T, hub *Hub, event string, payload any) {
+func sendEvent(t *testing.T, hub *Hub, event string, payload any) {
 	t.Helper()
 	if err := hub.SendEvent(event, payload); err != nil {
 		t.Fatal(err)
-	}
-	drainEvents(hub)
-}
-
-func drainEvents(hub *Hub) {
-	for {
-		select {
-		case event := <-hub.eventQueue:
-			hub.dispatch(event)
-		default:
-			return
-		}
 	}
 }
