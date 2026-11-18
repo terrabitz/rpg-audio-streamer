@@ -59,6 +59,7 @@ func NewHub(logger *slog.Logger, store PlaybackStore) *Hub {
 	OnServerEvent(hub, events.TrackRemoved, hub.handleTrackRemoved)
 	OnServerEvent(hub, events.TableSettingsChanged, hub.handleTableSettingsChanged)
 	OnServerEvent(hub, events.TrackStatusChanged, hub.handleTrackStatusChanged)
+	OnServerEvent(hub, events.TrackUpdated, hub.handleTrackUpdated)
 	OnServerEvent(hub, events.DiscordStatusChanged, hub.handleDiscordStatusChanged)
 	OnServerEvent(hub, events.MixerReady, hub.handleMixerReady)
 	OnServerEvent(hub, events.MixerApplied, hub.handleMixerApplied)

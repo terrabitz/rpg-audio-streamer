@@ -22,6 +22,7 @@ func (c *Client) subscribe() {
 	if c.Token.Role == auth.RoleGM {
 		c.subscriptions = append(c.subscriptions,
 			events.OnTrackStatusChanged(c.hub, c.handleTrackStatusChanged),
+			events.OnTrackUpdated(c.hub, c.handleTrackUpdated),
 			events.OnDiscordStatusChanged(c.hub, c.handleDiscordStatusChanged),
 			events.OnMixerReady(c.hub, c.handleMixerReady),
 			events.OnMixerApplied(c.hub, c.handleMixerApplied),
@@ -71,6 +72,10 @@ func (c *Client) handlePlaybackFailed(payload events.Failure, metadata events.Me
 
 func (c *Client) handleTrackStatusChanged(payload events.TrackStatusUpdate, metadata events.Metadata) error {
 	return c.deliver(events.TrackStatusChanged, payload, metadata)
+}
+
+func (c *Client) handleTrackUpdated(payload domain.Track, metadata events.Metadata) error {
+	return c.deliver(events.TrackUpdated, payload, metadata)
 }
 
 func (c *Client) handleDiscordStatusChanged(payload domain.DiscordStatus, metadata events.Metadata) error {

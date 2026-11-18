@@ -69,6 +69,10 @@ func OnTrackStatusChanged(bus Bus, handler Listener[TrackStatusUpdate]) func() {
 	return subscribe(bus, TrackStatusChanged, handler)
 }
 
+func OnTrackUpdated(bus Bus, handler Listener[domain.Track]) func() {
+	return subscribe(bus, TrackUpdated, handler)
+}
+
 func OnDiscordStatusChanged(bus Bus, handler Listener[domain.DiscordStatus]) func() {
 	return subscribe(bus, DiscordStatusChanged, handler)
 }

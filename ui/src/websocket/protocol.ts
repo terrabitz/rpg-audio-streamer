@@ -61,5 +61,6 @@ export interface Payloads {
   mixerFailed: MixerFailure
   playbackFailed: Failure
   trackStatusChanged: TrackStatusUpdate
+  trackUpdated: Track
   discordStatusChanged: DiscordStatus
 }

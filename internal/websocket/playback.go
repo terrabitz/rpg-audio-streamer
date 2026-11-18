@@ -39,6 +39,48 @@ type playingTrack struct {
 
 type PlaybackPatch = events.PlaybackPatch
 
+func (h *Hub) handleTrackUpdated(fileID string, _ *Client) {
+	h.stateMu.Lock()
+	defer h.stateMu.Unlock()
+	id, err := uuid.Parse(fileID)
+	if err != nil {
+		h.logger.Error("invalid updated track ID", "error", err)
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	// Read after taking the playback lock so concurrent saves cannot broadcast stale metadata.
+	track, err := h.store.GetTrackByID(ctx, id)
+	if err != nil {
+		h.logger.Error("failed to read updated track", "error", err)
+		return
+	}
+	if err := h.publishEvent(events.TrackUpdated, track, events.Metadata{Global: true}); err != nil {
+		h.logger.Error("failed to announce track update", "error", err)
+	}
+	for tableID, tracks := range h.playback {
+		state, ok := tracks[fileID]
+		if !ok {
+			continue
+		}
+		settings, err := h.tableSettings(tableID)
+		if err != nil {
+			h.logger.Error("failed to synchronize updated track", "tableID", tableID, "error", err)
+			continue
+		}
+		state = state.at(time.Now())
+		state.Name = track.Name
+		state.Playback = track.Playback
+		state.CurrentTime = math.Max(state.CurrentTime, track.Playback.StartTime)
+		state.clearInvalidSeek()
+		tracks[fileID] = state
+		h.sendState(tableID, settings, "")
+		h.notify(events.PlaybackChanged, events.PlaybackChanges[PlaybackPatch]{
+			Tracks: []PlaybackPatch{{FileID: fileID, Playback: &track.Playback}},
+		}, events.Metadata{TableID: tableID})
+	}
+}
+
 func (h *Hub) refreshPlayback() {
 	h.stateMu.Lock()
 	defer h.stateMu.Unlock()
@@ -150,12 +192,8 @@ func (h *Hub) updatePlayback(patch PlaybackPatch, c *Client) {
 		return
 	}
 	end := state.end()
-	if patch.CurrentTime == nil && state.SeekTarget != nil &&
-		(*state.SeekTarget < state.Playback.StartTime ||
-			end > 0 && (*state.SeekTarget > math.Max(state.Playback.StartTime, end-2) ||
-				state.SeekLanding != nil && *state.SeekLanding > end)) {
-		state.SeekTarget = nil
-		state.SeekLanding = nil
+	if patch.CurrentTime == nil {
+		state.clearInvalidSeek()
 	}
 	state.CurrentTime = math.Max(state.Playback.StartTime, state.CurrentTime)
 	if patch.CurrentTime != nil {
@@ -335,6 +373,15 @@ func (t playingTrack) at(now time.Time) playingTrack {
 	}
 	t.updatedAt = now
 	return t
+}
+
+func (t *playingTrack) clearInvalidSeek() {
+	end := t.end()
+	if t.SeekTarget != nil && (*t.SeekTarget < t.Playback.StartTime ||
+		end > 0 && (*t.SeekTarget > math.Max(t.Playback.StartTime, end-2) ||
+			t.SeekLanding != nil && *t.SeekLanding > end)) {
+		t.SeekTarget, t.SeekLanding = nil, nil
+	}
 }
 
 func (t playingTrack) end() float64 {

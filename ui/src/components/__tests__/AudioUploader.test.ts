@@ -272,6 +272,7 @@ async function mountUploader() {
     global: {
       plugins: [pinia],
       stubs: {
+        ErrorToast: { props: ['modelValue'], template: '<div v-if="modelValue" role="alert">{{ modelValue }}</div>' },
         VDialog: {
           props: ['modelValue'],
           emits: ['update:modelValue'],

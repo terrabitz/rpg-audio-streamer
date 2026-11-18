@@ -56,9 +56,13 @@ immediately.
 ## Saving
 
 Name and region edits are briefly debounced; type changes save immediately.
-Saves are serialized, and the dialog reports failures with a retry action
-rather than discarding edits. Closing waits for pending saves; invalid edits
-are not applied. The metadata dialog retains the track-type selector.
+Saves are serialized and contain only fields explicitly edited in this dialog.
+Unopened controls never save on disposal. Remote metadata updates refresh
+untouched fields, without turning stale drafts into writes or replacing pending
+local edits. Closing waits for pending saves; invalid edits are not applied.
+The metadata dialog retains the track-type selector. Save failures preserve
+pending edits and show a [dismissible error toast](./app-shell.md#notifications)
+with a separate retry action in the dialog.
 
 ## Volume
 

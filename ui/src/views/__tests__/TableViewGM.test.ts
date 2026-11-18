@@ -122,7 +122,7 @@ it('does not connect or overwrite a mix when loading fails or navigation superse
   api.load.mockRejectedValueOnce(new Error('offline'))
   const failed = shallowMount(TableViewGM, { global: { renderStubDefaultSlot: true } })
   await flushPromises()
-  expect(failed.text()).toContain('Unable to connect')
+  expect(failed.findAllComponents({ name: 'ErrorToast' })[0]!.props('modelValue')).toContain('Unable to connect')
   expect(useWebSocketStore().connect).not.toHaveBeenCalled()
   expect(useAudioStore().tableMix).toBeNull()
   failed.unmount()
@@ -165,7 +165,7 @@ it('bootstraps the opt-in mixer, sends live type volumes, and surfaces mixer fai
     expect(send).toHaveBeenCalledWith('mixVolumesChanged', { typeVolumes: { Music: 25 } })
     handler({ event: 'mixerFailed', payload: { event: 'mixChanged', message: 'Unable to decode audio.' } })
     await flushPromises()
-    expect(wrapper.text()).toContain('Unable to decode audio.')
+    expect(wrapper.findAllComponents({ name: 'ErrorToast' })[1]!.props('modelValue')).toContain('Unable to decode audio.')
     handler({ event: 'mixerReady', payload: {} })
     handler({ event: 'playbackStateChanged', payload: {
       tracks: [snapshotTrack({ currentTime: 3, volume: 40 })],
@@ -174,7 +174,7 @@ it('bootstraps the opt-in mixer, sends live type volumes, and surfaces mixer fai
     await flushPromises()
     handler({ event: 'mixerApplied', payload: { event: 'mixChanged' } })
     await flushPromises()
-    expect(wrapper.text()).not.toContain('Unable to decode audio.')
+    expect(wrapper.findAllComponents({ name: 'ErrorToast' })[1]!.props('modelValue')).toBe('')
   } finally {
     wrapper.unmount()
   }

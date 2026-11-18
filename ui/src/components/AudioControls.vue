@@ -31,14 +31,14 @@
           <span v-if="failed">Processing failed: {{ props.fileName }}</span>
         </v-card-title>
         <v-card-text>
-          <v-alert v-if="error" type="error" class="mb-3">{{ error }}</v-alert>
+          <ErrorToast v-model="error" />
           <pre v-if="failed" class="processing-diagnostics" tabindex="0" aria-label="Processing diagnostics"><code>{{ track?.processingError || 'No processing diagnostics are available.' }}</code></pre>
           <template v-else>
             <v-btn v-if="saveFailed" color="primary" variant="text" @click="saveTrackChanges">Retry saving</v-btn>
             <v-text-field :model-value="editName" @update:model-value="changeName" label="Track Name" variant="underlined" hide-details
               class="pa-0 ma-0"></v-text-field>
             <TrackTypeSelector :model-value="editTrackType" @update:model-value="changeTrackType" />
-            <v-alert v-if="regionError" type="error" class="mb-3">{{ regionError }}</v-alert>
+            <v-messages :messages="regionError" color="error" />
             <TrackTimeline v-if="audioState && available" :model-value="editedPlayback" @update:model-value="previewPlayback" :duration="audioState.duration"
               :current-time="audioState.currentTime" :seek-target="audioState.seekTarget" :seek-version="audioState.seekVersion"
               :name="props.fileName" :waveform="waveform"
@@ -84,7 +84,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watchEffect } from 'vue';
+import { computed, onBeforeUnmount, ref, watch, watchEffect } from 'vue';
 import type { PlaybackSettings, UpdateTrackRequest } from '@/client/apiClient';
 import { defaultPlayback, playbackError, playbackRegion } from '@/composables/playback';
 import { useAudioStore } from '../stores/audio';
@@ -92,6 +92,7 @@ import { TrackUsageChangedError, useFileStore } from '../stores/files';
 import { useTrackTypeStore } from '../stores/trackTypes';
 import TrackTypeSelector from './TrackTypeSelector.vue';
 import TrackTimeline from './TrackTimeline.vue';
+import ErrorToast from './ErrorToast.vue';
 
 const props = defineProps<{
   fileName: string
@@ -134,7 +135,15 @@ const editedPlayback = ref<PlaybackSettings>(defaultPlayback());
 const waveform = ref<number[]>();
 let saveTimer: ReturnType<typeof setTimeout> | undefined;
 let savePromise: Promise<void> | undefined;
+const pendingChanges = ref<Omit<UpdateTrackRequest, 'id'>>({});
 const regionError = computed(() => playbackError(editedPlayback.value, audioState.value?.duration));
+
+watch(track, value => {
+  if (!value) return;
+  if (pendingChanges.value.name === undefined) editName.value = value.name;
+  if (pendingChanges.value.typeID === undefined) editTrackType.value = value.typeID;
+  if (pendingChanges.value.playback === undefined) editedPlayback.value = { ...(value.playback ?? defaultPlayback()) };
+}, { deep: true });
 
 function openControls() {
   error.value = '';
@@ -154,11 +163,7 @@ function openControls() {
   showControls.value = true;
 }
 
-const hasChanges = computed(() => {
-  if (!track.value) return false;
-  return editName.value !== track.value.name || editTrackType.value !== track.value.typeID ||
-    JSON.stringify(editedPlayback.value) !== JSON.stringify(track.value.playback ?? defaultPlayback());
-});
+const hasChanges = computed(() => Object.keys(pendingChanges.value).length > 0);
 
 async function closeControls() {
   if (isDeleting.value) return;
@@ -172,6 +177,7 @@ async function closeControls() {
 
 function changeName(name: string) {
   editName.value = name;
+  pendingChanges.value.name = name;
   scheduleSave();
 }
 
@@ -182,11 +188,13 @@ function scheduleSave() {
 
 function changeTrackType(typeID: string) {
   editTrackType.value = typeID;
+  pendingChanges.value.typeID = typeID;
   void saveTrackChanges();
 }
 
 function previewPlayback(playback: PlaybackSettings) {
   editedPlayback.value = playback;
+  pendingChanges.value.playback = { ...playback };
   if (regionError.value) return;
   emit('settings', { ...playback });
   scheduleSave();
@@ -268,13 +276,11 @@ async function persistChanges() {
       if (!track.value) throw new Error('Track not found');
       if (!editName.value.trim()) throw new Error('Track name cannot be empty');
       if (regionError.value) throw new Error(regionError.value);
-      const updates: Omit<UpdateTrackRequest, 'id'> = {};
-      if (editName.value !== track.value.name) updates.name = editName.value;
-      if (editTrackType.value !== track.value.typeID) updates.typeID = editTrackType.value;
-      if (JSON.stringify(editedPlayback.value) !== JSON.stringify(track.value.playback ?? defaultPlayback())) {
-        updates.playback = { ...editedPlayback.value };
-      }
+      const updates = { ...pendingChanges.value };
       const updatedTrack = await fileStore.updateTrack(track.value.id, updates);
+      for (const key of ['name', 'typeID', 'playback'] as const) {
+        if (pendingChanges.value[key] === updates[key]) delete pendingChanges.value[key];
+      }
       if (updates.typeID) {
         const newTrackType = trackTypeStore.getTypeById(updatedTrack.typeID);
         if (newTrackType) {

@@ -277,7 +277,7 @@ test('deleting a shared library track confirms affected tables in a follow-up di
     await addExistingTrack(sundayGM, 'Shared Forest')
     await confirmation.getByRole('button', { name: 'Confirm delete track', exact: true }).click()
     await expect(confirmation).toHaveCount(0)
-    await expect(editor).toContainText('Table usage changed.')
+    await expect(page.getByRole('alert').filter({ hasText: 'Table usage changed.' })).toBeVisible()
     await expect(row).toBeVisible()
 
     await page.getByRole('button', { name: 'Delete track', exact: true }).click()
