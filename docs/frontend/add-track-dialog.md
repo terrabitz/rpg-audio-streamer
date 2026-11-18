@@ -12,9 +12,21 @@ tags: [frontend, uploads, library]
 selection, new-upload, and YouTube-link tabs; none adds a permanent control row to
 the [track grid](./track-grid.md).
 
-Uploads require a file, a nonblank name, and a valid library track type before
-the Upload action is enabled. The server side of uploads is described in
-[track uploads](../data/track-uploads.md).
+## Audio files and folders
+
+GMs can drop audio files anywhere in the main area of the
+[table](./track-grid.md) or [library](./shared-library.md). A drop opens the
+upload tab with the files ready for review, without using the dialog button.
+Browsers that expose folder contents during drag-and-drop include audio from
+nested folders. Non-audio, empty, or unreadable dropped items are skipped and
+reported.
+
+Single files need a nonblank name, prefilled from the filename. A batch uses
+the filenames without extensions and shares the selected track type. The
+dialog uploads each file separately to the current table and library, or to
+the library alone when opened there. If some upload requests fail, only those
+files remain in the dialog for retry. The server-side processing is described
+in [track uploads](../data/track-uploads.md).
 
 ## YouTube links
 
@@ -27,8 +39,9 @@ track-type selector. Failed scans and limit violations turn the URL field red
 with the specific error and disable Import.
 
 Imports require a successful scan, nonblank display name, and track type.
-Accepted uploads and imports close the dialog immediately and add a track with
-the [processing presentation](./track-processing.md) until it is ready.
+Each accepted upload or import adds a track with the
+[processing presentation](./track-processing.md) until it is ready. The
+dialog closes once all submissions are accepted, without waiting for processing.
 
 ## Feedback
 

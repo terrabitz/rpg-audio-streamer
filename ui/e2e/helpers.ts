@@ -244,7 +244,29 @@ export async function uploadTrack(page: Page, name: string, typeName = 'Music', 
   await expect(item).toHaveAttribute('aria-busy', 'false')
 }
 
-function audioFixture(frequency: number, duration: number) {
+export async function dropAudioPaths(page: Page, target: Locator, files: string[], hint: string) {
+  await expect(target).toBeVisible()
+  const bounds = await target.boundingBox()
+  if (!bounds) throw new Error('Drop target is not visible')
+  const x = Math.round(bounds.x + bounds.width / 2)
+  const y = Math.round(bounds.y + bounds.height / 2)
+  await expect.poll(() => target.evaluate((el, point) =>
+    el.contains(document.elementFromPoint(point.x, point.y)), { x, y })).toBe(true)
+  const data = { items: [], files, dragOperationsMask: 1 }
+  const session = await page.context().newCDPSession(page)
+  try {
+    await page.mouse.move(x, y)
+    await session.send('Input.dispatchDragEvent', { type: 'dragEnter', x, y, data })
+    await session.send('Input.dispatchDragEvent', { type: 'dragOver', x, y, data })
+    await expect(page.getByText(hint, { exact: true })).toBeVisible()
+    await session.send('Input.dispatchDragEvent', { type: 'drop', x, y, data })
+    await expect(page.getByText(hint, { exact: true })).toBeHidden()
+  } finally {
+    await session.detach()
+  }
+}
+
+export function audioFixture(frequency: number, duration: number) {
   const key = `${frequency}:${duration}`
   let audio = audioFixtures.get(key)
   if (!audio) {

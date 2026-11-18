@@ -1,5 +1,10 @@
 <template>
   <div>
+    <Teleport to="body">
+      <div v-if="isDragging && !showModal" class="view-drop-overlay" role="status">
+        <span>{{ props.tableID ? 'Drop audio to add to this table' : 'Drop audio to upload to the library' }}</span>
+      </div>
+    </Teleport>
     <v-dialog persistent v-model="showModal" max-width="600px">
       <template v-slot:activator="{ props: activatorProps }">
         <slot name="activator" :props="activatorProps">
@@ -33,15 +38,31 @@
               :disabled="isBusy || isScanning || !videoMetadata" />
             <TrackTypeSelector v-model="selectedTypeId" :disabled="isBusy" />
           </v-form>
-          <div v-else @dragover="handleDragOver" @dragleave="handleDragLeave" @drop="handleDrop"
-            :class="{ 'dragging': isDragging }" class="drop-area">
-            <v-form v-model="formValid" @submit.prevent>
-              <v-file-input v-model="trackFile" label="Select a file" prepend-icon="$music" accept="audio/mp3"
-                :loading="isUploading" :disabled="isUploading" required></v-file-input>
-              <v-text-field v-model="trackName" label="Track Name" required></v-text-field>
-              <TrackTypeSelector v-model="selectedTypeId" />
+          <div v-else ref="dropArea" class="drop-area">
+            <v-form @submit.prevent="submitForm">
+              <v-file-input :model-value="pendingFiles" @update:model-value="selectFiles"
+                label="Select a file" prepend-icon="$music" :accept="audioFileAccept" multiple
+                :loading="isReadingDrop" :disabled="isBusy">
+                <template #selection="{ fileNames }">
+                  {{ fileNames.length === 1 ? fileNames[0] : `${fileNames.length} files selected` }}
+                </template>
+              </v-file-input>
+              <v-text-field v-if="pendingFiles.length <= 1" v-model="uploadName" label="Track Name"
+                :disabled="isBusy" required />
+              <template v-else>
+                <p class="mb-1">These {{ pendingFiles.length }} files will share one track type.</p>
+                <ul class="upload-file-list mb-4" aria-label="Files to upload">
+                  <li v-for="(file, index) in pendingFiles" :key="index">{{ file.name }}</li>
+                </ul>
+              </template>
+              <TrackTypeSelector v-model="selectedTypeId" :disabled="isBusy" />
             </v-form>
-            <div v-if="isDragging" class="drop-text">Drop files here</div>
+            <p v-if="dropNotice" role="status" class="text-body-2">{{ dropNotice }}</p>
+            <p v-if="fileUploadError" role="alert" class="text-error">{{ fileUploadError }}</p>
+            <p v-if="uploadProgress" role="status" class="text-body-2">
+              Uploading file {{ uploadProgress.current }} of {{ uploadProgress.total }}
+            </p>
+            <div v-if="isDragging" class="drop-text">Drop audio files or folders here</div>
           </div>
         </v-card-text>
         <v-card-actions :class="{ 'youtube-actions': source === 'youtube' }">
@@ -57,15 +78,16 @@
             </div>
           </dl>
           <v-spacer></v-spacer>
-          <v-btn color="error" @click="showModal = false" :disabled="isBusy">Cancel</v-btn>
+          <v-btn color="error" @click="closeDialog" :disabled="isBusy">Cancel</v-btn>
           <v-btn v-if="source === 'library'" color="success" @click="addTrack"
             :disabled="isBusy || !libraryReady || !selectedTrack" :loading="isAdding">Add to table</v-btn>
           <v-btn v-else-if="source === 'youtube'" color="success" @click="importTrack"
             :disabled="isBusy || isScanning || !videoMetadata || !trackName.trim() || !selectedType"
             :loading="isUploading">Import</v-btn>
           <v-btn v-else color="success" @click="submitForm"
-            :disabled="isBusy || !formValid || !trackFile || !trackName.trim() || !selectedType"
-            :loading="isUploading">Upload</v-btn>
+            :disabled="!canUpload" :loading="isUploading">
+            {{ pendingFiles.length > 1 ? `Upload ${pendingFiles.length} tracks` : 'Upload' }}
+          </v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
@@ -82,9 +104,10 @@ import { useFileStore } from '@/stores/files'
 import { useTableStore } from '@/stores/tables'
 import { useTrackTypeStore } from '@/stores/trackTypes'
 import debounce from 'lodash.debounce'
-import { computed, onUnmounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue'
 import TrackTypeSelector from './TrackTypeSelector.vue'
 import ErrorToast from './ErrorToast.vue'
+import { audioFileAccept, collectDroppedAudio } from './audioFileDrop'
 
 const props = defineProps<{ tableID?: string }>()
 const tables = useTableStore()
@@ -96,11 +119,17 @@ const uploadError = computed({
   set: () => { uploadStatus.value = null },
 })
 const fileStore = useFileStore()
+const dropArea = ref<HTMLElement | null>(null)
 const isDragging = ref(false)
 const showModal = ref(false)
-const formValid = ref(false)
 const trackName = ref('')
-const trackFile = ref<File | null>(null)
+const uploadName = ref('')
+const pendingFiles = shallowRef<File[]>([])
+const isReadingDrop = ref(false)
+const dropNotice = ref('')
+const fileUploadError = ref('')
+const uploadProgress = ref<{ current: number, total: number } | null>(null)
+let disposed = false
 const selectedTypeId = ref('')
 const selectedType = computed(() => trackTypes.getTypeById(selectedTypeId.value))
 const source = ref<'library' | 'upload' | 'youtube'>(props.tableID ? 'library' : 'upload')
@@ -123,7 +152,9 @@ const selectedTrack = ref<string | null>(null)
 const loadingLibrary = ref(false)
 const libraryReady = ref(false)
 const isAdding = ref(false)
-const isBusy = computed(() => isUploading.value || isAdding.value || loadingLibrary.value)
+const isBusy = computed(() => isUploading.value || isReadingDrop.value || isAdding.value || loadingLibrary.value)
+const canUpload = computed(() => !isBusy.value && !!selectedType.value &&
+  (pendingFiles.value.length > 1 || (pendingFiles.value.length === 1 && !!uploadName.value.trim())))
 const availableTracks = computed(() => fileStore.tracks.filter(
   track => !tables.tracks.some(associated => associated.id === track.id),
 ))
@@ -164,12 +195,6 @@ watch([showModal, source], async ([open, selectedSource]) => {
   if (selectedSource === 'library' && props.tableID) await loadLibrary()
 })
 
-watch(trackFile, (file) => {
-  if (file) {
-    trackName.value = file.name.replace(/\.[^/.]+$/, '')
-  }
-})
-
 async function loadLibrary() {
   if (!props.tableID) return
   const externalID = tables.current?.externalID
@@ -208,11 +233,62 @@ async function addTrack() {
 }
 
 async function submitForm() {
-  if (!await uploadTrack()) return
+  const typeID = selectedType.value?.id
+  if (!canUpload.value || !typeID) return
+  const files = pendingFiles.value
+  const tableID = props.tableID
+  const singleName = uploadName.value.trim()
+  const failed: File[] = []
+  isUploading.value = true
+  fileUploadError.value = ''
+  uploadStatus.value = null
+  try {
+    for (const [index, file] of files.entries()) {
+      if (disposed) return
+      if (files.length > 1) uploadProgress.value = { current: index + 1, total: files.length }
+      const name = files.length === 1 ? singleName : defaultTrackName(file)
+      try {
+        const { data } = await postApiV1Files<true>({ body: { files: file, name, typeID, tableID } })
+        addProcessingTrack(data, tableID)
+      } catch (error) {
+        console.error('Upload error:', error)
+        failed.push(file)
+      }
+    }
+    const accepted = files.length - failed.length
+    if (failed.length) {
+      pendingFiles.value = failed
+      if (files.length > 1 && failed[0]) uploadName.value = defaultTrackName(failed[0])
+      fileUploadError.value = files.length === 1 ? 'Failed to upload file. Try again.'
+        : `${accepted} of ${files.length} tracks added. Retry the ${failed.length} remaining ${failed.length === 1 ? 'file' : 'files'}.`
+      return
+    }
+    closeDialog()
+    uploadStatus.value = { type: 'success', message: accepted === 1 ? 'Track added' : `${accepted} tracks added` }
+  } finally {
+    isUploading.value = false
+    uploadProgress.value = null
+  }
+}
+
+function closeDialog() {
   showModal.value = false
-  trackName.value = ''
-  trackFile.value = null
+  selectFiles(null)
   selectedTypeId.value = ''
+  trackName.value = ''
+  videoURL.value = ''
+}
+
+function selectFiles(value: File | File[] | null) {
+  pendingFiles.value = Array.isArray(value) ? value : value ? [value] : []
+  const first = pendingFiles.value[0]
+  uploadName.value = first ? defaultTrackName(first) : ''
+  dropNotice.value = ''
+  fileUploadError.value = ''
+}
+
+function defaultTrackName(file: File) {
+  return file.name.replace(/\.[^/.]+$/, '').trim() || file.name
 }
 
 async function importTrack() {
@@ -222,14 +298,14 @@ async function importTrack() {
   if (isBusy.value || isScanning.value || !url || !name || !typeID) return
   isUploading.value = true
   uploadStatus.value = null
+  const tableID = props.tableID
   try {
     const { data } = await postApiV1FilesImport<true>({
-      body: { url, name, typeID, tableID: props.tableID },
+      body: { url, name, typeID, tableID },
     })
-    addProcessingTrack(data)
-    videoURL.value = ''
-    trackName.value = ''
-    selectedTypeId.value = ''
+    addProcessingTrack(data, tableID)
+    closeDialog()
+    uploadStatus.value = { type: 'success', message: 'Track added' }
   } catch (error) {
     console.error('Import error:', error)
     uploadStatus.value = {
@@ -241,75 +317,77 @@ async function importTrack() {
   }
 }
 
-function addProcessingTrack(track: Track) {
+function addProcessingTrack(track: Track, tableID: string | undefined) {
   const added = fileStore.addTrack(track)
-  if (props.tableID && tables.current?.id === props.tableID) {
+  if (tableID && tables.current?.id === tableID) {
     tables.tracks = [...tables.tracks.filter(item => item.id !== track.id), added]
   }
-  showModal.value = false
-  uploadStatus.value = { type: 'success', message: 'Track added' }
 }
 
-async function uploadTrack() {
-  const files = trackFile.value
-  const name = trackName.value.trim()
-  const typeID = selectedType.value?.id
-  if (!files || !name || !typeID) {
-    uploadStatus.value = { type: 'error', message: 'Select a file, name, and track type.' }
-    return false
-  }
+function canDropAt(target: EventTarget | null) {
+  if (isBusy.value || !(target instanceof Element)) return false
+  if (showModal.value) return source.value === 'upload' && !!dropArea.value?.contains(target)
+  return !!target.closest('main') && !document.querySelector('[role="dialog"][aria-modal="true"]')
+}
 
-  isUploading.value = true
-  uploadStatus.value = null
+function handleDragOver(event: DragEvent) {
+  if (!event.dataTransfer?.types.includes('Files')) return
+  event.preventDefault()
+  isDragging.value = canDropAt(event.target)
+  if (isDragging.value) event.stopPropagation()
+  event.dataTransfer.dropEffect = isDragging.value ? 'copy' : 'none'
+}
+
+function clearDrag() {
+  isDragging.value = false
+}
+
+function handleDragLeave(event: DragEvent) {
+  if (!canDropAt(event.relatedTarget)) clearDrag()
+}
+
+async function handleDrop(event: DragEvent) {
+  const transfer = event.dataTransfer
+  if (!transfer?.types.includes('Files')) return
+  event.preventDefault()
+  clearDrag()
+  if (!canDropAt(event.target)) return
+  event.stopPropagation()
+  source.value = 'upload'
+  showModal.value = true
+  isReadingDrop.value = true
+  selectFiles(null)
   try {
-    const { data } = await postApiV1Files<true>({
-      body: {
-        files,
-        name,
-        typeID,
-        tableID: props.tableID,
-      }
-    })
-
-    addProcessingTrack(data)
-    return true
+    const { files, unreadable, unsupported } = await collectDroppedAudio(transfer)
+    if (disposed) return
+    selectFiles(files)
+    const skipped = unsupported + unreadable
+    dropNotice.value = [
+      files.length ? '' : 'No audio files found. Select audio files or try dropping them individually.',
+      skipped ? `Skipped ${skipped} non-audio or unreadable ${skipped === 1 ? 'item' : 'items'}.` : '',
+    ].filter(Boolean).join(' ')
   } catch (error) {
-    uploadStatus.value = {
-      type: 'error',
-      message: 'Failed to upload file',
-    }
-    console.error('Upload error:', error)
-    return false
+    console.error('Unable to read dropped files:', error)
+    if (!disposed) dropNotice.value = 'Could not read the drop. Try selecting audio files instead.'
   } finally {
-    isUploading.value = false
+    isReadingDrop.value = false
   }
 }
 
-const handleDragOver = (event: DragEvent) => {
-  event.preventDefault()
-  isDragging.value = true
-}
-
-const handleDragLeave = debounce(() => {
-  isDragging.value = false
-}, 1000)
-
-const handleDrop = (event: DragEvent) => {
-  event.preventDefault()
-  isDragging.value = false
-  const files = event.dataTransfer?.files
-  if (!files) return
-  if (!files[0]) return
-
-  const dataTransfer = new DataTransfer()
-  dataTransfer.items.add(files[0])
-  if (!dataTransfer.files[0]) return
-
-  trackFile.value = dataTransfer.files[0]
-}
+onMounted(() => {
+  // Capture before the file picker can handle drops itself.
+  window.addEventListener('dragover', handleDragOver, true)
+  window.addEventListener('drop', handleDrop, true)
+  window.addEventListener('dragleave', handleDragLeave)
+  window.addEventListener('dragend', clearDrag)
+})
 
 onUnmounted(() => {
-  handleDragLeave.cancel()
+  disposed = true
+  window.removeEventListener('dragover', handleDragOver, true)
+  window.removeEventListener('drop', handleDrop, true)
+  window.removeEventListener('dragleave', handleDragLeave)
+  window.removeEventListener('dragend', clearDrag)
   scanRevision++
   scanVideo.cancel()
   scanController?.abort()
@@ -330,27 +408,43 @@ onUnmounted(() => {
   margin: 0;
 }
 
-.dragging {
-  border: 2px dashed #1d1d1d;
-  background-color: rgba(144, 238, 144, 0.95);
-  padding: 20px;
-  border-radius: 8px;
+.view-drop-overlay {
+  position: fixed;
+  inset: 12px;
+  z-index: 2100;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  border: 2px dashed rgb(var(--v-theme-primary));
+  border-radius: 12px;
+  background: rgba(var(--v-theme-surface), 0.88);
+  color: rgb(var(--v-theme-on-surface));
+  font-size: 1.25rem;
+  text-align: center;
 }
 
 .drop-area {
   position: relative;
   padding: 20px;
-  /* Expand the draggable area */
   margin: -20px;
-  /* Offset the padding to keep the visual size the same */
+}
+
+.upload-file-list {
+  max-height: 10rem;
+  overflow: auto;
+  overflow-wrap: anywhere;
+  padding-inline-start: 1.5rem;
 }
 
 .drop-text {
   position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  font-size: 1.2em;
-  color: #1d1d1d
+  inset: 4px;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  border: 2px dashed rgb(var(--v-theme-primary));
+  border-radius: 8px;
+  background: rgba(var(--v-theme-surface), 0.92);
+  font-size: 1.2rem;
 }
 </style>

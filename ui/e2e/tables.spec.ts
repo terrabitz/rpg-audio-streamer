@@ -1,5 +1,8 @@
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { expect, test } from './fixtures'
-import { login, createTable, addExistingTrack, deleteTable, deleteLibraryTrack, uploadTrack, openUploadDialog, navigate } from './helpers'
+import { login, createTable, addExistingTrack, deleteTable, deleteLibraryTrack, uploadTrack, openUploadDialog, navigate, audioFixture, dropAudioPaths } from './helpers'
 
 test('GM creates, renames, opens, and deletes tables', async ({ page }) => {
   await login(page)
@@ -461,4 +464,29 @@ test('failed audio conversion is shown on the track', async ({ page }) => {
   await page.getByRole('button', { name: 'Delete track', exact: true }).click()
   await page.getByRole('button', { name: 'Confirm delete track', exact: true }).click()
   await expect(tile).toHaveCount(0)
+})
+
+test('GM drops multiple files directly onto the table', async ({ page }) => {
+  const folder = await mkdtemp(join(tmpdir(), 'rpg-audio-table-drop-'))
+  try {
+    const market = join(folder, 'Market.mp3')
+    const tavern = join(folder, 'Tavern.mp3')
+    await writeFile(market, audioFixture(440, 2))
+    await writeFile(tavern, audioFixture(880, 2))
+    await login(page)
+    await dropAudioPaths(page, page.getByText('No tracks at this table.', { exact: false }),
+      [market, tavern], 'Drop audio to add to this table')
+    const dialog = page.getByRole('dialog')
+    await expect(dialog.getByRole('tab', { name: 'Upload new', exact: true })).toHaveAttribute('aria-selected', 'true')
+    await dialog.getByRole('combobox', { name: 'Track Type', exact: true }).press('ArrowDown')
+    await page.getByRole('option', { name: 'Ambiance', exact: true }).click()
+    await dialog.getByRole('button', { name: 'Upload 2 tracks', exact: true }).click()
+    await expect(page.getByRole('status').filter({ hasText: '2 tracks added' })).toBeVisible()
+    await page.reload()
+    for (const name of ['Market', 'Tavern']) {
+      await expect(page.getByRole('group', { name, exact: true })).toHaveAttribute('aria-busy', 'false')
+    }
+  } finally {
+    await rm(folder, { recursive: true, force: true })
+  }
 })

@@ -1,5 +1,8 @@
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { expect, test } from './fixtures'
-import { login, deleteLibraryTrack, uploadTrack, openUploadDialog, navigate } from './helpers'
+import { login, deleteLibraryTrack, uploadTrack, openUploadDialog, navigate, audioFixture, dropAudioPaths } from './helpers'
 
 test('GM selects a required track type and receives a bottom upload toast on mobile', async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 812 })
@@ -72,4 +75,40 @@ test('GM uploads, renames, persists, and deletes an audio track', async ({ page 
   await expect(page.locator('video')).toHaveCount(0)
   await page.reload()
   await expect(page.getByText('No tracks in the library yet.', { exact: true })).toBeVisible()
+})
+
+test('GM drops a folder to import nested audio into the library', async ({ page }) => {
+  const folder = await mkdtemp(join(tmpdir(), 'rpg-audio-folder-drop-'))
+  try {
+    const subfolder = join(folder, 'Nested')
+    await mkdir(subfolder)
+    await writeFile(join(folder, 'Campfire.mp3'), audioFixture(440, 2))
+    await writeFile(join(subfolder, 'Night Rain.mp3'), audioFixture(880, 2))
+    await writeFile(join(folder, 'notes.txt'), 'Not audio')
+    await login(page)
+    await navigate(page, 'Library')
+    await expect(page.getByRole('button', { name: 'Upload Track', exact: true })).toBeVisible()
+    await dropAudioPaths(page, page.getByRole('row', { name: 'No tracks in the library yet.' }),
+      [folder], 'Drop audio to upload to the library')
+
+    const dialog = page.getByRole('dialog')
+    const list = dialog.getByRole('list', { name: 'Files to upload' })
+    for (const name of ['Campfire.mp3', 'Night Rain.mp3']) {
+      await expect(list.getByText(name, { exact: true })).toBeVisible()
+    }
+    await expect(dialog.getByText('Skipped 1 non-audio or unreadable item.')).toBeVisible()
+    const upload = dialog.getByRole('button', { name: 'Upload 2 tracks', exact: true })
+    await expect(upload).toBeDisabled()
+    await dialog.getByRole('combobox', { name: 'Track Type', exact: true }).press('ArrowDown')
+    await page.getByRole('option', { name: 'Music', exact: true }).click()
+    await upload.click()
+    await expect(page.getByRole('status').filter({ hasText: '2 tracks added' })).toBeVisible()
+    for (const name of ['Campfire', 'Night Rain']) {
+      const row = page.getByRole('row').filter({ hasText: name })
+      await expect(row).toHaveAttribute('aria-busy', 'false')
+      await expect(row.getByText('Music', { exact: true })).toBeVisible()
+    }
+  } finally {
+    await rm(folder, { recursive: true, force: true })
+  }
 })
