@@ -23,7 +23,9 @@ reported.
 
 Each track needs a nonblank name and a type. Names are prefilled from the
 filenames without extensions. The batch upload table lets GMs edit names and
-types per row, or select some or all rows and apply a type to just those rows.
+types per row. Selecting rows shows a floating bar at the bottom of the
+dialog with the selection count and a **Set track type** menu. Choosing a
+type applies it immediately to the selected rows.
 Selection only controls bulk edits; all rows are uploaded on confirmation.
 The dialog uploads each file separately to the current table and library, or
 to the library alone when opened there. If some upload requests fail, only

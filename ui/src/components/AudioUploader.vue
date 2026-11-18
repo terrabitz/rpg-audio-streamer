@@ -52,13 +52,6 @@
                 <TrackTypeSelector v-model="singleUpload.typeID" :disabled="isBusy" />
               </template>
               <template v-else>
-                <div class="bulk-type-controls mb-3">
-                  <v-select v-model="bulkTypeID" :items="typeOptions" item-title="name" item-value="id"
-                    label="Bulk track type" density="compact" hide-details
-                    :disabled="isBusy || selectedCount === 0" />
-                  <v-btn variant="tonal" :disabled="!canApplyBulkType"
-                    @click="applyBulkType">Apply to selected ({{ selectedCount }})</v-btn>
-                </div>
                 <v-table class="upload-table" density="compact" aria-label="Tracks to upload">
                   <thead>
                     <tr>
@@ -72,7 +65,7 @@
                     </tr>
                   </thead>
                   <tbody>
-                    <tr v-for="row in pendingTracks" :key="row.id">
+                    <tr v-for="row in pendingTracks" :key="row.id" :class="{ 'upload-row-selected': row.selected }">
                       <td>
                         <input v-model="row.selected" type="checkbox" :aria-label="`Select ${row.file.name}`"
                           :disabled="isBusy" />
@@ -99,6 +92,21 @@
             <div v-if="isDragging" class="drop-text">Drop audio files or folders here</div>
           </div>
         </v-card-text>
+        <div v-if="isBatch && selectedCount > 0" class="bulk-edit-bar" role="group" aria-label="Bulk track actions">
+          <span class="bulk-edit-count" role="status">
+            <span class="bulk-edit-badge">{{ selectedCount }}</span> selected
+          </span>
+          <v-menu location="top end">
+            <template #activator="{ props: menuProps }">
+              <v-btn v-bind="menuProps" variant="tonal" append-icon="$dropdown"
+                :disabled="isBusy || !typeOptions.length">Set track type</v-btn>
+            </template>
+            <v-list role="menu" aria-label="Track types">
+              <v-list-item v-for="type in typeOptions" :key="type.id" :title="type.name" role="menuitem"
+                @click="applyBulkType(type.id)" />
+            </v-list>
+          </v-menu>
+        </div>
         <v-card-actions :class="{ 'youtube-actions': source === 'youtube' }">
           <dl v-if="source === 'youtube' && videoMetadata" class="video-metadata d-flex ga-4 text-body-2"
             aria-label="Video metadata">
@@ -164,7 +172,6 @@ const emptyUpload = reactive({ name: '', typeID: '' })
 const singleUpload = computed(() => pendingTracks.value[0] ?? emptyUpload)
 const pendingFiles = computed(() => pendingTracks.value.map(row => row.file))
 const isBatch = computed(() => source.value === 'upload' && pendingTracks.value.length > 1)
-const bulkTypeID = ref('')
 const selectedCount = computed(() => pendingTracks.value.filter(row => row.selected).length)
 const allSelected = computed(() => pendingTracks.value.length > 0 && selectedCount.value === pendingTracks.value.length)
 let nextRowID = 0
@@ -197,7 +204,6 @@ const libraryReady = ref(false)
 const isAdding = ref(false)
 const isBusy = computed(() => isUploading.value || isReadingDrop.value || isAdding.value || loadingLibrary.value)
 const typeOptions = computed(() => trackTypes.trackTypes)
-const canApplyBulkType = computed(() => !isBusy.value && selectedCount.value > 0 && !!trackTypes.getTypeById(bulkTypeID.value))
 const canUpload = computed(() => !isBusy.value && pendingTracks.value.length > 0 &&
   pendingTracks.value.every(row => row.name.trim() && trackTypes.getTypeById(row.typeID)))
 const availableTracks = computed(() => fileStore.tracks.filter(
@@ -339,7 +345,6 @@ function selectFiles(value: File | File[] | null) {
     id: nextRowID++, file, name: defaultTrackName(file), typeID, selected: false,
   }))
   emptyUpload.name = ''
-  bulkTypeID.value = ''
   dropNotice.value = ''
   fileUploadError.value = ''
 }
@@ -348,11 +353,10 @@ function setAllSelected(selected: boolean) {
   for (const row of pendingTracks.value) row.selected = selected
 }
 
-function applyBulkType() {
-  const type = trackTypes.getTypeById(bulkTypeID.value)
-  if (!type) return
+function applyBulkType(typeID: string) {
+  if (isBusy.value) return
   for (const row of pendingTracks.value) {
-    if (row.selected) row.typeID = type.id
+    if (row.selected) row.typeID = typeID
   }
 }
 
@@ -498,15 +502,39 @@ onUnmounted(() => {
   margin: -20px;
 }
 
-.bulk-type-controls {
+.bulk-edit-bar {
+  align-self: center;
   display: flex;
-  flex-wrap: wrap;
+  flex: none;
   align-items: center;
-  gap: 8px;
+  gap: 12px;
+  max-width: calc(100% - 24px);
+  margin: 4px 12px 8px;
+  padding: 8px 12px;
+  border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+  border-radius: 12px;
+  background: rgb(var(--v-theme-surface));
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
 }
 
-.bulk-type-controls .v-select {
-  flex: 1 1 12rem;
+.bulk-edit-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.bulk-edit-badge {
+  min-width: 1.5em;
+  padding-inline: 5px;
+  border-radius: 6px;
+  background: rgb(var(--v-theme-primary));
+  color: rgb(var(--v-theme-on-primary));
+  text-align: center;
+}
+
+.upload-row-selected {
+  background: rgba(var(--v-theme-primary), 0.09);
 }
 
 .upload-table td {

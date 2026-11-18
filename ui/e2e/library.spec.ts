@@ -100,9 +100,10 @@ test('GM drops a folder to import nested audio into the library', async ({ page 
     const upload = dialog.getByRole('button', { name: 'Upload 2 tracks', exact: true })
     await expect(upload).toBeDisabled()
     await table.getByRole('checkbox', { name: 'Select all tracks' }).check()
-    await dialog.getByRole('combobox', { name: 'Bulk track type' }).press('ArrowDown')
-    await page.getByRole('option', { name: 'Music', exact: true }).click()
-    await dialog.getByRole('button', { name: 'Apply to selected (2)' }).click()
+    const bulkActions = dialog.getByRole('group', { name: 'Bulk track actions' })
+    await expect(bulkActions.getByRole('status')).toHaveText('2 selected')
+    await bulkActions.getByRole('button', { name: 'Set track type' }).click()
+    await page.getByRole('menuitem', { name: 'Music', exact: true }).click()
     await upload.click()
     await expect(page.getByRole('status').filter({ hasText: '2 tracks added' })).toBeVisible()
     for (const name of ['Campfire', 'Night Rain']) {
