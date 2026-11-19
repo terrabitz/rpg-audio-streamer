@@ -10,10 +10,18 @@ export const recordingViewport = { width: 1280, height: 720 }
 export const recordingManifestDir = path.resolve('test-results', 'recordings')
 
 type TrackedPage = { page: Page; label: string; offsetMs: number }
+type RecordingWindow = { startMs?: number; endMs?: number }
+type RecordFlow = { start: () => void; stop: () => void }
 
 // In recording mode every page, including player pages from browser.newContext(),
 // is captured with its start offset so record.mjs can compose one time-aligned GIF per test.
-export const test = base.extend<{ app: AppInstance; recorder: void; youtubeFixture: boolean }>({
+export const test = base.extend<{
+  app: AppInstance
+  recordFlow: RecordFlow
+  recorder: void
+  recordingWindow: RecordingWindow
+  youtubeFixture: boolean
+}>({
   youtubeFixture: [false, { option: true }],
   app: [async ({ browser, youtubeFixture }, use, testInfo) => {
     const existing = new Set(browser.contexts())
@@ -35,20 +43,39 @@ export const test = base.extend<{ app: AppInstance; recorder: void; youtubeFixtu
   baseURL: async ({ app }, use) => {
     await use(app.url)
   },
+  recordingWindow: async ({}, use) => {
+    await use({})
+  },
+  recordFlow: async ({ recordingWindow }, use) => {
+    await use({
+      start() {
+        if (!recording) return
+        if (recordingWindow.startMs !== undefined) throw new Error('Record only one flow per test')
+        recordingWindow.startMs = performance.now()
+      },
+      stop() {
+        if (!recording) return
+        if (recordingWindow.startMs === undefined || recordingWindow.endMs !== undefined) {
+          throw new Error('Start the recording window before stopping it')
+        }
+        recordingWindow.endMs = performance.now()
+      },
+    })
+  },
   recorder: [
-    async ({ browser, context }, use, testInfo) => {
+    async ({ browser, context, recordingWindow }, use, testInfo) => {
       if (!recording) {
         await use()
         return
       }
-      const started = Date.now()
+      const started = performance.now()
       const pages: TrackedPage[] = []
       const track = (ctx: BrowserContext, label: string) => {
         let count = 0
         ctx.on('page', (page: Page) => {
           count += 1
           const pageLabel = count > 1 ? `${label} (tab ${count})` : label
-          const offsetMs = Date.now() - started
+          const offsetMs = performance.now() - started
           void page.addInitScript(showInteractions, pageLabel)
           const tracked = { page, label: pageLabel, offsetMs }
           page.on('framenavigated', frame => {
@@ -79,15 +106,20 @@ export const test = base.extend<{ app: AppInstance; recorder: void; youtubeFixtu
         browser.newContext = newContext
       }
 
-      const durationMs = Date.now() - started
+      if (testInfo.status === 'passed' && recordingWindow.startMs !== undefined && recordingWindow.endMs === undefined) {
+        throw new Error('Stop the recording window before the end of the test')
+      }
+      const startMs = (recordingWindow.startMs ?? started) - started
+      const endMs = (recordingWindow.endMs ?? performance.now()) - started
       // Playwright discards temporary videos during context teardown, so finalize them here.
-      const recorded = await Promise.all(pages.map(async ({ page, label, offsetMs }, index) => {
-        await page.close()
-        const video = testInfo.outputPath(`recording-${index}.webm`)
-        await page.video()!.saveAs(video)
-        return { video, label, offsetMs }
-      }))
-      const manifest = { title: testInfo.title, status: testInfo.status, durationMs, pages: recorded }
+      const recorded = await Promise.all(pages.filter(({ offsetMs }) => offsetMs < endMs)
+        .map(async ({ page, label, offsetMs }, index) => {
+          await page.close()
+          const video = testInfo.outputPath(`recording-${index}.webm`)
+          await page.video()!.saveAs(video)
+          return { video, label, offsetMs }
+        }))
+      const manifest = { title: testInfo.title, status: testInfo.status, startMs, endMs, pages: recorded }
       await mkdir(recordingManifestDir, { recursive: true })
       await writeFile(
         path.join(recordingManifestDir, `${slugify(testInfo.title)}.json`),

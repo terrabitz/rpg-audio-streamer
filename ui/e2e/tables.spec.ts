@@ -217,7 +217,7 @@ test('GM recovers a table mix and live playback in a fresh browser', async ({ pa
   await deleteTable(page, 'Saved mix')
 })
 
-test('GM adds library tracks or new uploads to a table from one dialog', async ({ page }) => {
+test('GM adds library tracks or new uploads to a table from one dialog', async ({ page, recordFlow }) => {
   test.slow()
   await login(page)
   await navigate(page, 'Library')
@@ -226,6 +226,7 @@ test('GM adds library tracks or new uploads to a table from one dialog', async (
   await createTable(page, 'Friday')
   await page.getByRole('link', { name: 'Open Friday', exact: true }).click()
   await expect(page.getByRole('combobox', { name: 'Library track', exact: true })).toHaveCount(0)
+  recordFlow.start()
   await page.getByRole('button', { name: 'Add Track', exact: true }).click()
   await expect(page.getByRole('tab', { name: 'From library', exact: true })).toBeVisible()
   await expect(page.getByRole('tab', { name: 'Upload new', exact: true })).toBeVisible()
@@ -239,6 +240,7 @@ test('GM adds library tracks or new uploads to a table from one dialog', async (
   await expect(page.getByRole('button', { name: 'Add to table', exact: true })).toBeDisabled()
   await page.getByRole('button', { name: 'Cancel', exact: true }).click()
   await uploadTrack(page, 'Friday Only')
+  recordFlow.stop()
   await page.reload()
   await expect(page.locator('.file-tile')).toHaveCount(2)
   await navigate(page, 'Library')
@@ -466,7 +468,7 @@ test('failed audio conversion is shown on the track', async ({ page }) => {
   await expect(tile).toHaveCount(0)
 })
 
-test('GM drops multiple files directly onto the table', async ({ page }) => {
+test('GM drops multiple files directly onto the table', async ({ page, recordFlow }) => {
   const folder = await mkdtemp(join(tmpdir(), 'rpg-audio-table-drop-'))
   try {
     const market = join(folder, 'Market.mp3')
@@ -476,6 +478,7 @@ test('GM drops multiple files directly onto the table', async ({ page }) => {
     await writeFile(tavern, audioFixture(880, 2))
     await writeFile(bell, audioFixture(660, 2))
     await login(page)
+    recordFlow.start()
     await dropAudioPaths(page, page.getByText('No tracks at this table.', { exact: false }),
       [market, tavern, bell], 'Drop audio to add to this table')
     const dialog = page.getByRole('dialog')
@@ -490,6 +493,7 @@ test('GM drops multiple files directly onto the table', async ({ page }) => {
     const upload = dialog.getByRole('button', { name: 'Upload 3 tracks', exact: true })
     const cancel = dialog.getByRole('button', { name: 'Cancel', exact: true })
     const uploadLayout = () => Promise.all([dialog, table, cancel, upload].map(element => element.boundingBox()))
+    await cancel.click({ trial: true })
     const layoutBeforeSelection = await uploadLayout()
     const selectMarket = table.getByRole('checkbox', { name: 'Select Market.mp3' })
     await selectMarket.check()
@@ -515,6 +519,7 @@ test('GM drops multiple files directly onto the table', async ({ page }) => {
     await page.getByRole('option', { name: 'One-Shot', exact: true }).click()
     await upload.click()
     await expect(page.getByRole('status').filter({ hasText: '3 tracks added' })).toBeVisible()
+    recordFlow.stop()
     await page.reload()
     for (const [name, type] of [['Market', 'Ambiance'], ['Busy Tavern', 'Ambiance'], ['Bell', 'One-Shot']] as const) {
       const track = page.getByRole('group', { name, exact: true })

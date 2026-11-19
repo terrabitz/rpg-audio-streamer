@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { expect, test } from './fixtures'
 import { login, deleteLibraryTrack, uploadTrack, openUploadDialog, navigate, audioFixture, dropAudioPaths } from './helpers'
 
-test('GM selects a required track type and receives a bottom upload toast on mobile', async ({ page }) => {
+test('GM selects a required track type and receives a bottom upload toast on mobile', async ({ page, recordFlow }) => {
   await page.setViewportSize({ width: 375, height: 812 })
   await login(page)
   await navigate(page, 'Library')
@@ -12,6 +12,7 @@ test('GM selects a required track type and receives a bottom upload toast on mob
   page.on('request', request => {
     if (request.method() === 'POST' && new URL(request.url()).pathname === '/api/v1/files') uploads += 1
   })
+  recordFlow.start()
   await uploadTrack(page, 'Mobile Forest')
   const toast = page.getByRole('status').filter({ hasText: 'Track added' })
   await expect.poll(async () => {
@@ -25,6 +26,7 @@ test('GM selects a required track type and receives a bottom upload toast on mob
       && bounds.height <= 80
       && bounds.width <= 400
   }).toBe(true)
+  recordFlow.stop()
   expect(uploads).toBe(1)
   await expect(page.getByRole('status').filter({ hasText: 'Track added' })).toBeHidden()
   await openUploadDialog(page)
@@ -37,16 +39,20 @@ test('GM selects a required track type and receives a bottom upload toast on mob
   await fileInput.setInputFiles({ name: 'First.mp3', mimeType: 'audio/mpeg', buffer: audio })
   const summary = dialog.getByText('First.mp3', { exact: true })
   await expect(summary).toHaveCSS('user-select', 'none')
+  const cancel = dialog.getByRole('button', { name: 'Cancel', exact: true })
+  await cancel.click({ trial: true })
   const bounds = await summary.boundingBox()
   if (!bounds) throw new Error('Selected filename is not visible')
-  const chooser = page.waitForEvent('filechooser')
-  await page.mouse.click(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2)
-  await (await chooser).setFiles({ name: 'Replacement.mp3', mimeType: 'audio/mpeg', buffer: audio })
+  const [chooser] = await Promise.all([
+    page.waitForEvent('filechooser', { timeout: 5000 }),
+    page.mouse.click(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2),
+  ])
+  await chooser.setFiles({ name: 'Replacement.mp3', mimeType: 'audio/mpeg', buffer: audio })
   await expect(dialog.getByLabel('Track Name', { exact: true })).toHaveValue('Replacement')
   await dialog.getByRole('button', { name: /clear/i }).click()
   await expect(dialog.getByText('Replacement.mp3', { exact: true })).toBeHidden()
   await expect(dialog.getByLabel('Track Name', { exact: true })).toHaveValue('')
-  await page.getByRole('button', { name: 'Cancel', exact: true }).click()
+  await cancel.click()
   await deleteLibraryTrack(page, 'Mobile Forest', 0)
 })
 
@@ -92,7 +98,7 @@ test('GM uploads, renames, persists, and deletes an audio track', async ({ page 
   await expect(page.getByText('No tracks in the library yet.', { exact: true })).toBeVisible()
 })
 
-test('GM drops a folder to import nested audio into the library', async ({ page }) => {
+test('GM drops a folder to import nested audio into the library', async ({ page, recordFlow }) => {
   const folder = await mkdtemp(join(tmpdir(), 'rpg-audio-folder-drop-'))
   try {
     const subfolder = join(folder, 'Nested')
@@ -103,6 +109,7 @@ test('GM drops a folder to import nested audio into the library', async ({ page 
     await login(page)
     await navigate(page, 'Library')
     await expect(page.getByRole('button', { name: 'Upload Track', exact: true })).toBeVisible()
+    recordFlow.start()
     await dropAudioPaths(page, page.getByRole('row', { name: 'No tracks in the library yet.' }),
       [folder], 'Drop audio to upload to the library')
 
@@ -126,6 +133,7 @@ test('GM drops a folder to import nested audio into the library', async ({ page 
       await expect(row).toHaveAttribute('aria-busy', 'false')
       await expect(row.getByText('Music', { exact: true })).toBeVisible()
     }
+    recordFlow.stop()
   } finally {
     await rm(folder, { recursive: true, force: true })
   }
