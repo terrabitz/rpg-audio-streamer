@@ -6,7 +6,7 @@
 - [Add Track dialog](./add-track-dialog.md) - Library selection, new-upload, and YouTube-link tabs for adding tracks
 - [Track processing states](./track-processing.md) - Processing indicators, failed-track diagnostics, and deletion in tables and the library
 - [Table management](./table-management.md) - GM table list with create, rename, delete, copy, and rotation actions
-- [Shared library](./shared-library.md) - Library metadata table, local previews, and usage-checked deletion
+- [Shared library](./shared-library.md) - Library metadata table, local previews, and bulk type changes and deletion.
 - [Track editor](./track-editor.md) - Audio-controls dialog with waveform timeline, seeking, and region handles
 - [Track grid](./track-grid.md) - GM track tiles, layout, and drag-and-drop ordering
 - [Now playing](./now-playing.md) - Desktop sidebar and mobile drawer of currently playing tracks

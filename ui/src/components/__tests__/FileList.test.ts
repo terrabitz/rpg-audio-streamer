@@ -145,6 +145,7 @@ it('preserves audio metadata when resuming a library preview', async () => {
           props: ['items'],
           template: '<div><template v-for="item in items" :key="item.id"><slot name="item.preview" :item="item" /></template></div>',
         },
+        VDialog: true,
         VBtn: {
           emits: ['click'],
           template: '<button @click="$emit(\'click\', $event)"><slot /></button>',
@@ -202,7 +203,7 @@ it('applies pushed processing status and refreshes after reconnecting', async ()
       stubs: {
         VContainer: { template: '<div><slot /></div>' },
         ErrorToast: { props: ['modelValue'], template: '<div role="alert">{{ modelValue }}</div>' },
-        VDataTable: true, VProgressCircular: true, VBtn: true, AudioPlayer: true, AudioControls: true,
+        VDataTable: true, VDialog: true, VProgressCircular: true, VBtn: true, AudioPlayer: true, AudioControls: true,
       },
     },
   })
