@@ -1,5 +1,8 @@
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { expect, test } from './fixtures'
-import { login, createTable, addExistingTrack, deleteTable, deleteLibraryTrack, uploadTrack, openUploadDialog, navigate } from './helpers'
+import { login, createTable, addExistingTrack, deleteTable, deleteLibraryTrack, uploadTrack, openUploadDialog, navigate, audioFixture, dropAudioPaths } from './helpers'
 
 test('GM creates, renames, opens, and deletes tables', async ({ page }) => {
   await login(page)
@@ -214,7 +217,7 @@ test('GM recovers a table mix and live playback in a fresh browser', async ({ pa
   await deleteTable(page, 'Saved mix')
 })
 
-test('GM adds library tracks or new uploads to a table from one dialog', async ({ page }) => {
+test('GM adds library tracks or new uploads to a table from one dialog', async ({ page, recordFlow }) => {
   test.slow()
   await login(page)
   await navigate(page, 'Library')
@@ -223,6 +226,7 @@ test('GM adds library tracks or new uploads to a table from one dialog', async (
   await createTable(page, 'Friday')
   await page.getByRole('link', { name: 'Open Friday', exact: true }).click()
   await expect(page.getByRole('combobox', { name: 'Library track', exact: true })).toHaveCount(0)
+  recordFlow.start()
   await page.getByRole('button', { name: 'Add Track', exact: true }).click()
   await expect(page.getByRole('tab', { name: 'From library', exact: true })).toBeVisible()
   await expect(page.getByRole('tab', { name: 'Upload new', exact: true })).toBeVisible()
@@ -236,6 +240,7 @@ test('GM adds library tracks or new uploads to a table from one dialog', async (
   await expect(page.getByRole('button', { name: 'Add to table', exact: true })).toBeDisabled()
   await page.getByRole('button', { name: 'Cancel', exact: true }).click()
   await uploadTrack(page, 'Friday Only')
+  recordFlow.stop()
   await page.reload()
   await expect(page.locator('.file-tile')).toHaveCount(2)
   await navigate(page, 'Library')
@@ -461,4 +466,67 @@ test('failed audio conversion is shown on the track', async ({ page }) => {
   await page.getByRole('button', { name: 'Delete track', exact: true }).click()
   await page.getByRole('button', { name: 'Confirm delete track', exact: true }).click()
   await expect(tile).toHaveCount(0)
+})
+
+test('GM drops multiple files directly onto the table', async ({ page, recordFlow }) => {
+  const folder = await mkdtemp(join(tmpdir(), 'rpg-audio-table-drop-'))
+  try {
+    const market = join(folder, 'Market.mp3')
+    const tavern = join(folder, 'Tavern.mp3')
+    const bell = join(folder, 'Bell.mp3')
+    await writeFile(market, audioFixture(440, 2))
+    await writeFile(tavern, audioFixture(880, 2))
+    await writeFile(bell, audioFixture(660, 2))
+    await login(page)
+    recordFlow.start()
+    await dropAudioPaths(page, page.getByText('No tracks at this table.', { exact: false }),
+      [market, tavern, bell], 'Drop audio to add to this table')
+    const dialog = page.getByRole('dialog')
+    await expect(dialog.getByRole('tab', { name: 'Upload new', exact: true })).toHaveAttribute('aria-selected', 'true')
+    const table = dialog.getByRole('table', { name: 'Tracks to upload' })
+    const tavernRow = table.getByRole('row').filter({ hasText: 'Tavern.mp3' })
+    const name = tavernRow.getByRole('textbox', { name: 'Track Name' })
+    await expect(name).toHaveValue('Tavern')
+    await name.fill('Busy Tavern')
+    const bulkActions = dialog.getByRole('group', { name: 'Bulk track actions' })
+    await expect(bulkActions).toBeHidden()
+    const upload = dialog.getByRole('button', { name: 'Upload 3 tracks', exact: true })
+    const cancel = dialog.getByRole('button', { name: 'Cancel', exact: true })
+    const uploadLayout = () => Promise.all([dialog, table, cancel, upload].map(element => element.boundingBox()))
+    await cancel.click({ trial: true })
+    const layoutBeforeSelection = await uploadLayout()
+    const selectMarket = table.getByRole('checkbox', { name: 'Select Market.mp3' })
+    await selectMarket.check()
+    await expect(bulkActions.getByRole('status')).toHaveText('1 selected')
+    await table.getByRole('checkbox', { name: 'Select Tavern.mp3' }).check()
+    await expect(bulkActions.getByRole('status')).toHaveText('2 selected')
+    await expect.poll(uploadLayout).toEqual(layoutBeforeSelection)
+    const [barBounds, dialogBounds, cancelBounds, uploadBounds] =
+      await Promise.all([bulkActions, dialog, cancel, upload].map(element => element.boundingBox()))
+    if (!barBounds || !dialogBounds || !cancelBounds || !uploadBounds) throw new Error('Batch footer is not visible')
+    expect(cancelBounds.x + cancelBounds.width).toBeLessThanOrEqual(barBounds.x)
+    expect(barBounds.x + barBounds.width).toBeLessThanOrEqual(uploadBounds.x)
+    expect(Math.abs(barBounds.x + barBounds.width / 2 - dialogBounds.x - dialogBounds.width / 2)).toBeLessThanOrEqual(1)
+    expect(Math.abs(barBounds.y + barBounds.height / 2 - cancelBounds.y - cancelBounds.height / 2)).toBeLessThanOrEqual(1)
+    await bulkActions.getByRole('button', { name: 'Set track type' }).press('Enter')
+    await page.getByRole('menuitem', { name: 'Ambiance', exact: true }).click()
+    await selectMarket.uncheck()
+    await table.getByRole('checkbox', { name: 'Select Tavern.mp3' }).uncheck()
+    await expect(bulkActions).toBeHidden()
+    await expect(upload).toBeDisabled()
+    const bellRow = table.getByRole('row').filter({ hasText: 'Bell.mp3' })
+    await bellRow.getByRole('combobox', { name: 'Track Type', exact: true }).press('ArrowDown')
+    await page.getByRole('option', { name: 'One-Shot', exact: true }).click()
+    await upload.click()
+    await expect(page.getByRole('status').filter({ hasText: '3 tracks added' })).toBeVisible()
+    recordFlow.stop()
+    await page.reload()
+    for (const [name, type] of [['Market', 'Ambiance'], ['Busy Tavern', 'Ambiance'], ['Bell', 'One-Shot']] as const) {
+      const track = page.getByRole('group', { name, exact: true })
+      await expect(track).toHaveAttribute('aria-busy', 'false')
+      await expect(track.getByText(`Track type: ${type}`, { exact: true })).toHaveCount(1)
+    }
+  } finally {
+    await rm(folder, { recursive: true, force: true })
+  }
 })

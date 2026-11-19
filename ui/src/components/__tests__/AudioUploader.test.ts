@@ -308,6 +308,7 @@ async function mountUploader() {
         VCardText: passthrough,
         VCardActions: passthrough,
         VSpacer: true,
+        VTable: { template: '<table><slot /></table>' },
       },
     },
   })
@@ -319,3 +320,40 @@ async function mountUploader() {
   const upload = () => wrapper.findAll('button').find(button => button.text() === 'Upload')!
   return { wrapper, upload, file }
 }
+
+it('keeps only failed tracks and their edited metadata for retry after a partial upload', async () => {
+  const { wrapper, file, upload } = await mountUploader()
+  useTrackTypeStore().trackTypes.push({
+    id: 'ambiance', name: 'Ambiance', color: '#234567', isRepeating: true, allowSimultaneousPlay: true,
+  })
+  const secondFile = new File(['audio'], 'Rain.ogg', { type: 'audio/ogg' })
+  await wrapper.getComponent({ name: 'VFileInput' }).vm.$emit('update:modelValue', [file, secondFile])
+  const [first, second] = wrapper.findAll('tbody tr')
+  await first!.getComponent({ name: 'VSelect' }).vm.$emit('update:modelValue', 'music')
+  await second!.getComponent({ name: 'VSelect' }).vm.$emit('update:modelValue', 'ambiance')
+  await second!.getComponent({ name: 'VTextField' }).vm.$emit('update:modelValue', ' Night Rain ')
+  const response = (id: string, name: string, typeID: string) => ({
+    data: { id, name, typeID, createdAt: '', path: '', status: 'processing' as const },
+    request: new Request('http://localhost'), response: new Response(null, { status: 202 }),
+  })
+  vi.spyOn(console, 'error').mockImplementation(() => {})
+  vi.mocked(postApiV1Files)
+    .mockResolvedValueOnce(response('forest', 'Forest', 'music'))
+    .mockRejectedValueOnce(new Error('offline'))
+    .mockResolvedValueOnce(response('rain', 'Night Rain', 'ambiance'))
+
+  const batchUpload = wrapper.findAll('button').find(button => button.text() === 'Upload 2 tracks')!
+  await batchUpload.trigger('click')
+  await flushPromises()
+  expect(wrapper.get('[role="alert"]').text()).toContain('1 of 2 tracks added.')
+  expect(useFileStore().tracks.map(track => track.name)).toEqual(['Forest'])
+  expect(wrapper.getComponent({ name: 'VFileInput' }).props('modelValue')).toEqual([secondFile])
+  await upload().trigger('click')
+  await flushPromises()
+
+  expect(vi.mocked(postApiV1Files).mock.calls.map(([{ body }]) => [body?.name, body?.typeID]))
+    .toEqual([['Forest', 'music'], ['Night Rain', 'ambiance'], ['Night Rain', 'ambiance']])
+  expect(useFileStore().tracks.map(track => track.name)).toEqual(['Forest', 'Night Rain'])
+  expect(wrapper.find('[role="dialog"]').exists()).toBe(false)
+  wrapper.unmount()
+})

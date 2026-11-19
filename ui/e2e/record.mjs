@@ -27,8 +27,9 @@ for (const name of manifests) {
 }
 process.exit(run.status ?? 1)
 
-function renderGif({ pages, durationMs }, gif) {
-  const total = durationMs / 1000 + holdSeconds
+function renderGif({ pages, startMs, endMs, title }, gif) {
+  if (!pages.length || endMs <= startMs) throw new Error(`No frames in recording window for "${title}"`)
+  const total = (endMs - startMs) / 1000 + holdSeconds
   const [width, height] = pages.length <= 4 ? [960, 540] : [640, 360]
   const columns = pages.length === 1 ? 1 : pages.length <= 4 ? 2 : 3
   const cells = Math.ceil(pages.length / columns) * columns
@@ -36,8 +37,10 @@ function renderGif({ pages, durationMs }, gif) {
     `[${index}:v]fps=${fps}`,
     `scale=${width}:${height}`,
     `tpad=start_duration=${offsetMs / 1000}:start_mode=add:color=${background}`,
-    `tpad=stop_mode=clone:stop_duration=${total}`,
-    `trim=duration=${total}`,
+    `tpad=stop_mode=clone:stop_duration=${endMs / 1000}`,
+    `trim=start=${startMs / 1000}:end=${endMs / 1000}`,
+    'setpts=PTS-STARTPTS',
+    `tpad=stop_mode=clone:stop_duration=${holdSeconds}`,
     `setpts=PTS-STARTPTS[v${index}]`,
   ].join(','))
   for (let index = pages.length; index < cells; index += 1) {
