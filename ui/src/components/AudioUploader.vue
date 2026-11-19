@@ -94,7 +94,7 @@
             <div v-if="isDragging" class="drop-text">Drop audio files or folders here</div>
           </div>
         </v-card-text>
-        <v-card-actions :class="{ 'youtube-actions': source === 'youtube' }">
+        <v-card-actions :class="{ 'youtube-actions': source === 'youtube', 'batch-actions': isBatch }">
           <dl v-if="source === 'youtube' && videoMetadata" class="video-metadata d-flex ga-4 text-body-2"
             aria-label="Video metadata">
             <div>
@@ -106,6 +106,8 @@
               <dd>{{ videoSize }}</dd>
             </div>
           </dl>
+          <v-spacer v-if="!isBatch"></v-spacer>
+          <v-btn color="error" @click="closeDialog" :disabled="isBusy">Cancel</v-btn>
           <div v-if="isBatch" class="bulk-edit-slot">
             <div v-if="selectedCount > 0" class="bulk-edit-bar" role="group" aria-label="Bulk track actions">
               <span class="bulk-edit-count" role="status">
@@ -126,8 +128,6 @@
               </v-menu>
             </div>
           </div>
-          <v-spacer v-else></v-spacer>
-          <v-btn color="error" @click="closeDialog" :disabled="isBusy">Cancel</v-btn>
           <v-btn v-if="source === 'library'" color="success" @click="addTrack"
             :disabled="isBusy || !libraryReady || !selectedTrack" :loading="isAdding">Add to table</v-btn>
           <v-btn v-else-if="source === 'youtube'" color="success" @click="importTrack"
@@ -515,18 +515,30 @@ onUnmounted(() => {
   user-select: none;
 }
 
+.batch-actions {
+  display: grid;
+  grid-template-columns: minmax(max-content, 1fr) minmax(76px, 250px) minmax(max-content, 1fr);
+  justify-items: start;
+}
+
+.batch-actions > :last-child {
+  justify-self: end;
+}
+
 .bulk-edit-slot {
   position: relative;
-  flex: 1 1 0;
+  justify-self: stretch;
   min-width: 0;
   container-type: inline-size;
 }
 
 .bulk-edit-bar {
   position: absolute;
-  inset-inline-start: 0;
+  inset: auto;
+  left: 50%;
   top: 50%;
-  transform: translateY(-50%);
+  transform: translate(-50%, -50%);
+  width: max-content;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -554,7 +566,7 @@ onUnmounted(() => {
   text-align: center;
 }
 
-@container (max-width: 250px) {
+@container (max-width: 224px) {
   .bulk-edit-bar {
     gap: 4px;
     padding-inline: 4px;

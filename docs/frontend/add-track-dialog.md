@@ -27,7 +27,8 @@ opens the picker again, and the clear button removes the selection.
 Each track needs a nonblank name and a type. Names are prefilled from the
 filenames without extensions. The batch upload table lets GMs edit names and
 types per row. Selecting rows shows a floating bar at the bottom of the
-dialog beside the upload controls, without resizing the table or dialog.
+dialog between **Cancel** on the left and **Upload** on the right, without
+resizing the table or dialog.
 The bar shows the selection count and a **Set track type** menu. Choosing a
 type applies it immediately to the selected rows.
 Selection only controls bulk edits; all rows are uploaded on confirmation.

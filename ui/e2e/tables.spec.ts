@@ -497,9 +497,13 @@ test('GM drops multiple files directly onto the table', async ({ page }) => {
     await table.getByRole('checkbox', { name: 'Select Tavern.mp3' }).check()
     await expect(bulkActions.getByRole('status')).toHaveText('2 selected')
     await expect.poll(uploadLayout).toEqual(layoutBeforeSelection)
-    const [barBounds, cancelBounds] = await Promise.all([bulkActions.boundingBox(), cancel.boundingBox()])
-    expect(!!barBounds && !!cancelBounds && barBounds.x + barBounds.width <= cancelBounds.x
-      && Math.abs(barBounds.y + barBounds.height / 2 - cancelBounds.y - cancelBounds.height / 2) <= 1).toBe(true)
+    const [barBounds, dialogBounds, cancelBounds, uploadBounds] =
+      await Promise.all([bulkActions, dialog, cancel, upload].map(element => element.boundingBox()))
+    if (!barBounds || !dialogBounds || !cancelBounds || !uploadBounds) throw new Error('Batch footer is not visible')
+    expect(cancelBounds.x + cancelBounds.width).toBeLessThanOrEqual(barBounds.x)
+    expect(barBounds.x + barBounds.width).toBeLessThanOrEqual(uploadBounds.x)
+    expect(Math.abs(barBounds.x + barBounds.width / 2 - dialogBounds.x - dialogBounds.width / 2)).toBeLessThanOrEqual(1)
+    expect(Math.abs(barBounds.y + barBounds.height / 2 - cancelBounds.y - cancelBounds.height / 2)).toBeLessThanOrEqual(1)
     await bulkActions.getByRole('button', { name: 'Set track type' }).press('Enter')
     await page.getByRole('menuitem', { name: 'Ambiance', exact: true }).click()
     await selectMarket.uncheck()
