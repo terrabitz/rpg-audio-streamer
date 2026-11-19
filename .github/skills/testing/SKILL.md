@@ -27,7 +27,7 @@ export LD_LIBRARY_PATH="$HOME/.local/libdave/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_
 On macOS, set `DYLD_LIBRARY_PATH` instead of `LD_LIBRARY_PATH`. The Linux
 release requires glibc 2.38 or newer; it does not support Alpine's musl.
 Install frontend dependencies with `cd ui && npm ci`. Install Chromium once
-with `cd ui && npx playwright install chromium` (Linux CI also uses `--with-deps`).
+with `cd ui && npx playwright install chromium` (Linux CI also runs `playwright install-deps chromium`).
 The UI compiler must remain compatible with `vue-tsc`; TypeScript 7's native
 package does not expose the JavaScript compiler API required by the current
 Vue tooling.
@@ -67,9 +67,8 @@ export LD_LIBRARY_PATH="$HOME/.local/ffmpeg/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_P
 CI jobs use `.github/actions/setup-environment` for language and dependency
 installation. Its `backend`, `frontend`, and `media` inputs default to `'true'`;
 disable unneeded components per job. Set `playwright: 'true'` in browser jobs
-to install Chromium after frontend dependencies. Node is always installed.
-The cache warmer uses the default components without installing Chromium or
-running tests.
+to set up Chromium after frontend dependencies. Node is always installed.
+The cache warmer enables Playwright too, without running tests.
 
 Media setup delegates to `.github/actions/setup-ffmpeg` to compile with this
 script on cache misses and restore the whole installation on exact cache hits.
