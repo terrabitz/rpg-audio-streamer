@@ -44,7 +44,9 @@
                 label="Select a file" prepend-icon="$music" :accept="audioFileAccept" multiple
                 :loading="isReadingDrop" :disabled="isBusy">
                 <template #selection="{ fileNames }">
-                  {{ fileNames.length === 1 ? fileNames[0] : `${fileNames.length} files selected` }}
+                  <span class="file-selection-summary">
+                    {{ fileNames.length === 1 ? fileNames[0] : `${fileNames.length} files selected` }}
+                  </span>
                 </template>
               </v-file-input>
               <template v-if="!isBatch">
@@ -92,21 +94,6 @@
             <div v-if="isDragging" class="drop-text">Drop audio files or folders here</div>
           </div>
         </v-card-text>
-        <div v-if="isBatch && selectedCount > 0" class="bulk-edit-bar" role="group" aria-label="Bulk track actions">
-          <span class="bulk-edit-count" role="status">
-            <span class="bulk-edit-badge">{{ selectedCount }}</span> selected
-          </span>
-          <v-menu location="top end">
-            <template #activator="{ props: menuProps }">
-              <v-btn v-bind="menuProps" variant="tonal" append-icon="$dropdown"
-                :disabled="isBusy || !typeOptions.length">Set track type</v-btn>
-            </template>
-            <v-list role="menu" aria-label="Track types">
-              <v-list-item v-for="type in typeOptions" :key="type.id" :title="type.name" role="menuitem"
-                @click="applyBulkType(type.id)" />
-            </v-list>
-          </v-menu>
-        </div>
         <v-card-actions :class="{ 'youtube-actions': source === 'youtube' }">
           <dl v-if="source === 'youtube' && videoMetadata" class="video-metadata d-flex ga-4 text-body-2"
             aria-label="Video metadata">
@@ -119,7 +106,27 @@
               <dd>{{ videoSize }}</dd>
             </div>
           </dl>
-          <v-spacer></v-spacer>
+          <div v-if="isBatch" class="bulk-edit-slot">
+            <div v-if="selectedCount > 0" class="bulk-edit-bar" role="group" aria-label="Bulk track actions">
+              <span class="bulk-edit-count" role="status">
+                <span class="bulk-edit-badge">{{ selectedCount }}</span> <span class="bulk-edit-label">selected</span>
+              </span>
+              <v-menu location="top end">
+                <template #activator="{ props: menuProps }">
+                  <v-btn v-bind="menuProps" class="bulk-edit-button" variant="tonal" density="comfortable"
+                    aria-label="Set track type" :disabled="isBusy || !typeOptions.length">
+                    <span class="bulk-edit-label">Set track type</span>
+                    <v-icon icon="$dropdown" />
+                  </v-btn>
+                </template>
+                <v-list role="menu" aria-label="Track types">
+                  <v-list-item v-for="type in typeOptions" :key="type.id" :title="type.name" role="menuitem"
+                    @click="applyBulkType(type.id)" />
+                </v-list>
+              </v-menu>
+            </div>
+          </div>
+          <v-spacer v-else></v-spacer>
           <v-btn color="error" @click="closeDialog" :disabled="isBusy">Cancel</v-btn>
           <v-btn v-if="source === 'library'" color="success" @click="addTrack"
             :disabled="isBusy || !libraryReady || !selectedTrack" :loading="isAdding">Add to table</v-btn>
@@ -502,15 +509,29 @@ onUnmounted(() => {
   margin: -20px;
 }
 
+.file-selection-summary {
+  color: rgba(var(--v-theme-on-surface), var(--v-disabled-opacity));
+  pointer-events: none;
+  user-select: none;
+}
+
+.bulk-edit-slot {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 0;
+  container-type: inline-size;
+}
+
 .bulk-edit-bar {
-  align-self: center;
+  position: absolute;
+  inset-inline-start: 0;
+  top: 50%;
+  transform: translateY(-50%);
   display: flex;
-  flex: none;
   align-items: center;
-  gap: 12px;
-  max-width: calc(100% - 24px);
-  margin: 4px 12px 8px;
-  padding: 8px 12px;
+  gap: 8px;
+  max-width: 100%;
+  padding: 3px 6px;
   border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
   border-radius: 12px;
   background: rgb(var(--v-theme-surface));
@@ -531,6 +552,26 @@ onUnmounted(() => {
   background: rgb(var(--v-theme-primary));
   color: rgb(var(--v-theme-on-primary));
   text-align: center;
+}
+
+@container (max-width: 250px) {
+  .bulk-edit-bar {
+    gap: 4px;
+    padding-inline: 4px;
+  }
+
+  .bulk-edit-label {
+    position: absolute;
+    clip-path: inset(50%);
+    overflow: hidden;
+    width: 1px;
+    height: 1px;
+  }
+
+  .bulk-edit-button {
+    min-width: 32px;
+    padding-inline: 4px;
+  }
 }
 
 .upload-row-selected {
