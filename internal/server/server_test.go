@@ -40,7 +40,7 @@ type mockAuth struct {
 // Verify mockAuth implements Authenticator interface
 var _ Authenticator = (*mockAuth)(nil)
 
-func (m *mockAuth) ValidateCredentials(creds auth.Credentials) (*auth.Token, error) {
+func (m *mockAuth) ValidateCredentials(_ context.Context, creds auth.Credentials) (*auth.Token, error) {
 	if creds.Username == m.validUser && creds.Password == m.validPassword {
 		return m.token, nil
 	}
@@ -52,6 +52,22 @@ func (m *mockAuth) ValidateToken(tokenStr string) (*auth.Token, error) {
 		return m.token, nil
 	}
 	return nil, jwt.ErrTokenInvalidClaims
+}
+
+func (m *mockAuth) SetupStatus(context.Context) (auth.SetupStatus, error) {
+	return auth.SetupStatus{}, nil
+}
+
+func (m *mockAuth) Claim(context.Context, string, string, string) error {
+	return auth.ErrSetupComplete
+}
+
+func (m *mockAuth) Profile(context.Context) (auth.Profile, error) {
+	return auth.Profile{Username: m.validUser}, nil
+}
+
+func (m *mockAuth) ChangePassword(context.Context, string, string) error {
+	return auth.ErrPassword
 }
 
 type mockWSRegisterer struct {

@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -389,8 +390,16 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		Password: req.Password,
 	}
 
-	token, err := s.auth.ValidateCredentials(creds)
+	token, err := s.auth.ValidateCredentials(r.Context(), creds)
 	if err != nil {
+		if !errors.Is(err, auth.ErrInvalidCredentials) {
+			s.logger.Error("unable to authenticate", "error", err)
+			respondJSON(w, http.StatusInternalServerError, loginResponse{
+				Success: false,
+				Error:   "Unable to sign in",
+			})
+			return
+		}
 		s.logger.Info("login failed", "username", req.Username)
 		respondJSON(w, http.StatusUnauthorized, loginResponse{
 			Success: false,

@@ -2,7 +2,7 @@
 
 import { type Client, type ClientMeta, formDataBodySerializer, type Options as Options2, type RequestResult, type TDataShape } from './client';
 import { client } from './client.gen';
-import type { DeleteApiV1FilesByTrackIdData, DeleteApiV1FilesByTrackIdErrors, DeleteApiV1FilesByTrackIdResponses, DeleteApiV1TablesByTableIdData, DeleteApiV1TablesByTableIdDiscordData, DeleteApiV1TablesByTableIdDiscordErrors, DeleteApiV1TablesByTableIdDiscordResponses, DeleteApiV1TablesByTableIdErrors, DeleteApiV1TablesByTableIdResponses, DeleteApiV1TablesByTableIdTracksByTrackIdData, DeleteApiV1TablesByTableIdTracksByTrackIdErrors, DeleteApiV1TablesByTableIdTracksByTrackIdResponses, GetApiV1AuthStatusData, GetApiV1AuthStatusResponses, GetApiV1DiscordServersByGuildIdChannelsData, GetApiV1DiscordServersByGuildIdChannelsErrors, GetApiV1DiscordServersByGuildIdChannelsResponses, GetApiV1DiscordSetupData, GetApiV1DiscordSetupErrors, GetApiV1DiscordSetupResponses, GetApiV1FilesByTrackIdUsageData, GetApiV1FilesByTrackIdUsageErrors, GetApiV1FilesByTrackIdUsageResponses, GetApiV1FilesByTrackIdWaveformData, GetApiV1FilesByTrackIdWaveformErrors, GetApiV1FilesByTrackIdWaveformResponses, GetApiV1FilesData, GetApiV1FilesErrors, GetApiV1FilesResponses, GetApiV1StreamByPathData, GetApiV1StreamByPathErrors, GetApiV1StreamByPathResponses, GetApiV1TablesByTableIdData, GetApiV1TablesByTableIdDiscordData, GetApiV1TablesByTableIdDiscordErrors, GetApiV1TablesByTableIdDiscordResponses, GetApiV1TablesByTableIdErrors, GetApiV1TablesByTableIdResponses, GetApiV1TablesByTableIdSettingsData, GetApiV1TablesByTableIdSettingsErrors, GetApiV1TablesByTableIdSettingsResponses, GetApiV1TablesByTableIdStreamByPathData, GetApiV1TablesByTableIdStreamByPathErrors, GetApiV1TablesByTableIdStreamByPathResponses, GetApiV1TablesByTableIdTracksData, GetApiV1TablesByTableIdTracksErrors, GetApiV1TablesByTableIdTracksResponses, GetApiV1TablesData, GetApiV1TablesResponses, GetApiV1TrackTypesData, GetApiV1TrackTypesResponses, GetApiV1WsData, GetApiV1WsErrors, PatchApiV1TablesByTableIdSettingsData, PatchApiV1TablesByTableIdSettingsErrors, PatchApiV1TablesByTableIdSettingsResponses, PostApiV1AuthLogoutData, PostApiV1AuthLogoutResponses, PostApiV1FilesData, PostApiV1FilesErrors, PostApiV1FilesImportData, PostApiV1FilesImportErrors, PostApiV1FilesImportResponses, PostApiV1FilesResponses, PostApiV1FilesScanData, PostApiV1FilesScanErrors, PostApiV1FilesScanResponses, PostApiV1LoginData, PostApiV1LoginErrors, PostApiV1LoginResponses, PostApiV1TablesByTableIdDiscordData, PostApiV1TablesByTableIdDiscordErrors, PostApiV1TablesByTableIdDiscordResponses, PostApiV1TablesByTableIdExternalIdData, PostApiV1TablesByTableIdExternalIdErrors, PostApiV1TablesByTableIdExternalIdResponses, PostApiV1TablesData, PostApiV1TablesErrors, PostApiV1TablesResponses, PutApiV1FilesByTrackIdData, PutApiV1FilesByTrackIdErrors, PutApiV1FilesByTrackIdResponses, PutApiV1TablesByTableIdData, PutApiV1TablesByTableIdErrors, PutApiV1TablesByTableIdResponses, PutApiV1TablesByTableIdTracksByTrackIdData, PutApiV1TablesByTableIdTracksByTrackIdErrors, PutApiV1TablesByTableIdTracksByTrackIdResponses } from './types.gen';
+import type { ChangePasswordData, ChangePasswordErrors, ChangePasswordResponses, ClaimInstanceData, ClaimInstanceErrors, ClaimInstanceResponses, DeleteApiV1FilesByTrackIdData, DeleteApiV1FilesByTrackIdErrors, DeleteApiV1FilesByTrackIdResponses, DeleteApiV1TablesByTableIdData, DeleteApiV1TablesByTableIdDiscordData, DeleteApiV1TablesByTableIdDiscordErrors, DeleteApiV1TablesByTableIdDiscordResponses, DeleteApiV1TablesByTableIdErrors, DeleteApiV1TablesByTableIdResponses, DeleteApiV1TablesByTableIdTracksByTrackIdData, DeleteApiV1TablesByTableIdTracksByTrackIdErrors, DeleteApiV1TablesByTableIdTracksByTrackIdResponses, GetApiV1AuthStatusData, GetApiV1AuthStatusResponses, GetApiV1DiscordServersByGuildIdChannelsData, GetApiV1DiscordServersByGuildIdChannelsErrors, GetApiV1DiscordServersByGuildIdChannelsResponses, GetApiV1DiscordSetupData, GetApiV1DiscordSetupErrors, GetApiV1DiscordSetupResponses, GetApiV1FilesByTrackIdUsageData, GetApiV1FilesByTrackIdUsageErrors, GetApiV1FilesByTrackIdUsageResponses, GetApiV1FilesByTrackIdWaveformData, GetApiV1FilesByTrackIdWaveformErrors, GetApiV1FilesByTrackIdWaveformResponses, GetApiV1FilesData, GetApiV1FilesErrors, GetApiV1FilesResponses, GetApiV1StreamByPathData, GetApiV1StreamByPathErrors, GetApiV1StreamByPathResponses, GetApiV1TablesByTableIdData, GetApiV1TablesByTableIdDiscordData, GetApiV1TablesByTableIdDiscordErrors, GetApiV1TablesByTableIdDiscordResponses, GetApiV1TablesByTableIdErrors, GetApiV1TablesByTableIdResponses, GetApiV1TablesByTableIdSettingsData, GetApiV1TablesByTableIdSettingsErrors, GetApiV1TablesByTableIdSettingsResponses, GetApiV1TablesByTableIdStreamByPathData, GetApiV1TablesByTableIdStreamByPathErrors, GetApiV1TablesByTableIdStreamByPathResponses, GetApiV1TablesByTableIdTracksData, GetApiV1TablesByTableIdTracksErrors, GetApiV1TablesByTableIdTracksResponses, GetApiV1TablesData, GetApiV1TablesResponses, GetApiV1TrackTypesData, GetApiV1TrackTypesResponses, GetApiV1WsData, GetApiV1WsErrors, GetProfileData, GetProfileErrors, GetProfileResponses, GetSetupStatusData, GetSetupStatusErrors, GetSetupStatusResponses, PatchApiV1TablesByTableIdSettingsData, PatchApiV1TablesByTableIdSettingsErrors, PatchApiV1TablesByTableIdSettingsResponses, PostApiV1AuthLogoutData, PostApiV1AuthLogoutResponses, PostApiV1FilesData, PostApiV1FilesErrors, PostApiV1FilesImportData, PostApiV1FilesImportErrors, PostApiV1FilesImportResponses, PostApiV1FilesResponses, PostApiV1FilesScanData, PostApiV1FilesScanErrors, PostApiV1FilesScanResponses, PostApiV1LoginData, PostApiV1LoginErrors, PostApiV1LoginResponses, PostApiV1TablesByTableIdDiscordData, PostApiV1TablesByTableIdDiscordErrors, PostApiV1TablesByTableIdDiscordResponses, PostApiV1TablesByTableIdExternalIdData, PostApiV1TablesByTableIdExternalIdErrors, PostApiV1TablesByTableIdExternalIdResponses, PostApiV1TablesData, PostApiV1TablesErrors, PostApiV1TablesResponses, PutApiV1FilesByTrackIdData, PutApiV1FilesByTrackIdErrors, PutApiV1FilesByTrackIdResponses, PutApiV1TablesByTableIdData, PutApiV1TablesByTableIdErrors, PutApiV1TablesByTableIdResponses, PutApiV1TablesByTableIdTracksByTrackIdData, PutApiV1TablesByTableIdTracksByTrackIdErrors, PutApiV1TablesByTableIdTracksByTrackIdResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -17,6 +17,53 @@ export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends 
      */
     meta?: keyof ClientMeta extends never ? Record<string, unknown> : ClientMeta;
 };
+
+/**
+ * Determine whether the instance needs to be claimed
+ */
+export const getSetupStatus = <ThrowOnError extends boolean = false>(options?: Options<GetSetupStatusData, ThrowOnError>): RequestResult<GetSetupStatusResponses, GetSetupStatusErrors, ThrowOnError> => (options?.client ?? client).get<GetSetupStatusResponses, GetSetupStatusErrors, ThrowOnError>({ url: '/api/v1/setup', ...options });
+
+/**
+ * Consume the one-time setup code and create the owner account
+ */
+export const claimInstance = <ThrowOnError extends boolean = false>(options: Options<ClaimInstanceData, ThrowOnError>): RequestResult<ClaimInstanceResponses, ClaimInstanceErrors, ThrowOnError> => (options.client ?? client).post<ClaimInstanceResponses, ClaimInstanceErrors, ThrowOnError>({
+    url: '/api/v1/setup',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Get the GM profile
+ */
+export const getProfile = <ThrowOnError extends boolean = false>(options?: Options<GetProfileData, ThrowOnError>): RequestResult<GetProfileResponses, GetProfileErrors, ThrowOnError> => (options?.client ?? client).get<GetProfileResponses, GetProfileErrors, ThrowOnError>({
+    security: [{
+            in: 'cookie',
+            name: 'auth_token',
+            type: 'apiKey'
+        }],
+    url: '/api/v1/profile',
+    ...options
+});
+
+/**
+ * Change the password without signing out existing GM sessions
+ */
+export const changePassword = <ThrowOnError extends boolean = false>(options: Options<ChangePasswordData, ThrowOnError>): RequestResult<ChangePasswordResponses, ChangePasswordErrors, ThrowOnError> => (options.client ?? client).patch<ChangePasswordResponses, ChangePasswordErrors, ThrowOnError>({
+    security: [{
+            in: 'cookie',
+            name: 'auth_token',
+            type: 'apiKey'
+        }],
+    url: '/api/v1/profile',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
 
 /**
  * Get the bot installation link and installed servers (GM only)

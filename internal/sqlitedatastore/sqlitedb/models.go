@@ -16,6 +16,11 @@ type GameTable struct {
 	DiscordDestination string
 }
 
+type InstanceSetting struct {
+	ID          int64
+	TokenSecret string
+}
+
 type TableTrack struct {
 	TableID []byte
 	TrackID []byte
@@ -42,4 +47,10 @@ type TrackType struct {
 	IsRepeating           bool
 	AllowSimultaneousPlay bool
 	CreatedAt             string
+}
+
+type User struct {
+	ID           int64
+	Username     string
+	PasswordHash string
 }

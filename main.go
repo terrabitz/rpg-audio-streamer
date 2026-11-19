@@ -33,10 +33,11 @@ var migrations embed.FS
 const migrationsPath = "sql/migrations"
 
 type Config struct {
-	Server server.Config
-	Log    LogConfig
-	Auth   auth.Config
-	DB     DBConfig
+	Server    server.Config
+	Log       LogConfig
+	Auth      auth.Config
+	DB        DBConfig
+	Bootstrap auth.BootstrapConfig
 }
 
 type DBConfig struct {
@@ -122,20 +123,22 @@ func main() {
 						Name:        "root-username",
 						EnvVars:     []string{"ROOT_USERNAME"},
 						Value:       "admin",
-						Usage:       "Root username for authentication",
-						Destination: &cfg.Auth.RootUsername,
+						Usage:       "Initial admin username",
+						Destination: &cfg.Bootstrap.Username,
 					},
 					&cli.StringFlag{
-						Name:        "root-password-hash",
-						EnvVars:     []string{"ROOT_PASSWORD_HASH"},
-						Required:    true,
-						Usage:       "Argon2id hash of root password",
-						Destination: &cfg.Auth.HashedPassword,
+						Name:    "root-password",
+						EnvVars: []string{"ROOT_PASSWORD"},
+						Usage:   "Initial admin password (used only when no admin exists)",
+					},
+					&cli.StringFlag{
+						Name:    "root-password-hash",
+						EnvVars: []string{"ROOT_PASSWORD_HASH"},
+						Usage:   "Initial admin Argon2id password hash (alternative to ROOT_PASSWORD)",
 					},
 					&cli.StringFlag{
 						Name:        "token-secret",
 						EnvVars:     []string{"TOKEN_SECRET"},
-						Required:    true,
 						Usage:       "Secret for signing JWT tokens",
 						Destination: &cfg.Auth.TokenSecret,
 					},
@@ -175,6 +178,14 @@ func main() {
 					},
 				},
 				Action: func(cCtx *cli.Context) error {
+					if cCtx.IsSet("root-password") {
+						password := cCtx.String("root-password")
+						cfg.Bootstrap.Password = &password
+					}
+					if cCtx.IsSet("root-password-hash") {
+						hash := cCtx.String("root-password-hash")
+						cfg.Bootstrap.Hash = &hash
+					}
 					return startServer(cCtx.Context, cfg)
 				},
 			},
@@ -211,7 +222,6 @@ func main() {
 							if err != nil {
 								return fmt.Errorf("couldn't initialize SQLite DB: %w", err)
 							}
-
 							migrations, err := sqlitedatastore.NewMigration(migrationsSub, db)
 							if err != nil {
 								return fmt.Errorf("couldn't initialize migrations: %w", err)
@@ -250,7 +260,6 @@ func main() {
 							if err != nil {
 								return fmt.Errorf("couldn't initialize SQLite DB: %w", err)
 							}
-
 							migrations, err := sqlitedatastore.NewMigration(migrationsSub, db)
 							if err != nil {
 								return fmt.Errorf("couldn't initialize migrations: %w", err)
@@ -350,7 +359,10 @@ func startServer(ctx context.Context, cfg Config) error {
 		return fmt.Errorf("couldn't run migrations: %w", err)
 	}
 
-	authService := auth.New(cfg.Auth, logger)
+	authService, code, err := auth.New(ctx, cfg.Auth, cfg.Bootstrap, db, logger)
+	if err != nil {
+		return fmt.Errorf("couldn't initialize authentication: %w", err)
+	}
 
 	hub := ws.NewHub(logger, db)
 
@@ -373,6 +385,9 @@ func startServer(ctx context.Context, cfg Config) error {
 	srv, err := server.New(cfg.Server, logger, authService, db, hub, processing, videos)
 	if err != nil {
 		return fmt.Errorf("couldn't create server: %w", err)
+	}
+	if code != "" {
+		fmt.Fprintf(os.Stderr, "First-run setup: open the app and enter this one-time setup code (expires in 30 minutes):\nsetup_code=%s\n", code)
 	}
 
 	hubFinished := make(chan struct{})

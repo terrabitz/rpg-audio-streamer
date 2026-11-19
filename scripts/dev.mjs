@@ -338,6 +338,7 @@ function start(command, args, cwd, ipc = false, overrides = {}) {
     'UPLOAD_DIR',
     'FRONTEND_DIR',
     'ROOT_USERNAME',
+    'ROOT_PASSWORD',
     'ROOT_PASSWORD_HASH',
     'TOKEN_SECRET',
     'TOKEN_DURATION',

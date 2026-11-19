@@ -3,7 +3,6 @@ package auth
 import (
 	"bytes"
 	"errors"
-	"log/slog"
 	"testing"
 	"time"
 
@@ -11,12 +10,14 @@ import (
 )
 
 func TestTokenGeneration(t *testing.T) {
-	auth := New(Config{
-		TokenSecret:   "test-secret",
-		TokenDuration: time.Hour,
-		TokenIssuer:   "test-issuer",
-		TokenAudience: "test-audience",
-	}, slog.Default())
+	auth := &Auth{
+		cfg: Config{
+			TokenSecret:   "test-secret",
+			TokenDuration: time.Hour,
+			TokenIssuer:   "test-issuer",
+			TokenAudience: "test-audience",
+		},
+	}
 
 	tests := []struct {
 		name    string
@@ -68,12 +69,14 @@ func TestTokenGeneration(t *testing.T) {
 
 func TestTokenValidation(t *testing.T) {
 	testSecret := "test-secret"
-	auth := New(Config{
-		TokenSecret:   testSecret,
-		TokenDuration: time.Hour,
-		TokenIssuer:   "test-issuer",
-		TokenAudience: "test-audience",
-	}, slog.Default())
+	auth := &Auth{
+		cfg: Config{
+			TokenSecret:   testSecret,
+			TokenDuration: time.Hour,
+			TokenIssuer:   "test-issuer",
+			TokenAudience: "test-audience",
+		},
+	}
 
 	tests := []struct {
 		name    string

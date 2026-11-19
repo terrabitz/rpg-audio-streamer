@@ -50,8 +50,15 @@ func TestTableHTTP(t *testing.T) {
 		t.Fatal(err)
 	}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	authenticator := auth.New(auth.Config{TokenSecret: "public-test-secret",
-		TokenDuration: time.Hour, TokenIssuer: "test", TokenAudience: "test"}, logger)
+	authenticator, _, err := auth.New(context.Background(), auth.Config{
+		TokenSecret:   "public-test-secret",
+		TokenDuration: time.Hour,
+		TokenIssuer:   "test",
+		TokenAudience: "test",
+	}, auth.BootstrapConfig{}, db, logger)
+	if err != nil {
+		t.Fatal(err)
+	}
 	gm, err := authenticator.NewToken("gm", auth.RoleGM)
 	if err != nil {
 		t.Fatal(err)

@@ -1,10 +1,20 @@
 package auth
 
 import (
+	"context"
 	"log/slog"
 	"testing"
 	"time"
 )
+
+type testStore struct {
+	Store
+	admin Admin
+}
+
+func (s testStore) LoadAdmin(ctx context.Context) (Admin, error) {
+	return s.admin, ctx.Err()
+}
 
 func TestValidateCredentials(t *testing.T) {
 	hashedPassword, err := HashPassword("correct-password")
@@ -12,14 +22,21 @@ func TestValidateCredentials(t *testing.T) {
 		t.Fatalf("Failed to hash password: %v", err)
 	}
 
-	auth := New(Config{
-		RootUsername:   "admin",
-		HashedPassword: hashedPassword,
-		TokenSecret:    "test-secret",
-		TokenDuration:  time.Hour,
-		TokenIssuer:    "test-issuer",
-		TokenAudience:  "test-audience",
-	}, slog.Default())
+	auth := &Auth{
+		cfg: Config{
+			TokenSecret:   "test-secret",
+			TokenDuration: time.Hour,
+			TokenIssuer:   "test-issuer",
+			TokenAudience: "test-audience",
+		},
+		store: testStore{
+			admin: Admin{
+				Username:     "admin",
+				PasswordHash: hashedPassword,
+			},
+		},
+		logger: slog.Default(),
+	}
 
 	tests := []struct {
 		name    string
@@ -59,7 +76,7 @@ func TestValidateCredentials(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			token, err := auth.ValidateCredentials(tt.creds)
+			token, err := auth.ValidateCredentials(context.Background(), tt.creds)
 
 			if tt.wantErr != nil {
 				if err != tt.wantErr {

@@ -21,6 +21,8 @@ generated sqlc code (see [Go packages](../backend/packages.md)).
 | `track_types` | UUID ID, name, color, repeat policy, simultaneous-play policy, and creation timestamp |
 | `game_tables` | UUID ID, unique random Base64URL external ID, name, JSON GM [mixing/ordering settings](./table-settings.md), and saved [Discord destination](../discord/voice-streaming.md) (`discord_destination`) |
 | `table_tracks` | Many-to-many [table/track associations](./table-track-associations.md) |
+| `users` | One admin account, with a username and Argon2id password hash |
+| `instance_settings` | Instance-generated JWT signing secret |
 
 The `game_tables` external ID is the [public table identifier](../backend/public-table-links.md)
 used in player URLs; the UUID remains the internal database identity.
@@ -54,3 +56,9 @@ Exclusivity is enforced during [playback synchronization](../playback/synchroniz
 The datastore uses one pooled SQLite connection to serialize in-process
 access, including background processing updates, so concurrent settings writes
 cannot lock out table or stream reads.
+
+Admin creation cannot overwrite an existing account, and a password update
+requires the stored hash to match the one verified by the server. Run one
+app process per database. Ordinary database files are restricted to owner
+read/write permissions. Protect the data volume and backups; persist
+`/app/data` in Docker to retain the account, generated signing key, and uploads.

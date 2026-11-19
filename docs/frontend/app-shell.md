@@ -13,7 +13,9 @@ To preserve space during play, the table name appears only in the app bar.
 ## Navigation
 
 Authenticated navigation lives in a left sidebar that is closed by default and
-overlays the page when opened, with logout at the bottom. Logged-out visitors
+overlays the page when opened. Tables, Library, and Settings use music,
+bookshelf, and cog icons; logout sits at the bottom. Settings contains the
+password change form. Logged-out visitors
 see a login button in the app bar; player views show neither navigation nor
 login.
 

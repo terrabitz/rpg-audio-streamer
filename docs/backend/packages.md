@@ -10,7 +10,7 @@ tags: [backend, go]
 
 | Package | Responsibility |
 | --- | --- |
-| `internal/auth` | Argon2id credential checks, signed JWTs, GM/player roles ([authentication](./authentication.md)) |
+| `internal/auth` | Admin setup and password changes, datastore-backed credential checks, signed JWTs, and GM/player roles ([authentication](./authentication.md)) |
 | `internal/server` | HTTP handlers, cookies/middleware, [public table access](./public-table-links.md), track/table contracts, datastore and hub interfaces |
 | `internal/musicprocessing` | Bounded [background jobs](../data/track-processing.md), staging, HLS conversion, waveforms, restart recovery, and completion notifications |
 | `internal/youtube` | [YouTube retrieval](./youtube.md), URL canonicalization, and yt-dlp metadata scans with import limits |

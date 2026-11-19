@@ -13,7 +13,9 @@ The Vue 3 application uses Vue Router, Vuetify, and Pinia.
 | Route | Purpose |
 | --- | --- |
 | `/` | Landing page |
-| `/login` | GM credentials ([authentication](../backend/authentication.md)); login opens table management |
+| `/login` | GM credentials; opens table management |
+| `/setup` | [Claim a fresh instance](../backend/authentication.md) |
+| `/settings` | GM profile and password changes |
 | `/join` | Player invite-URL guidance |
 | `/tables` | [Table management](./table-management.md) |
 | `/library` | [Shared library](./shared-library.md) uploads and metadata management |
