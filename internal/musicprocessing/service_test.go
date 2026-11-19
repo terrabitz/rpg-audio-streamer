@@ -44,7 +44,7 @@ func TestUploadSurvivesRequestCancellation(t *testing.T) {
 	if got := notifier.received(); len(got) != 1 || got[0].ID != track.ID || got[0].Status != "ready" {
 		t.Fatalf("ready notifications = %+v", got)
 	}
-	for _, file := range []string{"index.m3u8", "segment_000.ts", waveformFile} {
+	for _, file := range []string{"index.m3u8", "segment_000.ts"} {
 		if _, err := os.Stat(filepath.Join(track.Path, file)); err != nil {
 			t.Errorf("processed track missing %s: %v", file, err)
 		}
@@ -271,6 +271,10 @@ func (s *memoryStore) SetTrackProcessing(ctx context.Context, id uuid.UUID, stat
 	track.Status, track.ProcessingError = status, message
 	s.tracks[id] = track
 	return nil
+}
+
+func (s *memoryStore) SaveTrackWaveform(ctx context.Context, _ uuid.UUID, _ Waveform) error {
+	return ctx.Err()
 }
 
 func (s *memoryStore) get(id uuid.UUID) Track {

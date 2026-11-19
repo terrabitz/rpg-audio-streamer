@@ -17,7 +17,7 @@ generated sqlc code (see [Go packages](../backend/packages.md)).
 
 | Table | Contents |
 | --- | --- |
-| `tracks` | UUID ID, creation timestamp, display name, disk path, track-type ID, shared [playback-region](../playback/playback-regions.md) points (beginning, optional end, optional loop-back), [processing status](./track-processing.md) (`processing`, `ready`, or `failed`), and processing diagnostics |
+| `tracks` | UUID ID, creation timestamp, display name, disk path, track-type ID, shared [playback-region](../playback/playback-regions.md) points (beginning, optional end, optional loop-back), [processing status](./track-processing.md) (`processing`, `ready`, or `failed`), processing diagnostics, and a nullable JSON [waveform](./track-uploads.md#waveforms) |
 | `track_types` | UUID ID, name, color, repeat policy, simultaneous-play policy, and creation timestamp |
 | `game_tables` | UUID ID, unique random Base64URL external ID, name, JSON GM [mixing/ordering settings](./table-settings.md), and saved [Discord destination](../discord/voice-streaming.md) (`discord_destination`) |
 | `table_tracks` | Many-to-many [table/track associations](./table-track-associations.md) |

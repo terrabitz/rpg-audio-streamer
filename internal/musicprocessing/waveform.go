@@ -4,17 +4,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
-	"encoding/json"
-	"errors"
 	"fmt"
 	"math"
-	"os"
 	"os/exec"
 	"path/filepath"
 )
 
 const (
-	waveformFile       = "waveform.json"
 	waveformPeaks      = 400
 	waveformSampleRate = 8000
 )
@@ -23,20 +19,7 @@ type Waveform struct {
 	Peaks []float64 `json:"peaks"`
 }
 
-// LoadWaveform generates a cache on demand for tracks without a valid waveform.
-func LoadWaveform(ctx context.Context, dir string) (Waveform, error) {
-	var waveform Waveform
-	data, err := os.ReadFile(filepath.Join(dir, waveformFile))
-	if err == nil && json.Unmarshal(data, &waveform) == nil && len(waveform.Peaks) > 0 {
-		return waveform, nil
-	}
-	if err != nil && !errors.Is(err, os.ErrNotExist) {
-		return Waveform{}, err
-	}
-	return generateWaveform(ctx, dir)
-}
-
-func generateWaveform(ctx context.Context, dir string) (Waveform, error) {
+func GenerateWaveform(ctx context.Context, dir string) (Waveform, error) {
 	var stdout, stderr bytes.Buffer
 	cmd := exec.CommandContext(ctx, "ffmpeg", "-nostdin", "-v", "error", "-i", filepath.Join(dir, "index.m3u8"),
 		"-vn", "-ac", "1", "-ar", fmt.Sprint(waveformSampleRate), "-f", "f32le", "-")
@@ -49,29 +32,7 @@ func generateWaveform(ctx context.Context, dir string) (Waveform, error) {
 	if err := binary.Read(&stdout, binary.LittleEndian, samples); err != nil {
 		return Waveform{}, fmt.Errorf("read samples: %w", err)
 	}
-	waveform := Waveform{Peaks: waveformFromSamples(samples, waveformPeaks)}
-
-	data, err := json.Marshal(waveform)
-	if err != nil {
-		return Waveform{}, err
-	}
-	// Write through a temporary file so concurrent readers never see a partial cache.
-	tmp, err := os.CreateTemp(dir, waveformFile+".*")
-	if err != nil {
-		return Waveform{}, err
-	}
-	defer os.Remove(tmp.Name())
-	if _, err := tmp.Write(data); err != nil {
-		tmp.Close()
-		return Waveform{}, err
-	}
-	if err := tmp.Close(); err != nil {
-		return Waveform{}, err
-	}
-	if err := os.Rename(tmp.Name(), filepath.Join(dir, waveformFile)); err != nil {
-		return Waveform{}, err
-	}
-	return waveform, nil
+	return Waveform{Peaks: waveformFromSamples(samples, waveformPeaks)}, nil
 }
 
 // waveformFromSamples returns the peak amplitude of each of count equal time

@@ -85,7 +85,11 @@ func TestUploadAudioFormatsIntegration(t *testing.T) {
 			if err != nil || track.Status != "ready" || track.Name != tc.name || track.TypeID != queued.TypeID {
 				t.Fatalf("processed track = %+v, %v", track, err)
 			}
-			assertProcessedAudio(t, ctx, track.Path)
+			waveform, err := db.GetTrackWaveform(ctx, track.ID)
+			if err != nil {
+				t.Fatalf("waveform was not stored: %v", err)
+			}
+			assertProcessedAudio(t, ctx, track.Path, waveform)
 			stop()
 			if _, err := os.Stat(filepath.Join(dir, "uploads", ".processing", queued.ID.String())); !os.IsNotExist(err) {
 				t.Fatalf("upload staging not cleaned up: %v", err)
@@ -94,7 +98,7 @@ func TestUploadAudioFormatsIntegration(t *testing.T) {
 	}
 }
 
-func assertProcessedAudio(t *testing.T, ctx context.Context, dir string) {
+func assertProcessedAudio(t *testing.T, ctx context.Context, dir string, waveform musicprocessing.Waveform) {
 	t.Helper()
 	playlist := filepath.Join(dir, "index.m3u8")
 	manifest, err := os.ReadFile(playlist)
@@ -104,13 +108,8 @@ func assertProcessedAudio(t *testing.T, ctx context.Context, dir string) {
 	if strings.Count(string(manifest), "#EXTINF:") < 2 || !strings.Contains(string(manifest), "#EXT-X-ENDLIST") {
 		t.Fatalf("expected a complete, multi-segment HLS playlist: %s", manifest)
 	}
-	data, err := os.ReadFile(filepath.Join(dir, "waveform.json"))
-	if err != nil {
-		t.Fatalf("waveform was not pre-generated: %v", err)
-	}
-	var waveform musicprocessing.Waveform
-	if err := json.Unmarshal(data, &waveform); err != nil {
-		t.Fatal(err)
+	if _, err := os.Stat(filepath.Join(dir, "waveform.json")); !os.IsNotExist(err) {
+		t.Fatalf("waveform must not be written to disk: %v", err)
 	}
 	if len(waveform.Peaks) != 400 {
 		t.Fatalf("waveform has %d peaks, want 400", len(waveform.Peaks))
@@ -233,13 +232,13 @@ func TestYouTubeIntegration(t *testing.T) {
 	if err != nil || !track.Ready() || track.Name != metadata.Name || track.TypeID != queued.TypeID {
 		t.Fatalf("processed track = %+v, %v", track, err)
 	}
-	for _, file := range []string{"index.m3u8", "segment_000.ts", "waveform.json"} {
+	for _, file := range []string{"index.m3u8", "segment_000.ts"} {
 		info, err := os.Stat(filepath.Join(queued.Path, file))
 		if err != nil || info.Size() == 0 {
 			t.Fatalf("missing or empty processed %s: %v", file, err)
 		}
 	}
-	waveform, err := musicprocessing.LoadWaveform(ctx, queued.Path)
+	waveform, err := db.GetTrackWaveform(ctx, queued.ID)
 	if err != nil || len(waveform.Peaks) != 400 {
 		t.Fatalf("processed waveform = %d peaks: %v", len(waveform.Peaks), err)
 	}

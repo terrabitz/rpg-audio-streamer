@@ -1,6 +1,9 @@
 package server
 
 import (
+	"context"
+	"database/sql"
+	"errors"
 	"net/http"
 
 	"github.com/google/uuid"
@@ -27,12 +30,27 @@ func (s *Server) handleFileWaveform(w http.ResponseWriter, r *http.Request, toke
 		http.Error(w, "Track is not ready", http.StatusConflict)
 		return
 	}
-	waveform, err := musicprocessing.LoadWaveform(r.Context(), track.Path)
+	waveform, err := s.loadWaveform(r.Context(), track)
 	if err != nil {
 		s.logger.Error("failed to load waveform", "error", err, "trackID", trackID)
-		http.Error(w, "Failed to generate waveform", http.StatusInternalServerError)
+		http.Error(w, "Failed to load waveform", http.StatusInternalServerError)
 		return
 	}
 	w.Header().Set("Cache-Control", "private, max-age=3600")
 	respondJSON(w, http.StatusOK, waveform)
+}
+
+func (s *Server) loadWaveform(ctx context.Context, track Track) (musicprocessing.Waveform, error) {
+	waveform, err := s.store.GetTrackWaveform(ctx, track.ID)
+	if !errors.Is(err, sql.ErrNoRows) {
+		return waveform, err
+	}
+	waveform, err = musicprocessing.GenerateWaveform(ctx, track.Path)
+	if err != nil {
+		return musicprocessing.Waveform{}, err
+	}
+	if err := s.store.SaveTrackWaveform(ctx, track.ID, waveform); err != nil {
+		return musicprocessing.Waveform{}, err
+	}
+	return waveform, nil
 }

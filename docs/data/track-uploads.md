@@ -25,10 +25,10 @@ directory only when the track is ready, scoped by the
 ## Waveforms
 
 After conversion the processing service also computes a 400-bucket peak
-waveform with FFmpeg and caches it as `waveform.json` beside the playlist; a failure there
-only logs a warning. The GM-only `GET /api/v1/files/{trackID}/waveform`
-endpoint serves that cache, generating it on first request for older tracks.
-On-demand waveform generation receives the request context explicitly.
+waveform with FFmpeg and stores it in the track's SQLite JSON column.
+The GM-only `GET /api/v1/files/{trackID}/waveform` endpoint reads it from SQLite.
+If a ready track has no stored waveform, the endpoint generates one from HLS
+and saves it using the request context.
 The [track editor](../frontend/track-editor.md) draws it as its timeline.
 
 ## Deletion
