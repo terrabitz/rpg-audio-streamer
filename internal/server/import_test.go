@@ -90,15 +90,13 @@ func TestImportHTTP(t *testing.T) {
 	if len(tracks) != 1 || tracks[0].Name != "Imported audio" {
 		t.Fatalf("saved tracks = %+v", tracks)
 	}
-	for _, name := range []string{"index.m3u8", "segment_000.ts", "waveform.json"} {
+	for _, name := range []string{"index.m3u8", "segment_000.ts"} {
 		if _, err := os.Stat(filepath.Join(tracks[0].Path, name)); err != nil {
 			t.Errorf("import missing %s: %v", name, err)
 		}
 	}
-	output := strings.Split(strings.Split(string(args), "--output\n")[1], "\n")[0]
-	staging := filepath.Dir(output)
-	if _, err := os.Stat(staging); !os.IsNotExist(err) {
-		t.Errorf("staging directory not cleaned up: %v", err)
+	if waveform, err := ts.store.GetTrackWaveform(ctx, tracks[0].ID); err != nil || len(waveform.Peaks) != 400 {
+		t.Fatalf("stored import waveform = %d peaks: %v", len(waveform.Peaks), err)
 	}
 	for _, tc := range []struct {
 		id string
@@ -125,6 +123,12 @@ func TestImportHTTP(t *testing.T) {
 				}
 			}
 		}
+	}
+	ts.stopProcessing()
+	<-ts.processingDone
+	output := strings.Split(strings.Split(string(args), "--output\n")[1], "\n")[0]
+	if _, err := os.Stat(filepath.Dir(output)); !os.IsNotExist(err) {
+		t.Errorf("staging directory not cleaned up: %v", err)
 	}
 	ts.store = importFailStore{Store: ts.store}
 	ts.processing = musicprocessing.New(ts.tempDir, ts.logger, ts.store, youtube.New(ts.logger), ts.hub)

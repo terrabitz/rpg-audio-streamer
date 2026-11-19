@@ -13,6 +13,7 @@ import (
 
 	"github.com/golang-migrate/migrate/v4"
 	"github.com/google/uuid"
+	"github.com/terrabitz/rpg-audio-streamer/internal/musicprocessing"
 	"github.com/terrabitz/rpg-audio-streamer/internal/server"
 )
 
@@ -289,7 +290,7 @@ func TestMigrationLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	version, err := m.Version()
-	if err != nil || version.Version != 9 || version.Dirty {
+	if err != nil || version.Version != 10 || version.Dirty {
 		t.Fatalf("version = %#v, %v", version, err)
 	}
 	if err := m.Up(); !errors.Is(err, migrate.ErrNoChange) {
@@ -326,4 +327,51 @@ func migratedDatabase(t *testing.T) (*SQLiteDatastore, string) {
 		t.Fatal(err)
 	}
 	return db, path
+}
+
+func TestTrackWaveformPersistence(t *testing.T) {
+	db, path := migratedDatabase(t)
+	ctx := t.Context()
+	types, err := db.GetTrackTypes(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	track := server.Track{
+		ID:     uuid.New(),
+		Name:   "Waveform",
+		TypeID: types[0].ID,
+	}
+	if err := db.SaveTrack(ctx, &track); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.GetTrackWaveform(ctx, track.ID); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("waveform for track without peaks: %v", err)
+	}
+	want := musicprocessing.Waveform{
+		Peaks: []float64{0, 0.25, 1},
+	}
+	if err := db.SaveTrackWaveform(ctx, track.ID, want); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := New(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.Close()
+	got, err := reopened.GetTrackWaveform(ctx, track.ID)
+	if err != nil || !reflect.DeepEqual(got, want) {
+		t.Fatalf("reopened waveform = %+v, %v; want %+v", got, err, want)
+	}
+	if err := reopened.DeleteTrack(ctx, track.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := reopened.GetTrackWaveform(ctx, track.ID); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("waveform survived track deletion: %v", err)
+	}
+	if err := reopened.SaveTrackWaveform(ctx, track.ID, want); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("save waveform for deleted track: %v", err)
+	}
 }

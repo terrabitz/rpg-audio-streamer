@@ -71,6 +71,8 @@ type TrackStore interface {
 	DeleteTrackIfTableCount(ctx context.Context, trackID uuid.UUID, expectedCount int64) (bool, error)
 	UpdateTrack(ctx context.Context, trackID uuid.UUID, update UpdateTrackRequest) (Track, error)
 	SetTrackProcessing(ctx context.Context, trackID uuid.UUID, status, message string) error
+	GetTrackWaveform(ctx context.Context, trackID uuid.UUID) (musicprocessing.Waveform, error)
+	SaveTrackWaveform(ctx context.Context, trackID uuid.UUID, waveform musicprocessing.Waveform) error
 }
 
 type TrackType struct {

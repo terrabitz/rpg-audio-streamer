@@ -35,20 +35,25 @@ func TestRoutedWaveform(t *testing.T) {
 		t.Fatal(err)
 	}
 	peaks := waveform.Peaks
-	if len(peaks) != 400 || slices.Max(peaks) != 1 {
-		t.Fatalf("got %d peaks with maximum %v", len(peaks), slices.Max(peaks))
+	if len(peaks) != 400 {
+		t.Fatalf("got %d peaks, want 400", len(peaks))
+	}
+	if peak := slices.Max(peaks); peak != 1 {
+		t.Fatalf("maximum peak = %v, want 1", peak)
 	}
 	if quiet, loud := slices.Max(peaks[:len(peaks)/3]), slices.Min(peaks[len(peaks)*2/3:len(peaks)*9/10]); quiet > 0.05 || loud < 0.5 {
 		t.Fatalf("silent half peaks at %v; tone half dips to %v", quiet, loud)
 	}
 
-	cached := []byte(`{"peaks":[0.5,1]}`)
-	if err := os.WriteFile(filepath.Join(track.Path, "waveform.json"), cached, 0600); err != nil {
+	if _, err := os.Stat(filepath.Join(track.Path, "waveform.json")); !os.IsNotExist(err) {
+		t.Fatalf("waveform must not be written to disk: %v", err)
+	}
+	if err := os.Remove(filepath.Join(track.Path, "index.m3u8")); err != nil {
 		t.Fatal(err)
 	}
-	rec = routedRequest(handler, http.MethodGet, "/api/v1/files/"+track.ID.String()+"/waveform", "", true)
-	if rec.Code != http.StatusOK || rec.Body.String() != string(cached)+"\n" {
-		t.Fatalf("cached waveform = %d: %q", rec.Code, rec.Body)
+	cached := routedRequest(handler, http.MethodGet, "/api/v1/files/"+track.ID.String()+"/waveform", "", true)
+	if cached.Code != http.StatusOK || cached.Body.String() != rec.Body.String() {
+		t.Fatalf("stored waveform = %d: %q", cached.Code, cached.Body)
 	}
 }
 
