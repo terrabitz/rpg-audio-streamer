@@ -11,9 +11,9 @@ runs:
         . /etc/os-release
         printf 'release=%s-%s\n' "$ID" "$VERSION_ID" >> "$GITHUB_OUTPUT"
 
-    - name: Restore compiled FFmpeg
+    - name: Cache compiled FFmpeg
       id: cache
-      uses: actions/cache/restore@v5
+      uses: actions/cache@v5
       with:
         path: ${{ runner.temp }}/ffmpeg
         key: ffmpeg-${{ runner.os }}-${{ runner.arch }}-${{ steps.platform.outputs.release }}-${{ hashFiles('scripts/build-ffmpeg.sh', '.github/actions/setup-ffmpeg/action.yaml') }}
@@ -40,10 +40,3 @@ runs:
         printf 'LD_LIBRARY_PATH=%s\n' "$LD_LIBRARY_PATH" >> "$GITHUB_ENV"
         "$RUNNER_TEMP/ffmpeg/bin/ffmpeg" -version
         "$RUNNER_TEMP/ffmpeg/bin/ffprobe" -version
-
-    - name: Cache compiled FFmpeg before running tests
-      if: steps.cache.outputs.cache-hit != 'true'
-      uses: actions/cache/save@v5
-      with:
-        path: ${{ runner.temp }}/ffmpeg
-        key: ${{ steps.cache.outputs.cache-primary-key }}

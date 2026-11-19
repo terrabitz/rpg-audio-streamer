@@ -12,7 +12,7 @@ inputs:
     description: Install yt-dlp and set up cached FFmpeg.
     default: 'true'
   playwright:
-    description: Install Chromium and its system dependencies after frontend setup.
+    description: Set up cached Chromium and install its system dependencies after frontend setup.
     default: 'false'
 
 runs:
@@ -53,8 +53,29 @@ runs:
       shell: bash
       working-directory: ${{ github.workspace }}/ui
       run: npm ci
-    - name: Install Playwright Chromium
+    - name: Identify Playwright cache inputs
+      id: playwright
       if: inputs.playwright == 'true'
       shell: bash
       working-directory: ${{ github.workspace }}/ui
-      run: npx playwright install --with-deps chromium
+      run: |
+        . /etc/os-release
+        version=$(node -p "require('playwright-core/package.json').version")
+        printf 'release=%s-%s\nversion=%s\n' "$ID" "$VERSION_ID" "$version" >> "$GITHUB_OUTPUT"
+    - name: Cache Playwright Chromium
+      id: playwright-cache
+      if: inputs.playwright == 'true'
+      uses: actions/cache@v5
+      with:
+        path: ~/.cache/ms-playwright
+        key: playwright-chromium-${{ runner.os }}-${{ runner.arch }}-${{ steps.playwright.outputs.release }}-${{ steps.playwright.outputs.version }}
+    - name: Install Chromium system dependencies
+      if: inputs.playwright == 'true'
+      shell: bash
+      working-directory: ${{ github.workspace }}/ui
+      run: npx playwright install-deps chromium
+    - name: Download Playwright Chromium on cache miss
+      if: inputs.playwright == 'true' && steps.playwright-cache.outputs.cache-hit != 'true'
+      shell: bash
+      working-directory: ${{ github.workspace }}/ui
+      run: npx playwright install chromium

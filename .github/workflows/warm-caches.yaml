@@ -20,3 +20,5 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-environment
+        with:
+          playwright: 'true'
