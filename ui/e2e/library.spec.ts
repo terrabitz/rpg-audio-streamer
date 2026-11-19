@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, test } from './fixtures'
-import { login, deleteLibraryTrack, uploadTrack, openUploadDialog, navigate, audioFixture, dropAudioPaths } from './helpers'
+import { login, deleteLibraryTrack, uploadTrack, openUploadDialog, navigate, audioFixture, dropAudioPaths, addExistingTrack } from './helpers'
 
 test('GM selects a required track type and receives a bottom upload toast on mobile', async ({ page, recordFlow }) => {
   await page.setViewportSize({ width: 375, height: 812 })
@@ -137,4 +137,102 @@ test('GM drops a folder to import nested audio into the library', async ({ page,
   } finally {
     await rm(folder, { recursive: true, force: true })
   }
+})
+
+test('GM changes the type of selected library tracks', async ({ page, recordFlow }) => {
+  await page.setViewportSize({ width: 375, height: 812 })
+  await login(page)
+  await navigate(page, 'Library')
+  for (const name of ['Forest', 'Rain', 'Thunder']) await uploadTrack(page, name, 'Music', 2)
+
+  const row = (name: string) => page.getByRole('row').filter({ hasText: name })
+  const actions = page.getByRole('group', { name: 'Bulk track actions' })
+  recordFlow.start()
+  await expect(actions).toBeHidden()
+  await page.getByRole('checkbox', { name: 'Select all library tracks' }).check()
+  await expect(actions.getByRole('status')).toHaveText('3 selected')
+  await row('Thunder').getByRole('checkbox', { name: 'Select Thunder' }).uncheck()
+  await expect(actions.getByRole('status')).toHaveText('2 selected')
+  await expect(page.locator('video')).toHaveCount(0)
+  await actions.getByRole('button', { name: 'Set track type' }).click()
+  await page.getByRole('menuitem', { name: 'One-Shot', exact: true }).click()
+  for (const name of ['Forest', 'Rain']) {
+    await expect(row(name).getByText('One-Shot', { exact: true })).toBeVisible()
+  }
+  await expect(actions).toBeHidden()
+  recordFlow.stop()
+  await page.reload()
+  for (const name of ['Forest', 'Rain']) {
+    await expect(row(name).getByText('One-Shot', { exact: true })).toBeVisible()
+  }
+  await expect(row('Thunder').getByText('Music', { exact: true })).toBeVisible()
+})
+
+test('GM reviews table usage before deleting selected library tracks', async ({ page, recordFlow }) => {
+  await login(page)
+  await navigate(page, 'Library')
+  for (const name of ['Forest', 'Rain', 'Thunder']) await uploadTrack(page, name, 'Music', 2)
+  await navigate(page, 'Tables')
+  await page.getByRole('link', { name: 'Open My Table', exact: true }).click()
+  await addExistingTrack(page, 'Forest')
+  await addExistingTrack(page, 'Thunder')
+  await navigate(page, 'Library')
+
+  const row = (name: string) => page.getByRole('row').filter({ hasText: name })
+  const deleteSelected = page.getByRole('button', { name: 'Delete selected tracks', exact: true })
+  const confirmation = page.getByRole('dialog', { name: 'Delete selected tracks?' })
+  recordFlow.start()
+  await row('Forest').getByRole('checkbox', { name: 'Select Forest' }).check()
+  await row('Rain').getByRole('checkbox', { name: 'Select Rain' }).check()
+  await deleteSelected.click()
+  await expect(confirmation).toContainText('Permanently delete 2 tracks')
+  await expect(confirmation).toContainText('Forest: 1 table')
+  await expect(confirmation).not.toContainText('Rain:')
+  await confirmation.getByRole('button', { name: 'Cancel' }).click()
+  await expect(row('Forest')).toBeVisible()
+  await expect(row('Rain')).toBeVisible()
+  await deleteSelected.click()
+  await confirmation.getByRole('button', { name: 'Delete 2 tracks', exact: true }).click()
+  await expect(row('Forest')).toHaveCount(0)
+  await expect(row('Rain')).toHaveCount(0)
+  await expect(row('Thunder')).toBeVisible()
+  recordFlow.stop()
+  await page.reload()
+  await expect(row('Thunder')).toBeVisible()
+  await expect(row('Forest')).toHaveCount(0)
+  await expect(row('Rain')).toHaveCount(0)
+  await navigate(page, 'Tables')
+  await page.getByRole('link', { name: 'Open My Table', exact: true }).click()
+  await expect(page.getByRole('group', { name: 'Thunder', exact: true })).toBeVisible()
+  await expect(page.getByRole('group', { name: 'Forest', exact: true })).toHaveCount(0)
+})
+
+test('GM can retry a bulk deletion after table usage changes', async ({ page, recordFlow }) => {
+  await login(page)
+  const tableURL = page.url()
+  await navigate(page, 'Library')
+  for (const name of ['Forest', 'Rain']) await uploadTrack(page, name, 'Music', 2)
+  const table = await page.context().newPage()
+  await table.goto(tableURL)
+  await expect(table.getByRole('button', { name: 'Add Track', exact: true })).toBeVisible()
+
+  const confirmation = page.getByRole('dialog', { name: 'Delete selected tracks?' })
+  const deleteSelected = page.getByRole('button', { name: 'Delete selected tracks', exact: true })
+  recordFlow.start()
+  await page.getByRole('checkbox', { name: 'Select all library tracks' }).check()
+  await deleteSelected.click()
+  await expect(confirmation).toContainText('Permanently delete 2 tracks')
+  await expect(confirmation).not.toContainText('removed from their tables')
+  await addExistingTrack(table, 'Forest')
+
+  await confirmation.getByRole('button', { name: 'Delete 2 tracks', exact: true }).click()
+  await expect(confirmation).toBeHidden()
+  await expect(page.getByRole('alert').filter({ hasText: 'Table usage changed' })).toBeVisible()
+  await expect(page.getByRole('checkbox', { name: 'Select Rain', exact: true })).toHaveCount(0)
+  await expect(page.getByRole('checkbox', { name: 'Select Forest', exact: true })).toBeChecked()
+  await deleteSelected.click()
+  await expect(confirmation).toContainText('Forest: 1 table')
+  await confirmation.getByRole('button', { name: 'Delete 1 track', exact: true }).click()
+  await expect(page.getByText('No tracks in the library yet.', { exact: true })).toBeVisible()
+  recordFlow.stop()
 })

@@ -109,24 +109,8 @@
           <v-spacer v-if="!isBatch"></v-spacer>
           <v-btn color="error" @click="closeDialog" :disabled="isBusy">Cancel</v-btn>
           <div v-if="isBatch" class="bulk-edit-slot">
-            <div v-if="selectedCount > 0" class="bulk-edit-bar" role="group" aria-label="Bulk track actions">
-              <span class="bulk-edit-count" role="status">
-                <span class="bulk-edit-badge">{{ selectedCount }}</span> <span class="bulk-edit-label">selected</span>
-              </span>
-              <v-menu location="top end">
-                <template #activator="{ props: menuProps }">
-                  <v-btn v-bind="menuProps" class="bulk-edit-button" variant="tonal" density="comfortable"
-                    aria-label="Set track type" :disabled="isBusy || !typeOptions.length">
-                    <span class="bulk-edit-label">Set track type</span>
-                    <v-icon icon="$dropdown" />
-                  </v-btn>
-                </template>
-                <v-list role="menu" aria-label="Track types">
-                  <v-list-item v-for="type in typeOptions" :key="type.id" :title="type.name" role="menuitem"
-                    @click="applyBulkType(type.id)" />
-                </v-list>
-              </v-menu>
-            </div>
+            <BulkTrackActions v-if="selectedCount > 0" :count="selectedCount" :types="typeOptions"
+              :disabled="isBusy" @set-type="applyBulkType" />
           </div>
           <v-btn v-if="source === 'library'" color="success" @click="addTrack"
             :disabled="isBusy || !libraryReady || !selectedTrack" :loading="isAdding">Add to table</v-btn>
@@ -155,6 +139,7 @@ import { useTrackTypeStore } from '@/stores/trackTypes'
 import debounce from 'lodash.debounce'
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import TrackTypeSelector from './TrackTypeSelector.vue'
+import BulkTrackActions from './BulkTrackActions.vue'
 import ErrorToast from './ErrorToast.vue'
 import { audioFileAccept, collectDroppedAudio } from './audioFileDrop'
 
@@ -532,58 +517,11 @@ onUnmounted(() => {
   container-type: inline-size;
 }
 
-.bulk-edit-bar {
+.bulk-edit-slot > * {
   position: absolute;
-  inset: auto;
   left: 50%;
   top: 50%;
   transform: translate(-50%, -50%);
-  width: max-content;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  max-width: 100%;
-  padding: 3px 6px;
-  border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
-  border-radius: 12px;
-  background: rgb(var(--v-theme-surface));
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
-}
-
-.bulk-edit-count {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  white-space: nowrap;
-}
-
-.bulk-edit-badge {
-  min-width: 1.5em;
-  padding-inline: 5px;
-  border-radius: 6px;
-  background: rgb(var(--v-theme-primary));
-  color: rgb(var(--v-theme-on-primary));
-  text-align: center;
-}
-
-@container (max-width: 224px) {
-  .bulk-edit-bar {
-    gap: 4px;
-    padding-inline: 4px;
-  }
-
-  .bulk-edit-label {
-    position: absolute;
-    clip-path: inset(50%);
-    overflow: hidden;
-    width: 1px;
-    height: 1px;
-  }
-
-  .bulk-edit-button {
-    min-width: 32px;
-    padding-inline: 4px;
-  }
 }
 
 .upload-row-selected {
