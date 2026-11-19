@@ -893,3 +893,59 @@ it('applies player mixer edits immediately without interrupting a loop crossfade
     expect(secondary.volume).toBe(0)
   } finally { player.unmount() }
 })
+
+it('starts the player fade only once media playback has begun', async () => {
+  const { player, audio, primary } = await mountPlaying({}, true)
+  try {
+    audio.updateTrackState('forest', { isPlaying: false })
+    await nextTick()
+    await vi.advanceTimersByTimeAsync(2100)
+
+    let startPlayback!: () => void
+    vi.mocked(primary.play).mockImplementationOnce(() => {
+      Object.defineProperty(primary, 'paused', { configurable: true, value: false })
+      return new Promise<void>(resolve => { startPlayback = resolve })
+    })
+    audio.updateTrackState('forest', { isPlaying: true })
+    await nextTick()
+    await vi.advanceTimersByTimeAsync(2500)
+    expect(primary.volume).toBe(0)
+
+    startPlayback()
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(primary.volume).toBeCloseTo(0.5, 1)
+    audio.setMasterVolume(50)
+    await nextTick()
+    expect(primary.volume).toBeCloseTo(0.25, 1)
+    await vi.advanceTimersByTimeAsync(1100)
+    expect(primary.volume).toBe(0.5)
+  } finally { player.unmount() }
+})
+
+it('keeps the player fade-out on the live playhead before restoring the shared pause position', async () => {
+  const { player, audio, primary } = await mountPlaying({}, true)
+  audio.enabled = true
+  try {
+    primary.currentTime = 12
+    const snapshot = { fileID: 'forest', isPlaying: false, currentTime: 10, positionVersion: 1 }
+    audio.syncTracks([snapshot])
+    await nextTick()
+    expect(primary.currentTime).toBe(12)
+    expect(primary.volume).toBe(1)
+
+    await vi.advanceTimersByTimeAsync(1000)
+    primary.currentTime = 13
+    await player.get('video').trigger('timeupdate')
+    audio.syncTracks([snapshot])
+    await nextTick()
+    expect(primary.currentTime).toBe(13)
+    expect(primary.volume).toBeCloseTo(0.5, 1)
+    expect(primary.paused).toBe(false)
+    expect(audio.tracks.forest?.currentTime).toBe(10)
+
+    await vi.advanceTimersByTimeAsync(1100)
+    expect(primary.volume).toBe(0)
+    expect(primary.paused).toBe(true)
+    expect(primary.currentTime).toBe(10)
+  } finally { player.unmount() }
+})

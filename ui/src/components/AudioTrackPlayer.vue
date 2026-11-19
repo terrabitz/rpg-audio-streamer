@@ -30,7 +30,7 @@ let playbackFailed = false
 let overlap: { outgoing: number, incoming: number, start: number, end: number, seekStart?: number } | undefined
 let pendingSeek: number | undefined
 let envelope = 0
-let fade: { from: number, to: number, start: number } | undefined
+let fade: { from: number, to: number, start?: number } | undefined
 let mixedVolume = targetVolume()
 const immediateMixerGain = computed(() => props.instantMixerVolume ? mixerGain() : 1)
 let volumeFade: { from: number, to: number, start: number } | undefined
@@ -52,6 +52,7 @@ watch([
   seekVersion = state.seekVersion
   const media = element(active.value)
   if (!media || !ready[active.value]) return
+  if (!seek && hasSharedPauseTail(state)) return
   if (seek && state.isPlaying && !media.paused) {
     cancelOverlap(overlapProgress() > 0)
     pendingSeek = state.seekTarget ?? state.currentTime
@@ -153,10 +154,11 @@ function syncPlaying() {
   if (state.isPlaying) bindHLS(1 - active.value)
   const target = state.isPlaying ? 1 : 0
   fade = state.isRepeating && envelope !== target
-    ? { from: envelope, to: target, start: performance.now() } : undefined
+    ? { from: envelope, to: target } : undefined
   if (!fade) envelope = target
   if (state.isPlaying && media.paused) {
     syncPosition()
+    applyVolumes()
     playMedia(active.value)
   }
   tick()
@@ -209,15 +211,22 @@ function tick() {
   const state = audioStore.tracks[props.fileID]
   const media = element(active.value)
   if (disposed || playbackFailed || !state || !media || !ready[active.value]) return
-  advanceVolumeFade(performance.now())
-  if (fade) {
-    const progress = Math.min(1, (performance.now() - fade.start) / 2000)
+  const now = performance.now()
+  advanceVolumeFade(now)
+  const restorePausePosition = hasSharedPauseTail(state)
+  if (fade && (fade.to === 0 || !playRequests.has(media))) {
+    // HLS may buffer longer than the fade; don't spend the ramp before audio starts.
+    fade.start ??= now
+    const progress = Math.min(1, (now - fade.start) / 2000)
     envelope = fade.from + (fade.to - fade.from) * progress
     if (progress === 1) fade = undefined
   }
   if (!state.isPlaying) {
-    if (!fade) pauseMedia(active.value)
     applyVolumes()
+    if (!fade) {
+      pauseMedia(active.value)
+      if (restorePausePosition) syncPosition()
+    }
     audioStore.setFading(props.fileID, !!fade || !!volumeFade)
     return
   }
@@ -250,6 +259,11 @@ function tick() {
   else if (!state.isRepeating && media.currentTime >= region.end) finishTrack()
   applyVolumes()
   if (audioStore.tracks[props.fileID]) audioStore.setFading(props.fileID, !!fade || !!overlap || !!volumeFade)
+}
+
+function hasSharedPauseTail(state: AudioTrack) {
+  // Re-cue to the server's frozen position only once the audible tail is silent.
+  return !state.isPlaying && state.positionVersion !== undefined && fade?.to === 0
 }
 
 function advanceVolumeFade(now: number) {
@@ -352,6 +366,8 @@ function handleTimeUpdate(index: number) {
   if (disposed) return
   if (index !== active.value && index !== overlap?.incoming) return
   tick()
+  const state = audioStore.tracks[props.fileID]
+  if (state && hasSharedPauseTail(state)) return
   const media = playbackElement()
   if (media && pendingSeek === undefined) updatePlaybackState({ currentTime: media.currentTime })
 }
@@ -382,9 +398,12 @@ function playMedia(index: number) {
   if (!media) return
   const request = media.play()
   playRequests.set(media, request)
-  void request.catch(cause => {
+  void request.then(() => {
+    if (playRequests.get(media) === request) playRequests.delete(media)
+  }, cause => {
     // Pausing or replacing a request makes its delayed rejection obsolete.
     if (playRequests.get(media) !== request) return
+    playRequests.delete(media)
     reportPlaybackError(cause)
   })
 }

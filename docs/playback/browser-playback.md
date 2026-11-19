@@ -48,6 +48,10 @@ the media timer stops retrying a failed source until playback is requested again
 
 ## Gain ramps
 
+Repeating tracks fade in once the media starts playing, rather than while HLS
+is buffering the start. On a synchronized pause, the outgoing audio fades at
+its local position before the muted media returns to the shared pause position.
+
 Shared volume changes ramp the mixed gain over two seconds independently of
 play/pause fades and loop crossfades. A new ramp starts from the current
 interpolated gain, including mute and non-repeating tracks. The player's local
