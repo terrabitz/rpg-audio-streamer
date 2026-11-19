@@ -4,7 +4,8 @@
 - Use `.github/skills/documentation/SKILL.md` for adding, updating, or reorganizing docs.
 - Use `.github/skills/testing/SKILL.md` for test commands, coverage policy, and test design.
 - Use `.github/skills/pr-recordings/SKILL.md` for pull request GIFs: one GIF per flow, each generated from its own browser test.
-- Use `.github/skills/local-dev/SKILL.md` for fresh seeded local previews and cleanup.
+- Use the repository devcontainer for all seeded local previews; see `.github/skills/local-dev/SKILL.md` for startup and cleanup.
+- When changing `docker/Dockerfile`, review `.devcontainer/Dockerfile` in the same change. Keep shared runtimes and native dependencies aligned with production, reuse the repository installers, and follow the local-dev skill to verify devcontainer changes.
 - Update the development seeding scripts and their tests when app changes affect fixture data, API contracts, or representative preview scenarios.
 - Keep app structure and behavior in `docs/`; keep procedures in skills.
 - Push server-side updates to the frontend through WebSocket events instead of polling. Initial loads and reconnect reconciliation may fetch authoritative state.

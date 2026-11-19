@@ -1,4 +1,4 @@
-.PHONY: dev test-dev ui go test test-go test-ui test-e2e record-e2e gen gen-sqlc gen-api-client gen-docs
+.PHONY: dev devcontainer-build test-dev ui go test test-go test-ui test-e2e record-e2e gen gen-sqlc gen-api-client gen-docs
 
 ui:
 	cd ui && npm install && npm run dev
@@ -8,6 +8,9 @@ go:
 
 dev:
 	node scripts/dev.mjs
+
+devcontainer-build:
+	devcontainer build --workspace-folder .
 
 test-dev:
 	node --test scripts/dev.test.mjs scripts/discord-env.test.mjs
