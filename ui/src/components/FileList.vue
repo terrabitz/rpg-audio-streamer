@@ -3,8 +3,18 @@
     <ErrorToast v-model="error" />
     <template v-if="props.library">
       <AudioPlayer @error="error = $event" />
-      <v-data-table :headers="libraryHeaders" :items="tracks" :loading="loading" density="compact" hover
+      <v-data-table v-model="selectedTrackIDs" :headers="libraryHeaders" :items="tracks" :loading="loading"
+        density="compact" hover show-select select-strategy="all" :item-selectable="canSelectLibraryTrack"
         :row-props="libraryRowProps" no-data-text="No tracks in the library yet.">
+        <template #[`header.data-table-select`]="{ allSelected, someSelected, selectAll }">
+          <input type="checkbox" aria-label="Select all library tracks" :checked="allSelected"
+            :indeterminate.prop="someSelected && !allSelected" :disabled="selectionLocked || !hasSelectableTracks"
+            @click.stop @change="selectAll(!allSelected)" />
+        </template>
+        <template #[`item.data-table-select`]="{ item, internalItem, isSelected, toggleSelect }">
+          <input type="checkbox" :aria-label="`Select ${item.name}`" :checked="isSelected([internalItem])"
+            :disabled="selectionLocked || !internalItem.selectable" @click.stop @change="toggleSelect(internalItem)" />
+        </template>
         <template #[`item.name`]="{ item }">
           {{ item.name }}
           <span v-if="item.status === 'failed'" class="text-error ml-2">Processing failed</span>
@@ -33,12 +43,44 @@
             @settings="settings => handleSettings(item.id, settings)" @seek="time => handleSeek(item.id, time)" @play="handlePlay(item.id)">
             <template #activator="{ open }">
               <v-btn icon="$dotsVertical" variant="text" size="small" :aria-label="`Edit ${item.name}`"
-                :disabled="item.status === 'processing'"
+                :disabled="item.status === 'processing' || selectionLocked"
                 @click.stop="open" />
             </template>
           </AudioControls>
         </template>
       </v-data-table>
+      <div v-if="selectedTracks.length" class="library-bulk-actions">
+        <BulkTrackActions :count="selectedTracks.length" :types="trackTypeStore.trackTypes"
+          :disabled="selectionLocked" @set-type="setLibraryTrackType">
+          <v-btn icon="$delete" color="error" variant="tonal" density="comfortable"
+            aria-label="Delete selected tracks" title="Delete selected tracks"
+            :disabled="selectionLocked" :loading="checkingUsage" @click="checkBulkDeleteUsage" />
+        </BulkTrackActions>
+      </div>
+      <v-dialog :model-value="!!deleteCandidates" :persistent="bulkBusy" scrollable max-width="480"
+        aria-labelledby="bulk-delete-title" @update:model-value="value => { if (!value) deleteCandidates = null }">
+        <v-card v-if="deleteCandidates">
+          <v-card-title id="bulk-delete-title">Delete selected tracks?</v-card-title>
+          <v-card-text>
+            <p>Permanently delete {{ deleteCandidates.length }} {{ deleteCandidates.length === 1 ? 'track' : 'tracks' }} from the library?</p>
+            <template v-if="tracksUsedByTables.length">
+              <p class="mt-3">These tracks will also be removed from their tables:</p>
+              <ul class="pl-5">
+                <li v-for="{ track, tableCount } in tracksUsedByTables" :key="track.id">
+                  {{ track.name }}: {{ tableCount }} {{ tableCount === 1 ? 'table' : 'tables' }}
+                </li>
+              </ul>
+            </template>
+          </v-card-text>
+          <v-card-actions>
+            <v-spacer />
+            <v-btn :disabled="bulkBusy" @click="deleteCandidates = null">Cancel</v-btn>
+            <v-btn color="error" :loading="bulkBusy" :disabled="bulkBusy" @click="confirmBulkDelete">
+              Delete {{ deleteCandidates.length }} {{ deleteCandidates.length === 1 ? 'track' : 'tracks' }}
+            </v-btn>
+          </v-card-actions>
+        </v-card>
+      </v-dialog>
     </template>
     <div v-else class="table-playback-layout" :class="{ 'is-mobile': smAndDown }">
       <aside v-if="!smAndDown" class="playing-sidebar" aria-label="Currently playing">
@@ -130,7 +172,7 @@ import { defaultPlayback } from '@/composables/playback'
 import { defaultPreset, Feedback, PointerActivationConstraints, PointerSensor } from '@dnd-kit/dom'
 import { DragDropProvider, type DragEndEvent } from '@dnd-kit/vue'
 import { isSortable } from '@dnd-kit/vue/sortable'
-import { useFileStore, withTrackStatus } from '@/stores/files'
+import { TrackUsageChangedError, useFileStore, withTrackStatus } from '@/stores/files'
 import { useTrackTypeStore } from '@/stores/trackTypes'
 import { useTableStore } from '@/stores/tables'
 import { useWebSocketStore } from '@/stores/websocket'
@@ -145,6 +187,7 @@ import PlayingTrackList from './PlayingTrackList.vue'
 import DiscordControl from './DiscordControl.vue'
 import VolumeSlider from './VolumeSlider.vue'
 import ErrorToast from './ErrorToast.vue'
+import BulkTrackActions from './BulkTrackActions.vue'
 
 const fileStore = useFileStore()
 const audioStore = useAudioStore()
@@ -180,6 +223,16 @@ const libraryHeaders = [
 ]
 const tracks = computed(() => props.library ? fileStore.tracks :
   tables.orderedTracks.map(track => fileStore.getTrackById(track.id) ?? track))
+const selectedTrackIDs = ref<string[]>([])
+const selectedIDs = computed(() => new Set(selectedTrackIDs.value))
+const selectedTracks = computed(() => tracks.value.filter(track =>
+  selectedIDs.value.has(track.id) && canSelectLibraryTrack(track)))
+const hasSelectableTracks = computed(() => tracks.value.some(canSelectLibraryTrack))
+const bulkBusy = ref(false)
+const checkingUsage = ref(false)
+const deleteCandidates = ref<{ track: Track, tableCount: number }[] | null>(null)
+const tracksUsedByTables = computed(() => deleteCandidates.value?.filter(item => item.tableCount > 0) ?? [])
+const selectionLocked = computed(() => loading.value || bulkBusy.value || checkingUsage.value || !!deleteCandidates.value)
 const playingTracks = computed(() => tracks.value.flatMap(track => {
   const state = audioStore.tracks[track.id]
   return state?.isPlaying ? [{ ...track, state }] : []
@@ -317,11 +370,84 @@ function announceMove(name: string, index: number) {
   reorderAnnouncement.value = `Moved ${name} to position ${index + 1} of ${tracks.value.length}.`
 }
 
+async function setLibraryTrackType(typeID: string) {
+  if (selectionLocked.value || !selectedTracks.value.length) return
+  await runBulkAction(selectedTracks.value.map(track => ({ track })), 'change the type of', async ({ track }) => {
+    if (track.typeID === typeID) return
+    await fileStore.updateTrack(track.id, { typeID })
+    const state = audioStore.tracks[track.id]
+    const type = trackTypeStore.getTypeById(typeID)
+    if (state && type) audioStore.updateTrackState(track.id, { isRepeating: type.isRepeating })
+  })
+}
+
+async function checkBulkDeleteUsage() {
+  if (selectionLocked.value || !selectedTracks.value.length) return
+  checkingUsage.value = true
+  error.value = ''
+  try {
+    const candidates = []
+    for (const track of selectedTracks.value) {
+      const tableCount = await fileStore.countTrackTables(track.id)
+      candidates.push({ track, tableCount })
+    }
+    deleteCandidates.value = candidates
+  } catch (cause) {
+    console.error('Failed to check table usage for selected tracks:', cause)
+    error.value = 'Unable to check table usage. No tracks were deleted.'
+  } finally {
+    checkingUsage.value = false
+  }
+}
+
+async function confirmBulkDelete() {
+  if (bulkBusy.value || !deleteCandidates.value) return
+  const candidates = deleteCandidates.value
+  try {
+    await runBulkAction(candidates, 'delete', ({ track, tableCount }) => deleteFile(track, tableCount))
+  } finally {
+    deleteCandidates.value = null
+  }
+}
+
+async function runBulkAction<T extends { track: Track }>(
+  items: T[], action: string, apply: (item: T) => Promise<void>,
+) {
+  bulkBusy.value = true
+  error.value = ''
+  const failedIDs: string[] = []
+  let usageChanged = false
+  try {
+    for (const item of items) {
+      const { track } = item
+      try {
+        await apply(item)
+      } catch (cause) {
+        console.error(`Failed to ${action} ${track.name}:`, cause)
+        failedIDs.push(track.id)
+        if (cause instanceof TrackUsageChangedError) usageChanged = true
+      }
+    }
+    selectedTrackIDs.value = failedIDs
+    if (failedIDs.length) {
+      error.value = `Could not ${action} ${failedIDs.length} of ${items.length} selected tracks.`
+        + (usageChanged ? ' Table usage changed. Review the current counts before deleting again.' : '')
+    }
+  } finally {
+    bulkBusy.value = false
+  }
+}
+
+function canSelectLibraryTrack(track: Track) {
+  return track.status !== 'processing'
+}
+
 async function deleteFile(file: Track, expectedTableCount: number | null) {
   if (props.library || file.status === 'failed') {
     if (expectedTableCount === null) throw new Error('Missing track usage count')
     await fileStore.deleteFile(file.id, expectedTableCount)
     tables.tracks = tables.tracks.filter(track => track.id !== file.id)
+    selectedTrackIDs.value = selectedTrackIDs.value.filter(id => id !== file.id)
   } else {
     if (!tables.current) throw new Error('No current table')
     await tables.removeTrack(tables.current.externalID, file.id)
@@ -335,7 +461,10 @@ function libraryRowProps({ item }: { item: Track }) {
     'aria-disabled': item.status === 'processing',
     'aria-busy': item.status === 'processing',
     title: item.status === 'processing' ? 'Track is still processing' : item.status === 'failed' ? 'Processing failed. Click for details.' : undefined,
-    class: ['library-track-row', { 'bg-grey-darken-3': audioStore.tracks[item.id]?.isPlaying }],
+    class: ['library-track-row', {
+      'is-selected': selectedIDs.value.has(item.id),
+      'bg-grey-darken-3': audioStore.tracks[item.id]?.isPlaying,
+    }],
     onClick: () => handlePlay(item.id),
     onKeydown(event: KeyboardEvent) {
       if (event.target !== event.currentTarget || !['Enter', ' '].includes(event.key)) return
@@ -579,5 +708,23 @@ onUnmounted(() => {
 
 :deep(.library-track-row) {
   cursor: pointer;
+}
+
+:deep(.library-track-row.is-selected) {
+  background: rgba(var(--v-theme-primary), 0.09);
+}
+
+input[type="checkbox"] {
+  appearance: auto;
+  accent-color: rgb(var(--v-theme-primary));
+}
+
+.library-bulk-actions {
+  position: sticky;
+  bottom: 8px;
+  z-index: 1;
+  display: flex;
+  justify-content: center;
+  container-type: inline-size;
 }
 </style>
