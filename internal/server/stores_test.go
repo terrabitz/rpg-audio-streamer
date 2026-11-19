@@ -9,11 +9,13 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/terrabitz/rpg-audio-streamer/internal/discord"
+	"github.com/terrabitz/rpg-audio-streamer/internal/musicprocessing"
 )
 
 type MockTrackStore struct {
 	TableStore
 	tracks       map[uuid.UUID]Track
+	waveforms    map[uuid.UUID]musicprocessing.Waveform
 	trackTypes   map[uuid.UUID]TrackType
 	destinations map[uuid.UUID]discord.Destination
 	tracksMu     sync.RWMutex
@@ -83,6 +85,29 @@ func (m *MockTrackStore) SetTrackProcessing(ctx context.Context, id uuid.UUID, s
 	}
 	track.Status, track.ProcessingError = status, message
 	m.tracks[id] = track
+	return nil
+}
+
+func (m *MockTrackStore) GetTrackWaveform(_ context.Context, id uuid.UUID) (musicprocessing.Waveform, error) {
+	m.tracksMu.RLock()
+	defer m.tracksMu.RUnlock()
+	waveform, ok := m.waveforms[id]
+	if !ok {
+		return musicprocessing.Waveform{}, sql.ErrNoRows
+	}
+	return waveform, nil
+}
+
+func (m *MockTrackStore) SaveTrackWaveform(_ context.Context, id uuid.UUID, waveform musicprocessing.Waveform) error {
+	m.tracksMu.Lock()
+	defer m.tracksMu.Unlock()
+	if _, ok := m.tracks[id]; !ok {
+		return sql.ErrNoRows
+	}
+	if m.waveforms == nil {
+		m.waveforms = make(map[uuid.UUID]musicprocessing.Waveform)
+	}
+	m.waveforms[id] = waveform
 	return nil
 }
 

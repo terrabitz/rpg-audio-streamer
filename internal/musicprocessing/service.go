@@ -24,6 +24,7 @@ type Store interface {
 	SaveTrackToTable(context.Context, *Track, uuid.UUID) error
 	GetTracks(context.Context) ([]Track, error)
 	SetTrackProcessing(context.Context, uuid.UUID, string, string) error
+	SaveTrackWaveform(context.Context, uuid.UUID, Waveform) error
 }
 
 // Downloader retrieves remote audio sources into local files for processing.
@@ -254,8 +255,11 @@ func (s *Service) processAudio(ctx context.Context, next job) error {
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("convert audio to HLS: %w: %s", err, stderr.String())
 	}
-	if _, err := generateWaveform(ctx, dir); err != nil {
+	waveform, err := GenerateWaveform(ctx, dir)
+	if err != nil {
 		s.logger.Warn("failed to pre-generate waveform", "error", err, "trackID", next.track.ID)
+	} else if err := s.store.SaveTrackWaveform(ctx, next.track.ID, waveform); err != nil {
+		s.logger.Warn("failed to store waveform", "error", err, "trackID", next.track.ID)
 	}
 	return ctx.Err()
 }

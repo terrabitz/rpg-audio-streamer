@@ -32,6 +32,7 @@ type Track struct {
 	LoopBackTime    sql.NullFloat64
 	Status          string
 	ProcessingError string
+	Waveform        interface{}
 }
 
 type TrackType struct {

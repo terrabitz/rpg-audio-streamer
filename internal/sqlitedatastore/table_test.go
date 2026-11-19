@@ -330,7 +330,7 @@ func TestExistingLibraryMigratesToDefaultTable(t *testing.T) {
 	if err := db.SaveTrack(ctx, &track); err != nil {
 		t.Fatal(err)
 	}
-	if err := m.Steps(-7); err != nil {
+	if err := m.Migrate.Migrate(1); err != nil {
 		t.Fatal(err)
 	}
 	if err := m.Up(); err != nil {
@@ -344,7 +344,7 @@ func TestExistingLibraryMigratesToDefaultTable(t *testing.T) {
 	if err != nil || settings.MasterVolume != 100 || len(settings.TrackOrder) != 0 {
 		t.Fatalf("migrated settings = %+v, %v", settings, err)
 	}
-	if err := m.Steps(-7); err != nil {
+	if err := m.Migrate.Migrate(1); err != nil {
 		t.Fatal(err)
 	}
 	if err := m.Up(); err != nil {

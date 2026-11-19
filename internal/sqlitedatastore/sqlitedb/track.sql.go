@@ -40,7 +40,7 @@ func (q *Queries) DeleteTrackByIDIfTableCount(ctx context.Context, arg DeleteTra
 }
 
 const getTrackByID = `-- name: GetTrackByID :one
-select id, created_at, name, path, type_id, start_time, end_time, loop_back_time, status, processing_error from tracks where id = ?1
+select id, created_at, name, path, type_id, start_time, end_time, loop_back_time, status, processing_error, waveform from tracks where id = ?1
 `
 
 func (q *Queries) GetTrackByID(ctx context.Context, id []byte) (Track, error) {
@@ -57,12 +57,24 @@ func (q *Queries) GetTrackByID(ctx context.Context, id []byte) (Track, error) {
 		&i.LoopBackTime,
 		&i.Status,
 		&i.ProcessingError,
+		&i.Waveform,
 	)
 	return i, err
 }
 
+const getTrackWaveform = `-- name: GetTrackWaveform :one
+SELECT CAST(waveform AS TEXT) FROM tracks WHERE id = ?1 AND waveform IS NOT NULL
+`
+
+func (q *Queries) GetTrackWaveform(ctx context.Context, id []byte) (string, error) {
+	row := q.db.QueryRowContext(ctx, getTrackWaveform, id)
+	var waveform string
+	err := row.Scan(&waveform)
+	return waveform, err
+}
+
 const getTracks = `-- name: GetTracks :many
-select id, created_at, name, path, type_id, start_time, end_time, loop_back_time, status, processing_error from tracks
+select id, created_at, name, path, type_id, start_time, end_time, loop_back_time, status, processing_error, waveform from tracks
 `
 
 func (q *Queries) GetTracks(ctx context.Context) ([]Track, error) {
@@ -85,6 +97,7 @@ func (q *Queries) GetTracks(ctx context.Context) ([]Track, error) {
 			&i.LoopBackTime,
 			&i.Status,
 			&i.ProcessingError,
+			&i.Waveform,
 		); err != nil {
 			return nil, err
 		}
@@ -133,6 +146,23 @@ func (q *Queries) SaveTrack(ctx context.Context, arg SaveTrackParams) error {
 	return err
 }
 
+const saveTrackWaveform = `-- name: SaveTrackWaveform :execrows
+UPDATE tracks SET waveform = CAST(?1 AS TEXT) WHERE id = ?2
+`
+
+type SaveTrackWaveformParams struct {
+	Data string
+	ID   []byte
+}
+
+func (q *Queries) SaveTrackWaveform(ctx context.Context, arg SaveTrackWaveformParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, saveTrackWaveform, arg.Data, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const setTrackProcessing = `-- name: SetTrackProcessing :execrows
 UPDATE tracks SET status = ?1, processing_error = ?2
 WHERE id = ?3 AND status = 'processing'
@@ -161,7 +191,7 @@ set
   end_time = CASE WHEN ?3 THEN ?5 ELSE end_time END,
   loop_back_time = CASE WHEN ?3 THEN ?6 ELSE loop_back_time END
 where id = ?7
-returning id, created_at, name, path, type_id, start_time, end_time, loop_back_time, status, processing_error
+returning id, created_at, name, path, type_id, start_time, end_time, loop_back_time, status, processing_error, waveform
 `
 
 type UpdateTrackParams struct {
@@ -196,6 +226,7 @@ func (q *Queries) UpdateTrack(ctx context.Context, arg UpdateTrackParams) (Track
 		&i.LoopBackTime,
 		&i.Status,
 		&i.ProcessingError,
+		&i.Waveform,
 	)
 	return i, err
 }

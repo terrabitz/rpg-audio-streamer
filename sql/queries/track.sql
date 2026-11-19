@@ -21,6 +21,12 @@ values (@id, @created_at, @name, @path, @type_id, @start_time, sqlc.narg('end_ti
 UPDATE tracks SET status = @status, processing_error = @processing_error
 WHERE id = @id AND status = 'processing';
 
+-- name: GetTrackWaveform :one
+SELECT CAST(waveform AS TEXT) FROM tracks WHERE id = @id AND waveform IS NOT NULL;
+
+-- name: SaveTrackWaveform :execrows
+UPDATE tracks SET waveform = CAST(sqlc.arg(data) AS TEXT) WHERE id = @id;
+
 -- name: UpdateTrack :one
 update tracks
 set
