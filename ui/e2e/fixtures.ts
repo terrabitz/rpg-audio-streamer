@@ -21,12 +21,14 @@ export const test = base.extend<{
   recorder: void
   recordingWindow: RecordingWindow
   youtubeFixture: boolean
+  firstRun: boolean
 }>({
   youtubeFixture: [false, { option: true }],
-  app: [async ({ browser, youtubeFixture }, use, testInfo) => {
+  firstRun: [false, { option: true }],
+  app: [async ({ browser, youtubeFixture, firstRun }, use, testInfo) => {
     const existing = new Set(browser.contexts())
     const liveDiscord = testInfo.tags.includes('@discord')
-    const app = await startApp(liveDiscord, youtubeFixture)
+    const app = await startApp(liveDiscord, youtubeFixture, firstRun)
     try {
       await use(app)
     } finally {

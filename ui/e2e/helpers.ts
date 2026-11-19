@@ -297,14 +297,15 @@ export async function openUploadDialog(page: Page) {
   await page.getByRole('tab', { name: 'Upload new', exact: true }).click()
 }
 
-export async function navigate(page: Page, destination: 'Library' | 'Tables') {
+export async function navigate(page: Page, destination: 'Library' | 'Tables' | 'Settings') {
   const toggle = page.getByRole('button', { name: 'Toggle navigation' })
   if (await toggle.getAttribute('aria-expanded') !== 'true') await toggle.click()
-  await page.getByRole('link', { name: destination, exact: true }).click()
-  await expect(page).toHaveURL(new RegExp(`/${destination.toLowerCase()}$`))
+  await page.getByRole('navigation', { name: 'Navigation' }).getByRole('link', { name: destination, exact: true }).click()
+  const paths = { Library: '/library', Tables: '/tables', Settings: '/settings' }
+  await expect(page).toHaveURL(new RegExp(`${paths[destination]}$`))
   if (destination === 'Library') {
     await expect(page.getByRole('button', { name: 'Upload Track', exact: true })).toBeVisible()
   } else {
-    await expect(page.getByRole('heading', { name: 'Tables', exact: true })).toBeVisible()
+    await expect(page.getByRole('heading', { name: destination, exact: true })).toBeVisible()
   }
 }

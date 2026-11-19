@@ -26,7 +26,9 @@ out while active HTTP requests finish. The
 ## Docker image
 
 The Docker image serves both the API and the UI on HTTP port 80 by default, with
-no built-in TLS; deploy a TLS-terminating reverse proxy when HTTPS is needed.
+no built-in TLS; use a TLS-terminating reverse proxy for remote production
+access so browsers can send the secure authentication cookie. Docker Compose
+can load `../.env`, but does not require that file.
 The [release pipeline](../operations/release-pipeline.md) builds and publishes
 the image.
 

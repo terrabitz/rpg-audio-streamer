@@ -17,6 +17,7 @@ test(
     const first = launch(t, {
       ROOT_USERNAME: 'must-not-be-used',
       ROOT_PASSWORD_HASH: 'must-not-be-used',
+      ROOT_PASSWORD: 'must-not-be-used',
       TOKEN_DURATION: 'invalid',
       API_PROXY_TARGET: 'http://127.0.0.1:1',
       FRONTEND_DIR: '/nonexistent/frontend',
@@ -33,6 +34,10 @@ test(
     assert.equal(a.password, b.password)
     const cookie = await login(a)
     const otherCookie = await login(b)
+    assert.equal((await json(a, '/api/v1/setup')).required, false)
+    assert.deepEqual(await json(a, '/api/v1/profile', cookie), {
+      username: 'gm',
+    })
     const types = await json(a, '/api/v1/trackTypes', cookie)
     assert.deepEqual(types.map((type) => type.name).sort(), ['Ambiance', 'Music', 'One-Shot'])
     const tracks = await json(a, '/api/v1/files', cookie)

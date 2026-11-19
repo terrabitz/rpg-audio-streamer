@@ -2,6 +2,7 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router';
 import { useDisplay } from 'vuetify';
+import { getSetupStatus } from './client/apiClient';
 import DevDebugPanel from './components/DevDebugPanel.vue';
 import ErrorToast from './components/ErrorToast.vue';
 import { useScreenWakeLock } from './composables/screenWakeLock';
@@ -17,6 +18,7 @@ const wsStore = useWebSocketStore()
 const debugStore = useDebugStore()
 const route = useRoute()
 const drawer = ref(false)
+const setupError = ref('')
 const { mobile } = useDisplay()
 const clientPreferences = useClientPreferencesStore()
 const { error: wakeLockError } = useScreenWakeLock(computed(() => mobile.value && clientPreferences.keepScreenAwake))
@@ -39,6 +41,16 @@ async function handleLogout() {
 
 onMounted(async () => {
   await router.isReady()
+  try {
+    const { data } = await getSetupStatus<true>()
+    if (data.required) {
+      await router.replace('/setup')
+      return
+    }
+  } catch (e) {
+    console.error('Unable to check first-run setup:', e)
+    setupError.value = 'Unable to check server setup. Reload to try again.'
+  }
   if (route.name !== 'table') {
     await auth.checkAuthStatus()
   }
@@ -74,19 +86,21 @@ onUnmounted(() => {
     <v-navigation-drawer v-if="auth.authenticated && !isPlayerView" v-model="drawer" temporary aria-label="Navigation">
       <v-list nav>
         <template v-if="auth.authenticated && auth.role === 'gm'">
-          <v-list-item to="/tables" title="Tables" @click="drawer = false" />
-          <v-list-item to="/library" title="Library" @click="drawer = false" />
+          <v-list-item to="/tables" title="Tables" prepend-icon="$music" @click="drawer = false" />
+          <v-list-item to="/library" title="Library" prepend-icon="$library" @click="drawer = false" />
+          <v-list-item to="/settings" title="Settings" prepend-icon="$settings" @click="drawer = false" />
         </template>
-        <v-list-item v-if="debugStore.isDevMode" title="Toggle debug panel" role="button"
+        <v-list-item v-if="debugStore.isDevMode" title="Toggle debug panel" role="button" prepend-icon="$bug"
           @click="debugStore.togglePanel" />
       </v-list>
       <template #append>
         <v-list nav>
-          <v-list-item title="Logout" role="button" base-color="error" @click="handleLogout" />
+          <v-list-item title="Logout" role="button" base-color="error" prepend-icon="$logout" @click="handleLogout" />
         </v-list>
       </template>
     </v-navigation-drawer>
     <v-main>
+      <v-alert v-if="setupError" type="error">{{ setupError }}</v-alert>
       <RouterView :key="route.fullPath" />
     </v-main>
     <ErrorToast v-model="wakeLockError" />

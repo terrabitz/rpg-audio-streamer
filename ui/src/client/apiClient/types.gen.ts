@@ -4,6 +4,24 @@ export type ClientOptions = {
     baseUrl: `${string}://${string}` | (string & {});
 };
 
+export type SetupStatus = {
+    required: boolean;
+    username: string;
+};
+
+export type ClaimInstance = {
+    username: string;
+};
+
+export type Profile = {
+    username: string;
+};
+
+export type PasswordChange = {
+    currentPassword: string;
+    password: string;
+};
+
 export type Table = {
     id: string;
     /**
@@ -153,6 +171,136 @@ export type DiscordSetup = {
     installURL: string;
     guilds: Array<DiscordChoice>;
 };
+
+export type ClaimInstanceWritable = {
+    code: string;
+    username: string;
+    password: string;
+};
+
+export type GetSetupStatusData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/setup';
+};
+
+export type GetSetupStatusErrors = {
+    /**
+     * Unable to load setup status
+     */
+    500: unknown;
+};
+
+export type GetSetupStatusResponses = {
+    /**
+     * Setup status without secrets
+     */
+    200: SetupStatus;
+};
+
+export type GetSetupStatusResponse = GetSetupStatusResponses[keyof GetSetupStatusResponses];
+
+export type ClaimInstanceData = {
+    body: ClaimInstanceWritable;
+    path?: never;
+    query?: never;
+    url: '/api/v1/setup';
+};
+
+export type ClaimInstanceErrors = {
+    /**
+     * Invalid username or password
+     */
+    400: unknown;
+    /**
+     * Invalid or expired setup code
+     */
+    401: unknown;
+    /**
+     * Cross-origin request
+     */
+    403: unknown;
+    /**
+     * Instance already claimed
+     */
+    409: unknown;
+    /**
+     * Unable to persist credentials
+     */
+    500: unknown;
+};
+
+export type ClaimInstanceResponses = {
+    /**
+     * Instance claimed; sign in with the chosen credentials
+     */
+    204: void;
+};
+
+export type ClaimInstanceResponse = ClaimInstanceResponses[keyof ClaimInstanceResponses];
+
+export type GetProfileData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/profile';
+};
+
+export type GetProfileErrors = {
+    /**
+     * GM authentication required
+     */
+    401: unknown;
+    /**
+     * Unable to load the profile
+     */
+    500: unknown;
+};
+
+export type GetProfileResponses = {
+    /**
+     * Current profile
+     */
+    200: Profile;
+};
+
+export type GetProfileResponse = GetProfileResponses[keyof GetProfileResponses];
+
+export type ChangePasswordData = {
+    body: PasswordChange;
+    path?: never;
+    query?: never;
+    url: '/api/v1/profile';
+};
+
+export type ChangePasswordErrors = {
+    /**
+     * Invalid password
+     */
+    400: unknown;
+    /**
+     * Authentication required or current password incorrect
+     */
+    401: unknown;
+    /**
+     * Cross-origin request
+     */
+    403: unknown;
+    /**
+     * Unable to persist password
+     */
+    500: unknown;
+};
+
+export type ChangePasswordResponses = {
+    /**
+     * Password changed
+     */
+    204: void;
+};
+
+export type ChangePasswordResponse = ChangePasswordResponses[keyof ChangePasswordResponses];
 
 export type GetApiV1DiscordSetupData = {
     body?: never;
@@ -657,6 +805,10 @@ export type PostApiV1LoginErrors = {
      * Invalid credentials
      */
     401: LoginResponse;
+    /**
+     * Unable to sign in
+     */
+    500: LoginResponse;
 };
 
 export type PostApiV1LoginError = PostApiV1LoginErrors[keyof PostApiV1LoginErrors];

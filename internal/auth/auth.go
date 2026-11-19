@@ -1,13 +1,16 @@
 package auth
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 )
 
 type Auth struct {
 	cfg    Config
+	store  Store
 	logger *slog.Logger
+	claim  claimState
 }
 
 type Credentials struct {
@@ -15,22 +18,20 @@ type Credentials struct {
 	Password string
 }
 
-func New(config Config, logger *slog.Logger) *Auth {
-	return &Auth{
-		cfg:    config,
-		logger: logger,
+func (a *Auth) ValidateCredentials(ctx context.Context, creds Credentials) (*Token, error) {
+	if len(creds.Password) > 1024 {
+		return nil, ErrInvalidCredentials
 	}
-}
-
-func (a *Auth) ValidateCredentials(creds Credentials) (*Token, error) {
-	// Validate username
-	if creds.Username != a.cfg.RootUsername {
+	admin, err := a.store.LoadAdmin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("load admin: %w", err)
+	}
+	if admin.PasswordHash == "" || creds.Username != admin.Username {
 		a.logger.Debug("invalid username attempt", "username", creds.Username)
 		return nil, ErrInvalidCredentials
 	}
 
-	// Validate password
-	valid, err := VerifyPassword(creds.Password, a.cfg.HashedPassword)
+	valid, err := VerifyPassword(creds.Password, admin.PasswordHash)
 	if err != nil {
 		a.logger.Error("failed to verify password", "error", err)
 		return nil, fmt.Errorf("failed to verify password: %w", err)
@@ -41,7 +42,6 @@ func (a *Auth) ValidateCredentials(creds Credentials) (*Token, error) {
 		return nil, ErrInvalidCredentials
 	}
 
-	// Generate JWT on successful validation with GM role
 	token, err := a.NewToken(creds.Username, RoleGM)
 	if err != nil {
 		a.logger.Error("failed to generate token", "error", err)

@@ -11,17 +11,16 @@ import { discordTestConfig } from './discord-config'
 
 const root = fileURLToPath(new URL('../..', import.meta.url))
 const ui = fileURLToPath(new URL('..', import.meta.url))
-const passwordHash =
-  '$argon2id$v=19$m=65536,t=2,p=2$cnBnLWUyZS10ZXN0LXNhbHQ$TSxyC0hp4Wz6SM6WbZtuwgKY8UrQEWA3Dsy1Ay5IGlk'
 
 export type AppInstance = {
   url: string
   scratch: string
   logs: () => string
+  setupCode: () => string
   stop: () => Promise<void>
 }
 
-export async function startApp(liveDiscord = false, youtubeFixture = false): Promise<AppInstance> {
+export async function startApp(liveDiscord = false, youtubeFixture = false, firstRun = false): Promise<AppInstance> {
   const binary = process.env.E2E_SERVER_BINARY
   if (!binary) throw new Error('E2E server binary was not built by global setup')
   const scratch = await mkdtemp(join(tmpdir(), 'rpg-audio-e2e-'))
@@ -66,12 +65,12 @@ export async function startApp(liveDiscord = false, youtubeFixture = false): Pro
     }
     for (const name of [
       'HOST', 'PORT', 'CORS_ORIGINS', 'LOG_FORMAT', 'LOG_LEVEL', 'UPLOAD_DIR', 'FRONTEND_DIR',
-      'ROOT_USERNAME', 'ROOT_PASSWORD_HASH', 'TOKEN_SECRET', 'TOKEN_DURATION',
+      'ROOT_USERNAME', 'ROOT_PASSWORD', 'ROOT_PASSWORD_HASH', 'TOKEN_SECRET', 'TOKEN_DURATION',
       'TOKEN_ISSUER', 'TOKEN_AUDIENCE', 'DEV_MODE', 'DB_PATH',
     ]) delete env[name]
     server = spawn(binary, [
-      'serve', '--host', '127.0.0.1', '--port', String(port), '--dev-mode',
-      '--root-username', 'e2e-gm', '--root-password-hash', passwordHash,
+      'serve', '--host', '127.0.0.1', '--port', String(port),
+      ...(firstRun ? [] : ['--dev-mode']),
       '--db-path', join(scratch, 'app.db'), '--upload-dir', join(scratch, 'uploads'),
       '--frontend-dir', join(ui, 'dist'),
     ], {
@@ -82,8 +81,10 @@ export async function startApp(liveDiscord = false, youtubeFixture = false): Pro
         TMPDIR: scratch,
         TMP: scratch,
         TEMP: scratch,
-        TOKEN_SECRET: secret,
-        DISCORD_STREAMING_ENABLED: discord ? 'true' : 'false',
+        ROOT_USERNAME: firstRun ? undefined : 'e2e-gm',
+        ROOT_PASSWORD: firstRun ? undefined : 'e2e-password',
+        TOKEN_SECRET: firstRun ? undefined : secret,
+        DISCORD_STREAMING_ENABLED: discord ? 'true' : firstRun ? undefined : 'false',
         DISCORD_STREAMING_BOT_TOKEN: discord?.streamerToken,
       },
     })
@@ -107,8 +108,16 @@ export async function startApp(liveDiscord = false, youtubeFixture = false): Pro
       waitForAPI(apiURL, server),
       done.then(() => { throw new Error('E2E API exited before becoming ready') }),
     ])
-    await verifyAPI(apiURL, secret)
-    return { url: apiURL, scratch, logs: () => output, stop }
+    if (firstRun) {
+      if (!/setup_code=([A-Z2-7]+)/i.test(output)) throw new Error('Fresh instance did not emit a setup code')
+    } else {
+      await verifyAPI(apiURL, secret)
+    }
+    return {
+      url: apiURL, scratch, stop,
+      setupCode: () => output.match(/setup_code=([A-Z2-7]+)/i)?.[1] ?? '',
+      logs: () => output.replace(/setup_code=\S+/g, 'setup_code=[redacted]'),
+    }
   } catch (error) {
     let failure = error
     try {
@@ -118,7 +127,7 @@ export async function startApp(liveDiscord = false, youtubeFixture = false): Pro
         failure = new AggregateError([error, shutdownError], 'E2E app startup and cleanup failed')
       }
     }
-    if (output) throw new Error(`E2E app startup failed:\n${output}`, { cause: failure })
+    if (output) throw new Error(`E2E app startup failed:\n${output.replace(/setup_code=\S+/g, 'setup_code=[redacted]')}`, { cause: failure })
     throw failure
   }
 }

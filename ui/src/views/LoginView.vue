@@ -1,15 +1,22 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { useAppBar } from '@/composables/useAppBar'
 import { useAuthStore } from '../stores/auth'
 import ErrorToast from '../components/ErrorToast.vue'
 
+const { setTitle, setActions } = useAppBar()
 const auth = useAuthStore()
 const router = useRouter()
 
 const username = ref('')
 const password = ref('')
 const error = ref('')
+
+onMounted(() => {
+  setTitle('Login')
+  setActions([])
+})
 
 async function handleSubmit() {
   error.value = ''

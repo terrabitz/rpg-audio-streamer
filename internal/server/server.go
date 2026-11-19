@@ -30,8 +30,12 @@ const (
 )
 
 type Authenticator interface {
-	ValidateCredentials(creds auth.Credentials) (*auth.Token, error)
+	ValidateCredentials(context.Context, auth.Credentials) (*auth.Token, error)
 	ValidateToken(tokenStr string) (*auth.Token, error)
+	SetupStatus(context.Context) (auth.SetupStatus, error)
+	Claim(ctx context.Context, code, username, password string) error
+	Profile(context.Context) (auth.Profile, error)
+	ChangePassword(ctx context.Context, current, password string) error
 }
 
 type WSRegisterer interface {
@@ -253,6 +257,8 @@ func (s *Server) registerHandlers() *http.ServeMux {
 	mux.HandleFunc("/api/v1/login", s.handleLogin)
 	mux.HandleFunc("/api/v1/auth/status", s.handleAuthStatus)
 	mux.HandleFunc("/api/v1/auth/logout", s.handleLogout)
+	mux.HandleFunc("/api/v1/setup", s.handleSetup)
+	mux.HandleFunc("/api/v1/profile", s.gmOnlyMiddleware(s.handleProfile))
 
 	// Protected endpoints with role validation
 	mux.HandleFunc("/api/v1/files", s.gmOnlyMiddleware(s.handleFiles))

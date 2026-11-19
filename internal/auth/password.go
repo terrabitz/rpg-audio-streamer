@@ -72,6 +72,11 @@ func VerifyPassword(password, encodedHash string) (bool, error) {
 	return subtle.ConstantTimeCompare(hash, otherHash) == 1, nil
 }
 
+func ValidatePasswordHash(encodedHash string) error {
+	_, _, _, err := decodeHash(encodedHash)
+	return err
+}
+
 func decodeHash(encodedHash string) (*params, []byte, []byte, error) {
 	var p params
 	var salt, hash []byte
@@ -103,6 +108,11 @@ func decodeHash(encodedHash string) (*params, []byte, []byte, error) {
 	}
 
 	p.keyLength = uint32(len(hash))
+	if parts[1] != "argon2id" || version != argon2.Version || p.parallelism == 0 ||
+		p.memory < 8*uint32(p.parallelism) || p.memory > 1024*1024 ||
+		p.iterations == 0 || p.iterations > 20 || len(salt) < 8 || len(hash) < 16 || len(hash) > 64 {
+		return nil, nil, nil, fmt.Errorf("invalid or unsupported Argon2id parameters")
+	}
 
 	return &p, salt, hash, nil
 }
