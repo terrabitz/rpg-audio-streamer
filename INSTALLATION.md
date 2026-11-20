@@ -58,21 +58,23 @@
 
 ## Configuration
 
-The server can be configured using environment variables or command-line flags:
-
-### Server Options
-- `PORT` (default: 8080) - Server listening port
-- `CORS_ORIGINS` - Allowed CORS origins
-- `UPLOAD_DIR` (default: ./uploads) - Directory for audio files
-- `DEV_MODE` - Enable development features
-
-### Authentication
-- `ROOT_USERNAME` (default: admin) - Admin username
-- `ROOT_PASSWORD_HASH` (required) - Argon2id hash of admin password
-- `TOKEN_SECRET` (required) - JWT signing secret
-- `TOKEN_DURATION` (default: 24h) - JWT token validity duration
-- `JOIN_TOKEN` - Static token for player authentication
-
-### Logging
-- `LOG_FORMAT` (default: json) - Log format (json/pretty)
-- `LOG_LEVEL` (default: info) - Log level (debug/info/warn/error)
+| Environment variable | Flag | CLI default | Description |
+| --- | --- | --- | --- |
+| `DISCORD_STREAMING_BOT_TOKEN` | `--discord-streaming-bot-token` | Unset | Bot token for Discord voice streaming; prefer the environment variable |
+| `DISCORD_STREAMING_ENABLED` | `--discord-streaming-enabled` | `false` | Enable Discord voice streaming |
+| `HOST` | `--host` | Unset | Host to bind (empty listens on all interfaces) |
+| `PORT` | `--port` | `8080` | Port to listen on |
+| `CORS_ORIGINS` | `--cors-origins` | Unset | Allowed CORS origins |
+| `LOG_FORMAT` | `--log-format` | `"json"` | Log format (json or pretty) |
+| `LOG_LEVEL` | `--log-level` | `"info"` | Log level (debug, info, warn, error) |
+| `UPLOAD_DIR` | `--upload-dir` | `"./uploads"` | Directory to store uploaded files |
+| `FRONTEND_DIR` | `--frontend-dir` | Unset | Directory containing the built SPA (empty disables frontend serving) |
+| `ROOT_USERNAME` | `--root-username` | `"admin"` | Initial admin username |
+| `ROOT_PASSWORD` | `--root-password` | Unset | Initial admin password (used only when no admin exists) |
+| `ROOT_PASSWORD_HASH` | `--root-password-hash` | Unset | Initial admin Argon2id password hash (alternative to ROOT_PASSWORD) |
+| `TOKEN_SECRET` | `--token-secret` | Unset | Secret for signing JWT tokens |
+| `TOKEN_DURATION` | `--token-duration` | `24h0m0s` | Duration for JWT tokens |
+| `TOKEN_ISSUER` | `--token-issuer` | `"rpg-audio-streamer"` | Issuer for JWT tokens |
+| `TOKEN_AUDIENCE` | `--token-audience` | `"rpg-audio-streamer-client"` | Audience for JWT tokens |
+| `DEV_MODE` | `--dev-mode` | `false` | Enables development mode |
+| `DB_PATH` | `--db-path` | `"skaldbot.db"` | Path to SQLite database file |
