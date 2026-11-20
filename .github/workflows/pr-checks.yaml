@@ -62,12 +62,12 @@ jobs:
     name: Go Offline Tests and Coverage
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    if: ${{ !cancelled() && 
+    if: |
+      !cancelled() && 
       (
         github.event_name == 'workflow_dispatch' || 
         needs.changes.outputs.backend == 'true'
       )
-    }}
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-environment
@@ -82,12 +82,12 @@ jobs:
     name: Go Discord Integration
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    if: ${{ !cancelled() && 
+    if: |
+      !cancelled() && 
       (
         github.event_name == 'workflow_dispatch' || 
         needs.changes.outputs.backend == 'true'
       )
-    }}
     concurrency:
       group: discord-live
       queue: max
@@ -109,13 +109,13 @@ jobs:
     name: Full App UX
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    if: ${{ !cancelled() && 
+    if: |
+      !cancelled() && 
       (
         github.event_name == 'workflow_dispatch' || 
         needs.changes.outputs.frontend == 'true' ||
         needs.changes.outputs.backend == 'true'
       )
-    }}
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-environment
@@ -136,13 +136,13 @@ jobs:
     name: Discord App UX
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    if: ${{ !cancelled() && 
+    if: |
+      !cancelled() && 
       (
         github.event_name == 'workflow_dispatch' || 
         needs.changes.outputs.frontend == 'true' ||
         needs.changes.outputs.backend == 'true'
       )
-    }}
     concurrency:
       group: discord-live
       queue: max
@@ -164,7 +164,12 @@ jobs:
   lint:
     name: Frontend Lint
     needs: changes
-    if: ${{ !cancelled() && (github.event_name == 'workflow_dispatch' || needs.changes.outputs.frontend == 'true') }}
+    if: |
+      !cancelled() && 
+      (
+        github.event_name == 'workflow_dispatch' || 
+        needs.changes.outputs.frontend == 'true'
+      )
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -180,7 +185,12 @@ jobs:
   build:
     name: Frontend Build
     needs: changes
-    if: ${{ !cancelled() && (github.event_name == 'workflow_dispatch' || needs.changes.outputs.frontend == 'true') }}
+    if: |
+      !cancelled() && 
+      (
+        github.event_name == 'workflow_dispatch' || 
+        needs.changes.outputs.frontend == 'true'
+      )
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -196,7 +206,12 @@ jobs:
   unit:
     name: Frontend Domain Coverage
     needs: changes
-    if: ${{ !cancelled() && (github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch') }}
+    if: |
+      !cancelled() && 
+      (
+        github.event_name == 'workflow_dispatch' ||
+        needs.changes.outputs.frontend == 'true'        
+      )
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -215,7 +230,12 @@ jobs:
     needs: changes
     permissions:
       packages: write
-    if: ${{ !cancelled() && (github.event_name == 'workflow_dispatch' || needs.changes.outputs.docker == 'true') }}
+    if: |
+      !cancelled() && 
+      (
+        github.event_name == 'workflow_dispatch' || 
+        needs.changes.outputs.docker == 'true'
+      )
     uses: ./.github/workflows/docker-build.yaml
 
   pr-checks:
