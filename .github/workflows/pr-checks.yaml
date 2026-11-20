@@ -62,6 +62,12 @@ jobs:
     name: Go Offline Tests and Coverage
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    if: ${{ !cancelled() && 
+      (
+        github.event_name == 'workflow_dispatch' || 
+        needs.changes.outputs.backend == 'true'
+      )
+    }}
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-environment
@@ -76,6 +82,12 @@ jobs:
     name: Go Discord Integration
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    if: ${{ !cancelled() && 
+      (
+        github.event_name == 'workflow_dispatch' || 
+        needs.changes.outputs.backend == 'true'
+      )
+    }}
     concurrency:
       group: discord-live
       queue: max
@@ -97,6 +109,13 @@ jobs:
     name: Full App UX
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    if: ${{ !cancelled() && 
+      (
+        github.event_name == 'workflow_dispatch' || 
+        needs.changes.outputs.frontend == 'true' ||
+        needs.changes.outputs.backend == 'true'
+      )
+    }}
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-environment
@@ -117,6 +136,13 @@ jobs:
     name: Discord App UX
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    if: ${{ !cancelled() && 
+      (
+        github.event_name == 'workflow_dispatch' || 
+        needs.changes.outputs.frontend == 'true' ||
+        needs.changes.outputs.backend == 'true'
+      )
+    }}
     concurrency:
       group: discord-live
       queue: max
