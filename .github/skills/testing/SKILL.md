@@ -39,6 +39,8 @@ Vue tooling.
 | `make test-ui` | Vitest domain coverage; enforce 80% statements, branches, functions, and lines |
 | `make test-e2e` | Production UI build and real full-app Chromium journeys including live Discord |
 | `make test-dev` | Seeded local dev startup, isolation, media fixtures, and cleanup |
+| `make test-examples` | Embedded snippet freshness and the README/installation Docker flows |
+| `make gen-examples` | Re-embed `examples/` files into `README.md` and `INSTALLATION.md` |
 | `cd ui && npm run build` | Vue/TypeScript checking, including tests, and production bundle |
 | `cd ui && npm run lint:check` | Read-only frontend lint |
 
@@ -93,6 +95,22 @@ corpus for MP3, AAC/M4A, Opus/WebM, Vorbis/Ogg, FLAC, WAV, ALAC, and WMA; succes
 fixture encoding by the candidate alone does not establish input compatibility.
 Check the packaged downloader and Node runtime as well. A custom build's native
 codecs do not imply parity with Debian's optional external integrations.
+
+### Getting started examples
+
+Edit snippets in `examples/`, never inside the embedded code blocks, then run
+`make gen-examples`. `make test-examples` runs the examples unchanged, so it
+uses whatever image Docker has as `ghcr.io/terrabitz/rpg-audio-streamer:latest`
+and pulls the published image when none exists. To test the checkout, build it
+under that tag first:
+
+```sh
+docker build -f docker/Dockerfile -t ghcr.io/terrabitz/rpg-audio-streamer:latest .
+make test-examples
+```
+
+The flows need host port 8080 and the container name `rpg-audio-streamer` to be
+free. Add `--network host` to the build if build containers cannot resolve DNS.
 
 ### Live YouTube tests
 

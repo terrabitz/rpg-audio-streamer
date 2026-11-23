@@ -51,6 +51,14 @@ as the [release pipeline](./release-pipeline.md) without pushing or publishing
 a manifest, and check that the Dockerfile's Go and Node base images match
 `go.mod` and `ui/.nvmrc`, since dependency bumps do not update the Dockerfile.
 
+## Getting started examples
+
+Changes to `examples/`, `README.md`, `INSTALLATION.md`, or any Docker image
+input run the [getting started examples](./getting-started-examples.md). The
+job builds the amd64 image from the checkout with `load` enabled, reusing the
+Docker build cache, and tags it as the published `latest` reference used by the
+examples. It then verifies the embedded snippets and runs each flow.
+
 ## FFmpeg in tests
 
 The Go and browser jobs compile the headless FFmpeg tools using the same pinned

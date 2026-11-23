@@ -1,4 +1,7 @@
-.PHONY: dev devcontainer-build test-dev ui go test test-go test-ui test-e2e record-e2e gen gen-sqlc gen-api-client gen-docs
+EMBEDME := npx --yes embedme@1.22.1
+EXAMPLE_DOCS := README.md INSTALLATION.md
+
+.PHONY: dev devcontainer-build test-dev ui go test test-go test-ui test-e2e test-examples record-e2e gen gen-sqlc gen-api-client gen-docs gen-examples
 
 ui:
 	cd ui && npm install && npm run dev
@@ -28,10 +31,14 @@ test-ui:
 test-e2e:
 	cd ui && npm run test:e2e
 
+test-examples:
+	$(EMBEDME) --verify $(EXAMPLE_DOCS)
+	node --test examples/examples.test.mjs
+
 record-e2e:
 	cd ui && npm run test:e2e:record -- $(if $(GREP),--grep "$(GREP)")
 
-gen: gen-sqlc gen-api-client gen-docs
+gen: gen-sqlc gen-api-client gen-docs gen-examples
 
 gen-sqlc:
 	sqlc generate
@@ -41,3 +48,6 @@ gen-api-client:
 
 gen-docs:
 	cd ui && npm run generate-docs
+
+gen-examples:
+	$(EMBEDME) $(EXAMPLE_DOCS)

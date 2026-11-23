@@ -15,7 +15,9 @@ A simple synchronized soundboard designed for tabletop RPGs, allowing game maste
 You easily get started using the Docker image
 
 ```bash
-# Create the data direcotory
+# examples/quick-start.sh
+
+# Create the data directory
 mkdir -p data/uploads
 
 # Run the image
@@ -27,6 +29,7 @@ docker run -d \
 
 # Get the setup code from the logs
 docker logs rpg-audio-streamer
+
 ```
 
 See [INSTALLATION.md](./INSTALLATION.md) for more installation methods
