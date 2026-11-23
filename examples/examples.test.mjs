@@ -26,18 +26,17 @@ test('quick start exposes a setup code that claims the instance', { timeout: 180
 test('docker compose installation exposes a setup code that claims the instance', { timeout: 180_000 }, async (t) => {
   const dir = await workspace(t, 'docker-compose', (dir) => command(dir, 'docker', ['compose', 'down', '--volumes']))
 
-  await runScript(dir, 'start.sh')
+  await runScript(dir, 'install.sh')
 
-  await claimWithLoggedCode(() => runScript(dir, 'logs.sh'))
+  await claimWithLoggedCode(() => command(dir, 'docker', ['compose', 'logs', 'rpg-audio-streamer']))
 })
 
 test('plain docker installation exposes a setup code that claims the instance', { timeout: 180_000 }, async (t) => {
   const dir = await workspace(t, 'docker', removeContainerAndData)
 
-  await runScript(dir, 'create-data-dir.sh')
-  await runScript(dir, 'run.sh')
+  await runScript(dir, 'install.sh')
 
-  await claimWithLoggedCode(() => runScript(dir, 'logs.sh'))
+  await claimWithLoggedCode(() => command(dir, 'docker', ['logs', container]))
 })
 
 async function claimWithLoggedCode(readLogs) {
