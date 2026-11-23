@@ -127,14 +127,6 @@ func (s *Service) Connect(ctx context.Context, tableID string, target Destinatio
 	}
 }
 
-func (s *Service) Fail(tableID string, err error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.active[tableID] == nil {
-		s.setStatus(tableID, Status{Enabled: true, State: "error", Error: err.Error(), Destination: s.status[tableID].Destination})
-	}
-}
-
 func (s *Service) Disconnect(ctx context.Context, tableID string) error {
 	s.mu.Lock()
 	current := s.active[tableID]

@@ -64,7 +64,7 @@ func (d *reconnectDiscord) Disconnect(context.Context, string) error {
 	return nil
 }
 
-func TestDiscordReconnectsOncePerGMTableSessionAndClosesWithIt(t *testing.T) {
+func TestDiscordDoesNotConnectOnGMTableSessionSync(t *testing.T) {
 	ts := setupTestServer(t)
 	defer ts.cleanup(t)
 	target := discord.Destination{GuildID: "1", ChannelID: "2"}
@@ -84,25 +84,18 @@ func TestDiscordReconnectsOncePerGMTableSessionAndClosesWithIt(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	wait := func() {
+	assertDisconnected := func() {
 		t.Helper()
 		select {
 		case got := <-bot.started:
-			if got != target {
-				t.Fatalf("reconnect destination = %+v", got)
-			}
-		case <-time.After(time.Second):
-			t.Fatal("saved destination did not reconnect")
+			t.Fatalf("sync connected to saved destination: %+v", got)
+		case <-time.After(100 * time.Millisecond):
 		}
 	}
 	sync()
-	wait()
+	assertDisconnected()
 	sync()
-	select {
-	case <-bot.started:
-		t.Fatal("repeated sync reconnected a manually disconnected session")
-	default:
-	}
+	assertDisconnected()
 	lifecycle.CloseTable(DefaultTableID.String())
 	select {
 	case <-bot.stopped:
@@ -110,6 +103,6 @@ func TestDiscordReconnectsOncePerGMTableSessionAndClosesWithIt(t *testing.T) {
 		t.Fatal("closing table did not disconnect Discord")
 	}
 	sync()
-	wait()
+	assertDisconnected()
 	lifecycle.CloseTable(DefaultTableID.String())
 }

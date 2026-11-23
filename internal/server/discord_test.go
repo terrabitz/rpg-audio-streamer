@@ -36,8 +36,7 @@ func (d *testDiscord) Status(string) discord.Status {
 	return discord.Status{Enabled: true, State: state}
 }
 
-func (d *testDiscord) Close()             {}
-func (d *testDiscord) Fail(string, error) {}
+func (d *testDiscord) Close() {}
 func (d *testDiscord) Setup(context.Context) (discord.Setup, error) {
 	return discord.Setup{InstallURL: "https://discord.com/oauth2/authorize?client_id=99", Guilds: []discord.Choice{{ID: "1", Name: "Friday"}}}, d.fail
 }

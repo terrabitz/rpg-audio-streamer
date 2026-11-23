@@ -157,7 +157,7 @@ func TestTransportExitRestoresReconnectableErrorState(t *testing.T) {
 	}
 }
 
-func TestStatusListenerReportsDisconnectAndRestoreFailure(t *testing.T) {
+func TestStatusListenerReportsDisconnect(t *testing.T) {
 	service, _ := New(Config{Token: "test-only"}, testMix(t))
 	defer service.Close()
 	updates := make(chan Status, 4)
@@ -173,15 +173,11 @@ func TestStatusListenerReportsDisconnectAndRestoreFailure(t *testing.T) {
 	if err := service.Disconnect(context.Background(), "table"); err != nil {
 		t.Fatal(err)
 	}
-	service.Fail("table", errors.New("saved destination unavailable"))
-	for _, state := range []string{"connecting", "connected", "disconnected", "error"} {
+	for _, state := range []string{"connecting", "connected", "disconnected"} {
 		select {
 		case update := <-updates:
 			if update.State != state || update.Destination == nil || update.ChannelID != "2" {
 				t.Fatalf("unexpected transition: %+v; want %s", update, state)
-			}
-			if state == "error" && update.Error != "saved destination unavailable" {
-				t.Fatalf("restore failure event lost diagnostics: %+v", update)
 			}
 		case <-time.After(time.Second):
 			t.Fatalf("missing %s event", state)
