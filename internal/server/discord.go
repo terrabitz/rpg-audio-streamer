@@ -32,9 +32,6 @@ func (s *Server) handleDiscord(w http.ResponseWriter, r *http.Request, token *au
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 25*time.Second)
 	defer cancel()
-	if s.discordMix != nil && (r.Method == http.MethodPost || r.Method == http.MethodDelete) {
-		s.discordMix.cancelRestore(id.String())
-	}
 	var err error
 	switch r.Method {
 	case http.MethodGet:

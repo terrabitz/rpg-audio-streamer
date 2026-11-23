@@ -13,7 +13,8 @@ Each table has a Discord control at the bottom of its desktop
 its mobile drawer. It shows a grey Connect button when disconnected, a loading
 spinner while connecting, and a green Connected button while streaming.
 Clicking Connected disconnects; hovering reveals the destination server and
-voice channel. The button uses the Discord logo.
+voice channel. Returning to a table requires clicking Connect again; a saved
+destination does not connect automatically. The button uses the Discord logo.
 
 ## Setup dialog
 

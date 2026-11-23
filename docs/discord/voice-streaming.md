@@ -55,16 +55,13 @@ listeners under the service mutex. Connection startup and teardown do not wait
 for notifications, so a slow or reentrant listener cannot stall voice lifecycle
 cleanup.
 
-The first successful mixer sync of a GM table session follows an authoritative
-[playback snapshot](../playback/synchronization.md), so a reconnect sync
-includes the table's active tracks before attempting the saved destination
-once. Repeated playback updates and status reads do not reconnect a manually
-disconnected bot. Leaving a table or closing its last GM tab cancels pending
-reconnection and disconnects the connection. Returning creates a new session
-and attempts reconnection. Multiple GM tabs keep the bot active until the last
-one closes. A lost network connection is detected by the WebSocket heartbeat.
-Reconnection conflicts and failures are visible and require an explicit retry
-or destination change within that session.
+The GM connects explicitly through the Discord control; saved destinations are
+available for selection but do not trigger automatic connections. Leaving a
+table or closing its last GM tab disconnects the connection. Returning to the
+table requires connecting again. Multiple GM tabs keep the bot active until the
+last one closes. A lost network connection is detected by the WebSocket heartbeat.
+Connection conflicts and failures are visible and require an explicit retry or
+destination change.
 
 ## Validation
 
