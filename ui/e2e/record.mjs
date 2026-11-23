@@ -58,6 +58,7 @@ function renderGif({ pages, startMs, endMs, title }, gif) {
     '-v', 'error', '-y',
     ...pages.flatMap(({ video }) => ['-i', video]),
     '-filter_complex', filters.join(';'),
+    '-loop', '0',
     gif,
   ], { stdio: 'inherit' })
 }

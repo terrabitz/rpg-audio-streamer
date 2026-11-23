@@ -76,12 +76,15 @@ The browser Discord job does not upload failure diagnostics.
 
 ## README demo
 
-The README demo check reuses the browser recording harness to capture a GM
-switching music while a player listens in a separate browser context. On
+The README demo check reuses the browser recording harness to produce a looping
+GIF of a GM switching music, playing a one-shot, and stopping playback while a
+player listens in a separate browser context. On
 pull requests that change browser or server inputs, it
 compares stable GM and player screenshots with the checked-in baselines.
-Pointer overlays and playback-position motion are excluded from comparison,
-and each screenshot tolerates up to 0.2% differing pixels.
+Pointer overlays and playback-position motion are excluded from comparison.
+The `README_DEMO_DIFF_RATIO` environment variable on the workflow job sets the
+tolerated fraction of differing pixels in each screenshot; it defaults to
+`0.002` (0.2%).
 Only missing or materially changed baselines cause the Git LFS GIF and
 checkpoints to be refreshed. The check attaches changed media as an artifact.
 A separate job pushes those assets only to the current head of a same-repository

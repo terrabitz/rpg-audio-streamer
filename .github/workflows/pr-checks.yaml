@@ -169,6 +169,8 @@ jobs:
     name: Check README Demo
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    env:
+      README_DEMO_DIFF_RATIO: '0.002'
     needs: changes
     if: |
       github.event_name == 'pull_request' &&
