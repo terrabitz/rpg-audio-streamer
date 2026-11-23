@@ -48,10 +48,17 @@ immutable per key; dependency or FFmpeg build-input changes produce new entries.
 
 Pull requests that touch any image input or the
 [getting started examples](./getting-started-examples.md) and the documents
-embedding them run the same per-architecture builds and example runs as the
-[release pipeline](./release-pipeline.md) without pushing or publishing
-a manifest, and check that the Dockerfile's Go and Node base images match
+embedding them run the same per-architecture builds as the
+[release pipeline](./release-pipeline.md). They push the images and a
+multi-arch manifest to `ghcr.io/terrabitz/rpg-audio-streamer/dev`, tagged with
+the pull request head commit SHA, rather than the release repository. A separate
+`examples` job depends on the build, pulls that image on amd64 and arm64
+runners, and runs the getting started examples against it. The checks also
+verify that the Dockerfile's Go and Node base images match
 `go.mod` and `ui/.nvmrc`, since dependency bumps do not update the Dockerfile.
+
+Fork and Dependabot pull requests receive a read-only `GITHUB_TOKEN`, so their
+development image push fails.
 
 ## FFmpeg in tests
 

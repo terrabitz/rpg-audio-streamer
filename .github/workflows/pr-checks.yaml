@@ -246,11 +246,54 @@ jobs:
         needs.changes.outputs.docker == 'true'
       )
     uses: ./.github/workflows/docker-build.yaml
+    with:
+      push: true
+      image: ghcr.io/${{ github.repository }}/dev
+      tags: ${{ github.event.pull_request.head.sha || github.sha }}
+
+  examples:
+    name: Getting Started Examples (${{ matrix.arch }})
+    needs: docker
+    if: ${{ !cancelled() && needs.docker.result == 'success' }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-environment
+        with:
+          backend: 'false'
+          frontend: 'false'
+          media: 'false'
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Pull the branch image
+        run: docker pull "$EXAMPLES_IMAGE"
+        env:
+          EXAMPLES_IMAGE: ${{ needs.docker.outputs.image }}
+      - name: Run getting started examples
+        run: make test-examples
+        env:
+          EXAMPLES_IMAGE: ${{ needs.docker.outputs.image }}
 
   pr-checks:
     name: PR Checks
     if: ${{ always() }}
-    needs: [changes, go, go-discord, e2e, e2e-discord, lint, build, unit, docker]
+    needs: [changes, go, go-discord, e2e, e2e-discord, lint, build, unit, docker, examples]
     runs-on: ubuntu-latest
     steps:
       - name: Require all selected checks to pass

@@ -30,8 +30,6 @@ longer required. Teardown removes the container, Compose project, volumes,
 bind-mounted data, and temporary directory.
 
 The examples use a fixed host port 8080 and container name, so the flows run
-sequentially. Each architecture build in the `docker-build` workflow loads a
-commit-specific image, verifies that the embedded snippets match their source
-files, and runs the flows before any push, for both
-[pull request checks](./pr-checks.md) and the
-[release pipeline](./release-pipeline.md).
+sequentially. The [pull request checks](./pr-checks.md) pull the commit's
+development image on amd64 and arm64 runners, verify that the embedded snippets
+match their source files, and run the flows.
