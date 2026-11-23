@@ -4,6 +4,8 @@ import type { Locator, Page } from '@playwright/test'
 import { expect, recording, test } from './fixtures'
 import { login, uploadTrack } from './helpers'
 
+test.use({ recordingCursorSeed: 42 })
+
 test('GM switches music while a player listens', async ({ page, browser, recordFlow }) => {
   const screenshotOptions = process.env.E2E_README_DEMO === '1' ? {
     maxDiffPixelRatio: readDiffRatio(),
@@ -73,7 +75,7 @@ test('GM switches music while a player listens', async ({ page, browser, recordF
 async function clickDemoControl(control: Locator) {
   if (recording) {
     await control.hover()
-    await settleDemoCursor()
+    await settleDemoCursor(control.page())
   }
   await control.click()
 }
@@ -81,12 +83,14 @@ async function clickDemoControl(control: Locator) {
 async function parkDemoCursor(page: Page) {
   if (!recording) return
   await page.mouse.move(1200, 680)
-  await settleDemoCursor()
+  await settleDemoCursor(page)
 }
 
-async function settleDemoCursor() {
-  // Leave a visible beat after the recording overlay's 300 ms glide.
-  await delay(500)
+async function settleDemoCursor(page: Page) {
+  await page.evaluate(async () => {
+    await document.getAnimations().find(animation => animation.id === 'recording-cursor-motion')?.finished
+  })
+  await delay(250)
 }
 
 async function holdDemoBeat() {
