@@ -13,23 +13,18 @@ Keep root `AGENTS.md` short.
 
 ## Setup and commands
 
-Use the Go version in `go.mod`, Node in `ui/.nvmrc`, and FFmpeg on `PATH`.
-Building and running Go also requires a C compiler, pkg-config, and Discord
-libdave 1.1.0. On glibc Linux or macOS, install the verified official binary
-and configure the current shell:
+Run all tests in the repository devcontainer, not on the host. From the
+worktree root, start it and wait for dependency setup:
 
 ```sh
-sh scripts/install-libdave.sh "$HOME/.local/libdave"
-export PKG_CONFIG_PATH="$HOME/.local/libdave/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
-export LD_LIBRARY_PATH="$HOME/.local/libdave/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+devcontainer up --workspace-folder .
+devcontainer exec --workspace-folder . make test
 ```
 
-On macOS, set `DYLD_LIBRARY_PATH` instead of `LD_LIBRARY_PATH`. The Linux
-release requires glibc 2.38 or newer; it does not support Alpine's musl.
-Install frontend dependencies with `cd ui && npm ci`. The devcontainer image
-includes Chromium and its Linux dependencies, installed from the Playwright
-version in `ui/package-lock.json`. On other Linux hosts, install Chromium with
-`cd ui && npx playwright install --with-deps chromium`.
+Rebuild the container after image input changes. Run the commands below from
+an in-container terminal or through `devcontainer exec --workspace-folder .`.
+If the container cannot start, report the blocker rather than falling back
+to host tools.
 The UI compiler must remain compatible with `vue-tsc`; TypeScript 7's native
 package does not expose the JavaScript compiler API required by the current
 Vue tooling.
@@ -58,30 +53,10 @@ own the render loop's context and bound waits for decoding and cancellation.
 ### Headless FFmpeg
 
 Build the image with `docker build -f docker/Dockerfile -t rpg-audio-streamer:test .`.
-It always uses the headless FFmpeg build. On Debian/Ubuntu, install
-`build-essential ca-certificates curl libmp3lame-dev libssl-dev nasm pkg-config xz-utils`,
-then run `sh scripts/build-ffmpeg.sh "$HOME/.local/ffmpeg"`. The script downloads
-and verifies the pinned upstream source archive and installs FFmpeg, ffprobe,
-shared libraries, and licenses. Activate the installation with:
-
-```sh
-export PATH="$HOME/.local/ffmpeg/bin:$PATH"
-export LD_LIBRARY_PATH="$HOME/.local/ffmpeg/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
-```
-
-CI jobs use `.github/actions/setup-environment` for language and dependency
-installation. Its `backend`, `frontend`, and `media` inputs default to `'true'`;
-disable unneeded components per job. The offline full-app browser projects run
-inside the devcontainer, which installs Chromium and its Linux dependencies
-from the locked Playwright version. The live Discord browser job uses
-`playwright: 'true'` to set up Chromium on the runner. Node is always installed.
-The cache warmer enables Playwright too, without running tests.
-
-Media setup delegates to `.github/actions/setup-ffmpeg` to compile with this
-script on cache misses and restore the whole installation on exact cache hits.
-Changing the source version, checksum, flags, or action invalidates the cache.
-The host build uses Ubuntu libraries; continue checking the packaged Debian image
-when changing build configuration or runtime dependencies.
+Both the production image and the devcontainer use `scripts/build-ffmpeg.sh`,
+which verifies the pinned upstream source and installs FFmpeg, ffprobe, shared
+libraries, and licenses. Continue checking the packaged image when changing
+build configuration or runtime dependencies.
 
 Run `go test ./internal/musicprocessing -run '^TestUploadAudioFormatsIntegration$' -count=1`
 for generated WAV, MP3, AAC/M4A, ALAC/M4A, FLAC, Opus/WebM, Vorbis/Ogg, and WMA
@@ -104,13 +79,14 @@ codecs do not imply parity with Debian's optional external integrations.
 ### Getting started examples
 
 Edit snippets in `examples/`, never inside the embedded code blocks, then run
-`make gen-examples`. `make test-examples` requires `EXAMPLES_IMAGE`, which
-replaces the published image reference in the copied examples. Build the
-checkout under a local tag first:
+`make gen-examples`. The example harness needs the host Docker daemon and
+network; use its isolated devcontainer invocation on a Linux Docker host
+rather than granting the regular development container Docker access:
 
 ```sh
 docker build -f docker/Dockerfile -t rpg-audio-streamer:examples .
-EXAMPLES_IMAGE=rpg-audio-streamer:examples make test-examples
+devcontainer build --workspace-folder . --image-name rpg-audio-streamer-test-devcontainer
+EXAMPLES_IMAGE=rpg-audio-streamer:examples bash scripts/test-examples-in-devcontainer.sh
 ```
 
 The flows need host port 8080 and the container name `rpg-audio-streamer` to be
@@ -197,11 +173,17 @@ that lock. GitHub withholds repository secrets from fork and Dependabot pull
 requests. The live tests fail their configuration checks when required secrets
 are unavailable.
 
-Run the non-Discord browser projects locally in the devcontainer with
-`devcontainer exec --workspace-folder . sh -c 'cd ui && npm run test:e2e -- --project=chromium --project=chromium-timing --project=chromium-youtube'`.
-The matching CI job runs the same command in the devcontainer. The live Discord
-browser project remains on the CI runner because it uses the separately
-configured live-service environment.
+Run the non-Discord browser projects locally with the same command as CI:
+
+```sh
+devcontainer exec --workspace-folder . npm --prefix ui run test:e2e -- \
+  --project=chromium --project=chromium-timing --project=chromium-youtube
+```
+
+For local live Discord browser runs, make the private credential file available
+inside the container, then set `DISCORD_TEST_ENV_FILE` to its in-container path.
+Do not pass token values as CLI arguments. CI injects only the named variables
+into the live test processes, after the container image is built and started.
 
 ## Coverage policy
 

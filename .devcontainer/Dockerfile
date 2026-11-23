@@ -14,6 +14,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   build-essential \
   ca-certificates \
   curl \
+  docker-cli \
+  docker-compose \
   git-lfs \
   libmp3lame0 \
   libssl3t64 \
@@ -27,15 +29,6 @@ COPY --from=node /usr/local/bin/node /usr/local/bin/node
 COPY --from=node /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/npm
 RUN ln -sf ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
   && ln -sf ../lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx
-
-ENV PLAYWRIGHT_BROWSERS_PATH=/opt/playwright
-
-COPY ui/package.json ui/package-lock.json /tmp/playwright/
-RUN cd /tmp/playwright \
-  && npm ci --ignore-scripts --cache /tmp/npm-cache \
-  && ./node_modules/.bin/playwright install --with-deps chromium \
-  && rm -rf /tmp/playwright /tmp/npm-cache \
-  && chown -R vscode:vscode "$PLAYWRIGHT_BROWSERS_PATH"
 
 COPY --from=ffmpeg-builder /opt/ffmpeg /opt/ffmpeg
 COPY scripts/install-libdave.sh /tmp/install-libdave.sh
@@ -77,3 +70,10 @@ ENV PKG_CONFIG_PATH="/opt/libdave/lib/pkgconfig" \
 
 # Some Docker DNS forwarders reject EDNS0 queries from the Go module client.
 ENV GODEBUG=netedns0=0
+
+ENV PLAYWRIGHT_BROWSERS_PATH=/opt/playwright
+RUN --mount=type=bind,source=ui/package-lock.json,target=/tmp/ui-package-lock.json \
+  version="$(node -p 'require("/tmp/ui-package-lock.json").packages["node_modules/playwright"].version')" \
+  && npm exec --yes --cache /tmp/npm-cache --package "playwright@$version" -- playwright install --with-deps chromium \
+  && rm -rf /tmp/npm-cache /var/lib/apt/lists/* \
+  && chown -R vscode:vscode "$PLAYWRIGHT_BROWSERS_PATH"

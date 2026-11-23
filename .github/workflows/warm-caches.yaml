@@ -14,11 +14,14 @@ concurrency:
 
 jobs:
   warm:
-    name: Warm CI Caches
-    runs-on: ubuntu-latest
+    name: Warm Devcontainer Layers (${{ matrix.runner }})
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 45
+    strategy:
+      matrix:
+        runner: [ubuntu-latest, ubuntu-24.04-arm]
     steps:
       - uses: actions/checkout@v7
-      - uses: ./.github/actions/setup-environment
+      - uses: ./.github/actions/test-devcontainer
         with:
-          playwright: 'true'
+          mode: warm

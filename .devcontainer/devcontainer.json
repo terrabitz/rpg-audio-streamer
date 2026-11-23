@@ -6,6 +6,7 @@
 	},
 	"remoteUser": "vscode",
 	"postCreateCommand": "go mod download && npm --prefix ui ci",
+	"waitFor": "postCreateCommand",
 	"forwardPorts": [
 		5173,
 		8080

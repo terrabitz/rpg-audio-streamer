@@ -57,12 +57,12 @@ test(
       enabled: false, state: 'disconnected',
     })
     const settingsPath = `/api/v1/tables/${table.externalID}/settings`
-    const defaults = { masterVolume: 100, typeVolumes: {}, trackVolumes: {}, trackOrder: [] }
+    const defaults = { masterVolume: 100, typeVolumes: {}, trackOrder: [] }
     assert.deepEqual(await json(a, settingsPath, cookie), defaults)
     await response(a, settingsPath, cookie, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ masterVolume: 0, trackVolumes: { [tracks[0].id]: 35 }, trackOrder: [tracks[0].id] }),
+      body: JSON.stringify({ masterVolume: 0, trackOrder: [tracks[0].id] }),
     })
     assert.equal((await json(a, settingsPath, cookie)).masterVolume, 0)
     const otherTable = (await json(b, '/api/v1/tables', otherCookie))[0]

@@ -8,11 +8,9 @@ tags: [operations, ci, testing]
 
 # Pull request checks
 
-All pull requests run the Go tests, frontend domain tests, seeded development
-tests, and full-app browser suite in `pr-checks` (see
-[test layers](./test-layers.md)). `dorny/paths-filter` selects frontend
-lint/build and Docker checks for their inputs. Changes to the workflow select
-every check; manual runs also execute every check.
+The `pr-checks` workflow selects Go, frontend, seeded development, browser,
+and packaging checks by changed paths (see [test layers](./test-layers.md)).
+Changes to the workflow select every check; manual runs also execute every check.
 
 Offline Go tests retain the internal coverage gate, including SQLite and media
 integration tests. Non-Discord Playwright projects run in their own job.
@@ -21,30 +19,22 @@ lock, so they can run alongside each other and the live checks.
 
 ## Shared environment
 
-The `setup-environment` composite action owns Node setup and optional backend,
-frontend, media, and Playwright installation for the Go, live Discord browser,
-frontend lint/build/coverage, and cache-warming jobs. Backend setup installs
-Go, Go modules, and libdave; frontend setup enables npm caching and installs
-the locked dependencies. Media setup installs yt-dlp and delegates FFmpeg
-installation and caching to `setup-ffmpeg`. The non-Discord full-app browser
-suite runs inside the repository devcontainer. That image installs Chromium
-and its Linux dependencies using the Playwright version in
-`ui/package-lock.json`, so local and CI browser tests use the same browser and
-Linux runtime. The live Discord browser job continues to use the runner setup
-action and its cached Chromium bundle. Node is available for frontend tooling
-and yt-dlp's JavaScript runtime. Shared-action changes select frontend lint
-and build checks.
+Go, frontend, seeded development, browser, and documentation checks run inside
+the repository devcontainer. Its image supplies Go, Node, libdave, FFmpeg,
+yt-dlp, and Chromium with its Linux dependencies. The Playwright version comes
+from `ui/package-lock.json`, and workspace dependencies are installed when
+the devcontainer starts. The same definition is used for local tests.
 
 ## Default-branch caches
 
-The `warm-caches` workflow uses `setup-environment` to install backend, frontend,
-media, and Playwright dependencies on pushes to `main`, and supports manual
-dispatch. It uses the same runner, dependency manifests, setup actions, and
-cache keys as the PR jobs, so new pull requests can restore the default branch's
-Go module, npm download, compiled FFmpeg, and live-browser Chromium caches. It
-runs no tests and requires no Discord secrets. Chromium and FFmpeg caches are
-saved at the end of a successful job. Caches are immutable per key; dependency
-or FFmpeg build-input changes produce new entries.
+The `warm-caches` workflow exports Dev Container CLI builds to the GitHub
+Actions BuildKit cache on pushes to `main` and on manual dispatch, with
+separate scopes for amd64 and arm64. PR checks import the matching scope.
+The PR's single amd64 cache-preparation job fills new layers before app test
+jobs fan out; those jobs only read the cache. The export includes intermediate
+stages, so changes to the browser install do not require recompiling FFmpeg.
+BuildKit invalidates layers when their inputs change, including the Playwright
+lockfile and shared installer scripts.
 
 ## Docker checks
 
@@ -54,7 +44,8 @@ Pull requests that touch any image input or the
 multi-arch manifest to `ghcr.io/terrabitz/rpg-audio-streamer/dev`, tagged with
 the pull request head commit SHA, rather than the release repository. A separate
 `examples` job depends on the build, pulls that image on amd64 and arm64
-runners, and runs the getting started examples against it. The checks also
+runners, and runs the example harness in the devcontainer image against it.
+Only this harness needs the host Docker socket and network. The checks also
 verify that the Dockerfile's Go and Node base images match
 `go.mod` and `ui/.nvmrc`, since dependency bumps do not update the Dockerfile.
 
@@ -74,16 +65,9 @@ source files. It needs no image build.
 
 ## FFmpeg in tests
 
-The Go and browser jobs compile the headless FFmpeg tools using the same pinned
-source archive and build script as the [runtime image](./release-pipeline.md).
-The local `setup-ffmpeg` action caches the installation, including ffprobe and
-shared libraries, by operating system release, architecture, and the build script
-and action contents. Exact cache hits skip compilation; runtime dependencies
-are still installed. Both suites put this installation first on `PATH`.
-
-CI builds against Ubuntu's libraries while the image builds against Debian's.
-Sharing the source and configuration aligns media capabilities, but does not
-replace testing the packaged image for ABI and runtime dependency compatibility.
+The devcontainer builds the headless FFmpeg tools with the same pinned source
+archive and build script as the [runtime image](./release-pipeline.md).
+The example tests exercise the packaged runtime separately.
 
 ## Live Discord validation
 
@@ -93,6 +77,8 @@ repository secrets from fork and Dependabot pull requests; the live tests fail
 their configuration checks when required secrets are unavailable.
 Only these two jobs share the
 `discord-live` concurrency queue, serializing bot access across jobs and runs.
+They pass credentials by environment variable name to the test process, not
+to the image build or the container's dependency setup.
 The browser Discord job does not upload failure diagnostics.
 
 ## Required check
