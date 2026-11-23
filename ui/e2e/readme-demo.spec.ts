@@ -1,5 +1,6 @@
 import { setTimeout as delay } from 'node:timers/promises'
 import { fileURLToPath } from 'node:url'
+import type { Locator, Page } from '@playwright/test'
 import { expect, recording, test } from './fixtures'
 import { login, uploadTrack } from './helpers'
 
@@ -35,29 +36,29 @@ test('GM switches music while a player listens', async ({ page, browser, recordF
       .filter((el): el is HTMLMediaElement => el instanceof HTMLMediaElement && !el.paused && el.currentTime > 0)
       .map(el => Math.round(el.duration)).sort((a, b) => a - b))
 
-    await page.mouse.move(-32, -32)
+    await parkDemoCursor(page)
     recordFlow.start()
     await holdDemoBeat()
-    await page.getByRole('group', { name: first, exact: true }).click()
+    await clickDemoControl(page.getByRole('group', { name: first, exact: true }))
     await expect(sidebar.getByRole('group', { name: `Playing ${first}`, exact: true })).toBeVisible()
     await expect.poll(playingDurations).toEqual([30])
     await expect(status).toHaveText('Now Playing')
     await holdDemoBeat()
-    await page.getByRole('group', { name: second, exact: true }).click()
+    await clickDemoControl(page.getByRole('group', { name: second, exact: true }))
     await expect(sidebar.getByRole('group', { name: `Playing ${second}`, exact: true })).toBeVisible()
     await expect(sidebar.getByRole('group', { name: `Playing ${first}`, exact: true })).toHaveCount(0)
     await expect.poll(playingDurations).toEqual([45])
     await holdDemoBeat()
-    await page.getByRole('group', { name: effect, exact: true }).click()
+    await clickDemoControl(page.getByRole('group', { name: effect, exact: true }))
     await expect(sidebar.getByRole('group', { name: `Playing ${effect}`, exact: true })).toBeVisible()
     await expect.poll(playingDurations).toEqual([12, 45])
     await holdDemoBeat()
-    await sidebar.getByRole('button', { name: `Pause ${effect}`, exact: true }).click()
-    await sidebar.getByRole('button', { name: `Pause ${second}`, exact: true }).click()
+    await clickDemoControl(sidebar.getByRole('button', { name: `Pause ${effect}`, exact: true }))
+    await clickDemoControl(sidebar.getByRole('button', { name: `Pause ${second}`, exact: true }))
     await expect(sidebar.getByText('No tracks playing.')).toBeVisible()
     await expect.poll(playingDurations).toEqual([])
     await expect(status).toHaveText('Nothing is playing')
-    await page.mouse.move(-32, -32)
+    await parkDemoCursor(page)
     recordFlow.stop()
 
     if (screenshotOptions) {
@@ -68,6 +69,25 @@ test('GM switches music while a player listens', async ({ page, browser, recordF
     await playerContext.close()
   }
 })
+
+async function clickDemoControl(control: Locator) {
+  if (recording) {
+    await control.hover()
+    await settleDemoCursor()
+  }
+  await control.click()
+}
+
+async function parkDemoCursor(page: Page) {
+  if (!recording) return
+  await page.mouse.move(1200, 680)
+  await settleDemoCursor()
+}
+
+async function settleDemoCursor() {
+  // Leave a visible beat after the recording overlay's 300 ms glide.
+  await delay(500)
+}
 
 async function holdDemoBeat() {
   if (recording) await delay(2000)

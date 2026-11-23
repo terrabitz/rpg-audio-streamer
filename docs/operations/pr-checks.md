@@ -97,7 +97,8 @@ The browser Discord job does not upload failure diagnostics.
 
 The README demo check reuses the browser recording harness to produce a looping
 GIF of a GM switching music, playing a one-shot, and stopping playback while a
-player listens in a separate browser context. On
+player listens in a separate browser context. The GM cursor settles before
+each click and returns to the same resting spot at the end of the loop. On
 pull requests that change browser or server inputs, it
 compares stable GM and player screenshots with the checked-in baselines.
 Pointer overlays and playback-position motion are excluded from comparison.
