@@ -78,3 +78,28 @@ it('shows connection status on the disconnect button and returns to connect when
     wrapper.unmount()
   }
 })
+
+it('keeps the connect button primary while audio is connecting', async () => {
+  setActivePinia(createPinia())
+  const ws = useWebSocketStore()
+  let resolveConnection!: () => void
+  vi.spyOn(ws, 'connect').mockReturnValue(new Promise<void>(resolve => { resolveConnection = resolve }))
+  vi.spyOn(ws, 'disconnect').mockImplementation(() => { ws.isConnected = false })
+  vi.spyOn(ws, 'sendEvent').mockImplementation(() => {})
+  const wrapper = shallowMount(TableViewPlayer, { global: { renderStubDefaultSlot: true } })
+  try {
+    const button = wrapper.get('v-btn-stub')
+    await button.trigger('click')
+    expect(button.text()).toContain('Connecting...')
+    expect(button.attributes('loading')).toBe('true')
+    expect(button.attributes('color')).toBe('primary')
+    ws.isConnected = true
+    resolveConnection()
+    await nextTick()
+    await nextTick()
+    expect(button.text()).toContain('Connected')
+    expect(button.attributes('color')).toBe('success')
+  } finally {
+    wrapper.unmount()
+  }
+})
