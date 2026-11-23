@@ -20,21 +20,22 @@ lock, so they can run alongside each other and the live checks.
 ## Shared environment
 
 Go, frontend, seeded development, browser, and documentation checks run inside
-the repository devcontainer. Its image supplies Go, Node, libdave, FFmpeg,
-yt-dlp, and Chromium with its Linux dependencies. The Playwright version comes
-from `ui/package-lock.json`, and workspace dependencies are installed when
-the devcontainer starts. The same definition is used for local tests.
+the repository devcontainer using the official `devcontainers/ci` action. Its
+image supplies Go, Node, libdave, FFmpeg, yt-dlp, and Chromium with its Linux
+dependencies. The Playwright version comes from `ui/package-lock.json`, and
+workspace dependencies are installed when the devcontainer starts. The same
+definition is used for local tests.
 
 ## Default-branch caches
 
-The `warm-caches` workflow exports Dev Container CLI builds to the GitHub
-Actions BuildKit cache on pushes to `main` and on manual dispatch, with
-separate scopes for amd64 and arm64. PR checks import the matching scope.
-The PR's single amd64 cache-preparation job fills new layers before app test
-jobs fan out; those jobs only read the cache. The export includes intermediate
-stages, so changes to the browser install do not require recompiling FFmpeg.
-BuildKit invalidates layers when their inputs change, including the Playwright
-lockfile and shared installer scripts.
+The `warm-caches` workflow uses `devcontainers/ci` to export builds to the
+GitHub Actions BuildKit cache on pushes to `main` and on manual dispatch, with
+separate scopes for amd64 and arm64. PR checks import the matching scope. The
+PR's amd64 cache-preparation job fills new layers before the test jobs fan out;
+the arm64 example job also exports its layers for subsequent runs. The export
+includes intermediate stages, so changes to the browser install do not require
+recompiling FFmpeg. BuildKit invalidates layers when their inputs change,
+including the Playwright lockfile and shared installer scripts.
 
 ## Docker checks
 
@@ -77,8 +78,10 @@ repository secrets from fork and Dependabot pull requests; the live tests fail
 their configuration checks when required secrets are unavailable.
 Only these two jobs share the
 `discord-live` concurrency queue, serializing bot access across jobs and runs.
-They pass credentials by environment variable name to the test process, not
-to the image build or the container's dependency setup.
+The official action expands its environment input into CLI arguments, so it
+starts these containers without credentials. A separate `docker exec` passes
+credentials by environment variable name to the test process, not to the image
+build or the container's dependency setup.
 The browser Discord job does not upload failure diagnostics.
 
 ## Required check

@@ -90,13 +90,17 @@ jobs:
         github.event_name == 'workflow_dispatch' ||
         needs.changes.outputs.backend == 'true' ||
         needs.changes.outputs.frontend == 'true' ||
+        needs.changes.outputs.docker == 'true' ||
         needs.changes.outputs.embeds == 'true'
       )
     steps:
       - uses: actions/checkout@v7
-      - uses: ./.github/actions/test-devcontainer
+      - uses: docker/setup-buildx-action@v4
+      - uses: devcontainers/ci@v0.3
         with:
-          mode: warm
+          push: never
+          cacheFrom: type=gha,scope=test-devcontainer-${{ runner.arch }}
+          cacheTo: type=gha,scope=test-devcontainer-${{ runner.arch }},mode=max
 
   go:
     name: Go Offline Tests and Coverage
@@ -111,9 +115,14 @@ jobs:
       )
     steps:
       - uses: actions/checkout@v7
-      - uses: ./.github/actions/test-devcontainer
+      - uses: docker/setup-buildx-action@v4
       - name: Run offline Go tests and coverage
-        run: npx --yes --package @devcontainers/cli@0.91.0 devcontainer exec --workspace-folder . --remote-env CI=true make test-go
+        uses: devcontainers/ci@v0.3
+        with:
+          push: never
+          cacheFrom: type=gha,scope=test-devcontainer-${{ runner.arch }}
+          env: CI=true
+          runCmd: make test-go
 
   go-discord:
     name: Go Discord Integration
@@ -131,18 +140,31 @@ jobs:
       queue: max
     steps:
       - uses: actions/checkout@v7
-      - uses: ./.github/actions/test-devcontainer
+      - uses: docker/setup-buildx-action@v4
+      # The action expands its env input into CLI arguments, so inject secrets after startup.
+      - name: Start test devcontainer
+        uses: devcontainers/ci@v0.3
         id: devcontainer
+        with:
+          push: never
+          cacheFrom: type=gha,scope=test-devcontainer-${{ runner.arch }}
+          runCmd: printf 'workspace=%s\n' "$PWD" >> "$GITHUB_OUTPUT"
       - name: Run live Discord connection integration
         run: |
+          container_id=$(docker ps -q \
+            --filter "label=devcontainer.local_folder=$GITHUB_WORKSPACE" \
+            --filter "label=devcontainer.config_file=$GITHUB_WORKSPACE/.devcontainer/devcontainer.json")
+          if [[ -z "$container_id" || "$container_id" == *$'\n'* ]]; then
+            echo "::error::Expected exactly one running test devcontainer."
+            exit 1
+          fi
           docker exec --user vscode --workdir "$WORKSPACE" \
             --env CI=true --env DISCORD_LIVE_INTEGRATION=1 \
             --env INTEGRATION_TEST_DISCORD_SERVER_ID \
             --env INTEGRATION_TEST_DISCORD_VOICE_CHANNEL_ID \
             --env INTEGRATION_TEST_DISCORD_BOT_STREAMER_TOKEN \
-            "$CONTAINER_ID" go test -count=1 -race ./internal/discord -run '^TestLiveVoiceConnection$'
+            "$container_id" go test -count=1 -race ./internal/discord -run '^TestLiveVoiceConnection$'
         env:
-          CONTAINER_ID: ${{ steps.devcontainer.outputs.container-id }}
           WORKSPACE: ${{ steps.devcontainer.outputs.workspace }}
           INTEGRATION_TEST_DISCORD_SERVER_ID: ${{ secrets.INTEGRATION_TEST_DISCORD_SERVER_ID }}
           INTEGRATION_TEST_DISCORD_VOICE_CHANNEL_ID: ${{ secrets.INTEGRATION_TEST_DISCORD_VOICE_CHANNEL_ID }}
@@ -162,11 +184,16 @@ jobs:
       )
     steps:
       - uses: actions/checkout@v7
-      - uses: ./.github/actions/test-devcontainer
+      - uses: docker/setup-buildx-action@v4
       - name: Run non-Discord app UX suite in the devcontainer
-        run: >-
-          npx --yes --package @devcontainers/cli@0.91.0 devcontainer exec --workspace-folder . --remote-env CI=true
-          npm --prefix ui run test:e2e -- --project=chromium --project=chromium-timing --project=chromium-youtube
+        uses: devcontainers/ci@v0.3
+        with:
+          push: never
+          cacheFrom: type=gha,scope=test-devcontainer-${{ runner.arch }}
+          env: CI=true
+          runCmd: >-
+            npm --prefix ui run test:e2e --
+            --project=chromium --project=chromium-timing --project=chromium-youtube
       - name: Retain non-Discord UX failure diagnostics
         if: ${{ failure() }}
         uses: actions/upload-artifact@v7
@@ -192,19 +219,32 @@ jobs:
       queue: max
     steps:
       - uses: actions/checkout@v7
-      - uses: ./.github/actions/test-devcontainer
+      - uses: docker/setup-buildx-action@v4
+      # The action expands its env input into CLI arguments, so inject secrets after startup.
+      - name: Start test devcontainer
+        uses: devcontainers/ci@v0.3
         id: devcontainer
+        with:
+          push: never
+          cacheFrom: type=gha,scope=test-devcontainer-${{ runner.arch }}
+          runCmd: printf 'workspace=%s\n' "$PWD" >> "$GITHUB_OUTPUT"
       - name: Run live Discord app UX suite
         run: |
+          container_id=$(docker ps -q \
+            --filter "label=devcontainer.local_folder=$GITHUB_WORKSPACE" \
+            --filter "label=devcontainer.config_file=$GITHUB_WORKSPACE/.devcontainer/devcontainer.json")
+          if [[ -z "$container_id" || "$container_id" == *$'\n'* ]]; then
+            echo "::error::Expected exactly one running test devcontainer."
+            exit 1
+          fi
           docker exec --user vscode --workdir "$WORKSPACE" --env CI=true \
             --env INTEGRATION_TEST_DISCORD_SERVER_ID \
             --env INTEGRATION_TEST_DISCORD_VOICE_CHANNEL_ID \
             --env INTEGRATION_TEST_DISCORD_BOT_STREAMER_TOKEN \
             --env INTEGRATION_TEST_DISCORD_BOT_STREAMER_CLIENT_ID \
             --env INTEGRATION_TEST_DISCORD_BOT_LISTENER_TOKEN \
-            "$CONTAINER_ID" npm --prefix ui run test:e2e -- --project=chromium-discord
+            "$container_id" npm --prefix ui run test:e2e -- --project=chromium-discord
         env:
-          CONTAINER_ID: ${{ steps.devcontainer.outputs.container-id }}
           WORKSPACE: ${{ steps.devcontainer.outputs.workspace }}
           INTEGRATION_TEST_DISCORD_SERVER_ID: ${{ secrets.INTEGRATION_TEST_DISCORD_SERVER_ID }}
           INTEGRATION_TEST_DISCORD_VOICE_CHANNEL_ID: ${{ secrets.INTEGRATION_TEST_DISCORD_VOICE_CHANNEL_ID }}
@@ -224,8 +264,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: ./.github/actions/test-devcontainer
-      - run: npx --yes --package @devcontainers/cli@0.91.0 devcontainer exec --workspace-folder . --remote-env CI=true npm --prefix ui run lint:check
+      - uses: docker/setup-buildx-action@v4
+      - uses: devcontainers/ci@v0.3
+        with:
+          push: never
+          cacheFrom: type=gha,scope=test-devcontainer-${{ runner.arch }}
+          env: CI=true
+          runCmd: npm --prefix ui run lint:check
 
   build:
     name: Frontend Build
@@ -239,8 +284,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: ./.github/actions/test-devcontainer
-      - run: npx --yes --package @devcontainers/cli@0.91.0 devcontainer exec --workspace-folder . --remote-env CI=true npm --prefix ui run build
+      - uses: docker/setup-buildx-action@v4
+      - uses: devcontainers/ci@v0.3
+        with:
+          push: never
+          cacheFrom: type=gha,scope=test-devcontainer-${{ runner.arch }}
+          env: CI=true
+          runCmd: npm --prefix ui run build
 
   unit:
     name: Frontend Domain Coverage
@@ -254,9 +304,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: ./.github/actions/test-devcontainer
-      - run: npx --yes --package @devcontainers/cli@0.91.0 devcontainer exec --workspace-folder . --remote-env CI=true make test-ui
-      - run: npx --yes --package @devcontainers/cli@0.91.0 devcontainer exec --workspace-folder . --remote-env CI=true make test-dev
+      - uses: docker/setup-buildx-action@v4
+      - uses: devcontainers/ci@v0.3
+        with:
+          push: never
+          cacheFrom: type=gha,scope=test-devcontainer-${{ runner.arch }}
+          env: CI=true
+          runCmd: make test-ui && make test-dev
 
   docker:
     name: Build Docker Image
@@ -277,10 +331,10 @@ jobs:
 
   examples:
     name: Getting Started Examples (${{ matrix.arch }})
-    needs: docker
-    if: ${{ !cancelled() && needs.docker.result == 'success' }}
+    needs: [docker, test-image]
+    if: ${{ !cancelled() && needs.docker.result == 'success' && needs.test-image.result == 'success' }}
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 15
+    timeout-minutes: 25
     permissions:
       contents: read
       packages: read
@@ -294,9 +348,13 @@ jobs:
             runner: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@v7
-      - uses: ./.github/actions/test-devcontainer
+      - uses: docker/setup-buildx-action@v4
+      - uses: devcontainers/ci@v0.3
         with:
-          mode: image
+          push: never
+          imageName: rpg-audio-streamer-test-devcontainer
+          cacheFrom: type=gha,scope=test-devcontainer-${{ runner.arch }}
+          cacheTo: ${{ matrix.arch == 'arm64' && format('type=gha,scope=test-devcontainer-{0},mode=max', runner.arch) || '' }}
       - name: Login to GitHub Container Registry
         uses: docker/login-action@v4
         with:
@@ -324,9 +382,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: ./.github/actions/test-devcontainer
+      - uses: docker/setup-buildx-action@v4
       - name: Verify embedded examples
-        run: npx --yes --package @devcontainers/cli@0.91.0 devcontainer exec --workspace-folder . --remote-env CI=true make verify-examples
+        uses: devcontainers/ci@v0.3
+        with:
+          push: never
+          cacheFrom: type=gha,scope=test-devcontainer-${{ runner.arch }}
+          env: CI=true
+          runCmd: make verify-examples
 
   pr-checks:
     name: PR Checks
