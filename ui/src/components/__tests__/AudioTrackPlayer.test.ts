@@ -949,3 +949,25 @@ it('keeps the player fade-out on the live playhead before restoring the shared p
     expect(primary.currentTime).toBe(10)
   } finally { player.unmount() }
 })
+
+it('keeps local playback active when a loop hands off to the second media element', async () => {
+  const { player, audio, primary, secondary } = await mountPlaying({})
+  try {
+    await player.get('video').trigger('playing')
+    vi.mocked(primary.pause).mockImplementation(() => {
+      Object.defineProperty(primary, 'paused', { configurable: true, value: true })
+      primary.dispatchEvent(new Event('pause'))
+    })
+    primary.currentTime = 58
+    await player.get('video').trigger('timeupdate')
+    primary.currentTime = 60
+    secondary.currentTime = 2
+    await player.get('video').trigger('timeupdate')
+    expect(audio.localPlayback.has('forest')).toBe(true)
+    await player.get('audio').trigger('pause')
+    expect(audio.localPlayback.has('forest')).toBe(true)
+    Object.defineProperty(secondary, 'paused', { configurable: true, value: true })
+    await player.get('audio').trigger('pause')
+    expect(audio.localPlayback.has('forest')).toBe(false)
+  } finally { player.unmount() }
+})
