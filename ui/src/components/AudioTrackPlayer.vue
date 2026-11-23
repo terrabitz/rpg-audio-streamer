@@ -302,6 +302,7 @@ function finishOverlap() {
   const completedSeek = overlap.seekStart !== undefined
   pauseMedia(overlap.outgoing)
   active.value = overlap.incoming
+  audioStore.setLocalPlayback(props.fileID, !incoming.paused)
   overlap = undefined
   updatePlaybackState({
     currentTime: incoming.currentTime, ...(completedSeek ? { seekTarget: null, seekLanding: null } : {}),
@@ -314,6 +315,8 @@ function cancelOverlap(adoptSeek = true) {
   if (adoptSeek && overlap.seekStart !== undefined) {
     pauseMedia(overlap.outgoing)
     active.value = overlap.incoming
+    const incoming = element(active.value)
+    audioStore.setLocalPlayback(props.fileID, !!incoming && !incoming.paused)
   } else pauseMedia(overlap.incoming)
   overlap = undefined
   applyVolumes()

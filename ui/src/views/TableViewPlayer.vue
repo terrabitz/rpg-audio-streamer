@@ -21,8 +21,17 @@ const externalID = route.params.externalID as string
 
 const buttonLabel = computed(() => {
   if (connecting.value) return 'Connecting...'
-  if (audioStore.enabled) return 'Disconnect Audio'
-  return 'Connect Audio'
+  if (audioStore.enabled) return wsStore.isConnected ? 'Connected' : 'Disconnected'
+  return 'Connect'
+})
+
+const playbackStatus = computed(() => {
+  if (audioStore.blockedPlayback.size) {
+    return audioStore.localPlayback.size ? 'Some audio blocked' : 'Audio blocked'
+  }
+  if (audioStore.localPlayback.size) return 'Now Playing'
+  if (audioStore.availableTracks.some(track => track.isPlaying)) return 'Starting audio'
+  return 'Nothing is playing'
 })
 
 onMounted(() => {
@@ -74,14 +83,18 @@ function disconnectAudio() {
     <ErrorToast v-model="error" />
     <AudioPlayer v-if="audioStore.enabled" :tableID="externalID" instant-mixer-volume @error="error = $event" />
 
-    <div class="d-flex align-center mb-4">
+    <div class="mb-4">
       <v-btn size="x-large" @click="handleAudioToggle" :loading="connecting"
-        :color="audioStore.enabled ? 'error' : 'success'">
+        :color="!audioStore.enabled ? 'primary' : wsStore.isConnected ? 'success' : 'error'"
+        :aria-label="audioStore.enabled ? `${buttonLabel}, disconnect audio` : buttonLabel">
+        <span v-if="audioStore.enabled" class="playback-bars"
+          :class="{ 'playback-bars--active': audioStore.localPlayback.size }" aria-hidden="true">
+          <span></span><span></span><span></span>
+        </span>
         {{ buttonLabel }}
+        <v-tooltip v-if="audioStore.enabled" activator="parent" :text="playbackStatus" />
       </v-btn>
-      <v-chip v-if="audioStore.enabled" :color="wsStore.isConnected ? 'success' : 'error'" class="ml-4">
-        {{ wsStore.isConnected ? 'Connected' : 'Disconnected' }}
-      </v-chip>
+      <span v-if="audioStore.enabled" class="d-sr-only" role="status">{{ playbackStatus }}</span>
     </div>
 
     <VolumeMixer class="mt-4" />
@@ -89,3 +102,35 @@ function disconnectAudio() {
     <PlayerFileList v-if="debugStore.isDevMode" />
   </v-container>
 </template>
+
+<style scoped>
+.playback-bars {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 14px;
+  margin-right: 8px;
+}
+
+.playback-bars span {
+  width: 3px;
+  height: 4px;
+  border-radius: 2px;
+  background: currentColor;
+}
+
+.playback-bars--active span {
+  animation: playback-bar 0.8s ease-in-out infinite alternate;
+}
+
+.playback-bars--active span:nth-child(2) { animation-delay: -0.5s; }
+.playback-bars--active span:nth-child(3) { animation-delay: -0.25s; }
+
+@keyframes playback-bar {
+  to { height: 14px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .playback-bars--active span { animation: none; height: 10px; }
+}
+</style>
