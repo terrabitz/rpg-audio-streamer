@@ -1,0 +1,33 @@
+name: dev-image-cleanup
+
+on:
+  schedule:
+    - cron: '17 * * * *'
+  workflow_dispatch:
+    inputs:
+      dry-run:
+        description: Report the images that would be deleted without deleting them.
+        type: boolean
+        default: false
+
+permissions:
+  packages: write
+
+concurrency:
+  group: ${{ github.workflow }}
+
+jobs:
+  cleanup:
+    name: Delete Expired Dev Images
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: dataaxiom/ghcr-cleanup-action@v1
+        with:
+          package: rpg-audio-streamer/dev
+          older-than: 24 hours
+          keep-n-tagged: 0
+          delete-untagged: true
+          delete-ghost-images: true
+          delete-partial-images: true
+          dry-run: ${{ inputs.dry-run || false }}

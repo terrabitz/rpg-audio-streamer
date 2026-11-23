@@ -3,10 +3,11 @@
 
 ## Option 1: Docker Compose (Recommended)
 
-
-1. Create a docker-compose.yml:
+1. Create a `docker-compose.yml`:
 
    ```yaml
+   # examples/docker-compose/docker-compose.yml
+   
    services:
      rpg-audio-streamer:
        image: ghcr.io/terrabitz/rpg-audio-streamer:latest
@@ -14,47 +15,51 @@
        ports:
          - "8080:80"
        volumes:
-         - appdata:/app/data
-
+         - app_data:/app/data
+   
    volumes:
      app_data:
-   ```
-
-2. Start the server:
-
-   ```bash
-   docker compose up -d
-   ```
    
-3. Grab the claim code from the logs
+   ```
+
+2. Start the server and get the setup code from the logs:
 
    ```bash
+   # examples/docker-compose/install.sh
+   
+   # Start the server
+   docker compose up -d
+   
+   # Get the setup code from the logs
    docker compose logs rpg-audio-streamer
+   
    ```
+
+3. Use the setup code to log in at http://localhost:8080
 
 ## Option 2: Plain Docker
 
-1. Create data directories:
+1. Start the server and get the setup code from the logs:
 
    ```bash
+   # examples/docker/install.sh
+   
+   # Create the data directory
    mkdir -p data/uploads
-   ```
-
-2. Run the container:
-
-   ```bash
+   
+   # Run the container
    docker run -d \
      --name rpg-audio-streamer \
      -p 8080:80 \
      -v $PWD/data:/app/data \
      ghcr.io/terrabitz/rpg-audio-streamer:latest
-   ```
-
-3. Use the setup code in the logs to login at http://localhost:8080
-
-   ```bash
+   
+   # Get the setup code from the logs
    docker logs rpg-audio-streamer
+   
    ```
+
+2. Use the setup code to log in at http://localhost:8080
 
 ## Configuration
 

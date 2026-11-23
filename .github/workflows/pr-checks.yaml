@@ -23,6 +23,7 @@ jobs:
       backend: ${{ steps.filter.outputs.backend }}
       frontend: ${{ steps.filter.outputs.frontend }}
       docker: ${{ steps.filter.outputs.docker }}
+      embeds: ${{ steps.filter.outputs.embeds }}
     steps:
       - uses: dorny/paths-filter@v4
         id: filter
@@ -57,6 +58,14 @@ jobs:
               - 'ui/**'
               - '.github/workflows/pr-checks.yaml'
               - '.github/workflows/docker-build.yaml'
+              - 'examples/**'
+            embeds:
+              - 'examples/**'
+              - 'README.md'
+              - 'INSTALLATION.md'
+              - 'Makefile'
+              - '.github/actions/**'
+              - '.github/workflows/pr-checks.yaml'
 
   go:
     name: Go Offline Tests and Coverage
@@ -335,11 +344,74 @@ jobs:
         needs.changes.outputs.docker == 'true'
       )
     uses: ./.github/workflows/docker-build.yaml
+    with:
+      push: true
+      image: ghcr.io/${{ github.repository }}/dev
+      tags: ${{ github.event.pull_request.head.sha || github.sha }}
+
+  examples:
+    name: Getting Started Examples (${{ matrix.arch }})
+    needs: docker
+    if: ${{ !cancelled() && needs.docker.result == 'success' }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-environment
+        with:
+          backend: 'false'
+          frontend: 'false'
+          media: 'false'
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Pull the branch image
+        run: docker pull "$EXAMPLES_IMAGE"
+        env:
+          EXAMPLES_IMAGE: ${{ needs.docker.outputs.image }}
+      - name: Run getting started examples
+        run: make test-examples
+        env:
+          EXAMPLES_IMAGE: ${{ needs.docker.outputs.image }}
+
+  embeds:
+    name: Embedded Examples Up To Date
+    needs: changes
+    if: |
+      !cancelled() && 
+      (
+        github.event_name == 'workflow_dispatch' || 
+        needs.changes.outputs.embeds == 'true'
+      )
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-environment
+        with:
+          backend: 'false'
+          frontend: 'false'
+          media: 'false'
+      - name: Verify embedded examples
+        run: make verify-examples
 
   pr-checks:
     name: PR Checks
     if: ${{ always() }}
-    needs: [changes, go, go-discord, e2e, e2e-discord, readme-demo, publish-readme-demo, lint, build, unit, docker]
+    needs: [changes, go, go-discord, e2e, e2e-discord, readme-demo, publish-readme-demo, lint, build, unit, docker, examples, embeds]
     runs-on: ubuntu-latest
     steps:
       - name: Require all selected checks to pass
