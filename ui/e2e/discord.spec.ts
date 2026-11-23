@@ -156,7 +156,13 @@ async function chooseDiscordDestination(page: Page, saved = false) {
     await page.getByRole('option', { name: channel.name, exact: true }).click()
   }
   await expect(dialog.getByRole('button', { name: 'Connect', exact: true })).toBeEnabled()
-  await dialog.getByRole('button', { name: 'Connect', exact: true }).click()
+  const [response] = await Promise.all([
+    page.waitForResponse(response => response.request().method() === 'POST' &&
+      new URL(response.url()).pathname === `/api/v1/tables/${new URL(page.url()).pathname.split('/').pop()}/discord`,
+    { timeout: 30_000 }),
+    dialog.getByRole('button', { name: 'Connect', exact: true }).click(),
+  ])
+  expect(response.status(), 'Discord connect HTTP status').toBe(200)
   await expect(dialog).toBeHidden()
   const disconnectButton = page.getByRole('button', { name: 'Connected', exact: true })
   await expect(disconnectButton).toBeVisible()
