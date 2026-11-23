@@ -23,6 +23,7 @@ jobs:
       backend: ${{ steps.filter.outputs.backend }}
       frontend: ${{ steps.filter.outputs.frontend }}
       docker: ${{ steps.filter.outputs.docker }}
+      embeds: ${{ steps.filter.outputs.embeds }}
     steps:
       - uses: dorny/paths-filter@v4
         id: filter
@@ -58,6 +59,13 @@ jobs:
               - '.github/workflows/pr-checks.yaml'
               - '.github/workflows/docker-build.yaml'
               - 'examples/**'
+            embeds:
+              - 'examples/**'
+              - 'README.md'
+              - 'INSTALLATION.md'
+              - 'Makefile'
+              - '.github/actions/**'
+              - '.github/workflows/pr-checks.yaml'
 
   go:
     name: Go Offline Tests and Coverage
@@ -286,10 +294,30 @@ jobs:
         env:
           EXAMPLES_IMAGE: ${{ needs.docker.outputs.image }}
 
+  embeds:
+    name: Embedded Examples Up To Date
+    needs: changes
+    if: |
+      !cancelled() && 
+      (
+        github.event_name == 'workflow_dispatch' || 
+        needs.changes.outputs.embeds == 'true'
+      )
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-environment
+        with:
+          backend: 'false'
+          frontend: 'false'
+          media: 'false'
+      - name: Verify embedded examples
+        run: make verify-examples
+
   pr-checks:
     name: PR Checks
     if: ${{ always() }}
-    needs: [changes, go, go-discord, e2e, e2e-discord, lint, build, unit, docker, examples]
+    needs: [changes, go, go-discord, e2e, e2e-discord, lint, build, unit, docker, examples, embeds]
     runs-on: ubuntu-latest
     steps:
       - name: Require all selected checks to pass

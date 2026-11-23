@@ -1,7 +1,7 @@
 EMBEDME := npx --yes embedme@1.22.1
 EXAMPLE_DOCS := README.md INSTALLATION.md
 
-.PHONY: dev devcontainer-build test-dev ui go test test-go test-ui test-e2e test-examples record-e2e gen gen-sqlc gen-api-client gen-docs gen-examples
+.PHONY: dev devcontainer-build test-dev ui go test test-go test-ui test-e2e test-examples verify-examples record-e2e gen gen-sqlc gen-api-client gen-docs gen-examples
 
 ui:
 	cd ui && npm install && npm run dev
@@ -32,8 +32,10 @@ test-e2e:
 	cd ui && npm run test:e2e
 
 test-examples:
-	$(EMBEDME) --verify $(EXAMPLE_DOCS)
 	node --test examples/examples.test.mjs
+
+verify-examples:
+	$(EMBEDME) --verify $(EXAMPLE_DOCS)
 
 record-e2e:
 	cd ui && npm run test:e2e:record -- $(if $(GREP),--grep "$(GREP)")

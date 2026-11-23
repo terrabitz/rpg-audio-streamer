@@ -39,7 +39,8 @@ Vue tooling.
 | `make test-ui` | Vitest domain coverage; enforce 80% statements, branches, functions, and lines |
 | `make test-e2e` | Production UI build and real full-app Chromium journeys including live Discord |
 | `make test-dev` | Seeded local dev startup, isolation, media fixtures, and cleanup |
-| `make test-examples` | Embedded snippet freshness and the README/installation Docker flows |
+| `make test-examples` | The README/installation Docker flows against `EXAMPLES_IMAGE` |
+| `make verify-examples` | Fail when embedded snippets differ from `examples/` |
 | `make gen-examples` | Re-embed `examples/` files into `README.md` and `INSTALLATION.md` |
 | `cd ui && npm run build` | Vue/TypeScript checking, including tests, and production bundle |
 | `cd ui && npm run lint:check` | Read-only frontend lint |

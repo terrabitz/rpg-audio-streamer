@@ -31,5 +31,7 @@ bind-mounted data, and temporary directory.
 
 The examples use a fixed host port 8080 and container name, so the flows run
 sequentially. The [pull request checks](./pr-checks.md) pull the commit's
-development image on amd64 and arm64 runners, verify that the embedded snippets
-match their source files, and run the flows.
+development image on amd64 and arm64 runners and run the flows. A separate,
+lightweight check verifies that the embedded snippets match their source files
+whenever the examples, the embedding documents, or the shared build tooling
+change.
