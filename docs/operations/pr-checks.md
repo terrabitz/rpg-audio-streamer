@@ -60,6 +60,10 @@ verify that the Dockerfile's Go and Node base images match
 Fork and Dependabot pull requests receive a read-only `GITHUB_TOKEN`, so their
 development image push fails.
 
+The hourly `dev-image-cleanup` workflow uses `dataaxiom/ghcr-cleanup-action`
+to delete every tagged and untagged development image older than 24 hours,
+along with incomplete multi-arch images. Manual dispatch supports a dry run.
+
 ## FFmpeg in tests
 
 The Go and browser jobs compile the headless FFmpeg tools using the same pinned
