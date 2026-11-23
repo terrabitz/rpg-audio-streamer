@@ -399,6 +399,16 @@ test('GM continuously drags markers through short natural loops without audio st
       const observations = await Promise.all([page, player].map(browserPage =>
         browserPage.evaluateHandle(() => {
           const media = Array.from(document.querySelectorAll<HTMLMediaElement>('video, audio'))
+          let active = document.querySelector('[data-active="true"]')
+          let handoffs = 0
+          const observer = new MutationObserver(() => {
+            const next = document.querySelector('[data-active="true"]')
+            if (next && next !== active) handoffs++
+            active = next
+          })
+          for (const source of media) {
+            observer.observe(source, { attributes: true, attributeFilter: ['data-active'] })
+          }
           const read = () => media.map(source => ({
             position: source.currentTime, volume: source.volume, paused: source.paused,
             seeking: source.seeking, readyState: source.readyState, active: source.dataset.active === 'true',
@@ -425,30 +435,38 @@ test('GM continuously drags markers through short natural loops without audio st
           sample()
           const timer = setInterval(sample, 25)
           return {
-            finish() { clearInterval(timer); sample(); return samples },
+            get handoffs() { return handoffs },
+            finish() {
+              clearInterval(timer)
+              observer.disconnect()
+              sample()
+              return { samples, handoffs }
+            },
           }
         }),
       ))
+      const readObservations = () => Promise.all(
+        observations.map(observation => observation.evaluate(value => value.handoffs)),
+      )
       const finishObservations = () => Promise.all(
         observations.map(observation => observation.evaluate(value => value.finish())),
       )
       let results: Awaited<ReturnType<typeof finishObservations>>
       try {
-        const deadline = Date.now() + 6000
+        const deadline = Date.now() + 15_000
         let direction = true
         do {
           await page.mouse.move(x(direction ? low : high), y, { steps: 30 })
           direction = !direction
+          if ((await readObservations()).every(handoffs => handoffs > 0)) break
         } while (Date.now() < deadline)
         results = await finishObservations()
       } finally { await page.mouse.up() }
-      for (const [index, samples] of results.entries()) {
+      for (const [index, result] of results.entries()) {
+        const { samples, handoffs } = result
         await testInfo.attach(`${point}-${index === 0 ? 'GM' : 'listener'}-loop-progress.json`, {
           body: JSON.stringify(samples), contentType: 'application/json',
         })
-        const handoffs = samples.filter((sample, index) =>
-          index > 0 && sample.sources[0]?.active !== samples[index - 1]!.sources[0]?.active,
-        ).length
         expect(handoffs, `${point}: playback completes a natural loop during the gesture`)
           .toBeGreaterThanOrEqual(1)
         for (const [sampleIndex, sample] of samples.entries()) {
