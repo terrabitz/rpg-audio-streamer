@@ -41,6 +41,7 @@ jobs:
               - 'ui/**'
               - 'scripts/**'
               - 'openapi.yaml'
+              - '.devcontainer/**'
               - 'Makefile'
               - '.github/actions/**'
               - '.github/workflows/pr-checks.yaml'
@@ -121,12 +122,11 @@ jobs:
       )
     steps:
       - uses: actions/checkout@v7
-      - uses: ./.github/actions/setup-environment
+      - name: Run non-Discord app UX suite in the devcontainer
+        uses: devcontainers/ci@v0.3
         with:
-          playwright: 'true'
-      - name: Run non-Discord app UX suite
-        working-directory: ui
-        run: npm run test:e2e -- --project=chromium --project=chromium-timing --project=chromium-youtube
+          runCmd: >-
+            cd ui && npm run test:e2e -- --project=chromium --project=chromium-timing --project=chromium-youtube
       - name: Retain non-Discord UX failure diagnostics
         if: ${{ failure() }}
         uses: actions/upload-artifact@v7

@@ -21,28 +21,30 @@ lock, so they can run alongside each other and the live checks.
 
 ## Shared environment
 
-The local `setup-environment` composite action owns Node setup and optional
-backend, frontend, media, and Playwright installation for the Go, browser,
+The `setup-environment` composite action owns Node setup and optional backend,
+frontend, media, and Playwright installation for the Go, live Discord browser,
 frontend lint/build/coverage, and cache-warming jobs. Backend setup installs
 Go, Go modules, and libdave; frontend setup enables npm caching and installs
 the locked dependencies. Media setup installs yt-dlp and delegates FFmpeg
-installation and caching to `setup-ffmpeg`. Browser jobs cache the Chromium
-bundle by Playwright version, runner OS release, and architecture. Exact cache
-hits skip the browser download; system dependencies are installed on every
-runner. The Playwright npm packages use the existing npm download cache.
-Jobs select components independently;
-Node is available for frontend tooling and yt-dlp's JavaScript runtime.
-Shared-action changes select frontend lint and build checks.
+installation and caching to `setup-ffmpeg`. The non-Discord full-app browser
+suite runs inside the repository devcontainer. That image installs Chromium
+and its Linux dependencies using the Playwright version in
+`ui/package-lock.json`, so local and CI browser tests use the same browser and
+Linux runtime. The live Discord browser job continues to use the runner setup
+action and its cached Chromium bundle. Node is available for frontend tooling
+and yt-dlp's JavaScript runtime. Shared-action changes select frontend lint
+and build checks.
 
 ## Default-branch caches
 
 The `warm-caches` workflow uses `setup-environment` to install backend, frontend,
-media, and Playwright dependencies on pushes to `main`, and supports manual dispatch.
-It uses the same runner, dependency manifests, setup actions, and cache keys as
-the PR jobs, so new pull requests can restore the default branch's Go module,
-npm download, compiled FFmpeg, and Chromium caches. It runs no tests and requires no Discord secrets.
-Chromium and FFmpeg caches are saved at the end of a successful job. Caches are
-immutable per key; dependency or FFmpeg build-input changes produce new entries.
+media, and Playwright dependencies on pushes to `main`, and supports manual
+dispatch. It uses the same runner, dependency manifests, setup actions, and
+cache keys as the PR jobs, so new pull requests can restore the default branch's
+Go module, npm download, compiled FFmpeg, and live-browser Chromium caches. It
+runs no tests and requires no Discord secrets. Chromium and FFmpeg caches are
+saved at the end of a successful job. Caches are immutable per key; dependency
+or FFmpeg build-input changes produce new entries.
 
 ## Docker checks
 

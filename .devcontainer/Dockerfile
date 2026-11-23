@@ -28,6 +28,15 @@ COPY --from=node /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/npm
 RUN ln -sf ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
   && ln -sf ../lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx
 
+ENV PLAYWRIGHT_BROWSERS_PATH=/opt/playwright
+
+COPY ui/package.json ui/package-lock.json /tmp/playwright/
+RUN cd /tmp/playwright \
+  && npm ci --ignore-scripts --cache /tmp/npm-cache \
+  && ./node_modules/.bin/playwright install --with-deps chromium \
+  && rm -rf /tmp/playwright /tmp/npm-cache \
+  && chown -R vscode:vscode "$PLAYWRIGHT_BROWSERS_PATH"
+
 COPY --from=ffmpeg-builder /opt/ffmpeg /opt/ffmpeg
 COPY scripts/install-libdave.sh /tmp/install-libdave.sh
 RUN sh /tmp/install-libdave.sh /opt/libdave \

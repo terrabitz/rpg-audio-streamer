@@ -26,8 +26,10 @@ export LD_LIBRARY_PATH="$HOME/.local/libdave/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_
 
 On macOS, set `DYLD_LIBRARY_PATH` instead of `LD_LIBRARY_PATH`. The Linux
 release requires glibc 2.38 or newer; it does not support Alpine's musl.
-Install frontend dependencies with `cd ui && npm ci`. Install Chromium once
-with `cd ui && npx playwright install chromium` (Linux CI also runs `playwright install-deps chromium`).
+Install frontend dependencies with `cd ui && npm ci`. The devcontainer image
+includes Chromium and its Linux dependencies, installed from the Playwright
+version in `ui/package-lock.json`. On other Linux hosts, install Chromium with
+`cd ui && npx playwright install --with-deps chromium`.
 The UI compiler must remain compatible with `vue-tsc`; TypeScript 7's native
 package does not expose the JavaScript compiler API required by the current
 Vue tooling.
@@ -66,8 +68,10 @@ export LD_LIBRARY_PATH="$HOME/.local/ffmpeg/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_P
 
 CI jobs use `.github/actions/setup-environment` for language and dependency
 installation. Its `backend`, `frontend`, and `media` inputs default to `'true'`;
-disable unneeded components per job. Set `playwright: 'true'` in browser jobs
-to set up Chromium after frontend dependencies. Node is always installed.
+disable unneeded components per job. The offline full-app browser projects run
+inside the devcontainer, which installs Chromium and its Linux dependencies
+from the locked Playwright version. The live Discord browser job uses
+`playwright: 'true'` to set up Chromium on the runner. Node is always installed.
 The cache warmer enables Playwright too, without running tests.
 
 Media setup delegates to `.github/actions/setup-ffmpeg` to compile with this
@@ -174,6 +178,12 @@ share a concurrency group; offline Go and non-Discord browser tests run without
 that lock. GitHub withholds repository secrets from fork and Dependabot pull
 requests. The live tests fail their configuration checks when required secrets
 are unavailable.
+
+Run the non-Discord browser projects locally in the devcontainer with
+`devcontainer exec --workspace-folder . sh -c 'cd ui && npm run test:e2e -- --project=chromium --project=chromium-timing --project=chromium-youtube'`.
+The matching CI job runs the same command in the devcontainer. The live Discord
+browser project remains on the CI runner because it uses the separately
+configured live-service environment.
 
 ## Coverage policy
 
