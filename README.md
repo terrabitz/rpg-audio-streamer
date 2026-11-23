@@ -15,17 +15,17 @@ A simple synchronized soundboard designed for tabletop RPGs, allowing game maste
 You easily get started using the Docker image
 
 ```bash
-# examples/quick-start.sh
+# examples/docker/install.sh
 
 # Create the data directory
 mkdir -p data/uploads
 
-# Run the image
+# Run the container
 docker run -d \
-   --name rpg-audio-streamer \
-   -p 8080:80 \
-   -v $PWD/data:/app/data \
-   ghcr.io/terrabitz/rpg-audio-streamer:latest
+  --name rpg-audio-streamer \
+  -p 8080:80 \
+  -v $PWD/data:/app/data \
+  ghcr.io/terrabitz/rpg-audio-streamer:latest
 
 # Get the setup code from the logs
 docker logs rpg-audio-streamer

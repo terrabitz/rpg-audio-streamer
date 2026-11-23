@@ -15,14 +15,6 @@ const container = 'rpg-audio-streamer'
 const appURL = 'http://localhost:8080'
 const exec = promisify(execFile)
 
-test('quick start exposes a setup code that claims the instance', { timeout: 180_000 }, async (t) => {
-  const dir = await workspace(t, 'quick-start.sh', removeContainerAndData)
-
-  await runScript(dir, 'quick-start.sh')
-
-  await claimWithLoggedCode(() => command(dir, 'docker', ['logs', container]))
-})
-
 test('docker compose installation exposes a setup code that claims the instance', { timeout: 180_000 }, async (t) => {
   const dir = await workspace(t, 'docker-compose', (dir) => command(dir, 'docker', ['compose', 'down', '--volumes']))
 
@@ -75,8 +67,7 @@ async function workspace(t, example, teardown) {
       await rm(dir, { recursive: true, force: true })
     }
   })
-  const destination = example.endsWith('.sh') ? join(dir, example) : dir
-  await cp(join(examples, example), destination, { recursive: true })
+  await cp(join(examples, example), dir, { recursive: true })
   await useImageUnderTest(dir)
   return dir
 }

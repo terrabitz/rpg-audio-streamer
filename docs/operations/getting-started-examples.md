@@ -1,7 +1,7 @@
 ---
 type: Quality Model
 title: Getting started examples
-description: Executable quick start and installation snippets embedded into the README and installation guide.
+description: Executable installation snippets embedded into the README and installation guide.
 resource: examples
 tags: [operations, testing, docker]
 ---
@@ -10,11 +10,11 @@ tags: [operations, testing, docker]
 
 ## Source of truth
 
-The quick start in `README.md` and the Docker Compose and plain Docker methods
-in `INSTALLATION.md` are generated from files in `examples/`. Each code block
-names its source file on its first line, and embedme copies that file's
-contents into the block. Documentation edits to these snippets belong in the
-example files.
+The Docker Compose and plain Docker methods in `INSTALLATION.md` are generated
+from files in `examples/`; the `README.md` quick start reuses the plain Docker
+script. Each code block names its source file on its first line, and embedme
+copies that file's contents into the block. Documentation edits to these
+snippets belong in the example files.
 
 ## Validation
 
