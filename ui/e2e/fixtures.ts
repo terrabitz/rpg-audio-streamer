@@ -137,7 +137,8 @@ export function slugify(title: string) {
 }
 
 function isGMPath(pathname: string) {
-  return /^\/(login|tables|library)(\/|$)/.test(pathname)
+  // The individual table URL is shared by both roles.
+  return /^\/(login|tables|library)\/?$/.test(pathname)
 }
 
 function gmLabel(label: string) {
@@ -148,7 +149,8 @@ function gmLabel(label: string) {
 function showInteractions(label: string) {
   const install = () => {
     const badge = document.createElement('div')
-    badge.textContent = /^\/(login|tables|library)(\/|$)/.test(location.pathname)
+    badge.dataset.recordingOverlay = ''
+    badge.textContent = /^\/(login|tables|library)\/?$/.test(location.pathname)
       ? label.replace(/^Player (\d+)/, 'GM (device $1)') : label
     badge.setAttribute('aria-hidden', 'true')
     Object.assign(badge.style, {
@@ -157,6 +159,7 @@ function showInteractions(label: string) {
       font: '600 16px system-ui, sans-serif',
     })
     const cursor = document.createElement('div')
+    cursor.dataset.recordingOverlay = ''
     cursor.setAttribute('aria-hidden', 'true')
     Object.assign(cursor.style, {
       position: 'fixed', left: '-100px', top: '-100px', width: '22px', height: '22px',

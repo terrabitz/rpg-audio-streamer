@@ -2,7 +2,7 @@
 
 A simple synchronized soundboard designed for tabletop RPGs, allowing game masters to manage and stream background music and sound effects during gameplay sessions.
 
-![RPG soundboard](./media/audio-playing.gif)
+![The GM switches music in the soundboard while a player listens in a second browser](./media/audio-playing.gif)
 
 ## Features
 

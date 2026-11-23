@@ -74,6 +74,20 @@ Only these two jobs share the
 `discord-live` concurrency queue, serializing bot access across jobs and runs.
 The browser Discord job does not upload failure diagnostics.
 
+## README demo
+
+The README demo check reuses the browser recording harness to capture a GM
+switching music while a player listens in a separate browser context. On
+pull requests that change browser or server inputs, it
+compares stable GM and player screenshots with the checked-in baselines.
+Pointer overlays and playback-position motion are excluded from comparison,
+and each screenshot tolerates up to 0.2% differing pixels.
+Only missing or materially changed baselines cause the Git LFS GIF and
+checkpoints to be refreshed. The check attaches changed media as an artifact.
+A separate job pushes those assets only to the current head of a same-repository
+PR branch, excluding Dependabot and the default branch. A push with the built-in
+GitHub token requires approval for the subsequent PR workflow run.
+
 ## Required check
 
 The final `PR Checks` job depends on path detection and all check jobs, accepts

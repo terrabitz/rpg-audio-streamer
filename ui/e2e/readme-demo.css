@@ -1,0 +1,3 @@
+[data-recording-overlay], .track-position {
+  visibility: hidden !important;
+}
