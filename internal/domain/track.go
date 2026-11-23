@@ -12,6 +12,7 @@ type Track struct {
 	Name            string           `json:"name,omitempty"`
 	Path            string           `json:"path,omitempty"`
 	TypeID          uuid.UUID        `json:"typeID,omitempty"`
+	Volume          float64          `json:"volume"`
 	Playback        PlaybackSettings `json:"playback"`
 	Status          string           `json:"status,omitempty"`
 	ProcessingError string           `json:"processingError,omitempty"`

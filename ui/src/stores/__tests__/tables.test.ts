@@ -21,7 +21,7 @@ const friday = { id: 'friday-internal', externalID: 'friday', name: 'Friday' }
 const sunday = { id: 'sunday-internal', externalID: 'sunday', name: 'Sunday' }
 const track = {
   id: 'forest', name: 'Forest', typeID: 'ambiance',
-  path: '/uploads/forest', createdAt: '2026-01-01T00:00:00Z',
+  path: '/uploads/forest', createdAt: '2026-01-01T00:00:00Z', volume: 100,
 }
 
 beforeEach(() => {
@@ -34,7 +34,7 @@ describe('tables', () => {
   it('loads server ordering, serializes writes, and retries unsaved settings', async () => {
     const tables = useTableStore()
     tables.current = friday
-    const settings = { masterVolume: 0, typeVolumes: { Music: 0 }, trackVolumes: {}, trackOrder: ['rain', 'forest'] }
+    const settings = { masterVolume: 0, typeVolumes: { Music: 0 }, trackOrder: ['rain', 'forest'] }
     api.getApiV1TablesByTableIdSettings.mockResolvedValue({ data: settings })
     expect(await tables.loadSettings(friday.externalID)).toEqual(settings)
     expect(tables.trackOrders.friday).toEqual(['rain', 'forest'])
@@ -49,7 +49,7 @@ describe('tables', () => {
     finish()
     await Promise.all([first, next])
     expect(api.patchApiV1TablesByTableIdSettings).toHaveBeenLastCalledWith({
-      path: { tableID: friday.externalID }, body: { masterVolume: 60, typeVolumes: {}, trackVolumes: {} }, keepalive: true,
+      path: { tableID: friday.externalID }, body: { masterVolume: 60, typeVolumes: {} }, keepalive: true,
     })
     vi.spyOn(console, 'error').mockImplementation(() => {})
     try {
@@ -60,10 +60,10 @@ describe('tables', () => {
       tables.current = friday
       expect(await tables.loadSettings(friday.externalID)).toEqual({ ...settings, trackOrder: ['forest'] })
       expect(tables.settingsError).toContain('not saved')
-      await tables.saveSettings(friday.externalID, { trackVolumes: { forest: 35 } })
+      await tables.saveSettings(friday.externalID, { typeVolumes: { Music: 10 } })
       expect(api.patchApiV1TablesByTableIdSettings).toHaveBeenLastCalledWith({
         path: { tableID: friday.externalID },
-        body: { masterVolume: 0, typeVolumes: { Music: 0 }, trackVolumes: { forest: 35 }, trackOrder: ['forest'] },
+        body: { masterVolume: 0, typeVolumes: { Music: 10 }, trackOrder: ['forest'] },
         keepalive: true,
       })
       expect(tables.settingsError).toBe('')

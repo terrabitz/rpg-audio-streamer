@@ -172,6 +172,7 @@ import { defaultPlayback } from '@/composables/playback'
 import { defaultPreset, Feedback, PointerActivationConstraints, PointerSensor } from '@dnd-kit/dom'
 import { DragDropProvider, type DragEndEvent } from '@dnd-kit/vue'
 import { isSortable } from '@dnd-kit/vue/sortable'
+import debounce from 'lodash.debounce'
 import { TrackUsageChangedError, useFileStore, withTrackStatus } from '@/stores/files'
 import { useTrackTypeStore } from '@/stores/trackTypes'
 import { useTableStore } from '@/stores/tables'
@@ -247,6 +248,9 @@ const stopTrackStatus = wsStore.onTrackStatusChanged((update) => {
 const stopTrackUpdates = wsStore.onTrackUpdated(track => {
   fileStore.addTrack(track)
   tables.tracks = tables.tracks.map(item => item.id === track.id ? track : item)
+  if (audioStore.tracks[track.id]) {
+    audioStore.updateTrackState(track.id, { volume: track.volume })
+  }
 })
 
 watch(() => wsStore.isConnected, async (connected) => {
@@ -289,7 +293,7 @@ watch(tracks, (tracks) => {
       continue
     }
     const isNew = !audioStore.tracks[track.id]
-    audioStore.initTrack(track.id, track.name, track.typeID)
+    audioStore.initTrack(track.id, track.name, track.typeID, track.volume)
     if (isNew) audioStore.updateTrackState(track.id, {
       playback: track.playback ?? defaultPlayback(),
       currentTime: track.playback?.startTime ?? 0,
@@ -541,12 +545,27 @@ function handleSettings(fileID: string, playback: PlaybackSettings) {
   }
 }
 
+const volumeSaves = new Map<string, ReturnType<typeof createVolumeSave>>()
+
+function createVolumeSave(fileID: string) {
+  return debounce((volume: number) => {
+    void fileStore.updateTrack(fileID, { volume }).catch(cause => {
+      console.error('Failed to save track volume:', cause)
+      error.value = 'Failed to save track volume.'
+    })
+  }, 200)
+}
+
 const handleVolume = (fileID: string, volume: number) => {
   audioStore.updateTrackState(fileID, { volume })
-  const state = audioStore.tracks[fileID]
-  if (!props.library && wsStore.isConnected && state?.isPlaying) {
-    wsStore.sendEvent('trackPlaybackChanged', { fileID, volume, duration: state.duration })
+  const track = fileStore.getTrackById(fileID)
+  if (track) fileStore.addTrack({ ...track, volume })
+  let save = volumeSaves.get(fileID)
+  if (!save) {
+    save = createVolumeSave(fileID)
+    volumeSaves.set(fileID, save)
   }
+  save(volume)
 }
 
 const handleSeek = (fileID: string, time: number) => {
@@ -556,6 +575,7 @@ const handleSeek = (fileID: string, time: number) => {
 }
 
 onUnmounted(() => {
+  for (const save of volumeSaves.values()) save.flush()
   stopTrackStatus()
   stopTrackUpdates()
   if (props.library) audioStore.clearTracks()
