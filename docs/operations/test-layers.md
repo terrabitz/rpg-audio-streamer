@@ -15,6 +15,7 @@ tags: [operations, testing]
 | Browser journeys | The built Vue app with the real Go server, database, FFmpeg, WebSockets, and HLS media playback |
 | Live Discord validation | Audio received by a separate listener bot in a shared external voice channel ([Discord voice streaming](../discord/voice-streaming.md)) |
 | Live YouTube validation | An environment-configured public video scanned, retrieved, persisted, processed, and played through the production [YouTube service](../backend/youtube.md) |
+| Getting started examples | The documented [installation snippets](./getting-started-examples.md) run against the Docker image and claimed with the logged setup code |
 
 Each browser test attempt owns a separate server, datastore, upload directory,
 and WebSocket state; the built UI and server executable are shared as immutable

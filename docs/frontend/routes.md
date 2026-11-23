@@ -36,7 +36,8 @@ or upload a new one directly into the table through the
 [Add Track dialog](./add-track-dialog.md). GM tables show the
 [track grid](./track-grid.md) and [now playing](./now-playing.md) surfaces.
 
-The player's audio button shows connection status and animated bars for local
-media playback; clicking it disconnects audio. A hover or focus tooltip
-describes playback, including starting and browser-blocked states. This reflects
-media state, not the signal level or whether the output device is audible.
+The player's audio button uses the primary color while connecting, the success
+color when connected, and the error color when disconnected. It shows animated
+bars for local media playback; clicking it disconnects audio. A hover or focus
+tooltip describes playback, including starting and browser-blocked states. This
+reflects media state, not the signal level or whether the output device is audible.

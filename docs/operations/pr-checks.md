@@ -48,10 +48,29 @@ or FFmpeg build-input changes produce new entries.
 
 ## Docker checks
 
-Pull requests that touch any image input run the same per-architecture builds
-as the [release pipeline](./release-pipeline.md) without pushing or publishing
-a manifest, and check that the Dockerfile's Go and Node base images match
+Pull requests that touch any image input or the
+[getting started examples](./getting-started-examples.md) run the same per-architecture builds as the
+[release pipeline](./release-pipeline.md). They push the images and a
+multi-arch manifest to `ghcr.io/terrabitz/rpg-audio-streamer/dev`, tagged with
+the pull request head commit SHA, rather than the release repository. A separate
+`examples` job depends on the build, pulls that image on amd64 and arm64
+runners, and runs the getting started examples against it. The checks also
+verify that the Dockerfile's Go and Node base images match
 `go.mod` and `ui/.nvmrc`, since dependency bumps do not update the Dockerfile.
+
+Fork and Dependabot pull requests receive a read-only `GITHUB_TOKEN`, so their
+development image push fails.
+
+The hourly `dev-image-cleanup` workflow uses `dataaxiom/ghcr-cleanup-action`
+to delete every tagged and untagged development image older than 24 hours,
+along with incomplete multi-arch images. Manual dispatch supports a dry run.
+
+## Embedded examples
+
+Changes to `examples/`, `README.md`, `INSTALLATION.md`, the `Makefile`, shared
+actions, or the workflow run the `embeds` job, which fails when the documents'
+embedded snippets differ from their [example](./getting-started-examples.md)
+source files. It needs no image build.
 
 ## FFmpeg in tests
 

@@ -11,6 +11,10 @@ on:
         description: Newline-separated image tags for the multi-arch manifest. Required when push is true.
         type: string
         default: ""
+      image:
+        description: Image repository to push to. Defaults to ghcr.io/<owner>/<repo>.
+        type: string
+        default: ""
   workflow_call:
     inputs:
       push:
@@ -21,13 +25,21 @@ on:
         description: Newline-separated image tags for the multi-arch manifest. Required when push is true.
         type: string
         default: ""
+      image:
+        description: Image repository to push to. Defaults to ghcr.io/<owner>/<repo>.
+        type: string
+        default: ""
+    outputs:
+      image:
+        description: Reference to the published multi-arch image, using the first tag. Empty when push is false.
+        value: ${{ jobs.manifest.outputs.image }}
 
 permissions:
   packages: write
 
 # Callers grant permissions: push requires packages: write.
 env:
-  IMAGE: ghcr.io/${{ github.repository }}
+  IMAGE: ${{ inputs.image || format('ghcr.io/{0}', github.repository) }}
 
 jobs:
   build:
@@ -87,6 +99,8 @@ jobs:
     if: inputs.push
     needs: build
     runs-on: ubuntu-latest
+    outputs:
+      image: ${{ steps.reference.outputs.image }}
     steps:
       - name: Download digests
         uses: actions/download-artifact@v8
@@ -121,6 +135,10 @@ jobs:
           docker buildx imagetools create "${tag_args[@]}" $(printf "$IMAGE@sha256:%s " *)
 
       - name: Inspect image
+        id: reference
         env:
           TAGS: ${{ inputs.tags }}
-        run: docker buildx imagetools inspect "$IMAGE:$(printf '%s\n' "$TAGS" | sed '/^$/d' | head -n1)"
+        run: |
+          image="$IMAGE:$(printf '%s\n' "$TAGS" | sed '/^$/d' | head -n1)"
+          docker buildx imagetools inspect "$image"
+          echo "image=$image" >> "$GITHUB_OUTPUT"
