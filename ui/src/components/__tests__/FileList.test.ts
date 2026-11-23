@@ -90,7 +90,7 @@ async function mountTableCards() {
   const pinia = createPinia()
   setActivePinia(pinia)
   const files = useFileStore()
-  files.tracks = [{ id: 'forest', name: 'Forest', typeID: 'music', path: '/forest', createdAt: '2026-01-01T00:00:00Z' }]
+  files.tracks = [{ id: 'forest', name: 'Forest', typeID: 'music', path: '/forest', createdAt: '2026-01-01T00:00:00Z', volume: 100 }]
   useTableStore().tracks = files.tracks
   const types = useTrackTypeStore()
   types.trackTypes = [{
@@ -126,8 +126,8 @@ it('preserves audio metadata when resuming a library preview', async () => {
   setActivePinia(pinia)
   const files = useFileStore()
   files.tracks = [
-    { id: 'forest', name: 'Forest', typeID: 'music', path: '/forest', createdAt: '2026-01-01T00:00:00Z' },
-    { id: 'rain', name: 'Rain', typeID: 'music', path: '/rain', createdAt: '2026-01-01T00:00:00Z' },
+    { id: 'forest', name: 'Forest', typeID: 'music', path: '/forest', createdAt: '2026-01-01T00:00:00Z', volume: 100 },
+    { id: 'rain', name: 'Rain', typeID: 'music', path: '/rain', createdAt: '2026-01-01T00:00:00Z', volume: 100 },
   ]
   const types = useTrackTypeStore()
   types.trackTypes = [{
@@ -178,7 +178,7 @@ it('applies pushed processing status and refreshes after reconnecting', async ()
   const pinia = createPinia()
   setActivePinia(pinia)
   const files = useFileStore()
-  const processing = { id: 'forest', name: 'Forest', typeID: 'music', path: '/forest', createdAt: '2026-01-01T00:00:00Z', status: 'processing' as const }
+  const processing = { id: 'forest', name: 'Forest', typeID: 'music', path: '/forest', createdAt: '2026-01-01T00:00:00Z', volume: 100, status: 'processing' as const }
   files.tracks = [processing]
   const tables = useTableStore()
   tables.tracks = [processing]

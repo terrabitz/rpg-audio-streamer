@@ -43,17 +43,11 @@ export type TableSettings = {
     typeVolumes: {
         [key: string]: number;
     };
-    /**
-     * GM volume percentages keyed by track UUID.
-     */
-    trackVolumes: {
-        [key: string]: number;
-    };
     trackOrder: Array<string>;
 };
 
 /**
- * Omitted fields are preserved. Volume maps merge by key; trackOrder replaces the saved order.
+ * Omitted fields are preserved. typeVolumes merges by key; trackOrder replaces the saved order.
  */
 export type TableSettingsPatch = {
     masterVolume?: number;
@@ -61,12 +55,6 @@ export type TableSettingsPatch = {
      * GM volume percentages keyed by track-type name.
      */
     typeVolumes?: {
-        [key: string]: number;
-    };
-    /**
-     * GM volume percentages keyed by track UUID.
-     */
-    trackVolumes?: {
         [key: string]: number;
     };
     trackOrder?: Array<string>;
@@ -93,6 +81,7 @@ export type Track = {
     name: string;
     path: string;
     typeID: string;
+    volume: number;
     playback?: PlaybackSettings;
     status?: 'ready' | 'processing' | 'failed';
     processingError?: string;
@@ -125,6 +114,7 @@ export type UpdateTrackRequest = {
     id: string;
     name?: string;
     typeID?: string;
+    volume?: number;
     playback?: PlaybackSettings;
 };
 

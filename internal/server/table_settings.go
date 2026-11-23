@@ -62,11 +62,6 @@ func validTableSettings(patch TableSettingsPatch) bool {
 			return false
 		}
 	}
-	for id, volume := range patch.TrackVolumes {
-		if _, err := uuid.Parse(id); err != nil || volume < 0 || volume > 100 {
-			return false
-		}
-	}
 	if patch.TrackOrder != nil {
 		seen := make(map[uuid.UUID]bool, len(*patch.TrackOrder))
 		for _, id := range *patch.TrackOrder {

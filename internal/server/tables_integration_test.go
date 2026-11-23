@@ -114,8 +114,7 @@ func TestTableHTTP(t *testing.T) {
 		`{`, `null`, `{"currentTime":12}`, `{"isPlaying":true}`,
 		`{"masterVolume":-1}`, `{"masterVolume":201}`, `{"masterVolume":"50"}`,
 		`{"typeVolumes":{"Music":101}}`, `{"typeVolumes":{"Music":-1}}`,
-		`{"typeVolumes":{" ":30}}`, `{"trackVolumes":{"bad":50}}`,
-		`{"trackVolumes":{"` + uuid.NewString() + `":101}}`,
+		`{"typeVolumes":{" ":30}}`, `{"trackVolumes":{"` + uuid.NewString() + `":50}}`,
 		`{"trackOrder":["bad"]}`, `{"trackOrder":["` + uuid.Nil.String() + `"]}`,
 		`{"trackOrder":["` + first.ID.String() + `","` + first.ID.String() + `"]}`,
 		`{} {}`,
@@ -131,7 +130,7 @@ func TestTableHTTP(t *testing.T) {
 		return settings
 	}
 	initial := readSettings(request("GET", settingsPath, "", "", true, 200))
-	if initial.MasterVolume != 100 || initial.TrackOrder == nil || initial.TrackVolumes == nil || initial.TypeVolumes == nil {
+	if initial.MasterVolume != 100 || initial.TrackOrder == nil || initial.TypeVolumes == nil {
 		t.Fatalf("default settings = %+v", initial)
 	}
 	hub.err = errors.New("event hub is closed")

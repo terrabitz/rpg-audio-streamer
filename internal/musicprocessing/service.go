@@ -162,7 +162,7 @@ func (s *Service) newTrack(name string, typeID uuid.UUID) (Track, error) {
 		return Track{}, err
 	}
 	return Track{ID: id, CreatedAt: time.Now(), Name: name, TypeID: typeID,
-		Path: filepath.Join(s.dir, id.String()), Status: "processing"}, nil
+		Path: filepath.Join(s.dir, id.String()), Volume: 100, Status: "processing"}, nil
 }
 
 func (s *Service) submit(ctx context.Context, track Track, tableID uuid.UUID, sourceURL string) error {

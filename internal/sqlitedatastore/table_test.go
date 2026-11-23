@@ -57,8 +57,7 @@ func TestTableSettingsPersistence(t *testing.T) {
 	db, path := migratedDatabase(t)
 	ctx := context.Background()
 	defaults := server.TableSettings{
-		MasterVolume: 100, TypeVolumes: map[string]float64{},
-		TrackVolumes: map[string]float64{}, TrackOrder: []uuid.UUID{},
+		MasterVolume: 100, TypeVolumes: map[string]float64{}, TrackOrder: []uuid.UUID{},
 	}
 	settings, err := db.GetTableSettings(ctx, server.DefaultTableID)
 	if err != nil || !reflect.DeepEqual(settings, defaults) {
@@ -73,11 +72,11 @@ func TestTableSettingsPersistence(t *testing.T) {
 	master := 0.0
 	want := server.TableSettings{
 		MasterVolume: 0, TypeVolumes: map[string]float64{"Music": 0, "Ambiance": 42},
-		TrackVolumes: map[string]float64{trackID.String(): 0}, TrackOrder: order,
+		TrackOrder: order,
 	}
 	settings, err = db.UpdateTableSettings(ctx, server.DefaultTableID, server.TableSettingsPatch{
 		MasterVolume: &master, TypeVolumes: want.TypeVolumes,
-		TrackVolumes: want.TrackVolumes, TrackOrder: &order,
+		TrackOrder: &order,
 	})
 	if err != nil || !reflect.DeepEqual(settings, want) {
 		t.Fatalf("save settings = %+v, %v", settings, err)
@@ -326,7 +325,7 @@ func TestExistingLibraryMigratesToDefaultTable(t *testing.T) {
 		t.Fatal(err)
 	}
 	track := server.Track{ID: uuid.New(), Name: "Legacy", TypeID: types[0].ID,
-		CreatedAt: time.Now().UTC().Truncate(time.Second), Path: "/uploads/legacy"}
+		CreatedAt: time.Now().UTC().Truncate(time.Second), Path: "/uploads/legacy", Volume: 100}
 	if err := db.SaveTrack(ctx, &track); err != nil {
 		t.Fatal(err)
 	}

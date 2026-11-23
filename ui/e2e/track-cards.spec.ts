@@ -1,10 +1,27 @@
 import type { Locator, Page } from '@playwright/test'
 import { expect, test } from './fixtures'
-import { login, uploadTrack } from './helpers'
+import { addExistingTrack, createTable, login, navigate, uploadTrack } from './helpers'
 
-test('GM sees playback position and volume on track cards', async ({ page }, testInfo) => {
+test('GM sees playback position and volume on track cards', async ({ page, recordFlow }, testInfo) => {
   await login(page)
   await uploadTrack(page, 'Card Music', 'Music', 60)
+  await navigate(page, 'Tables')
+  await createTable(page, 'Shared Volume')
+  await page.getByRole('link', { name: 'Open Shared Volume', exact: true }).click()
+  await addExistingTrack(page, 'Card Music')
+  await navigate(page, 'Tables')
+  await page.getByRole('link', { name: 'Open My Table', exact: true }).click()
+  const secondTable = await page.context().newPage()
+  await secondTable.goto('/tables')
+  await secondTable.getByRole('link', { name: 'Open Shared Volume', exact: true }).click()
+  const secondTile = secondTable.getByRole('group', { name: 'Card Music', exact: true })
+  await secondTile.click()
+  await expect.poll(() => secondTable.locator('[data-active="true"]').evaluate(
+    (el: HTMLMediaElement) => !el.paused && el.volume === 1,
+  )).toBe(true)
+  const secondVolume = secondTable.getByRole('complementary', { name: 'Currently playing' })
+    .getByRole('slider', { name: 'Volume for Card Music' })
+  await expect(secondVolume).toHaveAttribute('aria-valuenow', '100')
   const tile = page.getByRole('group', { name: 'Card Music', exact: true })
   await tile.click()
   const media = page.locator('[data-active="true"]')
@@ -20,19 +37,24 @@ test('GM sees playback position and volume on track cards', async ({ page }, tes
   } })
   await expect.poll(() => media.evaluate((el: HTMLMediaElement) => el.currentTime)).toBeGreaterThanOrEqual(35)
   const volume = sidebar.getByRole('slider', { name: 'Volume for Card Music' })
+  recordFlow.start()
   await volume.press('Home')
+  await expect(secondVolume).toHaveAttribute('aria-valuenow', '0')
   await expect(tile.locator('.tile-volume')).toHaveCSS('width', '0px')
   await volume.press('End')
+  await expect(secondVolume).toHaveAttribute('aria-valuenow', '100')
   await expect.poll(() => tile.evaluate(el => {
     const bar = el.querySelector('.tile-volume')!
     return Math.round(bar.getBoundingClientRect().width / bar.parentElement!.clientWidth * 100)
   })).toBe(100)
   await sidebar.locator('.track-volume .v-slider-track').click()
   await expect(volume).toHaveAttribute('aria-valuenow', '50')
+  await expect(secondVolume).toHaveAttribute('aria-valuenow', '50')
   await expect.poll(() => tile.evaluate(el => {
     const bar = el.querySelector('.tile-volume')!
     return Math.round(bar.getBoundingClientRect().width / bar.parentElement!.clientWidth * 100)
   })).toBe(50)
+  recordFlow.stop()
   await expect(tile.locator('.tile-volume')).toHaveCSS('height', '2px')
   await expect(tile.locator('.tile-volume')).toHaveCSS('background-color', 'rgb(255, 255, 255)')
   await expect.poll(() => tile.locator('.audio-control-tile').evaluate(el =>
