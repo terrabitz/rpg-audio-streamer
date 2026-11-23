@@ -165,6 +165,14 @@ export async function dragTimelinePoint(page: Page, name: string, time: number, 
     await page.mouse.move(to, y, { steps: 12 })
     await page.mouse.up()
   }
+  const actual = Number(await handle.getAttribute('aria-valuenow'))
+  const correction = Math.round((time - actual) * 10)
+  expect(Math.abs(time - actual)).toBeLessThanOrEqual(0.11)
+  if (correction !== 0) {
+    expect(Math.abs(correction)).toBe(1)
+    await handle.focus()
+    await handle.press(correction > 0 ? 'ArrowRight' : 'ArrowLeft')
+  }
   await expect(handle).toHaveAttribute('aria-valuenow', time.toString())
 }
 
