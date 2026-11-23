@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { execFile } from 'node:child_process'
-import { cp, mkdtemp, rm } from 'node:fs/promises'
+import { cp, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
@@ -9,7 +9,8 @@ import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
 
 const examples = fileURLToPath(new URL('./', import.meta.url))
-const image = 'ghcr.io/terrabitz/rpg-audio-streamer:latest'
+const publishedImage = 'ghcr.io/terrabitz/rpg-audio-streamer:latest'
+const image = requiredEnv('EXAMPLES_IMAGE')
 const container = 'rpg-audio-streamer'
 const appURL = 'http://localhost:8080'
 const exec = promisify(execFile)
@@ -77,7 +78,21 @@ async function workspace(t, example, teardown) {
   })
   const destination = example.endsWith('.sh') ? join(dir, example) : dir
   await cp(join(examples, example), destination, { recursive: true })
+  await useImageUnderTest(dir)
   return dir
+}
+
+async function useImageUnderTest(dir) {
+  let replaced = 0
+  for (const file of await readdir(dir)) {
+    const path = join(dir, file)
+    const contents = await readFile(path, 'utf8')
+    if (contents.includes(publishedImage)) {
+      await writeFile(path, contents.replaceAll(publishedImage, image))
+      replaced++
+    }
+  }
+  assert.ok(replaced > 0, `Example does not reference ${publishedImage}`)
 }
 
 async function removeContainerAndData(dir) {
@@ -93,6 +108,14 @@ function runScript(dir, script) {
 async function command(cwd, file, args) {
   const { stdout, stderr } = await exec(file, args, { cwd })
   return stdout + stderr
+}
+
+function requiredEnv(name) {
+  const value = process.env[name]
+  if (!value) {
+    throw new Error(`${name} must name the Docker image to test`)
+  }
+  return value
 }
 
 async function poll(description, attempt) {

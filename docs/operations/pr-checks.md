@@ -46,18 +46,12 @@ immutable per key; dependency or FFmpeg build-input changes produce new entries.
 
 ## Docker checks
 
-Pull requests that touch any image input run the same per-architecture builds
-as the [release pipeline](./release-pipeline.md) without pushing or publishing
+Pull requests that touch any image input or the
+[getting started examples](./getting-started-examples.md) and the documents
+embedding them run the same per-architecture builds and example runs as the
+[release pipeline](./release-pipeline.md) without pushing or publishing
 a manifest, and check that the Dockerfile's Go and Node base images match
 `go.mod` and `ui/.nvmrc`, since dependency bumps do not update the Dockerfile.
-
-## Getting started examples
-
-Changes to `examples/`, `README.md`, `INSTALLATION.md`, or any Docker image
-input run the [getting started examples](./getting-started-examples.md). The
-job builds the amd64 image from the checkout with `load` enabled, reusing the
-Docker build cache, and tags it as the published `latest` reference used by the
-examples. It then verifies the embedded snippets and runs each flow.
 
 ## FFmpeg in tests
 

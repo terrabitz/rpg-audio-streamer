@@ -23,7 +23,6 @@ jobs:
       backend: ${{ steps.filter.outputs.backend }}
       frontend: ${{ steps.filter.outputs.frontend }}
       docker: ${{ steps.filter.outputs.docker }}
-      examples: ${{ steps.filter.outputs.examples }}
     steps:
       - uses: dorny/paths-filter@v4
         id: filter
@@ -58,13 +57,11 @@ jobs:
               - 'ui/**'
               - '.github/workflows/pr-checks.yaml'
               - '.github/workflows/docker-build.yaml'
-            examples:
               - 'examples/**'
               - 'README.md'
               - 'INSTALLATION.md'
               - 'Makefile'
               - '.github/actions/**'
-              - '.github/workflows/pr-checks.yaml'
 
   go:
     name: Go Offline Tests and Coverage
@@ -250,41 +247,10 @@ jobs:
       )
     uses: ./.github/workflows/docker-build.yaml
 
-  examples:
-    name: Getting Started Examples
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
-    needs: changes
-    if: |
-      !cancelled() && 
-      (
-        github.event_name == 'workflow_dispatch' || 
-        needs.changes.outputs.docker == 'true' ||
-        needs.changes.outputs.examples == 'true'
-      )
-    steps:
-      - uses: actions/checkout@v7
-      - uses: ./.github/actions/setup-environment
-        with:
-          backend: 'false'
-          frontend: 'false'
-          media: 'false'
-      - uses: docker/setup-buildx-action@v4
-      - name: Build the image under the documented reference
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          file: docker/Dockerfile
-          load: true
-          tags: ghcr.io/terrabitz/rpg-audio-streamer:latest
-          cache-from: type=gha,scope=docker-amd64
-      - name: Run getting started examples
-        run: make test-examples
-
   pr-checks:
     name: PR Checks
     if: ${{ always() }}
-    needs: [changes, go, go-discord, e2e, e2e-discord, lint, build, unit, docker, examples]
+    needs: [changes, go, go-discord, e2e, e2e-discord, lint, build, unit, docker]
     runs-on: ubuntu-latest
     steps:
       - name: Require all selected checks to pass

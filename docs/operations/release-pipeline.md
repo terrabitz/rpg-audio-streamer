@@ -22,8 +22,9 @@ release is needed, publication and image building are skipped.
 ## Image publication
 
 After successful publication, the shared `docker-build` workflow builds the
-Linux amd64 and arm64 images natively on matching GitHub-hosted runners, pushes
-each by digest to GHCR, and combines them into a multi-arch manifest tagged
+Linux amd64 and arm64 images natively on matching GitHub-hosted runners, runs
+the [getting started examples](./getting-started-examples.md) against each
+architecture's image, pushes each by digest to GHCR, and combines them into a multi-arch manifest tagged
 `latest`, full-version, major.minor, and major. Each architecture keeps its own
 Buildx GitHub Actions cache scope. The image's runtime behavior is described in
 [HTTP serving](../runtime/http-serving.md).

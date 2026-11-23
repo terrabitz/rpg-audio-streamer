@@ -99,14 +99,13 @@ codecs do not imply parity with Debian's optional external integrations.
 ### Getting started examples
 
 Edit snippets in `examples/`, never inside the embedded code blocks, then run
-`make gen-examples`. `make test-examples` runs the examples unchanged, so it
-uses whatever image Docker has as `ghcr.io/terrabitz/rpg-audio-streamer:latest`
-and pulls the published image when none exists. To test the checkout, build it
-under that tag first:
+`make gen-examples`. `make test-examples` requires `EXAMPLES_IMAGE`, which
+replaces the published image reference in the copied examples. Build the
+checkout under a local tag first:
 
 ```sh
-docker build -f docker/Dockerfile -t ghcr.io/terrabitz/rpg-audio-streamer:latest .
-make test-examples
+docker build -f docker/Dockerfile -t rpg-audio-streamer:examples .
+EXAMPLES_IMAGE=rpg-audio-streamer:examples make test-examples
 ```
 
 The flows need host port 8080 and the container name `rpg-audio-streamer` to be

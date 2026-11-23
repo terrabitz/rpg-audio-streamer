@@ -18,17 +18,20 @@ example files.
 
 ## Validation
 
-`examples/examples.test.mjs` copies each flow into a temporary directory and
-runs its scripts unchanged with Bash. It reads the one-time `setup_code` from
+`examples/examples.test.mjs` copies each flow into a temporary directory,
+replaces the published image reference with the image named by
+`EXAMPLES_IMAGE`, and runs its scripts with Bash. The test fails when
+`EXAMPLES_IMAGE` is unset or a flow no longer references the published image,
+so it never falls back to a pulled release. It reads the one-time `setup_code` from
 the documented log command, waits for the setup status to require a claim, then
 claims the instance through `POST /api/v1/setup` (see
 [authentication](../backend/authentication.md)) and checks that setup is no
 longer required. Teardown removes the container, Compose project, volumes,
 bind-mounted data, and temporary directory.
 
-The examples reference the published image tag and fixed host port 8080 and
-container name. The test therefore runs the flows sequentially against
-whichever image the local Docker daemon has under that tag; the
-[pull request checks](./pr-checks.md) build the image from the checkout under
-that tag first. The same job verifies that the embedded snippets match their
-source files.
+The examples use a fixed host port 8080 and container name, so the flows run
+sequentially. Each architecture build in the `docker-build` workflow loads a
+commit-specific image, verifies that the embedded snippets match their source
+files, and runs the flows before any push, for both
+[pull request checks](./pr-checks.md) and the
+[release pipeline](./release-pipeline.md).

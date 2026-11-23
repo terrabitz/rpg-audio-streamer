@@ -28,6 +28,7 @@ permissions:
 # Callers grant permissions: push requires packages: write.
 env:
   IMAGE: ghcr.io/${{ github.repository }}
+  EXAMPLE_IMAGE: rpg-audio-streamer:examples-${{ github.sha }}
 
 jobs:
   build:
@@ -44,8 +45,31 @@ jobs:
             arch: arm64
             runner: ubuntu-24.04-arm
     steps:
+      - uses: actions/checkout@v7
+
+      - uses: ./.github/actions/setup-environment
+        with:
+          backend: 'false'
+          frontend: 'false'
+          media: 'false'
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
+
+      - name: Build branch image for examples
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: docker/Dockerfile
+          platforms: ${{ matrix.platform }}
+          load: true
+          tags: ${{ env.EXAMPLE_IMAGE }}
+          cache-from: type=gha,scope=docker-${{ matrix.arch }}
+
+      - name: Run getting started examples
+        run: make test-examples
+        env:
+          EXAMPLES_IMAGE: ${{ env.EXAMPLE_IMAGE }}
 
       - name: Login to GitHub Container Registry
         if: inputs.push
