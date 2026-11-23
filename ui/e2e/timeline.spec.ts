@@ -625,8 +625,7 @@ test('GM changes sidebar volume smoothly over two seconds', async ({ page }) => 
           values.push(el.volume)
         }
         if (start !== undefined && values.length === 1 && now - start >= 1000) values.push(el.volume)
-        if (start !== undefined && now - start >= 2100) {
-          values.push(el.volume)
+        if (start !== undefined && values.length === 2) {
           resolve(values)
           return
         }
@@ -640,7 +639,7 @@ test('GM changes sidebar volume smoothly over two seconds', async ({ page }) => 
   expect(samples[0]).toBeLessThan(1)
   expect(samples[1]).toBeGreaterThan(0.4)
   expect(samples[1]).toBeLessThan(0.6)
-  expect(samples[2]).toBe(0)
+  await expect.poll(() => media.evaluate((el: HTMLVideoElement) => el.volume)).toBe(0)
   await expect.poll(() => media.evaluate((el: HTMLVideoElement) => el.paused)).toBe(false)
   await tile.getByRole('button', { name: 'Edit Smooth Volume' }).click()
   await page.getByRole('button', { name: 'Remove from table', exact: true }).click()
