@@ -24,6 +24,7 @@ const track = {
   typeID: 'ambiance',
   path: '/uploads/forest',
   createdAt: '2026-01-01T00:00:00Z',
+  volume: 100,
 }
 const trackType = {
   id: 'ambiance',
@@ -95,6 +96,19 @@ describe('authentication', () => {
 })
 
 describe('file library', () => {
+  it('updates and shares a library track volume', async () => {
+    const files = useFileStore()
+    files.tracks = [track]
+    api.putApiV1FilesByTrackId.mockResolvedValue({ data: { ...track, volume: 35 } })
+
+    await files.updateTrack('forest', { volume: 35 })
+
+    expect(api.putApiV1FilesByTrackId).toHaveBeenCalledExactlyOnceWith({
+      path: { trackID: 'forest' },
+      body: { id: 'forest', volume: 35 },
+    })
+    expect(files.getTrackById('forest')?.volume).toBe(35)
+  })
   it('fetches a current table count and rejects invalid or failed responses', async () => {
     const files = useFileStore()
     api.getApiV1FilesByTrackIdUsage.mockResolvedValue({ data: { tableCount: 2 } })

@@ -19,6 +19,9 @@ func saveTrack(ctx context.Context, queries *sqlitedb.Queries, track *server.Tra
 	if err := track.Playback.Validate(); err != nil {
 		return err
 	}
+	if track.Volume < 0 || track.Volume > 100 {
+		return fmt.Errorf("invalid track volume")
+	}
 	if track.Status == "" {
 		track.Status = "ready"
 	}
@@ -31,6 +34,7 @@ func saveTrack(ctx context.Context, queries *sqlitedb.Queries, track *server.Tra
 		StartTime:       track.Playback.StartTime,
 		EndTime:         nullableTime(track.Playback.EndTime),
 		LoopBackTime:    nullableTime(track.Playback.LoopBackTime),
+		Volume:          track.Volume,
 		Status:          track.Status,
 		ProcessingError: track.ProcessingError,
 	}
@@ -93,6 +97,9 @@ func (db *SQLiteDatastore) DeleteTrackIfTableCount(ctx context.Context, trackID 
 }
 
 func (db *SQLiteDatastore) UpdateTrack(ctx context.Context, trackID uuid.UUID, update server.UpdateTrackRequest) (server.Track, error) {
+	if update.Volume != nil && (*update.Volume < 0 || *update.Volume > 100) {
+		return server.Track{}, fmt.Errorf("invalid track volume")
+	}
 	params := sqlitedb.UpdateTrackParams{
 		ID: trackID[:],
 	}
@@ -104,6 +111,10 @@ func (db *SQLiteDatastore) UpdateTrack(ctx context.Context, trackID uuid.UUID, u
 
 	if update.TypeID != nil {
 		params.TypeID = update.TypeID[:]
+	}
+	if update.Volume != nil {
+		params.SetVolume = 1
+		params.Volume = *update.Volume
 	}
 	if update.Playback != nil {
 		if err := update.Playback.Validate(); err != nil {
@@ -145,6 +156,7 @@ func convertDBTrack(dbTrack sqlitedb.Track) (server.Track, error) {
 		Name:            dbTrack.Name,
 		Path:            dbTrack.Path,
 		TypeID:          typeID,
+		Volume:          dbTrack.Volume,
 		Status:          dbTrack.Status,
 		ProcessingError: dbTrack.ProcessingError,
 		Playback: server.PlaybackSettings{

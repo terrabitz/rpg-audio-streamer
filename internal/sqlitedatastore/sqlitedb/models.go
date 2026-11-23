@@ -38,6 +38,7 @@ type Track struct {
 	Status          string
 	ProcessingError string
 	Waveform        interface{}
+	Volume          float64
 }
 
 type TrackType struct {

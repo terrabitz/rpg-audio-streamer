@@ -31,7 +31,7 @@ func TestTrackLifecycle(t *testing.T) {
 	}
 	track := server.Track{
 		ID: uuid.New(), CreatedAt: time.Now().UTC().Truncate(time.Second),
-		Name: "Forest", Path: "/uploads/forest", TypeID: types[0].ID,
+		Name: "Forest", Path: "/uploads/forest", TypeID: types[0].ID, Volume: 100,
 	}
 	if err := db.SaveTrack(ctx, &track); err != nil {
 		t.Fatal(err)
@@ -53,6 +53,12 @@ func TestTrackLifecycle(t *testing.T) {
 	track.Name = name
 	if err != nil || !reflect.DeepEqual(got, track) {
 		t.Fatalf("name-only update = %#v, %v; want %#v", got, err, track)
+	}
+	volume := 0.0
+	got, err = db.UpdateTrack(ctx, track.ID, server.UpdateTrackRequest{Volume: &volume})
+	track.Volume = volume
+	if err != nil || !reflect.DeepEqual(got, track) {
+		t.Fatalf("volume update = %#v, %v; want %#v", got, err, track)
 	}
 	got, err = db.UpdateTrack(ctx, track.ID, server.UpdateTrackRequest{TypeID: &types[1].ID})
 	track.TypeID = types[1].ID
@@ -290,7 +296,7 @@ func TestMigrationLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	version, err := m.Version()
-	if err != nil || version.Version != 10 || version.Dirty {
+	if err != nil || version.Version != 11 || version.Dirty {
 		t.Fatalf("version = %#v, %v", version, err)
 	}
 	if err := m.Up(); !errors.Is(err, migrate.ErrNoChange) {

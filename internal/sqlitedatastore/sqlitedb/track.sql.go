@@ -40,7 +40,7 @@ func (q *Queries) DeleteTrackByIDIfTableCount(ctx context.Context, arg DeleteTra
 }
 
 const getTrackByID = `-- name: GetTrackByID :one
-select id, created_at, name, path, type_id, start_time, end_time, loop_back_time, status, processing_error, waveform from tracks where id = ?1
+select id, created_at, name, path, type_id, start_time, end_time, loop_back_time, status, processing_error, waveform, volume from tracks where id = ?1
 `
 
 func (q *Queries) GetTrackByID(ctx context.Context, id []byte) (Track, error) {
@@ -58,6 +58,7 @@ func (q *Queries) GetTrackByID(ctx context.Context, id []byte) (Track, error) {
 		&i.Status,
 		&i.ProcessingError,
 		&i.Waveform,
+		&i.Volume,
 	)
 	return i, err
 }
@@ -74,7 +75,7 @@ func (q *Queries) GetTrackWaveform(ctx context.Context, id []byte) (string, erro
 }
 
 const getTracks = `-- name: GetTracks :many
-select id, created_at, name, path, type_id, start_time, end_time, loop_back_time, status, processing_error, waveform from tracks
+select id, created_at, name, path, type_id, start_time, end_time, loop_back_time, status, processing_error, waveform, volume from tracks
 `
 
 func (q *Queries) GetTracks(ctx context.Context) ([]Track, error) {
@@ -98,6 +99,7 @@ func (q *Queries) GetTracks(ctx context.Context) ([]Track, error) {
 			&i.Status,
 			&i.ProcessingError,
 			&i.Waveform,
+			&i.Volume,
 		); err != nil {
 			return nil, err
 		}
@@ -113,8 +115,8 @@ func (q *Queries) GetTracks(ctx context.Context) ([]Track, error) {
 }
 
 const saveTrack = `-- name: SaveTrack :exec
-insert into tracks (id, created_at, name, path, type_id, start_time, end_time, loop_back_time, status, processing_error)
-values (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+insert into tracks (id, created_at, name, path, type_id, start_time, end_time, loop_back_time, volume, status, processing_error)
+values (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
 `
 
 type SaveTrackParams struct {
@@ -126,6 +128,7 @@ type SaveTrackParams struct {
 	StartTime       float64
 	EndTime         sql.NullFloat64
 	LoopBackTime    sql.NullFloat64
+	Volume          float64
 	Status          string
 	ProcessingError string
 }
@@ -140,6 +143,7 @@ func (q *Queries) SaveTrack(ctx context.Context, arg SaveTrackParams) error {
 		arg.StartTime,
 		arg.EndTime,
 		arg.LoopBackTime,
+		arg.Volume,
 		arg.Status,
 		arg.ProcessingError,
 	)
@@ -189,9 +193,10 @@ set
   type_id = coalesce(?2, type_id),
   start_time = CASE WHEN ?3 THEN ?4 ELSE start_time END,
   end_time = CASE WHEN ?3 THEN ?5 ELSE end_time END,
-  loop_back_time = CASE WHEN ?3 THEN ?6 ELSE loop_back_time END
-where id = ?7
-returning id, created_at, name, path, type_id, start_time, end_time, loop_back_time, status, processing_error, waveform
+  loop_back_time = CASE WHEN ?3 THEN ?6 ELSE loop_back_time END,
+  volume = CASE WHEN ?7 THEN ?8 ELSE volume END
+where id = ?9
+returning id, created_at, name, path, type_id, start_time, end_time, loop_back_time, status, processing_error, waveform, volume
 `
 
 type UpdateTrackParams struct {
@@ -201,6 +206,8 @@ type UpdateTrackParams struct {
 	StartTime    float64
 	EndTime      sql.NullFloat64
 	LoopBackTime sql.NullFloat64
+	SetVolume    float64
+	Volume       float64
 	ID           []byte
 }
 
@@ -212,6 +219,8 @@ func (q *Queries) UpdateTrack(ctx context.Context, arg UpdateTrackParams) (Track
 		arg.StartTime,
 		arg.EndTime,
 		arg.LoopBackTime,
+		arg.SetVolume,
+		arg.Volume,
 		arg.ID,
 	)
 	var i Track
@@ -227,6 +236,7 @@ func (q *Queries) UpdateTrack(ctx context.Context, arg UpdateTrackParams) (Track
 		&i.Status,
 		&i.ProcessingError,
 		&i.Waveform,
+		&i.Volume,
 	)
 	return i, err
 }
