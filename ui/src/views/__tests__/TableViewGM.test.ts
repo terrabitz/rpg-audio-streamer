@@ -25,7 +25,7 @@ beforeEach(() => {
   setActivePinia(createPinia())
   vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] })
   api.load.mockResolvedValue({
-    data: { masterVolume: 45, typeVolumes: { Music: 0 }, trackVolumes: { forest: 30 }, trackOrder: ['forest'] },
+    data: { masterVolume: 45, typeVolumes: { Music: 0 }, trackOrder: ['forest'] },
   })
   api.save.mockResolvedValue({})
   useTableStore().current = { id: 'friday-internal', externalID: 'friday', name: 'Friday' }
@@ -52,7 +52,7 @@ it('restores GM playback from the server without echoing remote mix changes or s
       event: 'playbackStateChanged',
       payload: {
         tracks: [snapshotTrack({ currentTime: 12, volume: 20 })],
-        settings: { masterVolume: 80, typeVolumes: { Music: 30 }, trackVolumes: { forest: 20 }, trackOrder: ['forest'] },
+        settings: { masterVolume: 80, typeVolumes: { Music: 30 }, trackOrder: ['forest'] },
       },
     })
     expect(useAudioStore().tracks.forest).toMatchObject({ isPlaying: true, currentTime: 12, volume: 20 })
@@ -94,14 +94,13 @@ it('loads the mix before playback, saves volumes but not playback, and flushes o
     audio.updateTrackState('forest', { currentTime: 12, duration: 30, isPlaying: true })
     await vi.advanceTimersByTimeAsync(250)
     expect(api.save).not.toHaveBeenCalled()
-    audio.updateTrackState('forest', { volume: 0 })
     audio.setMasterVolume(60)
     audio.setTypeVolume('Music', 25)
     await vi.advanceTimersByTimeAsync(250)
     await useTableStore().saveQueue
     expect(api.save).toHaveBeenCalledExactlyOnceWith({
       path: { tableID: 'friday' }, keepalive: true,
-      body: { masterVolume: 60, typeVolumes: { Music: 25 }, trackVolumes: { forest: 0 } },
+      body: { masterVolume: 60, typeVolumes: { Music: 25 } },
     })
     audio.setMasterVolume(0)
   } finally {
@@ -110,7 +109,7 @@ it('loads the mix before playback, saves volumes but not playback, and flushes o
   await useTableStore().saveQueue
   expect(api.save).toHaveBeenLastCalledWith({
     path: { tableID: 'friday' }, keepalive: true,
-    body: { masterVolume: 0, typeVolumes: {}, trackVolumes: {} },
+    body: { masterVolume: 0, typeVolumes: {} },
   })
   expect(audio.tableMix).toBeNull()
   expect(audio.masterVolume).toBe(75)
@@ -131,7 +130,7 @@ it('does not connect or overwrite a mix when loading fails or navigation superse
   const stale = shallowMount(TableViewGM)
   await flushPromises()
   stale.unmount()
-  finish({ data: { masterVolume: 0, typeVolumes: {}, trackVolumes: {}, trackOrder: [] } })
+  finish({ data: { masterVolume: 0, typeVolumes: {}, trackOrder: [] } })
   await flushPromises()
   expect(useAudioStore().tableMix).toBeNull()
   expect(useWebSocketStore().connect).not.toHaveBeenCalled()
@@ -153,7 +152,7 @@ it('bootstraps the opt-in mixer, sends live type volumes, and surfaces mixer fai
     expect(send).not.toHaveBeenCalledWith('mixChanged', expect.anything())
     handler({ event: 'playbackStateChanged', payload: {
       tracks: [snapshotTrack({ currentTime: 3, volume: 40 })],
-      settings: { masterVolume: 45, typeVolumes: { Music: 0 }, trackVolumes: { forest: 40 }, trackOrder: ['forest'] },
+      settings: { masterVolume: 45, typeVolumes: { Music: 0 }, trackOrder: ['forest'] },
     } })
     await flushPromises()
     expect(send).toHaveBeenCalledWith('mixChanged', {
@@ -169,7 +168,7 @@ it('bootstraps the opt-in mixer, sends live type volumes, and surfaces mixer fai
     handler({ event: 'mixerReady', payload: {} })
     handler({ event: 'playbackStateChanged', payload: {
       tracks: [snapshotTrack({ currentTime: 3, volume: 40 })],
-      settings: { masterVolume: 45, typeVolumes: { Music: 0 }, trackVolumes: { forest: 40 }, trackOrder: ['forest'] },
+      settings: { masterVolume: 45, typeVolumes: { Music: 0 }, trackOrder: ['forest'] },
     } })
     await flushPromises()
     handler({ event: 'mixerApplied', payload: { event: 'mixChanged' } })

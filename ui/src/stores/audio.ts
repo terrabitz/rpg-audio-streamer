@@ -22,12 +22,12 @@ interface FadeStatus {
   inProgress: boolean
 }
 
-function newAudioTrack(fileID: string, name: string, typeID: string = ""): AudioTrack {
+function newAudioTrack(fileID: string, name: string, typeID: string = "", volume = 100): AudioTrack {
   return {
     fileID,
     name,
     isPlaying: false,
-    volume: 100,
+    volume,
     isRepeating: false,
     currentTime: 0,
     duration: 0,
@@ -58,7 +58,6 @@ export const useAudioStore = defineStore('audio', {
       this.tableMix = {
         masterVolume: settings.masterVolume,
         typeVolumes: { ...settings.typeVolumes },
-        trackVolumes: { ...settings.trackVolumes },
       }
     },
     clearTableMix() {
@@ -75,19 +74,15 @@ export const useAudioStore = defineStore('audio', {
       this.blockedPlayback.clear()
       this.fadeStates = {}
     },
-    initTrack(fileID: string, name: string, typeID: string = "") {
+    initTrack(fileID: string, name: string, typeID: string = "", volume = 100) {
       if (!this.tracks[fileID]) {
-        this.tracks[fileID] = newAudioTrack(fileID, name, typeID)
-        this.tracks[fileID].volume = this.tableMix?.trackVolumes[fileID] ?? 100
+        this.tracks[fileID] = newAudioTrack(fileID, name, typeID, volume)
       }
     },
     updateTrackState(fileID: string, updates: Partial<AudioTrack>) {
       const track = this.tracks[fileID] ? this.tracks[fileID] : newAudioTrack(fileID, "")
 
       this.tracks[fileID] = patchObject(track, updates)
-      if (this.tableMix && updates.volume !== undefined) {
-        this.tableMix.trackVolumes[fileID] = updates.volume
-      }
     },
     removeTrack(fileID: string) {
       delete this.tracks[fileID]

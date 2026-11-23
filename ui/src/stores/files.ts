@@ -117,6 +117,9 @@ export const useFileStore = defineStore('files', {
         if (update.typeID !== undefined) {
           trackRequest.typeID = update.typeID
         }
+        if (update.volume !== undefined) {
+          trackRequest.volume = update.volume
+        }
         if (update.playback !== undefined) {
           trackRequest.playback = update.playback
         }

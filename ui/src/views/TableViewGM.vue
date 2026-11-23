@@ -41,7 +41,6 @@ watch(snapshotMix, (mix, previous) => {
   if (!ready.value || applyingRemote || !mix || !previous) return
   if (mix.masterVolume !== previous.masterVolume) pendingMix.masterVolume = mix.masterVolume
   pendingMix.typeVolumes = { ...pendingMix.typeVolumes, ...changedVolumes(mix.typeVolumes, previous.typeVolumes) }
-  pendingMix.trackVolumes = { ...pendingMix.trackVolumes, ...changedVolumes(mix.trackVolumes, previous.trackVolumes) }
   if (mixerEnabled.value && wsStore.isConnected &&
       (mix.masterVolume !== previous.masterVolume ||
         JSON.stringify(mix.typeVolumes) !== JSON.stringify(previous.typeVolumes))) {
@@ -63,7 +62,6 @@ function handleSyncAll(payload: Snapshot) {
     .reduce<TableSettingsPatch>((mix, patch) => ({
       ...mix, ...patch,
       typeVolumes: { ...mix.typeVolumes, ...patch.typeVolumes },
-      trackVolumes: { ...mix.trackVolumes, ...patch.trackVolumes },
     }), {})
   applyingRemote = true
   try {
@@ -71,11 +69,8 @@ function handleSyncAll(payload: Snapshot) {
       ...settings,
       ...localMix,
       typeVolumes: { ...settings.typeVolumes, ...localMix.typeVolumes },
-      trackVolumes: { ...settings.trackVolumes, ...localMix.trackVolumes },
     })
-    audioStore.syncTracks(payload.tracks.map(track => ({
-      ...track, volume: localMix.trackVolumes?.[track.fileID] ?? track.volume,
-    })), true)
+    audioStore.syncTracks(payload.tracks, true)
   } finally {
     applyingRemote = false
   }
@@ -168,7 +163,6 @@ function snapshotMix() {
   return mix ? {
     masterVolume: mix.masterVolume,
     typeVolumes: { ...mix.typeVolumes },
-    trackVolumes: { ...mix.trackVolumes },
   } : null
 }
 

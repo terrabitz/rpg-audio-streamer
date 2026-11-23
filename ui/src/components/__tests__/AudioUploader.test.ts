@@ -56,7 +56,7 @@ it('blocks uploading if the selected type is no longer available', async () => {
 it('uploads a valid type, shows a bottom toast, and requires a fresh selection afterward', async () => {
   const { wrapper, upload, file } = await mountUploader()
   vi.mocked(postApiV1Files).mockResolvedValue({
-    data: { id: 'uploaded', name: 'Forest', typeID: 'music', createdAt: '', path: '', status: 'processing' },
+    data: { id: 'uploaded', name: 'Forest', typeID: 'music', createdAt: '', path: '', volume: 100, status: 'processing' },
     request: new Request('http://localhost'), response: new Response(null, { status: 202 }),
   })
   await wrapper.getComponent(TrackTypeSelector).vm.$emit('update:modelValue', 'music')
@@ -117,7 +117,7 @@ it('closes on acceptance and adds a processing track without waiting for convers
   vi.mocked(postApiV1FilesImport).mockImplementation(async () => {
     await pending
     return {
-      data: { id: 'imported', name: 'Forest', typeID: 'music', createdAt: '', path: '', status: 'processing' },
+      data: { id: 'imported', name: 'Forest', typeID: 'music', createdAt: '', path: '', volume: 100, status: 'processing' },
       request: new Request('http://localhost'), response: new Response(null, { status: 202 }),
     }
   })
@@ -333,7 +333,7 @@ it('keeps only failed tracks and their edited metadata for retry after a partial
   await second!.getComponent({ name: 'VSelect' }).vm.$emit('update:modelValue', 'ambiance')
   await second!.getComponent({ name: 'VTextField' }).vm.$emit('update:modelValue', ' Night Rain ')
   const response = (id: string, name: string, typeID: string) => ({
-    data: { id, name, typeID, createdAt: '', path: '', status: 'processing' as const },
+    data: { id, name, typeID, createdAt: '', path: '', volume: 100, status: 'processing' as const },
     request: new Request('http://localhost'), response: new Response(null, { status: 202 }),
   })
   vi.spyOn(console, 'error').mockImplementation(() => {})

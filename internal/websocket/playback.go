@@ -71,12 +71,13 @@ func (h *Hub) handleTrackUpdated(fileID string, _ *Client) {
 		state = state.at(time.Now())
 		state.Name = track.Name
 		state.Playback = track.Playback
+		state.Volume = track.Volume
 		state.CurrentTime = math.Max(state.CurrentTime, track.Playback.StartTime)
 		state.clearInvalidSeek()
 		tracks[fileID] = state
 		h.sendState(tableID, settings, "")
 		h.notify(events.PlaybackChanged, events.PlaybackChanges[PlaybackPatch]{
-			Tracks: []PlaybackPatch{{FileID: fileID, Playback: &track.Playback}},
+			Tracks: []PlaybackPatch{{FileID: fileID, Playback: &track.Playback, Volume: &state.Volume}},
 		}, events.Metadata{TableID: tableID})
 	}
 }
@@ -111,7 +112,7 @@ func (h *Hub) refreshPlayback() {
 }
 
 func (h *Hub) handleTableSettingsChanged(event events.TableEvent[server.TableSettingsPatch], _ *Client) {
-	tableID, patch := event.TableID, event.Data
+	tableID := event.TableID
 	h.stateMu.Lock()
 	defer h.stateMu.Unlock()
 	// Concurrent HTTP patches can finish broadcasting in a different order.
@@ -120,20 +121,7 @@ func (h *Hub) handleTableSettingsChanged(event events.TableEvent[server.TableSet
 		h.logger.Error("failed to synchronize table settings", "error", err, "tableID", tableID)
 		return
 	}
-	changes := make([]PlaybackPatch, 0, len(patch.TrackVolumes))
-	for id := range patch.TrackVolumes {
-		if track, ok := h.playback[tableID][id]; ok {
-			track.Volume = settings.TrackVolumes[id]
-			h.playback[tableID][id] = track
-			if track.IsPlaying {
-				changes = append(changes, PlaybackPatch{FileID: id, Volume: &track.Volume})
-			}
-		}
-	}
 	h.sendState(tableID, settings, "")
-	if len(changes) > 0 {
-		h.notify(events.PlaybackChanged, events.PlaybackChanges[PlaybackPatch]{Tracks: changes}, events.Metadata{TableID: tableID})
-	}
 	h.notify(events.TableSettingsChanged, settings, events.Metadata{TableID: tableID})
 }
 
@@ -154,11 +142,7 @@ func (h *Hub) updatePlayback(patch PlaybackPatch, c *Client) {
 	if ok {
 		state = state.at(now)
 	} else {
-		volume := 100.0
-		if saved, ok := settings.TrackVolumes[patch.FileID]; ok {
-			volume = saved
-		}
-		state = playingTrack{FileID: patch.FileID, Volume: volume, Playback: track.Playback,
+		state = playingTrack{FileID: patch.FileID, Volume: track.Volume, Playback: track.Playback,
 			CurrentTime: track.Playback.StartTime}
 	}
 	state.Name, state.TrackType, state.typeID = track.Name, trackType.Name, track.TypeID

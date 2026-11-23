@@ -21,6 +21,7 @@ it('keeps full names accessible and routes controls to the matching track', asyn
   await wrapper.setProps({
     tracks: [{
       id: 'forest', name: 'Forest', typeID: 'ambiance', path: '/forest', createdAt: '2026-01-01T00:00:00Z',
+      volume: 100,
       state,
     }],
   })
