@@ -164,6 +164,9 @@ func (m *MockTrackStore) UpdateTrack(ctx context.Context, trackID uuid.UUID, upd
 	if update.TypeID != nil {
 		track.TypeID = *update.TypeID
 	}
+	if update.Volume != nil {
+		track.Volume = *update.Volume
+	}
 
 	m.tracks[trackID] = track
 	return track, nil

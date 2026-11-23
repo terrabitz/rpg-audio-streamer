@@ -150,6 +150,10 @@ func (s *Server) handleFileUpdate(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	if req.Volume != nil && (*req.Volume < 0 || *req.Volume > 100) {
+		http.Error(w, "Invalid track volume", http.StatusBadRequest)
+		return
+	}
 
 	track, err := s.store.UpdateTrack(r.Context(), trackID, req)
 	if err != nil {

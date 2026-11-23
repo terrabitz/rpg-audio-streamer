@@ -364,6 +364,7 @@ function mountControls(library = true) {
   const files = useFileStore()
   files.tracks = [{
     id: 'forest', name: 'Forest', typeID: 'music', path: '/uploads/forest', createdAt: '2026-01-01T00:00:00Z',
+    volume: 100,
   }]
   useTrackTypeStore().trackTypes = [{
     id: 'music', name: 'Music', color: '#123456', isRepeating: true, allowSimultaneousPlay: false,

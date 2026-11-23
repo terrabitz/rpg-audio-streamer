@@ -36,7 +36,7 @@ func TestRoutedTrackLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	handler := ts.Handler()
-	rec := routedRequest(handler, http.MethodPut, "/api/v1/files/"+id.String(), `{"name":"Rain"}`, true)
+	rec := routedRequest(handler, http.MethodPut, "/api/v1/files/"+id.String(), `{"name":"Rain","volume":35}`, true)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("update status = %d: %s", rec.Code, rec.Body)
 	}
@@ -44,7 +44,7 @@ func TestRoutedTrackLifecycle(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &updated); err != nil {
 		t.Fatal(err)
 	}
-	if updated.Name != "Rain" || updated.TypeID != typeID || updated.Path != track.Path {
+	if updated.Name != "Rain" || updated.TypeID != typeID || updated.Path != track.Path || updated.Volume != 35 {
 		t.Fatalf("partial update = %+v", updated)
 	}
 	rec = routedRequest(handler, http.MethodGet, "/api/v1/files", "", true)
@@ -85,6 +85,8 @@ func TestRoutedValidation(t *testing.T) {
 		{"unsupported file method", "GET", "/api/v1/files/" + id, "", true, 405},
 		{"invalid update JSON", "PUT", "/api/v1/files/" + id, "{", true, 400},
 		{"invalid update ID", "PUT", "/api/v1/files/invalid", "{}", true, 400},
+		{"negative track volume", "PUT", "/api/v1/files/" + id, `{"volume":-1}`, true, 400},
+		{"track volume over 100", "PUT", "/api/v1/files/" + id, `{"volume":101}`, true, 400},
 		{"unknown update", "PUT", "/api/v1/files/" + id, `{"name":"new"}`, true, 500},
 		{"invalid delete ID", "DELETE", "/api/v1/files/invalid", "", true, 400},
 		{"missing delete", "DELETE", "/api/v1/files/" + id, "", true, 404},

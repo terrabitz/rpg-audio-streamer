@@ -32,7 +32,11 @@ func (playbackTestStore) HasTableTrack(_ context.Context, _ uuid.UUID, id uuid.U
 }
 
 func (playbackTestStore) GetTrackByID(_ context.Context, id uuid.UUID) (server.Track, error) {
-	return server.Track{ID: id, Name: "Music", TypeID: testTypeID}, nil
+	volume := 100.0
+	if id == testTrackID {
+		volume = 50
+	}
+	return server.Track{ID: id, Name: "Music", TypeID: testTypeID, Volume: volume}, nil
 }
 
 func (playbackTestStore) GetTrackTypeByID(context.Context, uuid.UUID) (server.TrackType, error) {
@@ -40,7 +44,7 @@ func (playbackTestStore) GetTrackTypeByID(context.Context, uuid.UUID) (server.Tr
 }
 
 func (playbackTestStore) GetTableSettings(context.Context, uuid.UUID) (server.TableSettings, error) {
-	return server.TableSettings{MasterVolume: 40, TrackVolumes: map[string]float64{testTrackID.String(): 50}}, nil
+	return server.TableSettings{MasterVolume: 40}, nil
 }
 
 func TestSharedPlaybackAndRecovery(t *testing.T) {
@@ -454,25 +458,16 @@ func TestPlaybackRefreshAndSettings(t *testing.T) {
 	if len(clients["gm"].send) != 0 {
 		t.Fatal("idle playback was broadcast repeatedly")
 	}
-	h.store = playbackSettingsTestStore{settings: server.TableSettings{
-		MasterVolume: 0, TrackVolumes: map[string]float64{testTrackID.String(): 30},
-	}}
+	h.store = playbackSettingsTestStore{settings: server.TableSettings{MasterVolume: 0}}
 	state := h.playback[tableID][testTrackID.String()]
 	state.IsPlaying = true
 	state.updatedAt = time.Now()
 	h.playback[tableID][testTrackID.String()] = state
-	mix := &testMixer{}
-	t.Cleanup(livemixer.Subscribe(h, mix))
 	sendEvent(t, h, events.TableSettingsChanged, events.TableEvent[server.TableSettingsPatch]{
-		TableID: tableID, Data: server.TableSettingsPatch{
-			TrackVolumes: map[string]float64{testTrackID.String(): 10},
-		},
+		TableID: tableID, Data: server.TableSettingsPatch{},
 	})
-	if len(mix.calls) != 1 || mix.calls[0] != "update:"+tableID {
-		t.Fatalf("mixer did not receive the track volume update: %v", mix.calls)
-	}
-	if readPlayback(t, clients["gm"]).Tracks[0].Volume != 30 {
-		t.Fatal("GM did not receive the unscaled track mix")
+	if readPlayback(t, clients["gm"]).Tracks[0].Volume != 50 {
+		t.Fatal("table settings changed the shared track volume")
 	}
 	if readPlayback(t, clients["player"]).Tracks[0].Volume != 0 {
 		t.Fatal("player master mute was not applied")
@@ -530,6 +525,7 @@ func TestSavedTrackUpdatesReachGMsAndAllPlayingTables(t *testing.T) {
 			ID:       testTrackID,
 			Name:     "Updated music",
 			TypeID:   testTypeID,
+			Volume:   25,
 			Playback: server.PlaybackSettings{StartTime: 10, EndTime: &end, LoopBackTime: &loop},
 		},
 	}
@@ -560,17 +556,21 @@ func TestSavedTrackUpdatesReachGMsAndAllPlayingTables(t *testing.T) {
 		}
 		var track server.Track
 		if err := json.Unmarshal(event.Payload, &track); err != nil || event.Event != events.TrackUpdated ||
-			track.Name != store.track.Name || track.Playback.StartTime != 10 {
+			track.Name != store.track.Name || track.Playback.StartTime != 10 || track.Volume != 25 {
 			t.Fatalf("%s metadata = %+v, %v", name, track, err)
 		}
 	}
 	for name, client := range clients {
 		snapshot := readPlayback(t, client)
 		state := snapshot.Tracks[0]
+		wantVolume := 25.0
+		if name == "player" || name == "otherPlayer" {
+			wantVolume = 10
+		}
 		if state.Playback.StartTime != 10 || state.Playback.EndTime == nil || *state.Playback.EndTime != end ||
 			state.Playback.LoopBackTime == nil || *state.Playback.LoopBackTime != loop ||
 			state.CurrentTime < 25 || state.CurrentTime > 26 || !state.IsPlaying ||
-			state.PositionVersion != 7 || state.SeekVersion != 2 {
+			state.PositionVersion != 7 || state.SeekVersion != 2 || state.Volume != wantVolume {
 			t.Fatalf("%s live state = %+v", name, state)
 		}
 		if len(client.send) != 0 {
@@ -581,7 +581,8 @@ func TestSavedTrackUpdatesReachGMsAndAllPlayingTables(t *testing.T) {
 		t.Fatalf("mixer updates = %+v", changes)
 	}
 	for _, patch := range changes {
-		if patch.Playback == nil || patch.Playback.StartTime != 10 || patch.CurrentTime != nil || patch.IsPlaying != nil {
+		if patch.Playback == nil || patch.Playback.StartTime != 10 || patch.Volume == nil || *patch.Volume != 25 ||
+			patch.CurrentTime != nil || patch.IsPlaying != nil {
 			t.Fatalf("metadata update must not seek or toggle playback: %+v", patch)
 		}
 	}

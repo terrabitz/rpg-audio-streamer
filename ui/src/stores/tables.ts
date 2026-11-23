@@ -45,7 +45,6 @@ export const useTableStore = defineStore('tables', {
         ...data,
         ...failed,
         typeVolumes: { ...data.typeVolumes, ...failed?.typeVolumes },
-        trackVolumes: { ...data.trackVolumes, ...failed?.trackVolumes },
       }
       if (this.current?.externalID === tableID) {
         this.trackOrders[tableID] = settings.trackOrder
@@ -62,7 +61,6 @@ export const useTableStore = defineStore('tables', {
         const body = {
           ...failed, ...patch,
           typeVolumes: { ...failed?.typeVolumes, ...patch.typeVolumes },
-          trackVolumes: { ...failed?.trackVolumes, ...patch.trackVolumes },
         }
         try {
           await patchApiV1TablesByTableIdSettings<true>({ path: { tableID }, body, keepalive: true })

@@ -778,8 +778,8 @@ it.each([
   const pinia = createPinia()
   setActivePinia(pinia)
   const audio = useAudioStore()
-  audio.loadTableMix({ masterVolume: mix.masterVolume, trackVolumes: { forest: mix.volume }, typeVolumes: {}, trackOrder: [] })
-  audio.initTrack('forest', 'Forest')
+  audio.loadTableMix({ masterVolume: mix.masterVolume, typeVolumes: {}, trackOrder: [] })
+  audio.initTrack('forest', 'Forest', '', mix.volume)
   audio.updateTrackState('forest', { isPlaying: true, isRepeating: mix.isRepeating })
   let paused = true
   vi.spyOn(HTMLMediaElement.prototype, 'paused', 'get').mockImplementation(() => paused)
@@ -834,7 +834,7 @@ it('reports fatal playback errors without treating recoverable HLS events as fai
 it('allows local autoplay recovery without pausing or seeking the shared table', async () => {
   const { player, audio, primary, secondary } = await mountPlaying({})
   vi.spyOn(console, 'warn').mockImplementation(() => {})
-  audio.loadTableMix({ masterVolume: 100, typeVolumes: {}, trackVolumes: {}, trackOrder: [] })
+  audio.loadTableMix({ masterVolume: 100, typeVolumes: {}, trackOrder: [] })
   vi.mocked(secondary.play).mockRejectedValueOnce(new DOMException('User gesture required', 'NotAllowedError'))
   try {
     primary.currentTime = 10
@@ -947,5 +947,27 @@ it('keeps the player fade-out on the live playhead before restoring the shared p
     expect(primary.volume).toBe(0)
     expect(primary.paused).toBe(true)
     expect(primary.currentTime).toBe(10)
+  } finally { player.unmount() }
+})
+
+it('keeps local playback active when a loop hands off to the second media element', async () => {
+  const { player, audio, primary, secondary } = await mountPlaying({})
+  try {
+    await player.get('video').trigger('playing')
+    vi.mocked(primary.pause).mockImplementation(() => {
+      Object.defineProperty(primary, 'paused', { configurable: true, value: true })
+      primary.dispatchEvent(new Event('pause'))
+    })
+    primary.currentTime = 58
+    await player.get('video').trigger('timeupdate')
+    primary.currentTime = 60
+    secondary.currentTime = 2
+    await player.get('video').trigger('timeupdate')
+    expect(audio.localPlayback.has('forest')).toBe(true)
+    await player.get('audio').trigger('pause')
+    expect(audio.localPlayback.has('forest')).toBe(true)
+    Object.defineProperty(secondary, 'paused', { configurable: true, value: true })
+    await player.get('audio').trigger('pause')
+    expect(audio.localPlayback.has('forest')).toBe(false)
   } finally { player.unmount() }
 })

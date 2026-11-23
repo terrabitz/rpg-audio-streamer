@@ -10,8 +10,8 @@ tags: [playback, websocket, synchronization]
 
 The WebSocket hub owns authoritative live playback state in memory, keyed by
 table and track UUID. Its datastore boundary reads track membership, library
-metadata, track-type policies, and saved [table settings](../data/table-settings.md)
-through the existing store interfaces. Messages use the
+metadata including shared per-track volume, track-type policies, and saved
+[table settings](../data/table-settings.md) through the existing store interfaces. Messages use the
 [WebSocket protocol](./websocket-protocol.md).
 
 ## Table scope
@@ -38,9 +38,10 @@ messages are not accepted.
 
 Saved library metadata is broadcast to every connected GM with `trackUpdated`.
 The hub reads the current saved track under its playback lock, reconciles its
-region into every table already holding that track, and notifies listeners and
-live mixers without issuing a seek or play/pause command. Open editors update
-untouched fields from this metadata instead of saving stale copies on close.
+region and shared volume into every table already holding that track, and
+notifies listeners and live mixers without issuing a seek or play/pause command.
+Open editors update untouched fields from this metadata instead of saving stale
+copies on close.
 
 The server enforces track-type exclusivity atomically: starting Music stops
 other Music tracks, while Ambiance and One-Shot can overlap (see
@@ -72,8 +73,8 @@ transition.
 
 ## Mixing
 
-The hub publishes one canonical snapshot with unscaled track volumes and saved
-table settings. Each connection's typed socket listener projects that state
+The hub publishes one canonical snapshot with shared, unscaled track volumes
+and saved table settings. Each connection's typed socket listener projects that state
 into its role-specific wire payload. GM snapshots retain settings. Successful
 settings patches update connected GM mixes and listener playback without
 echoing remote changes back into another settings save. Player snapshots apply

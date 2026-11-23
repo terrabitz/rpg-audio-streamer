@@ -48,7 +48,6 @@ type TableSettings = domain.TableSettings
 type TableSettingsPatch struct {
 	MasterVolume *float64           `json:"masterVolume,omitempty"`
 	TypeVolumes  map[string]float64 `json:"typeVolumes,omitempty"`
-	TrackVolumes map[string]float64 `json:"trackVolumes,omitempty"`
 	TrackOrder   *[]uuid.UUID       `json:"trackOrder,omitempty"`
 }
 
@@ -60,6 +59,7 @@ type UpdateTrackRequest struct {
 	ID       uuid.UUID         `json:"id"`
 	Name     *string           `json:"name"`
 	TypeID   *uuid.UUID        `json:"typeID"`
+	Volume   *float64          `json:"volume"`
 	Playback *PlaybackSettings `json:"playback"`
 }
 
