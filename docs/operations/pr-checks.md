@@ -78,10 +78,11 @@ repository secrets from fork and Dependabot pull requests; the live tests fail
 their configuration checks when required secrets are unavailable.
 Only these two jobs share the
 `discord-live` concurrency queue, serializing bot access across jobs and runs.
-The official action expands its environment input into CLI arguments, so it
-starts these containers without credentials. A separate `docker exec` passes
-credentials by environment variable name to the test process, not to the image
-build or the container's dependency setup.
+The live jobs derive a config from the shared devcontainer definition, passing
+only the required variable names into the container and disabling environment
+probing so secret values do not become CLI arguments. Credentials are available
+to container startup and test processes and through Docker container
+inspection; other test jobs do not receive them.
 The browser Discord job does not upload failure diagnostics.
 
 ## Required check

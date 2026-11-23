@@ -141,34 +141,28 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: docker/setup-buildx-action@v4
-      # The action expands its env input into CLI arguments, so inject secrets after startup.
-      - name: Start test devcontainer
-        uses: devcontainers/ci@v0.3
-        id: devcontainer
-        with:
-          push: never
-          cacheFrom: type=gha,scope=test-devcontainer-${{ runner.arch }}
-          runCmd: printf 'workspace=%s\n' "$PWD" >> "$GITHUB_OUTPUT"
-      - name: Run live Discord connection integration
+      # Pass variable names to the container without copying values into CLI arguments.
+      - name: Configure Discord test environment
         run: |
-          container_id=$(docker ps -q \
-            --filter "label=devcontainer.local_folder=$GITHUB_WORKSPACE" \
-            --filter "label=devcontainer.config_file=$GITHUB_WORKSPACE/.devcontainer/devcontainer.json")
-          if [[ -z "$container_id" || "$container_id" == *$'\n'* ]]; then
-            echo "::error::Expected exactly one running test devcontainer."
-            exit 1
-          fi
-          docker exec --user vscode --workdir "$WORKSPACE" \
-            --env CI=true --env DISCORD_LIVE_INTEGRATION=1 \
-            --env INTEGRATION_TEST_DISCORD_SERVER_ID \
-            --env INTEGRATION_TEST_DISCORD_VOICE_CHANNEL_ID \
-            --env INTEGRATION_TEST_DISCORD_BOT_STREAMER_TOKEN \
-            "$container_id" go test -count=1 -race ./internal/discord -run '^TestLiveVoiceConnection$'
+          jq '.userEnvProbe = "none" | .runArgs += [
+            "--env=INTEGRATION_TEST_DISCORD_SERVER_ID",
+            "--env=INTEGRATION_TEST_DISCORD_VOICE_CHANNEL_ID",
+            "--env=INTEGRATION_TEST_DISCORD_BOT_STREAMER_TOKEN"
+          ]' .devcontainer/devcontainer.json > .devcontainer/.devcontainer.json
+      - name: Run live Discord connection integration
+        uses: devcontainers/ci@v0.3
         env:
-          WORKSPACE: ${{ steps.devcontainer.outputs.workspace }}
           INTEGRATION_TEST_DISCORD_SERVER_ID: ${{ secrets.INTEGRATION_TEST_DISCORD_SERVER_ID }}
           INTEGRATION_TEST_DISCORD_VOICE_CHANNEL_ID: ${{ secrets.INTEGRATION_TEST_DISCORD_VOICE_CHANNEL_ID }}
           INTEGRATION_TEST_DISCORD_BOT_STREAMER_TOKEN: ${{ secrets.INTEGRATION_TEST_DISCORD_BOT_STREAMER_TOKEN }}
+        with:
+          push: never
+          configFile: .devcontainer/.devcontainer.json
+          cacheFrom: type=gha,scope=test-devcontainer-${{ runner.arch }}
+          env: |
+            CI=true
+            DISCORD_LIVE_INTEGRATION=1
+          runCmd: go test -count=1 -race ./internal/discord -run '^TestLiveVoiceConnection$'
 
   e2e:
     name: Full App UX
@@ -220,37 +214,30 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: docker/setup-buildx-action@v4
-      # The action expands its env input into CLI arguments, so inject secrets after startup.
-      - name: Start test devcontainer
-        uses: devcontainers/ci@v0.3
-        id: devcontainer
-        with:
-          push: never
-          cacheFrom: type=gha,scope=test-devcontainer-${{ runner.arch }}
-          runCmd: printf 'workspace=%s\n' "$PWD" >> "$GITHUB_OUTPUT"
-      - name: Run live Discord app UX suite
+      # Pass variable names to the container without copying values into CLI arguments.
+      - name: Configure Discord test environment
         run: |
-          container_id=$(docker ps -q \
-            --filter "label=devcontainer.local_folder=$GITHUB_WORKSPACE" \
-            --filter "label=devcontainer.config_file=$GITHUB_WORKSPACE/.devcontainer/devcontainer.json")
-          if [[ -z "$container_id" || "$container_id" == *$'\n'* ]]; then
-            echo "::error::Expected exactly one running test devcontainer."
-            exit 1
-          fi
-          docker exec --user vscode --workdir "$WORKSPACE" --env CI=true \
-            --env INTEGRATION_TEST_DISCORD_SERVER_ID \
-            --env INTEGRATION_TEST_DISCORD_VOICE_CHANNEL_ID \
-            --env INTEGRATION_TEST_DISCORD_BOT_STREAMER_TOKEN \
-            --env INTEGRATION_TEST_DISCORD_BOT_STREAMER_CLIENT_ID \
-            --env INTEGRATION_TEST_DISCORD_BOT_LISTENER_TOKEN \
-            "$container_id" npm --prefix ui run test:e2e -- --project=chromium-discord
+          jq '.userEnvProbe = "none" | .runArgs += [
+            "--env=INTEGRATION_TEST_DISCORD_SERVER_ID",
+            "--env=INTEGRATION_TEST_DISCORD_VOICE_CHANNEL_ID",
+            "--env=INTEGRATION_TEST_DISCORD_BOT_STREAMER_TOKEN",
+            "--env=INTEGRATION_TEST_DISCORD_BOT_STREAMER_CLIENT_ID",
+            "--env=INTEGRATION_TEST_DISCORD_BOT_LISTENER_TOKEN"
+          ]' .devcontainer/devcontainer.json > .devcontainer/.devcontainer.json
+      - name: Run live Discord app UX suite
+        uses: devcontainers/ci@v0.3
         env:
-          WORKSPACE: ${{ steps.devcontainer.outputs.workspace }}
           INTEGRATION_TEST_DISCORD_SERVER_ID: ${{ secrets.INTEGRATION_TEST_DISCORD_SERVER_ID }}
           INTEGRATION_TEST_DISCORD_VOICE_CHANNEL_ID: ${{ secrets.INTEGRATION_TEST_DISCORD_VOICE_CHANNEL_ID }}
           INTEGRATION_TEST_DISCORD_BOT_STREAMER_TOKEN: ${{ secrets.INTEGRATION_TEST_DISCORD_BOT_STREAMER_TOKEN }}
           INTEGRATION_TEST_DISCORD_BOT_STREAMER_CLIENT_ID: ${{ secrets.INTEGRATION_TEST_DISCORD_BOT_STREAMER_CLIENT_ID }}
           INTEGRATION_TEST_DISCORD_BOT_LISTENER_TOKEN: ${{ secrets.INTEGRATION_TEST_DISCORD_BOT_LISTENER_TOKEN }}
+        with:
+          push: never
+          configFile: .devcontainer/.devcontainer.json
+          cacheFrom: type=gha,scope=test-devcontainer-${{ runner.arch }}
+          env: CI=true
+          runCmd: npm --prefix ui run test:e2e -- --project=chromium-discord
 
   lint:
     name: Frontend Lint

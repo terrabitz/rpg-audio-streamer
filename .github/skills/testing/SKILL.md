@@ -182,8 +182,9 @@ devcontainer exec --workspace-folder . npm --prefix ui run test:e2e -- \
 
 For local live Discord browser runs, make the private credential file available
 inside the container, then set `DISCORD_TEST_ENV_FILE` to its in-container path.
-Do not pass token values as CLI arguments. CI injects only the named variables
-into the live test processes, after the container image is built and started.
+Do not pass token values as CLI arguments. CI passes only the named variables
+into the live test containers, where they are available during dependency setup
+and test execution and visible through Docker container inspection.
 
 ## Coverage policy
 
