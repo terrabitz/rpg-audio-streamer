@@ -65,7 +65,7 @@ test('GM rotates an invite code and revokes the previous code', async ({ page, b
     const player = await playerContext.newPage()
     await player.goto(oldURL)
     await expect(player.getByText('Volume Mixer', { exact: true })).toBeVisible()
-    await player.getByRole('button', { name: 'Connect Audio', exact: true }).click()
+    await player.getByRole('button', { name: 'Connect', exact: true }).click()
     await expect(player.getByText('Connected', { exact: true })).toBeVisible()
 
     const banner = page.getByRole('banner')
@@ -322,7 +322,7 @@ test('library row previews stay local while a table is streaming', async ({ page
   try {
     const player = await playerContext.newPage()
     await player.goto(defaultTableURL)
-    await player.getByRole('button', { name: 'Connect Audio', exact: true }).click()
+    await player.getByRole('button', { name: 'Connect', exact: true }).click()
     await expect.poll(() => player.locator('video').evaluate(
       (el: HTMLVideoElement) => !el.paused && el.currentTime > 0,
     )).toBe(true)
@@ -392,7 +392,7 @@ test('GM controls desktop playback from a phone and recovers after every GM leav
     await expect.poll(() => page.locator('video').evaluate((el: HTMLVideoElement) => !el.paused && el.currentTime > 1)).toBe(true)
     const player = await playerContext.newPage()
     await player.goto(defaultTableURL)
-    await player.getByRole('button', { name: 'Connect Audio', exact: true }).click()
+    await player.getByRole('button', { name: 'Connect', exact: true }).click()
     await expect.poll(() => player.locator('video').evaluate((el: HTMLVideoElement) => !el.paused && el.currentTime > 1)).toBe(true)
     await phone.getByRole('button', { name: 'Now playing (1)', exact: true }).tap()
     const phoneTrack = phone.getByRole('group', { name: 'Playing Remote Music', exact: true })

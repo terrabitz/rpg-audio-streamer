@@ -111,7 +111,7 @@ test('GM commits waveform marker drags only on release', async ({ page, browser 
   try {
     const player = await context.newPage()
     await player.goto(page.url())
-    await player.getByRole('button', { name: 'Connect Audio', exact: true }).click()
+    await player.getByRole('button', { name: 'Connect', exact: true }).click()
     await tile.getByRole('button', { name: 'Edit Release Markers', exact: true }).click()
     const dialog = page.getByRole('dialog')
     for (const [point, target] of [['Beginning', 20], ['End', 40], ['Loop-back point', 25]] as const) {
@@ -161,7 +161,7 @@ test('GM saves loop edits live for listeners', async ({ page, browser }) => {
   try {
     const player = await playerContext.newPage()
     await player.goto(page.url())
-    await player.getByRole('button', { name: 'Connect Audio', exact: true }).click()
+    await player.getByRole('button', { name: 'Connect', exact: true }).click()
     await expect.poll(() => player.locator('[data-active="true"]').evaluate(
       (media: HTMLMediaElement) => !media.paused && media.currentTime > 0,
     )).toBe(true)
@@ -210,7 +210,7 @@ test('GM adjusts waveform markers without interrupting playback for listeners', 
   try {
     const player = await playerContext.newPage()
     await player.goto(page.url())
-    await player.getByRole('button', { name: 'Connect Audio', exact: true }).click()
+    await player.getByRole('button', { name: 'Connect', exact: true }).click()
     for (const browserPage of [page, player]) {
       await expect.poll(() => browserPage.locator('[data-active="true"]').evaluate(
         (media: HTMLMediaElement) => !media.paused && media.currentTime > 3,
@@ -259,7 +259,7 @@ test('GM drags waveform markers continuously without stuttering for listeners', 
   try {
     const player = await playerContext.newPage()
     await player.goto(page.url())
-    await player.getByRole('button', { name: 'Connect Audio', exact: true }).click()
+    await player.getByRole('button', { name: 'Connect', exact: true }).click()
     await tile.getByRole('button', { name: 'Edit Continuous Drag', exact: true }).click()
     for (const [point, toTime] of [
       ['Beginning', 2],
@@ -369,7 +369,7 @@ test('GM continuously drags markers through short natural loops without audio st
   try {
     const player = await playerContext.newPage()
     await player.goto(page.url())
-    await player.getByRole('button', { name: 'Connect Audio', exact: true }).click()
+    await player.getByRole('button', { name: 'Connect', exact: true }).click()
     for (const [point, low, high] of [
       ['Beginning', 2, 11],
       ['End', 11.5, 12],
@@ -480,7 +480,7 @@ for (const point of ['Loop-back point', 'End']) {
     try {
       const player = await playerContext.newPage()
       await player.goto(page.url())
-      await player.getByRole('button', { name: 'Connect Audio', exact: true }).click()
+      await player.getByRole('button', { name: 'Connect', exact: true }).click()
       for (const browserPage of [page, player]) {
         await expect.poll(() => browserPage.locator('[data-active="true"]').evaluate(
           (media: HTMLMediaElement) => !media.paused && media.currentTime > 0,
