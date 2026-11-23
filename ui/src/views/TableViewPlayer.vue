@@ -85,7 +85,7 @@ function disconnectAudio() {
 
     <div class="mb-4">
       <v-btn size="x-large" @click="handleAudioToggle" :loading="connecting"
-        :color="!audioStore.enabled ? 'primary' : wsStore.isConnected ? 'success' : 'error'"
+        :color="!audioStore.enabled || connecting ? 'primary' : wsStore.isConnected ? 'success' : 'error'"
         :aria-label="audioStore.enabled ? `${buttonLabel}, disconnect audio` : buttonLabel">
         <span v-if="audioStore.enabled" class="playback-bars"
           :class="{ 'playback-bars--active': audioStore.localPlayback.size }" aria-hidden="true">
