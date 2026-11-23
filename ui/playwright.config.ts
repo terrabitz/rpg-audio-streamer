@@ -21,7 +21,10 @@ export default defineConfig({
   retries: 0,
   workers: recording ? 1 : 2,
   timeout: recording ? 300_000 : 60_000,
-  expect: { timeout: recording ? 30_000 : 10_000 },
+  expect: {
+    timeout: recording ? 30_000 : 10_000,
+    toHaveScreenshot: { pathTemplate: '../media/{arg}{ext}' },
+  },
   reporter: [['list']],
   use: {
     trace: 'off',
