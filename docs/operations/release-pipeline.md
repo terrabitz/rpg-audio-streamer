@@ -28,8 +28,10 @@ each by digest to GHCR, and combines them into a multi-arch manifest tagged
 Buildx GitHub Actions cache scope. The image's runtime behavior is described in
 [HTTP serving](../runtime/http-serving.md).
 
-Pull requests that touch image inputs run the same builds without publishing
-(see [pull request checks](./pr-checks.md)).
+The workflow accepts an alternative image repository and outputs the
+published reference with its first tag. Pull requests that touch image inputs
+publish to a development repository instead (see
+[pull request checks](./pr-checks.md)).
 
 ## Runtime image
 
