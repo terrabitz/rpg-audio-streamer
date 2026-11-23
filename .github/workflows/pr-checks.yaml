@@ -58,10 +58,6 @@ jobs:
               - '.github/workflows/pr-checks.yaml'
               - '.github/workflows/docker-build.yaml'
               - 'examples/**'
-              - 'README.md'
-              - 'INSTALLATION.md'
-              - 'Makefile'
-              - '.github/actions/**'
 
   go:
     name: Go Offline Tests and Coverage
