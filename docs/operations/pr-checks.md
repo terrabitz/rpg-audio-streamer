@@ -105,11 +105,9 @@ The `README_DEMO_DIFF_RATIO` environment variable on the workflow job sets the
 tolerated fraction of differing pixels in each screenshot; it defaults to
 `0.002` (0.2%).
 Only missing or materially changed baselines cause the Git LFS GIF and
-checkpoints to be refreshed. A single job records, compares, and publishes the
-demo. It pushes changed assets only to the current head of a same-repository PR
-branch, excluding Dependabot and the default branch, and attaches them as an
-artifact for fork PRs. The recording runs without persisted Git credentials;
-only the commit step receives the token. A push with the built-in
+checkpoints to be refreshed. The check attaches changed media as an artifact.
+A separate job pushes those assets only to the current head of a same-repository
+PR branch, excluding Dependabot and the default branch. A push with the built-in
 GitHub token requires approval for the subsequent PR workflow run.
 
 ## Required check

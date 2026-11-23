@@ -175,7 +175,7 @@ jobs:
           INTEGRATION_TEST_DISCORD_BOT_LISTENER_TOKEN: ${{ secrets.INTEGRATION_TEST_DISCORD_BOT_LISTENER_TOKEN }}
 
   readme-demo:
-    name: README Demo
+    name: Check README Demo
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
@@ -184,12 +184,11 @@ jobs:
     if: |
       github.event_name == 'pull_request' &&
       (needs.changes.outputs.frontend == 'true' || needs.changes.outputs.backend == 'true')
-    permissions:
-      contents: write
+    outputs:
+      changed: ${{ steps.compare.outputs.changed }}
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
           lfs: true
           persist-credentials: false
       - uses: ./.github/actions/setup-environment
@@ -200,7 +199,7 @@ jobs:
         env:
           E2E_README_DEMO: '1'
         run: npm run test:e2e:record -- readme-demo.spec.ts --project=chromium --update-snapshots=changed
-      - name: Stage material visual changes
+      - name: Check for material visual changes
         id: compare
         run: |
           git add -- media/readme-demo/gm.png media/readme-demo/player.png
@@ -208,40 +207,16 @@ jobs:
             echo 'README demo is visually unchanged.' >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
-          cp ui/recordings/gm-switches-music-while-a-player-listens.gif media/audio-playing.gif
-          git add -- media/audio-playing.gif
+          staging="$RUNNER_TEMP/readme-demo"
+          mkdir -p "$staging"
+          cp media/readme-demo/{gm,player}.png "$staging/"
+          cp ui/recordings/gm-switches-music-while-a-player-listens.gif "$staging/audio-playing.gif"
           echo 'changed=true' >> "$GITHUB_OUTPUT"
-      - name: Commit only the demo assets to the PR branch
-        if: |
-          steps.compare.outputs.changed == 'true' &&
-          github.event.pull_request.head.repo.full_name == github.repository &&
-          github.event.pull_request.head.ref != github.event.repository.default_branch &&
-          github.event.pull_request.user.login != 'dependabot[bot]'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          HEAD_REF: ${{ github.event.pull_request.head.ref }}
-        run: |
-          remote="https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
-          target="refs/heads/$HEAD_REF"
-          remote_head=$(git ls-remote --exit-code "$remote" "$target" | cut -f1)
-          if [[ "$remote_head" != "$HEAD_SHA" ]]; then
-            echo 'PR branch advanced; leaving its README demo to the newer run.'
-            exit 0
-          fi
-          git -c user.name='github-actions[bot]' \
-            -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
-            commit -m 'docs: Refresh README demo'
-          git push "$remote" "HEAD:$target"
       - uses: actions/upload-artifact@v7
-        if: |
-          steps.compare.outputs.changed == 'true' &&
-          github.event.pull_request.head.repo.full_name != github.repository
+        if: steps.compare.outputs.changed == 'true'
         with:
           name: readme-demo
-          path: |
-            media/audio-playing.gif
-            media/readme-demo/
+          path: ${{ runner.temp }}/readme-demo/
           if-no-files-found: error
           retention-days: 7
       - uses: actions/upload-artifact@v7
@@ -250,6 +225,48 @@ jobs:
           name: readme-demo-diagnostics-attempt-${{ github.run_attempt }}
           path: ui/test-results/
           retention-days: 7
+
+  publish-readme-demo:
+    name: Update README Demo
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: readme-demo
+    if: |
+      needs.readme-demo.outputs.changed == 'true' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref != github.event.repository.default_branch &&
+      github.event.pull_request.user.login != 'dependabot[bot]'
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - uses: actions/download-artifact@v7
+        with:
+          name: readme-demo
+          path: ${{ runner.temp }}/readme-demo
+      - name: Commit only the demo assets to the PR branch
+        env:
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        run: |
+          target="refs/heads/$HEAD_REF"
+          remote_head=$(git ls-remote --exit-code origin "$target" | cut -f1)
+          if [[ "$remote_head" != "$HEAD_SHA" ]]; then
+            echo 'PR branch advanced; leaving its README demo to the newer run.'
+            exit 0
+          fi
+          git lfs install --local
+          mkdir -p media/readme-demo
+          cp "$RUNNER_TEMP/readme-demo/audio-playing.gif" media/audio-playing.gif
+          cp "$RUNNER_TEMP/readme-demo/"{gm,player}.png media/readme-demo/
+          git add -- media/audio-playing.gif media/readme-demo/gm.png media/readme-demo/player.png
+          if git diff --cached --quiet; then exit 0; fi
+          git -c user.name='github-actions[bot]' \
+            -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+            commit -m 'docs: Refresh README demo'
+          git push origin "HEAD:$target"
 
   lint:
     name: Frontend Lint
@@ -394,7 +411,7 @@ jobs:
   pr-checks:
     name: PR Checks
     if: ${{ always() }}
-    needs: [changes, go, go-discord, e2e, e2e-discord, readme-demo, lint, build, unit, docker, examples, embeds]
+    needs: [changes, go, go-discord, e2e, e2e-discord, readme-demo, publish-readme-demo, lint, build, unit, docker, examples, embeds]
     runs-on: ubuntu-latest
     steps:
       - name: Require all selected checks to pass
