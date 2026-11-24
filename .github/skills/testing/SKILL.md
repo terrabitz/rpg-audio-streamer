@@ -14,7 +14,8 @@ Keep root `AGENTS.md` short.
 ## Setup and commands
 
 Run all tests in the repository devcontainer, not on the host. From the
-worktree root, start it and wait for dependency setup:
+worktree root, ensure the Git LFS screenshot baselines are checked out, then
+start the devcontainer and wait for dependency setup:
 
 ```sh
 devcontainer up --workspace-folder .
