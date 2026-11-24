@@ -49,7 +49,6 @@ type DiscordController interface {
 	Setup(context.Context) (discord.Setup, error)
 	Channels(context.Context, string) ([]discord.Choice, error)
 	Resolve(context.Context, discord.Destination) (discord.Destination, error)
-	Fail(string, error)
 	Disconnect(context.Context, string) error
 	Status(string) discord.Status
 	Close()
@@ -65,7 +64,6 @@ type Server struct {
 	store      Store
 	mixer      *livemixer.Service
 	discord    DiscordController
-	discordMix *discordMixer
 	processing *musicprocessing.Service
 	videos     VideoScanner
 }
@@ -129,8 +127,7 @@ func New(cfg Config, logger *slog.Logger, auth Authenticator, store Store, hub W
 		}
 		srv.discord = bot
 		bot.SetEventSender(hub)
-		srv.discordMix = newDiscordMixer(srv.mixer, srv)
-		livemixer.Subscribe(hub, srv.discordMix)
+		livemixer.Subscribe(hub, newDiscordMixer(srv.mixer, srv))
 	}
 
 	return srv, nil

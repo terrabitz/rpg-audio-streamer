@@ -84,6 +84,26 @@ through the `devcontainers/ci` action's `env` input. The action passes them as
 jobs do not receive them.
 The browser Discord job does not upload failure diagnostics.
 
+## README demo
+
+The README demo check reuses the browser recording harness to produce a looping
+GIF of a GM switching music, playing a one-shot, and stopping playback while a
+player listens in a separate browser context. The recording overlay uses a
+fixed seed and the movement endpoints to reproduce the same curved cursor
+paths. The GM cursor settles before each click and returns to the same resting
+spot at the end of the loop. On
+pull requests that change browser or server inputs, it
+compares stable GM and player screenshots with the checked-in baselines.
+Pointer overlays and playback-position motion are excluded from comparison.
+The `README_DEMO_DIFF_RATIO` environment variable on the workflow job sets the
+tolerated fraction of differing pixels in each screenshot; it defaults to
+`0.002` (0.2%).
+Only missing or materially changed baselines cause the Git LFS GIF and
+checkpoints to be refreshed. The check attaches changed media as an artifact.
+A separate job pushes those assets only to the current head of a same-repository
+PR branch, excluding Dependabot and the default branch. A push with the built-in
+GitHub token requires approval for the subsequent PR workflow run.
+
 ## Required check
 
 The final `PR Checks` job depends on path detection and all check jobs, accepts

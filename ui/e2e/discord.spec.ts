@@ -96,6 +96,10 @@ test('GM controls real Discord audio and reconnects the saved channel', { tag: '
       .toBe('disconnected')
     await waitAudio(audio => !audio.present)
     await page.getByRole('link', { name: 'Open Discord audio', exact: true }).click()
+    await expect(page.getByRole('button', { name: 'Connect', exact: true })).toBeVisible()
+    await expect.poll(async () => (await (await page.request.get(`/api/v1/tables/${tableID}/discord`)).json()).state)
+      .toBe('disconnected')
+    await chooseDiscordDestination(page, true)
     await expect(page.getByRole('button', { name: 'Connected', exact: true })).toBeVisible()
     await waitAudio(audio => audio.present)
     frames = current().frames
@@ -152,7 +156,13 @@ async function chooseDiscordDestination(page: Page, saved = false) {
     await page.getByRole('option', { name: channel.name, exact: true }).click()
   }
   await expect(dialog.getByRole('button', { name: 'Connect', exact: true })).toBeEnabled()
-  await dialog.getByRole('button', { name: 'Connect', exact: true }).click()
+  const [response] = await Promise.all([
+    page.waitForResponse(response => response.request().method() === 'POST' &&
+      new URL(response.url()).pathname === `/api/v1/tables/${new URL(page.url()).pathname.split('/').pop()}/discord`,
+    { timeout: 30_000 }),
+    dialog.getByRole('button', { name: 'Connect', exact: true }).click(),
+  ])
+  expect(response.status(), 'Discord connect HTTP status').toBe(200)
   await expect(dialog).toBeHidden()
   const disconnectButton = page.getByRole('button', { name: 'Connected', exact: true })
   await expect(disconnectButton).toBeVisible()

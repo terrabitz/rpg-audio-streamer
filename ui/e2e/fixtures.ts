@@ -22,9 +22,11 @@ export const test = base.extend<{
   recordingWindow: RecordingWindow
   youtubeFixture: boolean
   firstRun: boolean
+  recordingCursorSeed: number | null
 }>({
   youtubeFixture: [false, { option: true }],
   firstRun: [false, { option: true }],
+  recordingCursorSeed: [null, { option: true }],
   app: [async ({ browser, youtubeFixture, firstRun }, use, testInfo) => {
     const existing = new Set(browser.contexts())
     const liveDiscord = testInfo.tags.includes('@discord')
@@ -65,7 +67,7 @@ export const test = base.extend<{
     })
   },
   recorder: [
-    async ({ browser, context, recordingWindow }, use, testInfo) => {
+    async ({ browser, context, recordingWindow, recordingCursorSeed }, use, testInfo) => {
       if (!recording) {
         await use()
         return
@@ -78,7 +80,7 @@ export const test = base.extend<{
           count += 1
           const pageLabel = count > 1 ? `${label} (tab ${count})` : label
           const offsetMs = performance.now() - started
-          void page.addInitScript(showInteractions, pageLabel)
+          void page.addInitScript(showInteractions, { label: pageLabel, cursorSeed: recordingCursorSeed })
           const tracked = { page, label: pageLabel, offsetMs }
           page.on('framenavigated', frame => {
             if (frame === page.mainFrame() && isGMPath(new URL(frame.url()).pathname)) {
@@ -137,7 +139,8 @@ export function slugify(title: string) {
 }
 
 function isGMPath(pathname: string) {
-  return /^\/(login|tables|library)(\/|$)/.test(pathname)
+  // The individual table URL is shared by both roles.
+  return /^\/(login|tables|library)\/?$/.test(pathname)
 }
 
 function gmLabel(label: string) {
@@ -145,10 +148,11 @@ function gmLabel(label: string) {
 }
 
 // Playwright videos omit the pointer, so recordings draw one plus a page label.
-function showInteractions(label: string) {
+function showInteractions({ label, cursorSeed }: { label: string; cursorSeed: number | null }) {
   const install = () => {
     const badge = document.createElement('div')
-    badge.textContent = /^\/(login|tables|library)(\/|$)/.test(location.pathname)
+    badge.dataset.recordingOverlay = ''
+    badge.textContent = /^\/(login|tables|library)\/?$/.test(location.pathname)
       ? label.replace(/^Player (\d+)/, 'GM (device $1)') : label
     badge.setAttribute('aria-hidden', 'true')
     Object.assign(badge.style, {
@@ -157,16 +161,27 @@ function showInteractions(label: string) {
       font: '600 16px system-ui, sans-serif',
     })
     const cursor = document.createElement('div')
+    cursor.dataset.recordingOverlay = ''
     cursor.setAttribute('aria-hidden', 'true')
     Object.assign(cursor.style, {
       position: 'fixed', left: '-100px', top: '-100px', width: '22px', height: '22px',
       zIndex: '2147483647', pointerEvents: 'none', borderRadius: '50%',
       border: '3px solid #ff3d3d', background: 'rgba(255, 61, 61, 0.35)',
-      transform: 'translate(-50%, -50%)', transition: 'left 0.3s, top 0.3s, transform 0.15s',
+      transform: 'translate(-50%, -50%)',
+      transition: cursorSeed === null ? 'left 0.3s, top 0.3s, transform 0.15s' : 'transform 0.15s',
     })
-    document.addEventListener('mousemove', event => {
-      cursor.style.left = `${event.clientX}px`
-      cursor.style.top = `${event.clientY}px`
+    let previous: { x: number; y: number } | undefined
+    let motion: Animation | undefined
+    document.addEventListener('mousemove', ({ clientX: x, clientY: y }) => {
+      if (previous?.x === x && previous.y === y) return
+      cursor.style.left = `${x}px`
+      cursor.style.top = `${y}px`
+      if (cursorSeed !== null && previous) {
+        motion?.cancel()
+        motion = cursor.animate(cursorPath(previous, { x, y }, cursorSeed), 500)
+        motion.id = 'recording-cursor-motion'
+      }
+      previous = { x, y }
     }, true)
     document.addEventListener('mousedown', () => {
       cursor.style.transform = 'translate(-50%, -50%) scale(1.8)'
@@ -181,4 +196,25 @@ function showInteractions(label: string) {
     return
   }
   install()
+
+  function cursorPath(from: { x: number; y: number }, to: { x: number; y: number }, seed: number) {
+    // Hash the endpoints so setup events and browser timing cannot change the bend.
+    let hash = seed
+    for (const coordinate of [from.x, from.y, to.x, to.y]) {
+      hash = Math.imul(hash ^ coordinate, 16777619)
+    }
+    hash ^= hash >>> 16
+    const dx = to.x - from.x
+    const dy = to.y - from.y
+    const bend = (hash & 1 ? 1 : -1) * (0.12 + ((hash >>> 1) % 100) / 1000)
+    return Array.from({ length: 21 }, (_, i) => {
+      const t = i / 20
+      const progress = t * t * (3 - 2 * t)
+      const arc = 4 * progress * (1 - progress) * bend
+      return {
+        left: `${from.x + dx * progress - dy * arc}px`,
+        top: `${from.y + dy * progress + dx * arc}px`,
+      }
+    })
+  }
 }

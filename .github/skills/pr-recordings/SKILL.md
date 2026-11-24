@@ -45,6 +45,19 @@ window. `ui/e2e/record.mjs` trims the synchronized recordings to that window
 before holding the last visible frame. Unmarked tests keep full-test recordings
 for local use. The marks do nothing in normal test runs.
 
+To reproduce the root README demo check, run from `ui/`:
+
+```sh
+E2E_README_DEMO=1 npm run test:e2e:record -- readme-demo.spec.ts --project=chromium --update-snapshots=changed
+```
+
+The check uses the LFS-backed `media/readme-demo/` checkpoints. Hydrate them
+before local comparison. If neither checkpoint changes, leave
+`media/audio-playing.gif` alone. Set `README_DEMO_DIFF_RATIO` to override the
+allowed fraction of differing pixels (`0` to `1`). The
+[PR checks concept](../../../docs/operations/pr-checks.md) describes how CI
+publishes updates.
+
 ```ts
 test('GM performs the flow', async ({ page, recordFlow }) => {
   await login(page)
