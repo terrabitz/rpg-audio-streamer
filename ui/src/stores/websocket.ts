@@ -4,11 +4,6 @@ import { EventHub, parseMessage, type Message } from '@/websocket/router'
 
 const reconnectIntervalMs = 3000
 
-interface StoredMessage extends Message {
-  timestamp: number
-  direction: 'received'
-}
-
 function getWebSocketUrl(): string {
   const apiBase = import.meta.env.VITE_API_BASE_URL
   let baseUrl: URL
@@ -26,7 +21,6 @@ function getWebSocketUrl(): string {
 export const useWebSocketStore = defineStore('websocket', () => {
   const isConnected = ref(false)
   const router = new EventHub()
-  const messageHistory = ref<StoredMessage[]>([])
   let socket: WebSocket | null = null
   let reconnectTimer: ReturnType<typeof setTimeout> | undefined
   let generation = 0
@@ -98,13 +92,7 @@ export const useWebSocketStore = defineStore('websocket', () => {
       console.error('Invalid WebSocket message:', error)
       return
     }
-    console.log('Received WebSocket message:', message)
-    recordMessage(message, 'received')
     router.dispatch(message)
-  }
-
-  function recordMessage(message: Message, direction: StoredMessage['direction']) {
-    messageHistory.value.push({ ...message, timestamp: Date.now(), direction })
   }
 
   function disconnect() {
@@ -118,16 +106,10 @@ export const useWebSocketStore = defineStore('websocket', () => {
     }
   }
 
-  function clearMessageHistory() {
-    messageHistory.value = []
-  }
-
   return {
     isConnected,
     connect,
     disconnect,
     ...router.subscriptions,
-    messageHistory,
-    clearMessageHistory
   }
 })

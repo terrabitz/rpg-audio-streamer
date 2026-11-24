@@ -3,19 +3,16 @@ import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router';
 import { useDisplay } from 'vuetify';
 import { getSetupStatus } from './client/apiClient';
-import DevDebugPanel from './components/DevDebugPanel.vue';
 import ErrorToast from './components/ErrorToast.vue';
 import { useScreenWakeLock } from './composables/screenWakeLock';
 import { useAppBar } from './composables/useAppBar';
 import { useAuthStore } from './stores/auth';
-import { useDebugStore } from './stores/debug';
 import { useClientPreferencesStore } from './stores/clientPreferences';
 import { useWebSocketStore } from './stores/websocket';
 
 const auth = useAuthStore()
 const router = useRouter()
 const wsStore = useWebSocketStore()
-const debugStore = useDebugStore()
 const route = useRoute()
 const drawer = ref(false)
 const setupError = ref('')
@@ -79,8 +76,6 @@ onUnmounted(() => {
 
       <component v-for="(action, index) in actions" :key="index" :is="action" />
 
-      <v-btn v-if="debugStore.isDevMode && (isPlayerView || !auth.authenticated)" icon="$bug" aria-label="Toggle debug panel"
-        @click="debugStore.togglePanel"></v-btn>
       <v-btn v-if="!auth.authenticated && !isPlayerView" to="/login" color="primary">Login</v-btn>
     </v-app-bar>
     <v-navigation-drawer v-if="auth.authenticated && !isPlayerView" v-model="drawer" temporary aria-label="Navigation">
@@ -90,8 +85,6 @@ onUnmounted(() => {
           <v-list-item to="/library" title="Library" prepend-icon="$library" @click="drawer = false" />
           <v-list-item to="/settings" title="Settings" prepend-icon="$settings" @click="drawer = false" />
         </template>
-        <v-list-item v-if="debugStore.isDevMode" title="Toggle debug panel" role="button" prepend-icon="$bug"
-          @click="debugStore.togglePanel" />
       </v-list>
       <template #append>
         <v-list nav>
@@ -104,9 +97,5 @@ onUnmounted(() => {
       <RouterView :key="route.fullPath" />
     </v-main>
     <ErrorToast v-model="wakeLockError" />
-    <v-navigation-drawer location="right" v-if="debugStore.isDevMode" v-model="debugStore.showDebugPanel"
-      :permanent="debugStore.showDebugPanel" width="400">
-      <DevDebugPanel />
-    </v-navigation-drawer>
   </v-app>
 </template>

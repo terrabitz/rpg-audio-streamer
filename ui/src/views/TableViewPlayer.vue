@@ -1,19 +1,16 @@
 <script setup lang="ts">
-import { useDebugStore } from '@/stores/debug'
 import { usePlaybackSnapshot } from '@/composables/playbackSnapshot'
 import { useWebSocketStore } from '@/stores/websocket'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import AudioPlayer from '../components/AudioPlayer.vue'
 import ErrorToast from '../components/ErrorToast.vue'
-import PlayerFileList from '../components/PlayerFileList.vue'
 import VolumeMixer from '../components/VolumeMixer.vue'
 import { useAudioStore } from '../stores/audio'
 
 const route = useRoute()
 const wsStore = useWebSocketStore()
 const audioStore = useAudioStore()
-const debugStore = useDebugStore()
 const connecting = ref(false)
 const error = ref('')
 let unsubscribe: (() => void) | undefined
@@ -105,8 +102,6 @@ function disconnectAudio() {
     </div>
 
     <VolumeMixer class="mt-4" />
-
-    <PlayerFileList v-if="debugStore.isDevMode" :refresh="() => snapshots.refresh(externalID)" />
   </v-container>
 </template>
 
