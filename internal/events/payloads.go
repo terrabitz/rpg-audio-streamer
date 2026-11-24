@@ -31,8 +31,21 @@ type PlaybackTrack struct {
 }
 
 type Snapshot struct {
+	Revision uint64                `json:"revision"`
 	Tracks   []PlaybackTrack       `json:"tracks"`
 	Settings *domain.TableSettings `json:"settings,omitempty"`
+}
+
+func (s Snapshot) ForPlayer() Snapshot {
+	if s.Settings != nil {
+		volume := s.Settings.MasterVolume / 100
+		s.Tracks = append(make([]PlaybackTrack, 0, len(s.Tracks)), s.Tracks...)
+		for i := range s.Tracks {
+			s.Tracks[i].Volume *= volume
+		}
+		s.Settings = nil
+	}
+	return s
 }
 
 type MixSnapshot struct {
@@ -48,8 +61,4 @@ type TrackStatusUpdate struct {
 	FileID          string `json:"fileID"`
 	Status          string `json:"status"`
 	ProcessingError string `json:"processingError,omitempty"`
-}
-
-type Failure struct {
-	Message string `json:"message"`
 }

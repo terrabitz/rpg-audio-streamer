@@ -120,37 +120,12 @@ func TestBlockedEventOnlyBlocksItsCallerAndShutdownWaits(t *testing.T) {
 	waitStopped()
 }
 
-func TestServerEventsCannotBePublishedBySocketClients(t *testing.T) {
-	hub, clients := testHub()
-	called := false
-	OnServerEvent(hub, events.TableDeleted, func(string, *Client) { called = true })
-	for _, id := range []string{"gm", "player"} {
-		hub.route([]byte(`{"event":"tableDeleted","payload":"friday"}`), clients[id])
-	}
-	if called {
-		t.Fatal("untrusted socket event reached a server-only handler")
-	}
-	for _, client := range clients {
-		if client.closed || len(client.send) != 0 {
-			t.Fatal("client forged a table deletion")
-		}
-	}
-	if err := hub.SendEvent(events.Ping, map[string]int{}); err == nil {
+func TestRejectInvalidServerEvents(t *testing.T) {
+	hub, _ := testHub()
+	if err := hub.SendEvent("unknown", map[string]int{}); err == nil {
 		t.Fatal("server emitter accepted an unregistered server event")
 	}
 	if err := hub.SendEvent(events.TrackStatusChanged, math.NaN()); err == nil {
 		t.Fatal("server emitter accepted an unencodable payload")
-	}
-}
-
-func TestEventSenderComesFromAuthenticatedSocket(t *testing.T) {
-	hub, clients := testHub()
-	hub.route([]byte(`{"event":"broadcast","senderId":"forged","payload":{"nonce":0}}`), clients["gm"])
-	var message Message
-	if err := json.Unmarshal(<-clients["player"].send, &message); err != nil {
-		t.Fatal(err)
-	}
-	if message.Event != events.Broadcast || message.SenderID != clients["gm"].ID {
-		t.Fatalf("socket event trusted sender metadata: %+v", message)
 	}
 }

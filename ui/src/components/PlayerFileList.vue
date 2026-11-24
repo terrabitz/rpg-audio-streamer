@@ -23,20 +23,20 @@
 </template>
 
 <script setup lang="ts">
-import { useWebSocketStore } from '@/stores/websocket'
 import { ref } from 'vue'
 import { useAudioStore } from '../stores/audio'
 
 const audioStore = useAudioStore()
-const wsStore = useWebSocketStore()
+const props = defineProps<{ refresh: () => Promise<void> }>()
 const isRefreshing = ref(false)
 
-function handleRefresh() {
+async function handleRefresh() {
   isRefreshing.value = true
-  wsStore.sendEvent('playbackSyncRequested', {})
-  setTimeout(() => {
+  try {
+    await props.refresh()
+  } finally {
     isRefreshing.value = false
-  }, 1000)
+  }
 }
 </script>
 

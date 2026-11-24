@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useDebugStore } from '@/stores/debug'
+import { usePlaybackSnapshot } from '@/composables/playbackSnapshot'
 import { useWebSocketStore } from '@/stores/websocket'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
@@ -18,6 +19,10 @@ const error = ref('')
 let unsubscribe: (() => void) | undefined
 
 const externalID = route.params.externalID as string
+const snapshots = usePlaybackSnapshot(
+  payload => audioStore.syncTracks(payload.tracks),
+  () => { error.value = 'Unable to synchronize playback. Please reconnect and try again.' },
+)
 
 const buttonLabel = computed(() => {
   if (connecting.value) return 'Connecting...'
@@ -36,7 +41,7 @@ const playbackStatus = computed(() => {
 
 onMounted(() => {
   audioStore.enabled = false
-  unsubscribe = wsStore.onPlaybackStateChanged(payload => audioStore.syncTracks(payload.tracks))
+  unsubscribe = wsStore.onPlaybackStateChanged(snapshots.accept)
 })
 
 onUnmounted(() => {
@@ -45,7 +50,8 @@ onUnmounted(() => {
 })
 
 watch(() => wsStore.isConnected, (connected) => {
-  if (connected && audioStore.enabled) wsStore.sendEvent('playbackSyncRequested', {})
+  snapshots.reset()
+  if (connected && audioStore.enabled) void snapshots.refresh(externalID)
 })
 
 function handleAudioToggle() {
@@ -72,6 +78,7 @@ async function connectAudio() {
 }
 
 function disconnectAudio() {
+  snapshots.reset()
   audioStore.clearTracks()
   wsStore.disconnect()
 }
@@ -99,7 +106,7 @@ function disconnectAudio() {
 
     <VolumeMixer class="mt-4" />
 
-    <PlayerFileList v-if="debugStore.isDevMode" />
+    <PlayerFileList v-if="debugStore.isDevMode" :refresh="() => snapshots.refresh(externalID)" />
   </v-container>
 </template>
 

@@ -29,9 +29,9 @@ like socket event consumers; its callbacks do not decode raw JSON.
 The adapter answers each authenticated GM's `clientConnected` event with a
 targeted `mixerReady` event (see
 [WebSocket protocol](../playback/websocket-protocol.md)). The GM
-answers with `mixChanged`: a full snapshot of playing tracks and the current
+answers with `PUT /api/v1/tables/{tableID}/mix`: a full snapshot of playing tracks and the current
 type-volume map. This happens on reconnect as well as initial connection.
-Accepted `trackPlaybackChanged` inputs become canonical `playbackChanged`
+Accepted HTTP playback commands become canonical `playbackChanged`
 batches that feed partial play/pause, seek, volume, repeating, and live
 [playback-region](../playback/playback-regions.md) changes into the mixer.
 Persisted track-volume changes use the same batches. Seek changes use `CrossfadeSeek` (see
@@ -41,13 +41,14 @@ seek transition.
 
 Track volumes are unscaled; the supplied type-volume map includes the GM master
 multiplier. The service applies that multiplier and caps effective gain at
-unity, matching browser per-track gain clamping. The GM sends `mixVolumesChanged` for
-live type-volume and master-volume changes. Play/resume commands include the
-GM's selected track volume, including unsaved and zero values. The hub also
+unity, matching browser per-track gain clamping. The GM sends batched
+`PATCH /api/v1/tables/{tableID}/mix` commands for live type-volume and
+master-volume changes. Play/resume commands include the
+GM's selected track volume, including unsaved and zero values. The playback service also
 supplies the resolved track volume and playback region to the mixer on play, so
 clients omitting volume still honor saved settings.
 
-When an exclusive track starts, the hub includes pause patches for displaced
+When an exclusive track starts, the playback service includes pause patches for displaced
 tracks before the requested update in the same batch. These use the core's playback envelopes
 and are serialized with the accepted playback update, so Discord fades out the
 previous Music track while simultaneous track types continue playing. Frontend
@@ -57,15 +58,13 @@ region changes flush queued updates first.
 
 ## Authorization and errors
 
-The hub derives table identity and GM authorization from the authenticated
-socket, never the event payload. `playbackStateChanged` snapshots do not
-mutate the mixer; `mixChanged` replaces it, including an empty snapshot on
-leaving a table. Mixer-only events are ignored when disabled and
-never forwarded to players. Successful events receive `mixerApplied`; failures
-receive `mixerFailed` and are logged with table and event context. The adapter
-dispatches these responses synchronously through the hub for buffered socket
-delivery only to the originating GM.
-The GM
+HTTP routes enforce GM authentication and resolve the table from the URL.
+`playbackStateChanged` snapshots do not mutate the mixer; `mixChanged`
+replaces it. A mix HTTP response acknowledges dispatch, not successful
+application. Mixer events are ignored when disabled and never forwarded to
+players. Successful commands publish `mixerApplied`; failures publish
+`mixerFailed` and are logged. The adapter sends those results to all connected
+GMs viewing the table. The GM view
 displays errors without stopping browser playback. A successful reconnect
 snapshot clears the error. Normal player broadcasts happen before mixer
 processing, so warming a decoder does not delay that broadcast.
@@ -97,7 +96,7 @@ through Discord.
 ## Lifecycle
 
 The adapter handles track-removal and table-lifecycle events independently of
-the hub's authoritative playback handling. Track disassociation removes the
+the playback service's authoritative state. Track disassociation removes the
 track from its table's mix; library deletion
 removes it from all mixes (see
 [table track associations](../data/table-track-associations.md)). Table deletion

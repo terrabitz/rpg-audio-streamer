@@ -382,7 +382,7 @@ func startServer(ctx context.Context, cfg Config) error {
 		<-finished
 	}()
 
-	srv, err := server.New(cfg.Server, logger, authService, db, hub, processing, videos)
+	srv, err := server.New(cfg.Server, logger, authService, db, hub, hub.Playback(), processing, videos)
 	if err != nil {
 		return fmt.Errorf("couldn't create server: %w", err)
 	}

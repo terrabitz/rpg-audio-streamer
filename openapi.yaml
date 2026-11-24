@@ -215,6 +215,77 @@ components:
           type: [number, "null"]
           minimum: 0
 
+    LivePlaybackPatch:
+      type: object
+      additionalProperties: false
+      properties:
+        isPlaying: {type: boolean}
+        volume: {type: number, minimum: 0, maximum: 100}
+        currentTime: {type: number, minimum: 0}
+        duration: {type: number, minimum: 0}
+        playback:
+          $ref: "#/components/schemas/PlaybackSettings"
+    LivePlaybackTrack:
+      type: object
+      required: [fileID, name, isPlaying, volume, isRepeating, currentTime, duration, trackType, playback, positionVersion, seekVersion, seekTarget, seekLanding]
+      properties:
+        fileID: {type: string, format: uuid}
+        name: {type: string}
+        isPlaying: {type: boolean}
+        volume: {type: number}
+        isRepeating: {type: boolean}
+        currentTime: {type: number}
+        duration: {type: number}
+        trackType: {type: string}
+        playback:
+          $ref: "#/components/schemas/PlaybackSettings"
+        positionVersion: {type: integer}
+        seekVersion: {type: integer}
+        seekTarget: {type: [number, "null"]}
+        seekLanding: {type: [number, "null"]}
+    LivePlaybackSnapshot:
+      type: object
+      required: [revision, tracks]
+      properties:
+        revision:
+          type: integer
+          description: Snapshot ordering shared with playbackStateChanged events within a server process.
+        tracks:
+          type: array
+          items:
+            $ref: "#/components/schemas/LivePlaybackTrack"
+        settings:
+          $ref: "#/components/schemas/TableSettings"
+    LiveMixSnapshot:
+      type: object
+      additionalProperties: false
+      required: [tracks]
+      properties:
+        tracks:
+          type: array
+          items:
+            type: object
+            required: [fileID]
+            properties:
+              fileID: {type: string, format: uuid}
+              isPlaying: {type: boolean}
+              isRepeating: {type: boolean}
+              volume: {type: number}
+              currentTime: {type: number}
+              duration: {type: number}
+              playback:
+                $ref: "#/components/schemas/PlaybackSettings"
+        typeVolumes:
+          type: object
+          additionalProperties: {type: number}
+    LiveMixVolumePatch:
+      type: object
+      additionalProperties: false
+      required: [typeVolumes]
+      properties:
+        typeVolumes:
+          type: object
+          additionalProperties: {type: number}
     UpdateTrackRequest:
       type: object
       required:
@@ -528,6 +599,76 @@ paths:
         "502":
           description: Disconnect failed
 
+  /api/v1/tables/{tableID}/playback:
+    parameters:
+      - {name: tableID, in: path, required: true, schema: {type: string}}
+    get:
+      operationId: getTablePlayback
+      summary: Read live playback for initial load or reconnection
+      description: Players receive effective track volumes and no GM table settings.
+      responses:
+        "200":
+          description: Current playback snapshot
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LivePlaybackSnapshot"
+        "404": {description: Table not found}
+  /api/v1/tables/{tableID}/playback/{trackID}:
+    parameters:
+      - {name: tableID, in: path, required: true, schema: {type: string}}
+      - {name: trackID, in: path, required: true, schema: {type: string, format: uuid}}
+    patch:
+      operationId: patchTablePlayback
+      summary: Change a track's live playback
+      security: [{cookieAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LivePlaybackPatch"
+      responses:
+        "204": {description: Playback updated}
+        "400": {description: Invalid track ID or playback patch}
+        "401": {description: GM authentication required}
+        "404": {description: Table or associated track not found}
+        "409": {description: Track is not ready}
+  /api/v1/tables/{tableID}/mix:
+    parameters:
+      - {name: tableID, in: path, required: true, schema: {type: string}}
+    put:
+      operationId: putTableMix
+      summary: Replace the live Discord mix
+      security: [{cookieAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LiveMixSnapshot"
+      responses:
+        "202": {description: Command dispatched; a mixer result is delivered to table GMs}
+        "400": {description: Invalid mix body}
+        "401": {description: GM authentication required}
+        "404": {description: Table not found}
+        "503": {description: Event bus unavailable}
+    patch:
+      operationId: patchTableMixVolumes
+      summary: Replace live Discord mix gains without rebuilding playback
+      security: [{cookieAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LiveMixVolumePatch"
+      responses:
+        "202": {description: Command dispatched; a mixer result is delivered to table GMs}
+        "400": {description: Invalid mix body}
+        "401": {description: GM authentication required}
+        "404": {description: Table not found}
+        "503": {description: Event bus unavailable}
   /api/v1/tables/{tableID}/settings:
     parameters:
       - name: tableID

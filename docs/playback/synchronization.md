@@ -1,15 +1,16 @@
 ---
 type: Subsystem
 title: Playback synchronization
-description: Server-authoritative live table playback in the WebSocket hub.
-resource: internal/websocket
+description: Server-authoritative live table playback with HTTP commands and pushed snapshots.
+resource: internal/playback
 tags: [playback, websocket, synchronization]
 ---
 
 # Playback synchronization
 
-The WebSocket hub owns authoritative live playback state in memory, keyed by
-table and track UUID. Its datastore boundary reads track membership, library
+The playback service owns authoritative live playback state in memory, keyed by
+table and track UUID. The service runs independently of HTTP and WebSocket
+adapters. Its store interface reads track membership, library
 metadata including shared per-track volume, track-type policies, and saved
 [table settings](../data/table-settings.md) through the existing store interfaces. Messages use the
 [WebSocket protocol](./websocket-protocol.md).
@@ -19,25 +20,28 @@ metadata including shared per-track volume, track-type policies, and saved
 Each connection has a server-validated table scope: the GM selects an existing
 table by its external ID, while players supply that public external ID from the
 URL (see [public table links](../backend/public-table-links.md)). Socket event
-subscriptions, including targeted full syncs and sync requests, require a
-matching table.
+subscriptions and HTTP snapshots require a matching table.
 
 ## Snapshots and events
 
-Every GM and listening player requests a snapshot with `playbackSyncRequested` on
-connection and reconnection. The server replies directly with `playbackStateChanged`,
-including paused tracks and their positions; it does not need a connected GM.
+GMs and listening players fetch `GET /api/v1/tables/{tableID}/playback` for
+initial state and reconnect reconciliation. It includes paused tracks and their
+positions and does not need a connected GM. HTTP responses and pushed
+`playbackStateChanged` events share snapshot revisions so older snapshots
+cannot overwrite newer state. There is no polling.
 
-GMs submit partial `trackPlaybackChanged` events for play/pause, seek, volume, duration,
-and live [playback-region](./playback-regions.md) edits. The server validates
-table membership and regions, applies events serially, and broadcasts
+GMs submit `PATCH /api/v1/tables/{tableID}/playback/{trackID}` for play/pause,
+seek, volume, duration, and live [playback-region](./playback-regions.md) edits.
+The browser serializes commands per table. The HTTP handler calls the service
+directly so validation failures reach the caller in the response. The service
+validates membership and regions, applies changes serially, and publishes
 canonical snapshots to both roles, including the originating GM. Omitted fields
 keep their current server values rather than being replaced by a stale browser
 snapshot. Players cannot change playback, and client-originated `playbackStateChanged`
 messages are not accepted.
 
 Saved library metadata is broadcast to every connected GM with `trackUpdated`.
-The hub reads the current saved track under its playback lock, reconciles its
+The service reads the current saved track under its playback lock, reconciles its
 region and shared volume into every table already holding that track, and
 notifies listeners and live mixers without issuing a seek or play/pause command.
 Open editors update untouched fields from this metadata instead of saving stale
@@ -73,9 +77,9 @@ transition.
 
 ## Mixing
 
-The hub publishes one canonical snapshot with shared, unscaled track volumes
-and saved table settings. Each connection's typed socket listener projects that state
-into its role-specific wire payload. GM snapshots retain settings. Successful
+The service builds one canonical snapshot with shared, unscaled track volumes
+and saved table settings. HTTP and WebSocket adapters apply the same
+role-specific projection. GM snapshots retain settings. Successful
 settings patches update connected GM mixes and listener playback without
 echoing remote changes back into another settings save. Player snapshots apply
 the table master volume once; each listener then applies their own master and

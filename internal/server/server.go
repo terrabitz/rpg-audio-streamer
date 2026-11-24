@@ -62,6 +62,7 @@ type Server struct {
 	upgrader   websocket.Upgrader
 	auth       Authenticator
 	store      Store
+	playback   Playback
 	mixer      *livemixer.Service
 	discord    DiscordController
 	processing *musicprocessing.Service
@@ -83,13 +84,14 @@ type Config struct {
 	Discord                 discord.Config
 }
 
-func New(cfg Config, logger *slog.Logger, auth Authenticator, store Store, hub WSRegisterer, processing *musicprocessing.Service, videos VideoScanner) (*Server, error) {
+func New(cfg Config, logger *slog.Logger, auth Authenticator, store Store, hub WSRegisterer, playback Playback, processing *musicprocessing.Service, videos VideoScanner) (*Server, error) {
 	srv := &Server{
 		logger:     logger,
 		cfg:        cfg,
 		hub:        hub,
 		auth:       auth,
 		store:      store,
+		playback:   playback,
 		processing: processing,
 		videos:     videos,
 		upgrader: websocket.Upgrader{
@@ -270,6 +272,10 @@ func (s *Server) registerHandlers() *http.ServeMux {
 	mux.HandleFunc("/api/v1/tables/{tableID}", s.tableAccessMiddleware(s.handleTable))
 	mux.HandleFunc("/api/v1/tables/{tableID}/external-id", s.gmOnlyMiddleware(s.handleRotateTableExternalID))
 	mux.HandleFunc("/api/v1/tables/{tableID}/settings", s.gmOnlyMiddleware(s.handleTableSettings))
+	mux.HandleFunc("GET /api/v1/tables/{tableID}/playback", s.tableAccessMiddleware(s.getPlayback))
+	mux.HandleFunc("PATCH /api/v1/tables/{tableID}/playback/{trackID}", s.gmOnlyMiddleware(s.patchPlayback))
+	mux.HandleFunc("PUT /api/v1/tables/{tableID}/mix", s.gmOnlyMiddleware(s.putMix))
+	mux.HandleFunc("PATCH /api/v1/tables/{tableID}/mix", s.gmOnlyMiddleware(s.patchMix))
 	mux.HandleFunc("/api/v1/tables/{tableID}/discord", s.gmOnlyMiddleware(s.handleDiscord))
 	mux.HandleFunc("/api/v1/discord/setup", s.gmOnlyMiddleware(s.handleDiscordSetup))
 	mux.HandleFunc("/api/v1/discord/servers/{guildID}/channels", s.gmOnlyMiddleware(s.handleDiscordSetup))

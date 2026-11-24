@@ -94,19 +94,16 @@ func applyMixer(tableID string, payload any, apply func(string, json.RawMessage)
 }
 
 func (l *eventListener) result(metadata events.Metadata, event string, applyErr error) error {
-	if metadata.ClientID == "" {
-		return applyErr
-	}
 	if applyErr != nil {
-		err := l.bus.SendEvent(events.MixerFailed, events.ClientEvent[events.MixerFailure]{
-			TableID: metadata.TableID, ClientID: metadata.ClientID,
+		err := l.bus.SendEvent(events.MixerFailed, events.TableEvent[events.MixerFailure]{
+			TableID: metadata.TableID,
 			Data: events.MixerFailure{
 				Event: event, Message: "Server mixing failed. Check the server logs and reconnect to retry.",
 			},
 		})
 		return errors.Join(applyErr, err)
 	}
-	return l.bus.SendEvent(events.MixerApplied, events.ClientEvent[events.MixerResult]{
-		TableID: metadata.TableID, ClientID: metadata.ClientID, Data: events.MixerResult{Event: event},
+	return l.bus.SendEvent(events.MixerApplied, events.TableEvent[events.MixerResult]{
+		TableID: metadata.TableID, Data: events.MixerResult{Event: event},
 	})
 }

@@ -117,7 +117,7 @@ func setupTestServer(t *testing.T) *testServer {
 		Port:      8080,
 		UploadDir: tempDir,
 		CORS:      middlewares.CorsConfig{},
-	}, logger, mockAuth, mockTrackStore, mockWSReg, processing, videos)
+	}, logger, mockAuth, mockTrackStore, mockWSReg, nil, processing, videos)
 	if err != nil {
 		t.Fatalf("failed to create server: %v", err)
 	}

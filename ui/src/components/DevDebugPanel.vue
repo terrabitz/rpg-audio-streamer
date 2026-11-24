@@ -1,9 +1,7 @@
 <script setup lang="ts">
 import { nextTick, ref, watch } from 'vue'
-import { useDebugStore } from '../stores/debug'
 import { useWebSocketStore } from '../stores/websocket'
 
-const debugStore = useDebugStore()
 const wsStore = useWebSocketStore()
 const messageContainerRef = ref<HTMLDivElement>()
 
@@ -19,18 +17,6 @@ function scrollToBottom() {
 // Auto-scroll when messages are added
 watch(() => wsStore.messageHistory.length, scrollToBottom)
 
-function sendDevMessage() {
-  let parsedPayload
-  try {
-    parsedPayload = JSON.parse(debugStore.devPayload)
-  } catch (e) {
-    console.error('Invalid JSON payload', e)
-    return
-  }
-
-  wsStore.sendDebugEvent(debugStore.devEvent, parsedPayload)
-  debugStore.clearForm()
-}
 </script>
 
 <template>
@@ -44,15 +30,6 @@ function sendDevMessage() {
       <span>{{ wsStore.isConnected ? 'Connected' : 'Disconnected' }}</span>
     </div>
 
-    <v-card class="mb-4">
-      <v-card-title>Send Message</v-card-title>
-      <v-card-text>
-        <v-text-field v-model="debugStore.devEvent" label="Event" variant="outlined" density="compact" />
-        <v-textarea v-model="debugStore.devPayload" label="Payload (JSON)" variant="outlined" density="compact" />
-        <v-btn @click="sendDevMessage" color="primary" block>Send</v-btn>
-      </v-card-text>
-    </v-card>
-
     <v-card>
       <v-card-title class="d-flex align-center">
         Message History
@@ -61,30 +38,10 @@ function sendDevMessage() {
       </v-card-title>
       <v-card-text class="message-container">
         <div ref="messageContainerRef" class="message-list">
-          <div v-for="msg in wsStore.messageHistory" :key="msg.timestamp" class="message-item"
-            :class="msg.direction === 'sent' ? 'bg-blue-grey-darken-4' : 'bg-grey-darken-4'">
+          <div v-for="msg in wsStore.messageHistory" :key="msg.timestamp" class="message-item bg-grey-darken-4">
             <div class="d-flex align-center justify-space-between">
-              <div class="text-caption" :class="msg.direction === 'sent' ? 'text-blue-lighten-3' : 'text-grey'">
+              <div class="text-caption text-grey">
                 {{ new Date(msg.timestamp).toLocaleTimeString() }}
-                <v-chip size="x-small" :color="msg.direction === 'sent' ? 'blue' : 'grey'" class="ml-2">
-                  {{ msg.direction }}
-                </v-chip>
-              </div>
-              <div v-if="msg.direction === 'sent'" class="d-flex gap-2">
-                <v-tooltip text="Repeat message">
-                  <template v-slot:activator="{ props }">
-                    <v-btn size="x-small" icon="$refresh" color="blue" variant="text" v-bind="props"
-                      @click="wsStore.sendDebugEvent(msg.event, msg.payload)"></v-btn>
-                  </template>
-                </v-tooltip>
-                <v-tooltip text="Copy to form">
-                  <template v-slot:activator="{ props }">
-                    <v-btn size="x-small" icon="$copy" color="blue" variant="text" v-bind="props" @click="() => {
-                      debugStore.devEvent = msg.event;
-                      debugStore.devPayload = JSON.stringify(msg.payload, null, 2);
-                    }"></v-btn>
-                  </template>
-                </v-tooltip>
               </div>
             </div>
             <div class="font-weight-bold mt-1">{{ msg.event }}</div>

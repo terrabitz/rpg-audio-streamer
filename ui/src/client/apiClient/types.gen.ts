@@ -81,6 +81,9 @@ export type Track = {
     name: string;
     path: string;
     typeID: string;
+    /**
+     * GM volume percentage shared by every table using the track.
+     */
     volume: number;
     playback?: PlaybackSettings;
     status?: 'ready' | 'processing' | 'failed';
@@ -110,10 +113,67 @@ export type PlaybackSettings = {
     loopBackTime: number | null;
 };
 
+export type LivePlaybackPatch = {
+    isPlaying?: boolean;
+    volume?: number;
+    currentTime?: number;
+    duration?: number;
+    playback?: PlaybackSettings;
+};
+
+export type LivePlaybackTrack = {
+    fileID: string;
+    name: string;
+    isPlaying: boolean;
+    volume: number;
+    isRepeating: boolean;
+    currentTime: number;
+    duration: number;
+    trackType: string;
+    playback: PlaybackSettings;
+    positionVersion: number;
+    seekVersion: number;
+    seekTarget: number | null;
+    seekLanding: number | null;
+};
+
+export type LivePlaybackSnapshot = {
+    /**
+     * Snapshot ordering shared with playbackStateChanged events within a server process.
+     */
+    revision: number;
+    tracks: Array<LivePlaybackTrack>;
+    settings?: TableSettings;
+};
+
+export type LiveMixSnapshot = {
+    tracks: Array<{
+        fileID: string;
+        isPlaying?: boolean;
+        isRepeating?: boolean;
+        volume?: number;
+        currentTime?: number;
+        duration?: number;
+        playback?: PlaybackSettings;
+    }>;
+    typeVolumes?: {
+        [key: string]: number;
+    };
+};
+
+export type LiveMixVolumePatch = {
+    typeVolumes: {
+        [key: string]: number;
+    };
+};
+
 export type UpdateTrackRequest = {
     id: string;
     name?: string;
     typeID?: string;
+    /**
+     * GM volume percentage shared by every table using the track.
+     */
     volume?: number;
     playback?: PlaybackSettings;
 };
@@ -469,6 +529,139 @@ export type PostApiV1TablesByTableIdDiscordResponses = {
 };
 
 export type PostApiV1TablesByTableIdDiscordResponse = PostApiV1TablesByTableIdDiscordResponses[keyof PostApiV1TablesByTableIdDiscordResponses];
+
+export type GetTablePlaybackData = {
+    body?: never;
+    path: {
+        tableID: string;
+    };
+    query?: never;
+    url: '/api/v1/tables/{tableID}/playback';
+};
+
+export type GetTablePlaybackErrors = {
+    /**
+     * Table not found
+     */
+    404: unknown;
+};
+
+export type GetTablePlaybackResponses = {
+    /**
+     * Current playback snapshot
+     */
+    200: LivePlaybackSnapshot;
+};
+
+export type GetTablePlaybackResponse = GetTablePlaybackResponses[keyof GetTablePlaybackResponses];
+
+export type PatchTablePlaybackData = {
+    body: LivePlaybackPatch;
+    path: {
+        tableID: string;
+        trackID: string;
+    };
+    query?: never;
+    url: '/api/v1/tables/{tableID}/playback/{trackID}';
+};
+
+export type PatchTablePlaybackErrors = {
+    /**
+     * Invalid track ID or playback patch
+     */
+    400: unknown;
+    /**
+     * GM authentication required
+     */
+    401: unknown;
+    /**
+     * Table or associated track not found
+     */
+    404: unknown;
+    /**
+     * Track is not ready
+     */
+    409: unknown;
+};
+
+export type PatchTablePlaybackResponses = {
+    /**
+     * Playback updated
+     */
+    204: void;
+};
+
+export type PatchTablePlaybackResponse = PatchTablePlaybackResponses[keyof PatchTablePlaybackResponses];
+
+export type PatchTableMixVolumesData = {
+    body: LiveMixVolumePatch;
+    path: {
+        tableID: string;
+    };
+    query?: never;
+    url: '/api/v1/tables/{tableID}/mix';
+};
+
+export type PatchTableMixVolumesErrors = {
+    /**
+     * Invalid mix body
+     */
+    400: unknown;
+    /**
+     * GM authentication required
+     */
+    401: unknown;
+    /**
+     * Table not found
+     */
+    404: unknown;
+    /**
+     * Event bus unavailable
+     */
+    503: unknown;
+};
+
+export type PatchTableMixVolumesResponses = {
+    /**
+     * Command dispatched; a mixer result is delivered to table GMs
+     */
+    202: unknown;
+};
+
+export type PutTableMixData = {
+    body: LiveMixSnapshot;
+    path: {
+        tableID: string;
+    };
+    query?: never;
+    url: '/api/v1/tables/{tableID}/mix';
+};
+
+export type PutTableMixErrors = {
+    /**
+     * Invalid mix body
+     */
+    400: unknown;
+    /**
+     * GM authentication required
+     */
+    401: unknown;
+    /**
+     * Table not found
+     */
+    404: unknown;
+    /**
+     * Event bus unavailable
+     */
+    503: unknown;
+};
+
+export type PutTableMixResponses = {
+    /**
+     * Command dispatched; a mixer result is delivered to table GMs
+     */
+    202: unknown;
+};
 
 export type GetApiV1TablesByTableIdSettingsData = {
     body?: never;

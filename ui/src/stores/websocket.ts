@@ -1,12 +1,12 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import { EventHub, parseMessage, type EventArgs, type Message } from '@/websocket/router'
+import { EventHub, parseMessage, type Message } from '@/websocket/router'
 
 const reconnectIntervalMs = 3000
 
 interface StoredMessage extends Message {
   timestamp: number
-  direction: 'sent' | 'received'
+  direction: 'received'
 }
 
 function getWebSocketUrl(): string {
@@ -103,22 +103,6 @@ export const useWebSocketStore = defineStore('websocket', () => {
     router.dispatch(message)
   }
 
-  function sendEvent(...[event, payload]: EventArgs) {
-    sendDebugEvent(event, payload)
-  }
-
-  function sendDebugEvent(event: string, payload: unknown) {
-    const msg: Message = { event, payload }
-    if (!socket || socket.readyState !== WebSocket.OPEN) {
-      throw new Error('WebSocket is not connected')
-    }
-
-    console.log('Sending WebSocket message:', msg)
-    socket.send(JSON.stringify(msg))
-
-    recordMessage(msg, 'sent')
-  }
-
   function recordMessage(message: Message, direction: StoredMessage['direction']) {
     messageHistory.value.push({ ...message, timestamp: Date.now(), direction })
   }
@@ -142,8 +126,6 @@ export const useWebSocketStore = defineStore('websocket', () => {
     isConnected,
     connect,
     disconnect,
-    sendEvent,
-    sendDebugEvent,
     ...router.subscriptions,
     messageHistory,
     clearMessageHistory

@@ -6,6 +6,14 @@ import (
 	"github.com/google/uuid"
 )
 
+type TrackType struct {
+	ID                    uuid.UUID `json:"id,omitempty"`
+	Name                  string    `json:"name,omitempty"`
+	Color                 string    `json:"color,omitempty"`
+	IsRepeating           bool      `json:"isRepeating"`
+	AllowSimultaneousPlay bool      `json:"allowSimultaneousPlay"`
+}
+
 type Track struct {
 	ID              uuid.UUID        `json:"id,omitempty"`
 	CreatedAt       time.Time        `json:"createdAt,omitempty"`
