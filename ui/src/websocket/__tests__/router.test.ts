@@ -1,6 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import { EventHub, parseMessage } from '../router'
-import type { EventArgs } from '../router'
 
 afterEach(() => vi.restoreAllMocks())
 
@@ -53,13 +52,4 @@ it.each([
   { event: 'trackRemoved', senderId: 3, payload: { fileID: 'rain' } },
 ])('rejects an invalid message envelope %j', value => {
   expect(() => parseMessage(value)).toThrow()
-})
-
-it('keeps event names coupled to their payloads at compile time', () => {
-  const valid: EventArgs = ['trackPlaybackChanged', { fileID: 'rain', volume: 0 }]
-  // @ts-expect-error trackPlaybackChanged requires a track identifier.
-  const missingID: EventArgs = ['trackPlaybackChanged', { volume: 0 }]
-  // @ts-expect-error a event cannot use another event's payload.
-  const wrongPayload: EventArgs = ['mixVolumesChanged', { fileID: 'rain' }]
-  expect([valid, missingID, wrongPayload]).toHaveLength(3)
 })

@@ -157,7 +157,7 @@
         <v-menu v-model="showContextMenu" context-menu :target="contextPosition" :aria-label="`Playback actions for ${contextTrack?.name ?? ''}`">
           <v-list role="menu">
             <v-list-item role="menuitem" title="Play from start"
-              :disabled="!contextTrack || !trackReady(contextTrack) || !wsStore.isConnected"
+              :disabled="!contextTrack || !trackReady(contextTrack)"
               @click="playFromStart" />
           </v-list>
         </v-menu>
@@ -177,6 +177,8 @@ import { TrackUsageChangedError, useFileStore, withTrackStatus } from '@/stores/
 import { useTrackTypeStore } from '@/stores/trackTypes'
 import { useTableStore } from '@/stores/tables'
 import { useWebSocketStore } from '@/stores/websocket'
+import { usePlaybackCommands } from '@/stores/playbackCommands'
+import type { LivePlaybackPatch } from '@/client/apiClient'
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useDisplay } from 'vuetify'
 import { TouchHold as vTouchHold } from 'vuetify/directives'
@@ -193,6 +195,7 @@ import BulkTrackActions from './BulkTrackActions.vue'
 const fileStore = useFileStore()
 const audioStore = useAudioStore()
 const wsStore = useWebSocketStore()
+const commands = usePlaybackCommands()
 const trackTypeStore = useTrackTypeStore()
 const dragging = ref(false)
 const { smAndDown } = useDisplay()
@@ -314,11 +317,10 @@ function openContextMenu(event: { clientX: number; clientY: number }, fileID: st
 function playFromStart() {
   showContextMenu.value = false
   const track = contextTrack.value
-  if (!track || !trackReady(track) || !wsStore.isConnected) return
+  if (!track || !trackReady(track)) return
   const state = audioStore.tracks[track.id]
   if (!state) return
-  wsStore.sendEvent('trackPlaybackChanged', {
-    fileID: track.id,
+  updatePlayback(track.id, {
     isPlaying: true,
     currentTime: state.playback?.startTime ?? 0,
     duration: state.duration,
@@ -492,7 +494,6 @@ const handlePlay = (fileID: string) => {
     previewTrack(fileID)
     return
   }
-  if (!wsStore.isConnected) return
   const track = fileStore.getTrackById(fileID)
   if (!track) return
 
@@ -502,8 +503,7 @@ const handlePlay = (fileID: string) => {
   const state = audioStore.tracks[fileID]
   if (!state) return
 
-  wsStore.sendEvent('trackPlaybackChanged', {
-    fileID,
+  updatePlayback(fileID, {
     isPlaying: !state.isPlaying,
     duration: state.duration,
     volume: state.volume,
@@ -538,9 +538,9 @@ function handleSettings(fileID: string, playback: PlaybackSettings) {
   const state = audioStore.tracks[fileID]
   if (!state) return
   audioStore.updateTrackState(fileID, { playback })
-  if (!props.library && wsStore.isConnected) {
-    wsStore.sendEvent('trackPlaybackChanged', {
-      fileID, playback, duration: state.duration,
+  if (!props.library) {
+    updatePlayback(fileID, {
+      playback, duration: state.duration,
     })
   }
 }
@@ -569,9 +569,18 @@ const handleVolume = (fileID: string, volume: number) => {
 }
 
 const handleSeek = (fileID: string, time: number) => {
-  if (!props.library && wsStore.isConnected) {
-    wsStore.sendEvent('trackPlaybackChanged', { fileID, currentTime: time, duration: audioStore.tracks[fileID]?.duration })
+  if (!props.library) {
+    updatePlayback(fileID, { currentTime: time, duration: audioStore.tracks[fileID]?.duration })
   } else audioStore.seekTrack(fileID, time)
+}
+
+function updatePlayback(fileID: string, patch: LivePlaybackPatch) {
+  const tableID = tables.current?.externalID
+  if (!tableID) return
+  void commands.patch(tableID, fileID, patch).catch(cause => {
+    console.error('Failed to update playback:', cause)
+    error.value = typeof cause === 'string' ? cause.trim() : 'Unable to update playback. Try again.'
+  })
 }
 
 onUnmounted(() => {

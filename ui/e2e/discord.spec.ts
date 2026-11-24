@@ -162,7 +162,7 @@ async function chooseDiscordDestination(page: Page, saved = false) {
     { timeout: 30_000 }),
     dialog.getByRole('button', { name: 'Connect', exact: true }).click(),
   ])
-  expect(response.status(), 'Discord connect HTTP status').toBe(200)
+  expect(response.status(), `Discord connect HTTP status: ${await response.text()}`).toBe(200)
   await expect(dialog).toBeHidden()
   const disconnectButton = page.getByRole('button', { name: 'Connected', exact: true })
   await expect(disconnectButton).toBeVisible()

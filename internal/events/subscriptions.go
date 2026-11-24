@@ -9,26 +9,6 @@ import (
 
 type Listener[T any] func(T, Metadata) error
 
-func OnPing(bus Bus, handler Listener[json.RawMessage]) func() {
-	return subscribe(bus, Ping, handler)
-}
-
-func OnPong(bus Bus, handler Listener[json.RawMessage]) func() {
-	return subscribe(bus, Pong, handler)
-}
-
-func OnBroadcast(bus Bus, handler Listener[json.RawMessage]) func() {
-	return subscribe(bus, Broadcast, handler)
-}
-
-func OnPlaybackSyncRequested(bus Bus, handler Listener[Empty]) func() {
-	return subscribe(bus, PlaybackSyncRequested, handler)
-}
-
-func OnTrackPlaybackChanged(bus Bus, handler Listener[PlaybackPatch]) func() {
-	return subscribe(bus, TrackPlaybackChanged, handler)
-}
-
 func OnPlaybackStateChanged(bus Bus, handler Listener[Snapshot]) func() {
 	return subscribe(bus, PlaybackStateChanged, handler)
 }
@@ -59,10 +39,6 @@ func OnMixerApplied(bus Bus, handler Listener[MixerResult]) func() {
 
 func OnMixerFailed(bus Bus, handler Listener[MixerFailure]) func() {
 	return subscribe(bus, MixerFailed, handler)
-}
-
-func OnPlaybackFailed(bus Bus, handler Listener[Failure]) func() {
-	return subscribe(bus, PlaybackFailed, handler)
 }
 
 func OnTrackStatusChanged(bus Bus, handler Listener[TrackStatusUpdate]) func() {

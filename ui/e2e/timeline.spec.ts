@@ -96,10 +96,11 @@ test('GM plays and pauses a track from its settings', async ({ page }) => {
 
 test('GM commits waveform marker drags only on release', async ({ page, browser }) => {
   const regions: unknown[] = []
-  page.on('websocket', socket => socket.on('framesent', frame => {
-    const message = JSON.parse(frame.payload.toString())
-    if (message.event === 'trackPlaybackChanged' && message.payload.playback) regions.push(message.payload.playback)
-  }))
+  page.on('request', request => {
+    if (request.method() !== 'PATCH' || !new URL(request.url()).pathname.includes('/playback/')) return
+    const body = request.postDataJSON()
+    if (body.playback) regions.push(body.playback)
+  })
   await login(page)
   await uploadTrack(page, 'Release Markers', 'Music', 60)
   const tile = page.getByRole('group', { name: 'Release Markers', exact: true })

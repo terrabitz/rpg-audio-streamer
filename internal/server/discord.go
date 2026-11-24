@@ -8,8 +8,10 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/terrabitz/rpg-audio-streamer/internal/auth"
 	"github.com/terrabitz/rpg-audio-streamer/internal/discord"
+	"github.com/terrabitz/rpg-audio-streamer/internal/events"
 )
 
 func (s *Server) handleDiscord(w http.ResponseWriter, r *http.Request, token *auth.Token) {
@@ -68,7 +70,7 @@ func (s *Server) handleDiscord(w http.ResponseWriter, r *http.Request, token *au
 			return
 		}
 		if err == nil {
-			err = s.discord.Connect(ctx, id.String(), *target)
+			err = s.connectDiscord(ctx, id, *target)
 		}
 		if err == nil {
 			err = s.store.SaveTableDiscord(ctx, id, *target)
@@ -107,6 +109,67 @@ func (s *Server) handleDiscord(w http.ResponseWriter, r *http.Request, token *au
 		}
 	}
 	respondJSON(w, http.StatusOK, status)
+}
+
+func (s *Server) connectDiscord(ctx context.Context, tableID uuid.UUID, target discord.Destination) error {
+	err := s.discord.Connect(ctx, tableID.String(), target)
+	if !errors.Is(err, discord.ErrNotReady) || s.mixer == nil || s.playback == nil {
+		return err
+	}
+	snapshot, err := s.playback.Snapshot(ctx, tableID)
+	if err != nil {
+		return err
+	}
+	mix, err := s.discordMixSnapshot(ctx, snapshot)
+	if err != nil {
+		return err
+	}
+	if err := s.hub.SendEvent(events.MixChanged, events.TableEvent[events.MixSnapshot]{
+		TableID: tableID.String(),
+		Data:    mix,
+	}); err != nil {
+		return err
+	}
+	return s.discord.Connect(ctx, tableID.String(), target)
+}
+
+func (s *Server) discordMixSnapshot(ctx context.Context, snapshot events.Snapshot) (events.MixSnapshot, error) {
+	if snapshot.Settings == nil {
+		return events.MixSnapshot{}, errors.New("playback snapshot is missing table settings")
+	}
+	types, err := s.store.GetTrackTypes(ctx)
+	if err != nil {
+		return events.MixSnapshot{}, err
+	}
+	settings := snapshot.Settings
+	typeVolumes := make(map[string]float64, len(types))
+	masterVolume := settings.MasterVolume / 100
+	for _, trackType := range types {
+		volume, ok := settings.TypeVolumes[trackType.Name]
+		if !ok {
+			volume = 100
+		}
+		typeVolumes[trackType.Name] = volume * masterVolume
+	}
+	tracks := make([]events.PlaybackPatch, 0, len(snapshot.Tracks))
+	for _, track := range snapshot.Tracks {
+		if !track.IsPlaying {
+			continue
+		}
+		isPlaying, isRepeating := track.IsPlaying, track.IsRepeating
+		volume, currentTime, duration := track.Volume, track.CurrentTime, track.Duration
+		playback := track.Playback
+		tracks = append(tracks, events.PlaybackPatch{
+			FileID:      track.FileID,
+			IsPlaying:   &isPlaying,
+			IsRepeating: &isRepeating,
+			Volume:      &volume,
+			CurrentTime: &currentTime,
+			Duration:    &duration,
+			Playback:    &playback,
+		})
+	}
+	return events.MixSnapshot{Tracks: tracks, TypeVolumes: typeVolumes}, nil
 }
 
 func (s *Server) handleDiscordSetup(w http.ResponseWriter, r *http.Request, token *auth.Token) {

@@ -9,10 +9,6 @@ export interface Message extends MessageMetadata {
   payload: unknown
 }
 
-export type EventArgs = {
-  [K in keyof Payloads]: [event: K, payload: Payloads[K]]
-}[keyof Payloads]
-
 type Handler<K extends keyof Payloads> =
   (payload: Payloads[K], metadata: MessageMetadata) => void | Promise<void>
 type Subscription = (message: Message) => void | Promise<void>
@@ -21,20 +17,12 @@ export class EventHub {
   private handlers = new Map<string, Set<Subscription>>()
 
   readonly subscriptions = {
-    onPing: (handler: Handler<'ping'>) => this.on('ping', handler),
-    onPong: (handler: Handler<'pong'>) => this.on('pong', handler),
-    onBroadcast: (handler: Handler<'broadcast'>) => this.on('broadcast', handler),
-    onPlaybackSyncRequested: (handler: Handler<'playbackSyncRequested'>) => this.on('playbackSyncRequested', handler),
-    onTrackPlaybackChanged: (handler: Handler<'trackPlaybackChanged'>) => this.on('trackPlaybackChanged', handler),
     onPlaybackStateChanged: (handler: Handler<'playbackStateChanged'>) => this.on('playbackStateChanged', handler),
     onTrackRemoved: (handler: Handler<'trackRemoved'>) => this.on('trackRemoved', handler),
     onTableDeleted: (handler: Handler<'tableDeleted'>) => this.on('tableDeleted', handler),
-    onMixChanged: (handler: Handler<'mixChanged'>) => this.on('mixChanged', handler),
-    onMixVolumesChanged: (handler: Handler<'mixVolumesChanged'>) => this.on('mixVolumesChanged', handler),
     onMixerReady: (handler: Handler<'mixerReady'>) => this.on('mixerReady', handler),
     onMixerApplied: (handler: Handler<'mixerApplied'>) => this.on('mixerApplied', handler),
     onMixerFailed: (handler: Handler<'mixerFailed'>) => this.on('mixerFailed', handler),
-    onPlaybackFailed: (handler: Handler<'playbackFailed'>) => this.on('playbackFailed', handler),
     onTrackStatusChanged: (handler: Handler<'trackStatusChanged'>) => this.on('trackStatusChanged', handler),
     onTrackUpdated: (handler: Handler<'trackUpdated'>) => this.on('trackUpdated', handler),
     onDiscordStatusChanged: (handler: Handler<'discordStatusChanged'>) => this.on('discordStatusChanged', handler),

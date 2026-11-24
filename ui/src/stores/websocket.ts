@@ -1,13 +1,8 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import { EventHub, parseMessage, type EventArgs, type Message } from '@/websocket/router'
+import { EventHub, parseMessage, type Message } from '@/websocket/router'
 
 const reconnectIntervalMs = 3000
-
-interface StoredMessage extends Message {
-  timestamp: number
-  direction: 'sent' | 'received'
-}
 
 function getWebSocketUrl(): string {
   const apiBase = import.meta.env.VITE_API_BASE_URL
@@ -26,7 +21,6 @@ function getWebSocketUrl(): string {
 export const useWebSocketStore = defineStore('websocket', () => {
   const isConnected = ref(false)
   const router = new EventHub()
-  const messageHistory = ref<StoredMessage[]>([])
   let socket: WebSocket | null = null
   let reconnectTimer: ReturnType<typeof setTimeout> | undefined
   let generation = 0
@@ -98,29 +92,7 @@ export const useWebSocketStore = defineStore('websocket', () => {
       console.error('Invalid WebSocket message:', error)
       return
     }
-    console.log('Received WebSocket message:', message)
-    recordMessage(message, 'received')
     router.dispatch(message)
-  }
-
-  function sendEvent(...[event, payload]: EventArgs) {
-    sendDebugEvent(event, payload)
-  }
-
-  function sendDebugEvent(event: string, payload: unknown) {
-    const msg: Message = { event, payload }
-    if (!socket || socket.readyState !== WebSocket.OPEN) {
-      throw new Error('WebSocket is not connected')
-    }
-
-    console.log('Sending WebSocket message:', msg)
-    socket.send(JSON.stringify(msg))
-
-    recordMessage(msg, 'sent')
-  }
-
-  function recordMessage(message: Message, direction: StoredMessage['direction']) {
-    messageHistory.value.push({ ...message, timestamp: Date.now(), direction })
   }
 
   function disconnect() {
@@ -134,18 +106,10 @@ export const useWebSocketStore = defineStore('websocket', () => {
     }
   }
 
-  function clearMessageHistory() {
-    messageHistory.value = []
-  }
-
   return {
     isConnected,
     connect,
     disconnect,
-    sendEvent,
-    sendDebugEvent,
     ...router.subscriptions,
-    messageHistory,
-    clearMessageHistory
   }
 })

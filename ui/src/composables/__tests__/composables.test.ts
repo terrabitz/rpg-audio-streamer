@@ -1,10 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { defineComponent } from 'vue'
-import { createPinia, setActivePinia } from 'pinia'
 import { patchObject } from '../util'
 import { useAppBar } from '../useAppBar'
 import { useBaseUrl } from '../useBaseUrl'
-import { useDebugStore } from '@/stores/debug'
 
 describe('shared UI state', () => {
   it('applies partial patches without mutating either input', () => {
@@ -29,20 +27,5 @@ describe('shared UI state', () => {
 
   it('builds link origins from the current browser location', () => {
     expect(useBaseUrl().getBaseUrl()).toBe(window.location.origin)
-  })
-
-  it('toggles debugging and clears its message form', () => {
-    setActivePinia(createPinia())
-    const debug = useDebugStore()
-    expect(debug.showDebugPanel).toBe(false)
-    debug.togglePanel()
-    expect(debug.showDebugPanel).toBe(true)
-    debug.togglePanel()
-    expect(debug.showDebugPanel).toBe(false)
-    debug.devEvent = 'ping'
-    debug.devPayload = '{}'
-    debug.clearForm()
-    expect(debug.devEvent).toBe('')
-    expect(debug.devPayload).toBe('')
   })
 })

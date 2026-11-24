@@ -23,12 +23,13 @@ tags: [backend, go]
 | `ui/e2e` | Full-app browser journeys and Discord listener audio validation ([test layers](../operations/test-layers.md)) |
 | `internal/sqlitedatastore` | Domain-to-SQLite mapping, migrations, context-aware datastore implementation ([schema](../data/sqlite-schema.md)) |
 | `internal/sqlitedatastore/sqlitedb` | Generated sqlc models and query implementations |
-| `internal/websocket` | [Authoritative live table playback](../playback/synchronization.md), synchronous [event dispatch](../playback/websocket-protocol.md), scoped socket subscriptions, connection lifecycle, read/write pumps |
+| `internal/playback` | [Authoritative live table playback](../playback/synchronization.md): serialized commands, track clocks, validation, and snapshots |
+| `internal/websocket` | Synchronous [event dispatch](../playback/websocket-protocol.md), scoped socket subscriptions, connection lifecycle, and heartbeat |
 
 ## Boundaries
 
-Authentication rules live in `auth`; synchronization authorization and routing
-live in `websocket`; table contracts and HTTP store interfaces live in `server`.
+Authentication rules live in `auth`; command authorization and HTTP store
+interfaces live in `server`; socket recipient routing lives in `websocket`.
 `domain` holds track metadata and shared value models so typed event payloads do not depend on
 their producer or consumer packages. Existing HTTP and processing contracts
 alias those models. The datastore implements both packages' store interfaces, keeping
@@ -41,7 +42,7 @@ use the same sender interface. The HTTP server depends on a
 
 The HTTP server composes the optional mixer and Discord lifecycle wrapper.
 `livemixer.Subscribe` connects it through `events.Bus`; the hub implements
-subscriptions and publishes validated playback and lifecycle events without
+subscriptions and delivers playback and lifecycle events without
 depending on the mixer implementation.
 Socket connections register named, typed event listeners on the same bus and
 own their role-specific payload projection and recipient checks.

@@ -7,33 +7,27 @@ import (
 )
 
 const (
-	Ping                  = "ping"
-	Pong                  = "pong"
-	Broadcast             = "broadcast"
-	PlaybackSyncRequested = "playbackSyncRequested"
-	TrackPlaybackChanged  = "trackPlaybackChanged"
-	PlaybackStateChanged  = "playbackStateChanged"
-	TrackRemoved          = "trackRemoved"
-	TableDeleted          = "tableDeleted"
-	MixChanged            = "mixChanged"
-	MixVolumesChanged     = "mixVolumesChanged"
-	MixerReady            = "mixerReady"
-	MixerApplied          = "mixerApplied"
-	MixerFailed           = "mixerFailed"
-	PlaybackFailed        = "playbackFailed"
-	TrackStatusChanged    = "trackStatusChanged"
-	TrackUpdated          = "trackUpdated"
-	DiscordStatusChanged  = "discordStatusChanged"
-	TableSettingsChanged  = "tableSettingsChanged"
-	ClientConnected       = "clientConnected"
-	TableSessionEnded     = "tableSessionEnded"
-	PlaybackChanged       = "playbackChanged"
+	TrackPlaybackChanged = "trackPlaybackChanged"
+	PlaybackStateChanged = "playbackStateChanged"
+	TrackRemoved         = "trackRemoved"
+	TableDeleted         = "tableDeleted"
+	MixChanged           = "mixChanged"
+	MixVolumesChanged    = "mixVolumesChanged"
+	MixerReady           = "mixerReady"
+	MixerApplied         = "mixerApplied"
+	MixerFailed          = "mixerFailed"
+	TrackStatusChanged   = "trackStatusChanged"
+	TrackUpdated         = "trackUpdated"
+	DiscordStatusChanged = "discordStatusChanged"
+	TableSettingsChanged = "tableSettingsChanged"
+	ClientConnected      = "clientConnected"
+	TableSessionEnded    = "tableSessionEnded"
+	PlaybackChanged      = "playbackChanged"
 )
 
 type Event struct {
-	Event    string          `json:"event"`
-	Payload  json.RawMessage `json:"payload"`
-	SenderID string          `json:"senderId,omitempty"`
+	Event   string          `json:"event"`
+	Payload json.RawMessage `json:"payload"`
 }
 
 // Sender dispatches an event synchronously; socket delivery remains buffered.

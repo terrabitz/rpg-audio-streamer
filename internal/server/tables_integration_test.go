@@ -20,6 +20,7 @@ import (
 	"github.com/terrabitz/rpg-audio-streamer/internal/auth"
 	"github.com/terrabitz/rpg-audio-streamer/internal/events"
 	"github.com/terrabitz/rpg-audio-streamer/internal/musicprocessing"
+	"github.com/terrabitz/rpg-audio-streamer/internal/playback"
 	"github.com/terrabitz/rpg-audio-streamer/internal/server"
 	"github.com/terrabitz/rpg-audio-streamer/internal/sqlitedatastore"
 	"github.com/terrabitz/rpg-audio-streamer/internal/youtube"
@@ -29,10 +30,11 @@ type testWSRegisterer struct {
 	err error
 }
 
-func (testWSRegisterer) Register(*websocket.Conn, *auth.Token) {}
-func (h testWSRegisterer) SendEvent(string, any) error         { return h.err }
-func (testWSRegisterer) RevokePlayerAccess(string)             {}
-func (testWSRegisterer) On(string, events.Handler) func()      { return func() {} }
+func (testWSRegisterer) Register(*websocket.Conn, *auth.Token)        {}
+func (h testWSRegisterer) SendEvent(string, any) error                { return h.err }
+func (testWSRegisterer) RevokePlayerAccess(string)                    {}
+func (testWSRegisterer) On(string, events.Handler) func()             { return func() {} }
+func (h testWSRegisterer) Publish(string, any, events.Metadata) error { return h.err }
 
 func TestTableHTTP(t *testing.T) {
 	ctx := context.Background()
@@ -66,7 +68,7 @@ func TestTableHTTP(t *testing.T) {
 	videos := youtube.New(logger)
 	hub := &testWSRegisterer{}
 	processing := musicprocessing.New(dir, logger, db, videos, hub)
-	srv, err := server.New(server.Config{UploadDir: dir, DevMode: true}, logger, authenticator, db, hub, processing, videos)
+	srv, err := server.New(server.Config{UploadDir: dir, DevMode: true}, logger, authenticator, db, hub, playback.New(logger, db, hub), processing, videos)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -211,6 +213,46 @@ func TestTableHTTP(t *testing.T) {
 	association := firstPath + "/tracks/" + track.ID.String()
 	request("PUT", association, "", "", true, 204)
 	request("PUT", association, "", "", true, 204)
+	t.Run("live playback and mix commands", func(t *testing.T) {
+		path := firstPath + "/playback"
+		command := path + "/" + track.ID.String()
+		request("PATCH", command, `{"isPlaying":true}`, "", false, 401)
+		request("PATCH", path+"/invalid", `{}`, "", true, 400)
+		request("PATCH", secondPath+"/playback/"+track.ID.String(), `{"isPlaying":true}`, "", true, 404)
+		for _, invalid := range []string{`null`, `{"volume":"0"}`, `{"fileID":"forged"}`, `{} {}`, `{"volume":-1}`} {
+			request("PATCH", command, invalid, "", true, 400)
+		}
+		request("PATCH", command, `{"isPlaying":false,"currentTime":12,"volume":50,"duration":30}`, "", true, 204)
+		read := func(asGM bool) events.Snapshot {
+			res := request("GET", path, "", "", asGM, 200)
+			var snapshot events.Snapshot
+			if err := json.Unmarshal(res.Body.Bytes(), &snapshot); err != nil {
+				t.Fatal(err)
+			}
+			if res.Header().Get("Cache-Control") != "no-store" || len(snapshot.Tracks) != 1 {
+				t.Fatalf("snapshot = %+v, headers = %v", snapshot, res.Header())
+			}
+			return snapshot
+		}
+		gm, player := read(true), read(false)
+		if gm.Settings == nil || player.Settings != nil || player.Revision <= gm.Revision ||
+			gm.Tracks[0].Volume != 50 || player.Tracks[0].Volume != 0 ||
+			player.Tracks[0].IsPlaying || player.Tracks[0].CurrentTime != 12 {
+			t.Fatalf("unexpected playback projection: GM=%+v player=%+v", gm, player)
+		}
+		request("GET", "/api/v1/tables/no-table/playback", "", "", false, 404)
+		mix := firstPath + "/mix"
+		request("PUT", mix, `{"tracks":[]}`, "", false, 401)
+		request("PATCH", mix, `{"typeVolumes":{"Music":0}}`, "", false, 401)
+		request("PUT", mix, `{}`, "", true, 400)
+		request("PATCH", mix, `{"typeVolumes":[]}`, "", true, 400)
+		request("PATCH", mix, `{}`, "", true, 400)
+		request("PUT", mix, `{"tracks":[]}`, "", true, 202)
+		request("PATCH", mix, `{"typeVolumes":{"Music":0}}`, "", true, 202)
+		hub.err = errors.New("event hub is closed")
+		defer func() { hub.err = nil }()
+		request("PUT", mix, `{"tracks":[]}`, "", true, 503)
+	})
 	assertUsage(1)
 	request("DELETE", filePath+"?expectedTableCount=0", "", "", true, 409)
 	assertUsage(1)

@@ -29,8 +29,8 @@ func CORSMiddleware(cfg CorsConfig) func(http.Handler) http.Handler {
 			allowedOrigins := strings.Split(cfg.AllowedOrigins, ",")
 			if origin != "" && isOriginAllowed(origin, allowedOrigins, cfg.DevMode) {
 				w.Header().Set("Access-Control-Allow-Origin", origin)
-				w.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
-				w.Header().Set("Access-Control-Allow-Headers", "*")
+				w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
+				w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 				w.Header().Set("Access-Control-Max-Age", "3600")
 				w.Header().Set("Access-Control-Allow-Credentials", "true")
 			}
