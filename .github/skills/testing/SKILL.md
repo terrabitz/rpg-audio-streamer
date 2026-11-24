@@ -73,12 +73,10 @@ devcontainer exec --workspace-folder . make lint-ui verify-examples build-ui tes
 ```
 
 `make test-readme-demo` needs the LFS-backed `media/readme-demo/` images
-hydrated (`git lfs pull`). When it updates `media/readme-demo/gm.png` or
-`player.png`, copy
-`ui/recordings/gm-switches-music-while-a-player-listens.gif` to
-`media/audio-playing.gif` and commit all three with your change, so CI doesn't
-have to push a refresh and restart the checks. If neither image changes, leave
-the GIF alone.
+hydrated (`git lfs pull`). When it rewrites `media/readme-demo/gm.png` or
+`player.png`, it also refreshes `media/audio-playing.gif`. Check
+`git status -- media` afterward and commit any changed demo media with your
+change, so CI doesn't have to push a refresh and restart the checks.
 
 When you change the packaged image or `examples/`, also run `make docker-build`
 and `make test-examples`, as described below. Run the live Discord checks only

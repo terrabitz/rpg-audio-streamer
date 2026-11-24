@@ -229,8 +229,7 @@ jobs:
           fi
           staging="$RUNNER_TEMP/readme-demo"
           mkdir -p "$staging"
-          cp media/readme-demo/{gm,player}.png "$staging/"
-          cp ui/recordings/gm-switches-music-while-a-player-listens.gif "$staging/audio-playing.gif"
+          cp media/readme-demo/{gm,player}.png media/audio-playing.gif "$staging/"
           echo 'changed=true' >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@v7
         if: steps.compare.outputs.changed == 'true'

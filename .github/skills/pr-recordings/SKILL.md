@@ -53,8 +53,9 @@ make test-readme-demo
 ```
 
 The check uses the LFS-backed `media/readme-demo/` checkpoints. Hydrate them
-before local comparison. If neither checkpoint changes, leave
-`media/audio-playing.gif` alone. Set `README_DEMO_DIFF_RATIO` to override the
+before local comparison. When either checkpoint changes, the target also
+refreshes `media/audio-playing.gif`; otherwise it leaves the GIF alone. Set
+`README_DEMO_DIFF_RATIO` to override the
 allowed fraction of differing pixels (`0` to `1`). The
 [PR checks concept](../../../docs/operations/pr-checks.md) describes how CI
 publishes updates.

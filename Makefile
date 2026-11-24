@@ -60,8 +60,14 @@ build-ui:
 record-e2e:
 	cd ui && npm run test:e2e:record -- $(if $(GREP),--grep "$(GREP)")
 
+README_DEMO_CHECKPOINTS = media/readme-demo/gm.png media/readme-demo/player.png
+README_DEMO_STAMP = tmp/readme-demo.stamp
+
 test-readme-demo:
+	mkdir -p tmp
+	touch $(README_DEMO_STAMP)
 	cd ui && E2E_README_DEMO=1 npm run test:e2e:record -- readme-demo.spec.ts --project=chromium --update-snapshots=changed
+	if [ -n "$$(find $(README_DEMO_CHECKPOINTS) -newer $(README_DEMO_STAMP))" ]; then cp ui/recordings/gm-switches-music-while-a-player-listens.gif media/audio-playing.gif; fi
 
 gen: gen-sqlc gen-api-client gen-docs gen-examples
 

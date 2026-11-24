@@ -117,7 +117,10 @@ Pointer overlays and playback-position motion are excluded from comparison.
 The `README_DEMO_DIFF_RATIO` environment variable overrides the default
 tolerance of `0.002` (0.2%) differing pixels in each screenshot.
 Only missing or materially changed baselines cause the Git LFS GIF and
-checkpoints to be refreshed. The check attaches changed media as an artifact.
+checkpoints to be refreshed: `make test-readme-demo` rewrites the changed
+checkpoints and, when it rewrites either one, copies the new recording to
+`media/audio-playing.gif`. Agents run it before pushing and commit the
+refreshed media. In CI, the check attaches changed media as an artifact.
 A separate job pushes those assets only to the current head of a same-repository
 PR branch, excluding Dependabot and the default branch. A push with the built-in
 GitHub token requires approval for the subsequent PR workflow run.
