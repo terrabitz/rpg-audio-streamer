@@ -31,9 +31,6 @@ targeted `mixerReady` event (see
 [WebSocket protocol](../playback/websocket-protocol.md)). The GM
 answers with `PUT /api/v1/tables/{tableID}/mix`: a full snapshot of playing tracks and the current
 type-volume map. This happens on reconnect as well as initial connection.
-The GM keeps Discord connection controls unavailable until this snapshot is
-successfully applied, so a voice connection cannot start before its table mix
-is ready.
 Accepted HTTP playback commands become canonical `playbackChanged`
 batches that feed partial play/pause, seek, volume, repeating, and live
 [playback-region](../playback/playback-regions.md) changes into the mixer.

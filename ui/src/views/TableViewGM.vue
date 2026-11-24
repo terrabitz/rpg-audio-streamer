@@ -22,7 +22,6 @@ const tables = useTableStore()
 const error = ref('')
 const mixerError = ref('')
 const mixerEnabled = ref(false)
-const mixerSynchronized = ref(false)
 let mixerSyncPending = false
 let connectionSynchronized = false
 const ready = ref(false)
@@ -128,7 +127,6 @@ watch(() => wsStore.isConnected, (connected) => {
   else {
     mixerSyncPending = false
     mixerEnabled.value = false
-    mixerSynchronized.value = false
     sendMixVolumes.cancel()
   }
 })
@@ -138,16 +136,12 @@ onMounted(async () => {
     wsStore.onPlaybackStateChanged(snapshots.accept),
     wsStore.onMixerReady(() => {
       mixerEnabled.value = true
-      mixerSynchronized.value = false
       mixerSyncPending = true
       syncMixer()
     }),
     wsStore.onMixerFailed(payload => { mixerError.value = payload.message }),
     wsStore.onMixerApplied(payload => {
-      if (payload.event === 'mixChanged') {
-        mixerError.value = ''
-        mixerSynchronized.value = true
-      }
+      if (payload.event === 'mixChanged') mixerError.value = ''
     }),
   ]
   setTitle(tables.current?.name ?? 'Table')
@@ -218,5 +212,5 @@ function effectiveTypeVolumes() {
   <v-btn v-if="tables.failedSettings[externalID]" variant="text"
     @click="tables.saveSettings(externalID, {})">Retry saving</v-btn>
   <AudioPlayer v-if="ready" :tableID="externalID" @error="error = $event" />
-  <FileList v-if="ready && synchronized" :discord-ready="mixerSynchronized" />
+  <FileList v-if="ready && synchronized" />
 </template>

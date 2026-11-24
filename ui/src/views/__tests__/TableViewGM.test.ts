@@ -21,9 +21,7 @@ vi.mock('@/client/apiClient', async importOriginal => ({
   patchApiV1TablesByTableIdSettings: api.save,
 }))
 vi.mock('@/components/AudioPlayer.vue', () => ({ default: { template: '<div />' } }))
-vi.mock('@/components/FileList.vue', () => ({
-  default: { name: 'FileList', props: ['discordReady'], template: '<div />' },
-}))
+vi.mock('@/components/FileList.vue', () => ({ default: { template: '<div />' } }))
 vi.mock('@/components/TableActions.vue', () => ({ default: { template: '<div />' } }))
 
 beforeEach(() => {
@@ -156,8 +154,6 @@ it('bootstraps the opt-in mixer, sends live type volumes, and surfaces mixer fai
   const wrapper = shallowMount(TableViewGM, { global: { renderStubDefaultSlot: true } })
   try {
     await flushPromises()
-    const fileList = wrapper.findComponent({ name: 'FileList' })
-    expect(fileList.props('discordReady')).toBe(false)
     audio.initTrack('forest', 'Forest', 'Music')
     audio.updateTrackState('forest', { isPlaying: true, currentTime: 3, volume: 40 })
     handler({ event: 'mixerReady', payload: {} })
@@ -173,7 +169,6 @@ it('bootstraps the opt-in mixer, sends live type volumes, and surfaces mixer fai
       tracks: [expect.objectContaining({ fileID: 'forest', currentTime: 3, volume: 40 })],
       typeVolumes: { Music: 0 },
     } })
-    expect(fileList.props('discordReady')).toBe(false)
     audio.setTypeVolume('Music', 25)
     await flushPromises()
     await vi.advanceTimersByTimeAsync(100)
@@ -191,10 +186,6 @@ it('bootstraps the opt-in mixer, sends live type volumes, and surfaces mixer fai
     handler({ event: 'mixerApplied', payload: { event: 'mixChanged' } })
     await flushPromises()
     expect(wrapper.findAllComponents({ name: 'ErrorToast' })[1]!.props('modelValue')).toBe('')
-    expect(fileList.props('discordReady')).toBe(true)
-    ws.isConnected = false
-    await flushPromises()
-    expect(fileList.props('discordReady')).toBe(false)
   } finally {
     wrapper.unmount()
   }

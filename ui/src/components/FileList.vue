@@ -92,8 +92,7 @@
         <div class="playing-sidebar-tracks">
           <PlayingTrackList :tracks="playingTracks" @play="handlePlay" @volume="handleVolume" @seek="handleSeek" />
         </div>
-        <DiscordControl v-if="tables.current" :tableID="tables.current.externalID"
-          :discord-ready="props.discordReady" class="playing-sidebar-discord" />
+        <DiscordControl v-if="tables.current" :tableID="tables.current.externalID" class="playing-sidebar-discord" />
       </aside>
       <template v-else>
         <v-bottom-sheet v-model="showNowPlaying" max-height="70dvh" aria-label="Currently playing">
@@ -116,8 +115,7 @@
                 @update:model-value="audioStore.setMasterVolume($event)" />
             </div>
             <div class="now-playing-drawer-tracks">
-              <DiscordControl v-if="tables.current" :tableID="tables.current.externalID"
-                :discord-ready="props.discordReady" class="mb-3" />
+              <DiscordControl v-if="tables.current" :tableID="tables.current.externalID" class="mb-3" />
               <PlayingTrackList :tracks="playingTracks" @play="handlePlay" @volume="handleVolume" @seek="handleSeek" />
             </div>
           </v-card>
@@ -217,7 +215,7 @@ const sensors = [
   }),
 ]
 const tables = useTableStore()
-const props = withDefaults(defineProps<{ library?: boolean, discordReady?: boolean }>(), { discordReady: true })
+const props = defineProps<{ library?: boolean }>()
 const error = ref('')
 const loading = ref(true)
 const libraryHeaders = [
