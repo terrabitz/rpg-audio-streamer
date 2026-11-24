@@ -41,6 +41,13 @@ includes intermediate stages, so changes to the browser install do not require
 recompiling FFmpeg. BuildKit invalidates layers when their inputs change,
 including the Playwright lockfile and shared installer scripts.
 
+Jobs that run commands in the devcontainer also restore a `.cache` directory
+in the checkout with `actions/cache`, keyed by `go.sum` and
+`ui/package-lock.json`. The workflow points `GOMODCACHE` and
+`npm_config_cache` there and forwards both through the action's `env` input,
+so the container's dependency installation reads downloaded Go modules and
+npm packages from the cache.
+
 ## Docker checks
 
 Pull requests that touch any image input or the
