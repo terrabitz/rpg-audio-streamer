@@ -34,6 +34,7 @@ Vue tooling.
 
 | Command (repository root) | Purpose |
 | --- | --- |
+| `make -j ci --output-sync=target` | Combined offline CI checks, with browser suites ordered to avoid shared output conflicts |
 | `make test` | Go race detection, SQLite integration, and frontend domain coverage |
 | `make test-go` | All Go tests; enforce 80% internal statement coverage |
 | `make test-ui` | Vitest domain coverage; enforce 80% statements, branches, functions, and lines |
@@ -198,10 +199,9 @@ include the Go connection integration test in `make test-go`, or run just that
 test with `make test-go-discord`, which sets the flag for you. Missing values
 fail the test.
 
-The `pr-checks` workflow runs four independent jobs on pull requests and manual
-dispatch: offline Go coverage (including SQLite and media integration), the Go
-live Discord connection test, non-Discord Playwright projects, and the
-`chromium-discord` Playwright project. Configure the five names above as
+The `pr-checks` workflow runs the combined offline checks in one job and the Go
+live Discord connection test and `chromium-discord` Playwright project in
+separate jobs. Configure the five names above as
 repository secrets. Only the two live Discord jobs receive those secrets and
 share a concurrency group; offline Go and non-Discord browser tests run without
 that lock. GitHub withholds repository secrets from fork and Dependabot pull

@@ -1,24 +1,19 @@
 ---
 type: Pipeline
 title: Pull request checks
-description: Path-filtered CI jobs, live Discord validation, and the aggregate required check.
+description: Devcontainer CI checks, live Discord validation, and the aggregate required check.
 resource: .github/workflows
 tags: [operations, ci, testing]
 ---
 
 # Pull request checks
 
-The `pr-checks` workflow selects Go, frontend, seeded development, browser,
-and packaging checks by changed paths (see [test layers](./test-layers.md)).
-The shared `devcontainer` path filter selects all devcontainer checks when the
-container inputs, `Makefile`, or PR workflow change. Other changes select only
-the relevant checks. Manual runs bypass path filtering; the README demo is
-pull-request only.
-
-Offline Go tests retain the internal coverage gate, including SQLite and media
-integration tests. Non-Discord Playwright projects run in their own job.
-Neither job receives Discord secrets or acquires the live Discord concurrency
-lock, so they can run alongside each other and the live checks.
+The `pr-checks` workflow selects checks by changed paths (see
+[test layers](./test-layers.md)). One devcontainer job runs the offline Go,
+frontend, seeded development, browser, embedded examples, and README demo
+checks together whenever any relevant path changes. Manual runs bypass path
+filtering. Offline checks do not receive Discord secrets or acquire the live
+Discord concurrency lock.
 
 ## Shared environment
 
@@ -31,15 +26,16 @@ definition and Make targets are used for local tests. Each devcontainer job
 calls the `.github/actions/devcontainer` composite action with its Make target;
 the action owns Buildx setup, layer and dependency caching, and environment
 forwarding. GitHub Actions handles job selection, artifact handling, and
-publication separately.
+publication separately. The combined target runs checks in parallel, ordering
+the frontend build and browser suites to avoid concurrent writes to the UI
+build and Playwright output directories.
 
 ## Default-branch caches
 
 The `warm-caches` workflow uses `devcontainers/ci` to export builds to the
 GitHub Actions BuildKit cache on pushes to `main` and on manual dispatch, with
-separate scopes for amd64 and arm64. PR checks import the matching scope. The
-PR's amd64 cache-preparation job fills new layers before the test jobs fan out;
-the arm64 example job also exports its layers for subsequent runs. The export
+separate scopes for amd64 and arm64. PR checks import the matching scope. The combined amd64 job and arm64 example
+job export their layers for subsequent runs. The export
 includes intermediate stages, so changes to the browser install do not require
 recompiling FFmpeg. BuildKit invalidates layers when their inputs change,
 including the Playwright lockfile and shared installer scripts.
@@ -77,7 +73,7 @@ along with incomplete multi-arch images. Manual dispatch supports a dry run.
 ## Embedded examples
 
 Changes to `examples/`, `README.md`, `INSTALLATION.md`, or the shared
-`devcontainer` inputs run the `embeds` job, which fails when the documents'
+`devcontainer` inputs select the combined job, which fails when the documents'
 embedded snippets differ from their [example](./getting-started-examples.md)
 source files. The check does not need the packaged app image.
 
@@ -111,8 +107,9 @@ player listens in a separate browser context. The recording overlay uses a
 fixed seed and the movement endpoints to reproduce the same curved cursor
 paths. The GM cursor settles before each click and returns to the same resting
 spot at the end of the loop. On
-pull requests that change browser, server, or shared devcontainer inputs, it
-compares stable GM and player screenshots with the checked-in baselines.
+pull requests selected for the combined checks, it compares stable GM and
+player screenshots with the checked-in baselines. Manual runs record the demo
+without publishing it.
 Pointer overlays and playback-position motion are excluded from comparison.
 The `README_DEMO_DIFF_RATIO` environment variable overrides the default
 tolerance of `0.002` (0.2%) differing pixels in each screenshot.

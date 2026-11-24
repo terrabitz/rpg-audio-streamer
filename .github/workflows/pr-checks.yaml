@@ -63,10 +63,10 @@ jobs:
               - 'README.md'
               - 'INSTALLATION.md'
 
-  test-image:
-    name: Cache Test Devcontainer
+  ci:
+    name: Devcontainer Checks
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
     needs: changes
     if: |
       !cancelled() &&
@@ -80,36 +80,50 @@ jobs:
       )
     steps:
       - uses: actions/checkout@v7
-      - uses: ./.github/actions/devcontainer
         with:
-          export-cache: true
-
-  go:
-    name: Go Offline Tests and Coverage
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
-    needs: [changes, test-image]
-    if: |
-      !cancelled() && needs.test-image.result == 'success' &&
-      (
-        github.event_name == 'workflow_dispatch' ||
-        needs.changes.outputs.devcontainer == 'true' ||
-        needs.changes.outputs.backend == 'true'
-      )
-    steps:
-      - uses: actions/checkout@v7
-      - name: Run offline Go tests and coverage
+          lfs: true
+          persist-credentials: false
+      - name: Run checks in the devcontainer
         uses: ./.github/actions/devcontainer
         with:
-          run: make test-go
+          export-cache: true
+          run: make -j ci --output-sync=target
+      - name: Check for material visual changes
+        id: compare
+        if: github.event_name == 'pull_request'
+        run: |
+          git add -- media/readme-demo/gm.png media/readme-demo/player.png
+          if git diff --cached --quiet -- media/readme-demo; then
+            echo 'README demo is visually unchanged.' >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          staging="$RUNNER_TEMP/readme-demo"
+          mkdir -p "$staging"
+          cp media/readme-demo/{gm,player}.png media/audio-playing.gif "$staging/"
+          echo 'changed=true' >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v7
+        if: steps.compare.outputs.changed == 'true'
+        with:
+          name: readme-demo
+          path: ${{ runner.temp }}/readme-demo/
+          if-no-files-found: error
+          retention-days: 7
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: devcontainer-checks-diagnostics-attempt-${{ github.run_attempt }}
+          path: ui/test-results/
+          retention-days: 7
+    outputs:
+      changed: ${{ steps.compare.outputs.changed }}
 
   go-discord:
     name: Go Discord Integration
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    needs: [changes, test-image]
+    needs: changes
     if: |
-      !cancelled() && needs.test-image.result == 'success' &&
+      !cancelled() &&
       (
         github.event_name == 'workflow_dispatch' ||
         needs.changes.outputs.devcontainer == 'true' ||
@@ -133,40 +147,13 @@ jobs:
             INTEGRATION_TEST_DISCORD_BOT_STREAMER_TOKEN
           run: make test-go-discord
 
-  e2e:
-    name: Full App UX
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
-    needs: [changes, test-image]
-    if: |
-      !cancelled() && needs.test-image.result == 'success' &&
-      (
-        github.event_name == 'workflow_dispatch' ||
-        needs.changes.outputs.devcontainer == 'true' ||
-        needs.changes.outputs.frontend == 'true' ||
-        needs.changes.outputs.backend == 'true'
-      )
-    steps:
-      - uses: actions/checkout@v7
-      - name: Run non-Discord app UX suite in the devcontainer
-        uses: ./.github/actions/devcontainer
-        with:
-          run: make test-e2e
-      - name: Retain non-Discord UX failure diagnostics
-        if: ${{ failure() }}
-        uses: actions/upload-artifact@v7
-        with:
-          name: full-app-ux-attempt-${{ github.run_attempt }}
-          path: ui/test-results/
-          retention-days: 7
-
   e2e-discord:
     name: Discord App UX
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    needs: [changes, test-image]
+    needs: changes
     if: |
-      !cancelled() && needs.test-image.result == 'success' &&
+      !cancelled() &&
       (
         github.event_name == 'workflow_dispatch' ||
         needs.changes.outputs.devcontainer == 'true' ||
@@ -195,63 +182,13 @@ jobs:
             INTEGRATION_TEST_DISCORD_BOT_LISTENER_TOKEN
           run: make test-e2e-discord
 
-  readme-demo:
-    name: Check README Demo
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
-    needs: [changes, test-image]
-    if: |
-      !cancelled() && needs.test-image.result == 'success' &&
-      github.event_name == 'pull_request' &&
-      (
-        needs.changes.outputs.devcontainer == 'true' ||
-        needs.changes.outputs.frontend == 'true' ||
-        needs.changes.outputs.backend == 'true'
-      )
-    outputs:
-      changed: ${{ steps.compare.outputs.changed }}
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          lfs: true
-          persist-credentials: false
-      - name: Record GM and player flow and refresh changed visual checkpoints
-        uses: ./.github/actions/devcontainer
-        with:
-          run: make test-readme-demo
-      - name: Check for material visual changes
-        id: compare
-        run: |
-          git add -- media/readme-demo/gm.png media/readme-demo/player.png
-          if git diff --cached --quiet -- media/readme-demo; then
-            echo 'README demo is visually unchanged.' >> "$GITHUB_STEP_SUMMARY"
-            exit 0
-          fi
-          staging="$RUNNER_TEMP/readme-demo"
-          mkdir -p "$staging"
-          cp media/readme-demo/{gm,player}.png media/audio-playing.gif "$staging/"
-          echo 'changed=true' >> "$GITHUB_OUTPUT"
-      - uses: actions/upload-artifact@v7
-        if: steps.compare.outputs.changed == 'true'
-        with:
-          name: readme-demo
-          path: ${{ runner.temp }}/readme-demo/
-          if-no-files-found: error
-          retention-days: 7
-      - uses: actions/upload-artifact@v7
-        if: failure()
-        with:
-          name: readme-demo-diagnostics-attempt-${{ github.run_attempt }}
-          path: ui/test-results/
-          retention-days: 7
-
   publish-readme-demo:
     name: Update README Demo
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    needs: readme-demo
+    needs: ci
     if: |
-      needs.readme-demo.outputs.changed == 'true' &&
+      needs.ci.outputs.changed == 'true' &&
       github.event.pull_request.head.repo.full_name == github.repository &&
       github.event.pull_request.head.ref != github.event.repository.default_branch &&
       github.event.pull_request.user.login != 'dependabot[bot]'
@@ -287,57 +224,6 @@ jobs:
             commit -m 'docs: Refresh README demo'
           git push origin "HEAD:$target"
 
-  lint:
-    name: Frontend Lint
-    needs: [changes, test-image]
-    if: |
-      !cancelled() && needs.test-image.result == 'success' &&
-      (
-        github.event_name == 'workflow_dispatch' ||
-        needs.changes.outputs.devcontainer == 'true' ||
-        needs.changes.outputs.frontend == 'true'
-      )
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: ./.github/actions/devcontainer
-        with:
-          run: make lint-ui
-
-  build:
-    name: Frontend Build
-    needs: [changes, test-image]
-    if: |
-      !cancelled() && needs.test-image.result == 'success' &&
-      (
-        github.event_name == 'workflow_dispatch' ||
-        needs.changes.outputs.devcontainer == 'true' ||
-        needs.changes.outputs.frontend == 'true'
-      )
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: ./.github/actions/devcontainer
-        with:
-          run: make build-ui
-
-  unit:
-    name: Frontend Domain Coverage
-    needs: [changes, test-image]
-    if: |
-      !cancelled() && needs.test-image.result == 'success' &&
-      (
-        github.event_name == 'workflow_dispatch' ||
-        needs.changes.outputs.devcontainer == 'true' ||
-        needs.changes.outputs.frontend == 'true'
-      )
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: ./.github/actions/devcontainer
-        with:
-          run: make test-frontend
-
   docker:
     name: Build Docker Image
     permissions:
@@ -358,8 +244,8 @@ jobs:
 
   examples:
     name: Getting Started Examples (${{ matrix.arch }})
-    needs: [docker, test-image]
-    if: ${{ !cancelled() && needs.docker.result == 'success' && needs.test-image.result == 'success' }}
+    needs: docker
+    if: ${{ !cancelled() && needs.docker.result == 'success' }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 25
     permissions:
@@ -394,28 +280,10 @@ jobs:
           env: EXAMPLES_IMAGE
           run: make test-examples
 
-  embeds:
-    name: Embedded Examples Up To Date
-    needs: [changes, test-image]
-    if: |
-      !cancelled() && needs.test-image.result == 'success' &&
-      (
-        github.event_name == 'workflow_dispatch' ||
-        needs.changes.outputs.devcontainer == 'true' ||
-        needs.changes.outputs.embeds == 'true'
-      )
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - name: Verify embedded examples
-        uses: ./.github/actions/devcontainer
-        with:
-          run: make verify-examples
-
   pr-checks:
     name: PR Checks
     if: ${{ always() }}
-    needs: [changes, test-image, go, go-discord, e2e, e2e-discord, readme-demo, publish-readme-demo, lint, build, unit, docker, examples, embeds]
+    needs: [changes, ci, go-discord, e2e-discord, publish-readme-demo, docker, examples]
     runs-on: ubuntu-latest
     steps:
       - name: Require all selected checks to pass
