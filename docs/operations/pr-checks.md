@@ -1,7 +1,7 @@
 ---
 type: Pipeline
 title: Pull request checks
-description: Devcontainer CI checks, live Discord validation, and the aggregate required check.
+description: Path-filtered CI jobs, live Discord validation, and the aggregate required check.
 resource: .github/workflows
 tags: [operations, ci, testing]
 ---
