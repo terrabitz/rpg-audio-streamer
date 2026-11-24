@@ -25,8 +25,9 @@ Rebuild the container after image input changes. Run the commands below from
 an in-container terminal or through `devcontainer exec --workspace-folder .`.
 If the container cannot start, report the blocker rather than falling back
 to host tools.
-Give each CI check or build a single Make target that also works locally.
-Keep GitHub-specific orchestration in the workflow.
+Give each CI test or validation check a single Make target that also works
+locally. CI image builds use `docker/build-push-action`; `make docker-build`
+builds the image locally. Keep GitHub-specific orchestration in the workflow.
 The UI compiler must remain compatible with `vue-tsc`; TypeScript 7's native
 package does not expose the JavaScript compiler API required by the current
 Vue tooling.
