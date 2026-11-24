@@ -66,9 +66,43 @@ it('shows reconnect progress without a cancel action, then allows disconnecting 
   expect(api.get).toHaveBeenCalledTimes(1)
   expect(button.props()).toMatchObject({ loading: false, disabled: false, color: 'success' })
   expect(button.text()).toBe('Connected')
+  await wrapper.setProps({ discordReady: false })
+  expect(button.props('disabled')).toBe(false)
+  await wrapper.setProps({ discordReady: true })
   await button.trigger('click')
   await flushPromises()
   expect(api.disconnect).toHaveBeenCalledExactlyOnceWith({ path: { tableID: 'friday' } })
   expect(button.props()).toMatchObject({ loading: false, color: 'grey' })
   expect(button.text()).toBe('Connect')
+})
+
+it('keeps new Discord connections disabled until the mixer is synchronized', async () => {
+  const pinia = createPinia()
+  setActivePinia(pinia)
+  useWebSocketStore().isConnected = true
+  api.get.mockResolvedValue({ data: { enabled: true, state: 'disconnected' } })
+  const wrapper = mount(DiscordControl, {
+    props: { tableID: 'friday', discordReady: false },
+    global: {
+      plugins: [pinia],
+      stubs: {
+        VTooltip: { template: '<slot name="activator" :props="{}" />' },
+        VBtn: {
+          name: 'VBtn', props: ['loading', 'disabled', 'color'],
+          template: '<button :disabled="disabled"><slot /><slot name="append" /></button>',
+        },
+        VDialog: true,
+        VCard: true,
+        VCardText: true,
+        VCardActions: true,
+        VSelect: true,
+        VListItem: true,
+        VSpacer: true,
+        ErrorToast: true,
+      },
+    },
+  })
+  await flushPromises()
+  const button = wrapper.getComponent({ name: 'VBtn' })
+  expect(button.props()).toMatchObject({ loading: true, disabled: true })
 })

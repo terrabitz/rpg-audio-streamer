@@ -4,7 +4,7 @@ import { useDiscord } from '@/composables/discord'
 import discordLogo from '@/assets/discord.svg'
 import ErrorToast from './ErrorToast.vue'
 
-const props = defineProps<{ tableID: string }>()
+const props = withDefaults(defineProps<{ tableID: string, discordReady?: boolean }>(), { discordReady: true })
 const {
   status, setup, channels, guildID, channelID, dialog, loading, channelsLoading, error,
   toggle, connect, loadSetup, selectGuild, dispose,
@@ -37,8 +37,8 @@ onUnmounted(dispose)
       <template #activator="{ props: tooltipProps }">
         <v-btn v-bind="tooltipProps" block variant="tonal"
           :color="status.state === 'connected' ? 'success' : 'grey'"
-          :loading="status.state === 'connecting' || (loading && !dialog)"
-          :disabled="status.state === 'connecting'"
+          :loading="status.state === 'connecting' || (loading && !dialog) || (!props.discordReady && status.state !== 'connected')"
+          :disabled="status.state === 'connecting' || (!props.discordReady && status.state !== 'connected')"
           :aria-label="status.state === 'connecting' ? 'Connecting to Discord' : undefined" @click="toggle">
           {{ status.state === 'connected' ? 'Connected' : 'Connect' }}
           <template #append>
@@ -72,7 +72,8 @@ onUnmounted(dispose)
         <v-card-actions>
           <v-btn :disabled="loading" @click="dialog = false">Cancel</v-btn>
           <v-spacer />
-          <v-btn color="primary" :loading="loading" :disabled="!guildID || !channelID || channelsLoading"
+          <v-btn color="primary" :loading="loading"
+            :disabled="!props.discordReady || !guildID || !channelID || channelsLoading"
             @click="connect">Connect</v-btn>
         </v-card-actions>
       </v-card>
