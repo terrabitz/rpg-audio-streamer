@@ -7,10 +7,6 @@ on:
 permissions:
   contents: read
 
-env:
-  GOMODCACHE: ${{ github.workspace }}/.cache/go-mod
-  npm_config_cache: ${{ github.workspace }}/.cache/npm
-
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -41,6 +37,7 @@ jobs:
               - 'ui/package-lock.json'
               - 'Makefile'
               - '.github/workflows/pr-checks.yaml'
+              - '.github/actions/devcontainer/**'
             backend:
               - '**/*.go'
               - 'go.mod'
@@ -83,12 +80,9 @@ jobs:
       )
     steps:
       - uses: actions/checkout@v7
-      - uses: docker/setup-buildx-action@v4
-      - uses: devcontainers/ci@v0.3
+      - uses: ./.github/actions/devcontainer
         with:
-          push: never
-          cacheFrom: type=gha,scope=test-devcontainer-${{ runner.arch }}
-          cacheTo: type=gha,scope=test-devcontainer-${{ runner.arch }},mode=max
+          export-cache: true
 
   go:
     name: Go Offline Tests and Coverage
@@ -104,22 +98,10 @@ jobs:
       )
     steps:
       - uses: actions/checkout@v7
-      - uses: docker/setup-buildx-action@v4
-      - uses: actions/cache@v6
-        with:
-          path: .cache
-          key: deps-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('go.sum', 'ui/package-lock.json') }}
-          restore-keys: deps-${{ runner.os }}-${{ runner.arch }}-
       - name: Run offline Go tests and coverage
-        uses: devcontainers/ci@v0.3
+        uses: ./.github/actions/devcontainer
         with:
-          push: never
-          cacheFrom: type=gha,scope=test-devcontainer-${{ runner.arch }}
-          env: |
-            CI=true
-            GOMODCACHE
-            npm_config_cache
-          runCmd: make test-go
+          run: make test-go
 
   go-discord:
     name: Go Discord Integration
@@ -138,29 +120,18 @@ jobs:
       queue: max
     steps:
       - uses: actions/checkout@v7
-      - uses: docker/setup-buildx-action@v4
-      - uses: actions/cache@v6
-        with:
-          path: .cache
-          key: deps-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('go.sum', 'ui/package-lock.json') }}
-          restore-keys: deps-${{ runner.os }}-${{ runner.arch }}-
       - name: Run live Discord connection integration
-        uses: devcontainers/ci@v0.3
+        uses: ./.github/actions/devcontainer
         env:
           INTEGRATION_TEST_DISCORD_SERVER_ID: ${{ secrets.INTEGRATION_TEST_DISCORD_SERVER_ID }}
           INTEGRATION_TEST_DISCORD_VOICE_CHANNEL_ID: ${{ secrets.INTEGRATION_TEST_DISCORD_VOICE_CHANNEL_ID }}
           INTEGRATION_TEST_DISCORD_BOT_STREAMER_TOKEN: ${{ secrets.INTEGRATION_TEST_DISCORD_BOT_STREAMER_TOKEN }}
         with:
-          push: never
-          cacheFrom: type=gha,scope=test-devcontainer-${{ runner.arch }}
           env: |
-            CI=true
-            GOMODCACHE
-            npm_config_cache
             INTEGRATION_TEST_DISCORD_SERVER_ID
             INTEGRATION_TEST_DISCORD_VOICE_CHANNEL_ID
             INTEGRATION_TEST_DISCORD_BOT_STREAMER_TOKEN
-          runCmd: make test-go-discord
+          run: make test-go-discord
 
   e2e:
     name: Full App UX
@@ -177,22 +148,10 @@ jobs:
       )
     steps:
       - uses: actions/checkout@v7
-      - uses: docker/setup-buildx-action@v4
-      - uses: actions/cache@v6
-        with:
-          path: .cache
-          key: deps-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('go.sum', 'ui/package-lock.json') }}
-          restore-keys: deps-${{ runner.os }}-${{ runner.arch }}-
       - name: Run non-Discord app UX suite in the devcontainer
-        uses: devcontainers/ci@v0.3
+        uses: ./.github/actions/devcontainer
         with:
-          push: never
-          cacheFrom: type=gha,scope=test-devcontainer-${{ runner.arch }}
-          env: |
-            CI=true
-            GOMODCACHE
-            npm_config_cache
-          runCmd: make test-e2e
+          run: make test-e2e
       - name: Retain non-Discord UX failure diagnostics
         if: ${{ failure() }}
         uses: actions/upload-artifact@v7
@@ -219,14 +178,8 @@ jobs:
       queue: max
     steps:
       - uses: actions/checkout@v7
-      - uses: docker/setup-buildx-action@v4
-      - uses: actions/cache@v6
-        with:
-          path: .cache
-          key: deps-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('go.sum', 'ui/package-lock.json') }}
-          restore-keys: deps-${{ runner.os }}-${{ runner.arch }}-
       - name: Run live Discord app UX suite
-        uses: devcontainers/ci@v0.3
+        uses: ./.github/actions/devcontainer
         env:
           INTEGRATION_TEST_DISCORD_SERVER_ID: ${{ secrets.INTEGRATION_TEST_DISCORD_SERVER_ID }}
           INTEGRATION_TEST_DISCORD_VOICE_CHANNEL_ID: ${{ secrets.INTEGRATION_TEST_DISCORD_VOICE_CHANNEL_ID }}
@@ -234,18 +187,13 @@ jobs:
           INTEGRATION_TEST_DISCORD_BOT_STREAMER_CLIENT_ID: ${{ secrets.INTEGRATION_TEST_DISCORD_BOT_STREAMER_CLIENT_ID }}
           INTEGRATION_TEST_DISCORD_BOT_LISTENER_TOKEN: ${{ secrets.INTEGRATION_TEST_DISCORD_BOT_LISTENER_TOKEN }}
         with:
-          push: never
-          cacheFrom: type=gha,scope=test-devcontainer-${{ runner.arch }}
           env: |
-            CI=true
-            GOMODCACHE
-            npm_config_cache
             INTEGRATION_TEST_DISCORD_SERVER_ID
             INTEGRATION_TEST_DISCORD_VOICE_CHANNEL_ID
             INTEGRATION_TEST_DISCORD_BOT_STREAMER_TOKEN
             INTEGRATION_TEST_DISCORD_BOT_STREAMER_CLIENT_ID
             INTEGRATION_TEST_DISCORD_BOT_LISTENER_TOKEN
-          runCmd: make test-e2e-discord
+          run: make test-e2e-discord
 
   readme-demo:
     name: Check README Demo
@@ -267,22 +215,10 @@ jobs:
         with:
           lfs: true
           persist-credentials: false
-      - uses: docker/setup-buildx-action@v4
-      - uses: actions/cache@v6
-        with:
-          path: .cache
-          key: deps-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('go.sum', 'ui/package-lock.json') }}
-          restore-keys: deps-${{ runner.os }}-${{ runner.arch }}-
       - name: Record GM and player flow and refresh changed visual checkpoints
-        uses: devcontainers/ci@v0.3
+        uses: ./.github/actions/devcontainer
         with:
-          push: never
-          cacheFrom: type=gha,scope=test-devcontainer-${{ runner.arch }}
-          env: |
-            CI=true
-            GOMODCACHE
-            npm_config_cache
-          runCmd: make test-readme-demo
+          run: make test-readme-demo
       - name: Check for material visual changes
         id: compare
         run: |
@@ -365,21 +301,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: docker/setup-buildx-action@v4
-      - uses: actions/cache@v6
+      - uses: ./.github/actions/devcontainer
         with:
-          path: .cache
-          key: deps-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('go.sum', 'ui/package-lock.json') }}
-          restore-keys: deps-${{ runner.os }}-${{ runner.arch }}-
-      - uses: devcontainers/ci@v0.3
-        with:
-          push: never
-          cacheFrom: type=gha,scope=test-devcontainer-${{ runner.arch }}
-          env: |
-            CI=true
-            GOMODCACHE
-            npm_config_cache
-          runCmd: make lint-ui
+          run: make lint-ui
 
   build:
     name: Frontend Build
@@ -394,21 +318,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: docker/setup-buildx-action@v4
-      - uses: actions/cache@v6
+      - uses: ./.github/actions/devcontainer
         with:
-          path: .cache
-          key: deps-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('go.sum', 'ui/package-lock.json') }}
-          restore-keys: deps-${{ runner.os }}-${{ runner.arch }}-
-      - uses: devcontainers/ci@v0.3
-        with:
-          push: never
-          cacheFrom: type=gha,scope=test-devcontainer-${{ runner.arch }}
-          env: |
-            CI=true
-            GOMODCACHE
-            npm_config_cache
-          runCmd: make build-ui
+          run: make build-ui
 
   unit:
     name: Frontend Domain Coverage
@@ -423,21 +335,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: docker/setup-buildx-action@v4
-      - uses: actions/cache@v6
+      - uses: ./.github/actions/devcontainer
         with:
-          path: .cache
-          key: deps-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('go.sum', 'ui/package-lock.json') }}
-          restore-keys: deps-${{ runner.os }}-${{ runner.arch }}-
-      - uses: devcontainers/ci@v0.3
-        with:
-          push: never
-          cacheFrom: type=gha,scope=test-devcontainer-${{ runner.arch }}
-          env: |
-            CI=true
-            GOMODCACHE
-            npm_config_cache
-          runCmd: make test-frontend
+          run: make test-frontend
 
   docker:
     name: Build Docker Image
@@ -476,7 +376,6 @@ jobs:
             runner: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@v7
-      - uses: docker/setup-buildx-action@v4
       - name: Login to GitHub Container Registry
         uses: docker/login-action@v4
         with:
@@ -487,24 +386,14 @@ jobs:
         run: docker pull "$EXAMPLES_IMAGE"
         env:
           EXAMPLES_IMAGE: ${{ needs.docker.outputs.image }}
-      - uses: actions/cache@v6
-        with:
-          path: .cache
-          key: deps-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('go.sum', 'ui/package-lock.json') }}
-          restore-keys: deps-${{ runner.os }}-${{ runner.arch }}-
       - name: Run getting started examples
-        uses: devcontainers/ci@v0.3
+        uses: ./.github/actions/devcontainer
         env:
           EXAMPLES_IMAGE: ${{ needs.docker.outputs.image }}
         with:
-          push: never
-          cacheFrom: type=gha,scope=test-devcontainer-${{ runner.arch }}
-          cacheTo: ${{ matrix.arch == 'arm64' && format('type=gha,scope=test-devcontainer-{0},mode=max', runner.arch) || '' }}
-          env: |
-            EXAMPLES_IMAGE
-            GOMODCACHE
-            npm_config_cache
-          runCmd: make test-examples
+          export-cache: ${{ matrix.arch == 'arm64' }}
+          env: EXAMPLES_IMAGE
+          run: make test-examples
 
   embeds:
     name: Embedded Examples Up To Date
@@ -519,22 +408,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: docker/setup-buildx-action@v4
-      - uses: actions/cache@v6
-        with:
-          path: .cache
-          key: deps-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('go.sum', 'ui/package-lock.json') }}
-          restore-keys: deps-${{ runner.os }}-${{ runner.arch }}-
       - name: Verify embedded examples
-        uses: devcontainers/ci@v0.3
+        uses: ./.github/actions/devcontainer
         with:
-          push: never
-          cacheFrom: type=gha,scope=test-devcontainer-${{ runner.arch }}
-          env: |
-            CI=true
-            GOMODCACHE
-            npm_config_cache
-          runCmd: make verify-examples
+          run: make verify-examples
 
   pr-checks:
     name: PR Checks

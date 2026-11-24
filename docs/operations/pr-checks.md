@@ -27,8 +27,11 @@ the repository devcontainer using the official `devcontainers/ci` action. Its
 image supplies Go, Node, libdave, FFmpeg, yt-dlp, and Chromium with its Linux
 dependencies. The Playwright version comes from `ui/package-lock.json`, and
 workspace dependencies are installed when the devcontainer starts. The same
-definition and Make targets are used for local tests. GitHub Actions handles
-job selection, cache setup, artifact handling, and publication separately.
+definition and Make targets are used for local tests. Each devcontainer job
+calls the `.github/actions/devcontainer` composite action with its Make target;
+the action owns Buildx setup, layer and dependency caching, and environment
+forwarding. GitHub Actions handles job selection, artifact handling, and
+publication separately.
 
 ## Default-branch caches
 
@@ -43,7 +46,7 @@ including the Playwright lockfile and shared installer scripts.
 
 Jobs that run commands in the devcontainer also restore a `.cache` directory
 in the checkout with `actions/cache`, keyed by `go.sum` and
-`ui/package-lock.json`. The workflow points `GOMODCACHE` and
+`ui/package-lock.json`. The composite action points `GOMODCACHE` and
 `npm_config_cache` there and forwards both through the action's `env` input,
 so the container's dependency installation reads downloaded Go modules and
 npm packages from the cache.
@@ -92,8 +95,10 @@ repository secrets from fork and Dependabot pull requests; the live tests fail
 their configuration checks when required secrets are unavailable.
 Only these two jobs share the
 `discord-live` concurrency queue, serializing bot access across jobs and runs.
-The live jobs forward only the required credentials into the devcontainer
-through the `devcontainers/ci` action's `env` input. The action passes them as
+The live jobs set only the required credentials on their composite action step
+and list their names in its `env` input, which forwards them into the
+devcontainer through the `devcontainers/ci` action's `env` input. The action
+passes them as
 `devcontainer` CLI arguments, and GitHub masks the values in logs; other test
 jobs do not receive them.
 The browser Discord job does not upload failure diagnostics.
