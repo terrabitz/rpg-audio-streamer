@@ -55,6 +55,29 @@ For focused iteration, use `go test ./internal/websocket -run TestMessageRouting
 `cd ui && npm run test:e2e -- --grep 'invited player'`. Run the affected coverage
 gate after focused checks. No documentation-only validation is needed.
 
+### When to run checks
+
+While iterating, run fast checks often and slow checks only when a change
+touches their area:
+
+- **Fast, after most edits:** focused Go, Vitest, or Playwright tests for the
+  code you changed, plus `make lint-ui` and `make verify-examples`.
+- **Slower, at milestones in the affected area:** `make build-ui`,
+  `make test-frontend`, `make test-go`, and `make test-e2e`.
+
+Right before every push, run the full local suite in the devcontainer, even if
+you already ran parts of it:
+
+```sh
+devcontainer exec --workspace-folder . make lint-ui verify-examples build-ui test-frontend test-go test-e2e
+```
+
+When you change the packaged image or `examples/`, also run `make docker-build`
+and `make test-examples`, as described below. Run the live Discord checks only
+when you change Discord behavior and have credentials. Don't run
+`make test-readme-demo` before pushing; it rewrites the committed demo images,
+and CI refreshes them on the pull request.
+
 Mixer domain tests render known PCM buffers without sleeps; live-service tests
 own the render loop's context and bound waits for decoding and cancellation.
 
@@ -297,5 +320,6 @@ failed app paths with mocked responses or injected Pinia/localStorage state.
    interfaces aligned, and exercise the affected typed callbacks.
 3. Keep the affected `docs/` concepts synchronized with changed app behavior
    and boundaries; keep commands and testing procedures in this skill.
-4. Run focused tests, the affected coverage gates, and relevant build/lint.
+4. Run focused tests, the affected coverage gates, and relevant build/lint,
+   then the full local suite before pushing (see "When to run checks").
 5. Run browser journeys when HTTP, auth, playback, persistence, or UX changes.
