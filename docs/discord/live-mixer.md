@@ -30,7 +30,11 @@ The adapter answers each authenticated GM's `clientConnected` event with a
 targeted `mixerReady` event (see
 [WebSocket protocol](../playback/websocket-protocol.md)). The GM
 answers with `PUT /api/v1/tables/{tableID}/mix`: a full snapshot of playing tracks and the current
-type-volume map. This happens on reconnect as well as initial connection.
+type-volume map. This happens on reconnect as well as initial connection. If a
+Discord connect attempt finds no initialized table mix, the server rebuilds
+that snapshot from authoritative playback state, dispatches it to the mixer, and
+retries the connection. The recovery preserves currently playing tracks and
+applies the effective type volumes from table settings.
 Accepted HTTP playback commands become canonical `playbackChanged`
 batches that feed partial play/pause, seek, volume, repeating, and live
 [playback-region](../playback/playback-regions.md) changes into the mixer.
