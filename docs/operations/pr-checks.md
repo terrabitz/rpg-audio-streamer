@@ -32,20 +32,18 @@ job selection, cache setup, artifact handling, and publication separately.
 
 ## Default-branch caches
 
-The `warm-caches` workflow publishes architecture-specific images to the
-`ghcr.io/terrabitz/rpg-audio-streamer/devcontainer` package on pushes to
-`main` and manual dispatches on `main`. It also exports builds to the GitHub
-Actions BuildKit cache on pushes and manual dispatches. For same-repository
-pull requests, the amd64 cache-preparation job publishes a PR-numbered tag
-before test jobs fan out. Fork pull requests do not publish; they use the main
-image when available and fall back to GHA. Each job still builds from the
-checked-out devcontainer configuration. The arm64 example job imports the
-matching architecture cache and exports its layers for subsequent runs. The
-export includes intermediate stages, so changes to the browser install do not
-require recompiling FFmpeg. BuildKit invalidates layers when their inputs
-change, including the Playwright lockfile and shared installer scripts. The
-hourly cleanup removes old and untagged package versions while retaining recent
-tags.
+The `warm-caches` workflow publishes architecture-specific devcontainer images
+to GHCR on pushes to `main` and manual dispatches on `main`, and exports builds
+to the GitHub Actions BuildKit cache on pushes and manual dispatches. PR checks
+import the matching GHCR image when available, alongside the GHA cache; a cache
+miss falls back to GHA. Each job still builds from the checked-out
+devcontainer configuration. The PR's amd64 cache-preparation job fills new
+layers before the test jobs fan out; the arm64 example job also exports its
+layers for subsequent runs. The export includes intermediate stages, so
+changes to the browser install do not require recompiling FFmpeg. BuildKit
+invalidates layers when their inputs change, including the Playwright lockfile
+and shared installer scripts. The devcontainer cache package retains the two
+architecture tags; the hourly cleanup removes old and untagged versions.
 
 ## Docker checks
 

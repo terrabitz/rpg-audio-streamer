@@ -33,7 +33,7 @@ jobs:
       - name: Check for the registry cache
         id: registry_cache
         env:
-          IMAGE_REF: ghcr.io/${{ github.repository }}/devcontainer:latest-${{ runner.arch }}
+          IMAGE_REF: ghcr.io/${{ github.repository }}/test-devcontainer:latest-${{ runner.arch }}
         run: |
           if docker manifest inspect "$IMAGE_REF" >/dev/null 2>&1; then
             echo 'exists=true' >> "$GITHUB_OUTPUT"
@@ -42,7 +42,7 @@ jobs:
           fi
       - uses: devcontainers/ci@v0.3
         with:
-          imageName: ghcr.io/${{ github.repository }}/devcontainer
+          imageName: ghcr.io/${{ github.repository }}/test-devcontainer
           imageTag: latest-${{ runner.arch }}
           push: filter
           refFilterForPush: refs/heads/main

@@ -33,9 +33,9 @@ jobs:
           dry-run: ${{ inputs.dry-run || false }}
       - uses: dataaxiom/ghcr-cleanup-action@v1
         with:
-          package: rpg-audio-streamer/devcontainer
+          package: rpg-audio-streamer/test-devcontainer
           older-than: 24 hours
-          keep-n-tagged: 20
+          keep-n-tagged: 2
           delete-untagged: true
           delete-ghost-images: true
           delete-partial-images: true

@@ -70,9 +70,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     needs: changes
-    permissions:
-      contents: read
-      packages: write
     outputs:
       registry_cache_amd64: ${{ steps.registry_cache.outputs.ref_amd64 }}
       registry_cache_arm64: ${{ steps.registry_cache.outputs.ref_arm64 }}
@@ -98,37 +95,19 @@ jobs:
       - name: Check for the registry cache
         id: registry_cache
         env:
-          IMAGE_NAME: ghcr.io/${{ github.repository }}/devcontainer
-          IMAGE_TAG: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && format('pr-{0}-{1}', github.event.pull_request.number, runner.arch) || format('latest-{0}', runner.arch) }}
-          RUNNER_ARCH: ${{ runner.arch }}
-          PUBLISH_CACHE: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository }}
+          IMAGE_NAME: ghcr.io/${{ github.repository }}/test-devcontainer
         run: |
           for arch in X64 ARM64; do
-            if [[ "$arch" == "$RUNNER_ARCH" ]]; then
-              image_ref="$IMAGE_NAME:$IMAGE_TAG"
-              if [[ "$PUBLISH_CACHE" == "true" ]]; then
-                echo "ref_amd64=$image_ref" >> "$GITHUB_OUTPUT"
-              elif docker manifest inspect "$image_ref" >/dev/null 2>&1; then
-                echo "ref_amd64=$image_ref" >> "$GITHUB_OUTPUT"
-              fi
-              if docker manifest inspect "$image_ref" >/dev/null 2>&1; then
-                echo 'exists=true' >> "$GITHUB_OUTPUT"
-              else
-                echo 'exists=false' >> "$GITHUB_OUTPUT"
-              fi
-            else
-              image_ref="$IMAGE_NAME:latest-$arch"
-              if docker manifest inspect "$image_ref" >/dev/null 2>&1; then
-                echo "ref_arm64=$image_ref" >> "$GITHUB_OUTPUT"
-              fi
+            image_ref="$IMAGE_NAME:latest-$arch"
+            if docker manifest inspect "$image_ref" >/dev/null 2>&1; then
+              output="ref_amd64"
+              if [[ "$arch" == "ARM64" ]]; then output="ref_arm64"; fi
+              echo "$output=$image_ref" >> "$GITHUB_OUTPUT"
             fi
           done
       - uses: devcontainers/ci@v0.3
         with:
-          imageName: ghcr.io/${{ github.repository }}/devcontainer
-          imageTag: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && format('pr-{0}-{1}', github.event.pull_request.number, runner.arch) || format('latest-{0}', runner.arch) }}
-          push: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && 'always' || 'never' }}
-          noCache: ${{ steps.registry_cache.outputs.exists != 'true' }}
+          push: never
           cacheFrom: |
             type=gha,scope=test-devcontainer-${{ runner.arch }}
             ${{ steps.registry_cache.outputs.ref_amd64 }}
