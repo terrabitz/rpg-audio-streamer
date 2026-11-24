@@ -218,7 +218,7 @@ jobs:
       - name: Record GM and player flow and refresh changed visual checkpoints
         uses: ./.github/actions/devcontainer
         with:
-          run: make test-readme-demo
+          run: make gen-readme-demo
       - name: Check for material visual changes
         id: compare
         run: |

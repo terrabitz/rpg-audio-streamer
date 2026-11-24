@@ -42,7 +42,7 @@ Vue tooling.
 | `make test-go-discord` | Live Go Discord voice connection |
 | `make test-dev` | Seeded local dev startup, isolation, media fixtures, and cleanup |
 | `make test-frontend` | Frontend domain coverage and seeded development tests |
-| `make test-readme-demo` | Record the README flow and compare screenshot baselines |
+| `make gen-readme-demo` | Refresh the README demo GIF when screenshot baselines change |
 | `make docker-build` | Build and load the packaged app image as `rpg-audio-streamer:local` |
 | `make test-examples` | The README/installation Docker flows against `EXAMPLES_IMAGE` |
 | `make verify-examples` | Fail when embedded snippets differ from `examples/` |
@@ -69,10 +69,10 @@ Right before every push, run the full local suite in the devcontainer, even if
 you already ran parts of it:
 
 ```sh
-devcontainer exec --workspace-folder . make lint-ui verify-examples build-ui test-frontend test-go test-e2e test-readme-demo
+devcontainer exec --workspace-folder . make lint-ui verify-examples build-ui test-frontend test-go test-e2e gen-readme-demo
 ```
 
-`make test-readme-demo` needs the LFS-backed `media/readme-demo/` images
+`make gen-readme-demo` needs the LFS-backed `media/readme-demo/` images
 hydrated (`git lfs pull`). When it rewrites `media/readme-demo/gm.png` or
 `player.png`, it also refreshes `media/audio-playing.gif`. Check
 `git status -- media` afterward and commit any changed demo media with your

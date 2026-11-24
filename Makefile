@@ -3,7 +3,7 @@ EXAMPLE_DOCS := README.md INSTALLATION.md
 IMAGE ?= rpg-audio-streamer:local
 DOCKER_BUILD_FLAGS ?= --load --tag $(IMAGE)
 
-.PHONY: dev devcontainer-build docker-build test-dev ui go test test-go test-go-discord test-ui test-frontend test-e2e test-e2e-discord test-examples verify-examples lint-ui build-ui record-e2e test-readme-demo gen gen-sqlc gen-api-client gen-docs gen-examples
+.PHONY: dev devcontainer-build docker-build test-dev ui go test test-go test-go-discord test-ui test-frontend test-e2e test-e2e-discord test-examples verify-examples lint-ui build-ui record-e2e gen gen-sqlc gen-api-client gen-docs gen-examples gen-readme-demo
 
 ui:
 	cd ui && npm install && npm run dev
@@ -63,7 +63,7 @@ record-e2e:
 README_DEMO_CHECKPOINTS = media/readme-demo/gm.png media/readme-demo/player.png
 README_DEMO_STAMP = tmp/readme-demo.stamp
 
-test-readme-demo:
+gen-readme-demo:
 	mkdir -p tmp
 	touch $(README_DEMO_STAMP)
 	cd ui && E2E_README_DEMO=1 npm run test:e2e:record -- readme-demo.spec.ts --project=chromium --update-snapshots=changed

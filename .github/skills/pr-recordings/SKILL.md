@@ -49,7 +49,7 @@ To reproduce the root README demo check, run from the repository root in the
 devcontainer:
 
 ```sh
-make test-readme-demo
+make gen-readme-demo
 ```
 
 The check uses the LFS-backed `media/readme-demo/` checkpoints. Hydrate them
