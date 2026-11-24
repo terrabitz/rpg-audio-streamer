@@ -10,7 +10,10 @@ tags: [operations, ci, testing]
 
 The `pr-checks` workflow selects Go, frontend, seeded development, browser,
 and packaging checks by changed paths (see [test layers](./test-layers.md)).
-Changes to the workflow select every check; manual runs also execute every check.
+The shared `devcontainer` path filter selects all devcontainer checks when the
+container inputs, `Makefile`, or PR workflow change. Other changes select only
+the relevant checks. Manual runs bypass path filtering; the README demo is
+pull-request only.
 
 Offline Go tests retain the internal coverage gate, including SQLite and media
 integration tests. Non-Discord Playwright projects run in their own job.
@@ -47,10 +50,12 @@ multi-arch manifest to `ghcr.io/terrabitz/rpg-audio-streamer/dev`, tagged with
 the pull request head commit SHA, rather than the release repository. A separate
 `examples` job depends on the build, pulls that image on amd64 and arm64
 runners, and runs the example harness through the same devcontainer action as
-the other checks. The devcontainer uses the host Docker daemon; the examples
-launch the packaged app alongside it and reach it through the host's published
-port. The checkout has the same absolute path inside the devcontainer and on
-the host so the Docker daemon can resolve bind mounts from the examples.
+the other checks. The shared `devcontainer` filter also selects the image build
+so the examples have an image to test. The devcontainer uses the host Docker
+daemon; the examples launch the packaged app alongside it and reach it through
+the host's published port. The checkout has the same absolute path inside the
+devcontainer and on the host so the Docker daemon can resolve bind mounts from
+the examples.
 
 Fork and Dependabot pull requests receive a read-only `GITHUB_TOKEN`, so their
 development image push fails.
@@ -61,10 +66,10 @@ along with incomplete multi-arch images. Manual dispatch supports a dry run.
 
 ## Embedded examples
 
-Changes to `examples/`, `README.md`, `INSTALLATION.md`, the `Makefile`, shared
-actions, or the workflow run the `embeds` job, which fails when the documents'
+Changes to `examples/`, `README.md`, `INSTALLATION.md`, or the shared
+`devcontainer` inputs run the `embeds` job, which fails when the documents'
 embedded snippets differ from their [example](./getting-started-examples.md)
-source files. It needs no image build.
+source files. The check does not need the packaged app image.
 
 ## FFmpeg in tests
 
@@ -94,7 +99,7 @@ player listens in a separate browser context. The recording overlay uses a
 fixed seed and the movement endpoints to reproduce the same curved cursor
 paths. The GM cursor settles before each click and returns to the same resting
 spot at the end of the loop. On
-pull requests that change browser or server inputs, it
+pull requests that change browser, server, or shared devcontainer inputs, it
 compares stable GM and player screenshots with the checked-in baselines.
 Pointer overlays and playback-position motion are excluded from comparison.
 The `README_DEMO_DIFF_RATIO` environment variable overrides the default

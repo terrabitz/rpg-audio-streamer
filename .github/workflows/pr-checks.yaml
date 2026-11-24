@@ -20,6 +20,7 @@ jobs:
     permissions:
       pull-requests: read
     outputs:
+      devcontainer: ${{ steps.filter.outputs.devcontainer }}
       backend: ${{ steps.filter.outputs.backend }}
       frontend: ${{ steps.filter.outputs.frontend }}
       docker: ${{ steps.filter.outputs.docker }}
@@ -29,55 +30,38 @@ jobs:
         id: filter
         with:
           filters: |
+            devcontainer:
+              - '.devcontainer/**'
+              - '.dockerignore'
+              - 'scripts/install-libdave.sh'
+              - 'scripts/build-ffmpeg.sh'
+              - 'ui/package-lock.json'
+              - 'Makefile'
+              - '.github/workflows/pr-checks.yaml'
             backend:
               - '**/*.go'
               - 'go.mod'
               - 'go.sum'
               - 'sql/**'
               - 'sqlc.yaml'
-              - 'Makefile'
-              - '.devcontainer/**'
-              - '.dockerignore'
-              - 'scripts/install-libdave.sh'
-              - 'scripts/build-ffmpeg.sh'
-              - '.github/actions/**'
-              - '.github/workflows/pr-checks.yaml'
             frontend:
               - 'ui/**'
-              - 'scripts/**'
+              - 'scripts/**/*.mjs'
               - 'openapi.yaml'
-              - '.devcontainer/**'
-              - '.dockerignore'
-              - 'Makefile'
-              - '.github/actions/**'
-              - '.github/workflows/pr-checks.yaml'
             docker:
               - 'docker/**'
-              - '.dockerignore'
               - 'go.mod'
               - 'go.sum'
               - 'main.go'
               - 'internal/**'
-              - 'scripts/install-libdave.sh'
-              - 'scripts/build-ffmpeg.sh'
               - 'sql/**'
               - 'ui/**'
-              - '.github/workflows/pr-checks.yaml'
               - '.github/workflows/docker-build.yaml'
               - 'examples/**'
-              - '.devcontainer/**'
-              - 'Makefile'
             embeds:
               - 'examples/**'
               - 'README.md'
               - 'INSTALLATION.md'
-              - 'Makefile'
-              - '.devcontainer/**'
-              - '.dockerignore'
-              - 'scripts/install-libdave.sh'
-              - 'scripts/build-ffmpeg.sh'
-              - '.github/actions/**'
-              - '.github/workflows/pr-checks.yaml'
 
   test-image:
     name: Cache Test Devcontainer
@@ -88,6 +72,7 @@ jobs:
       !cancelled() &&
       (
         github.event_name == 'workflow_dispatch' ||
+        needs.changes.outputs.devcontainer == 'true' ||
         needs.changes.outputs.backend == 'true' ||
         needs.changes.outputs.frontend == 'true' ||
         needs.changes.outputs.docker == 'true' ||
@@ -110,7 +95,8 @@ jobs:
     if: |
       !cancelled() && needs.test-image.result == 'success' &&
       (
-        github.event_name == 'workflow_dispatch' || 
+        github.event_name == 'workflow_dispatch' ||
+        needs.changes.outputs.devcontainer == 'true' ||
         needs.changes.outputs.backend == 'true'
       )
     steps:
@@ -132,7 +118,8 @@ jobs:
     if: |
       !cancelled() && needs.test-image.result == 'success' &&
       (
-        github.event_name == 'workflow_dispatch' || 
+        github.event_name == 'workflow_dispatch' ||
+        needs.changes.outputs.devcontainer == 'true' ||
         needs.changes.outputs.backend == 'true'
       )
     concurrency:
@@ -165,7 +152,8 @@ jobs:
     if: |
       !cancelled() && needs.test-image.result == 'success' &&
       (
-        github.event_name == 'workflow_dispatch' || 
+        github.event_name == 'workflow_dispatch' ||
+        needs.changes.outputs.devcontainer == 'true' ||
         needs.changes.outputs.frontend == 'true' ||
         needs.changes.outputs.backend == 'true'
       )
@@ -195,7 +183,8 @@ jobs:
     if: |
       !cancelled() && needs.test-image.result == 'success' &&
       (
-        github.event_name == 'workflow_dispatch' || 
+        github.event_name == 'workflow_dispatch' ||
+        needs.changes.outputs.devcontainer == 'true' ||
         needs.changes.outputs.frontend == 'true' ||
         needs.changes.outputs.backend == 'true'
       )
@@ -233,7 +222,11 @@ jobs:
     if: |
       !cancelled() && needs.test-image.result == 'success' &&
       github.event_name == 'pull_request' &&
-      (needs.changes.outputs.frontend == 'true' || needs.changes.outputs.backend == 'true')
+      (
+        needs.changes.outputs.devcontainer == 'true' ||
+        needs.changes.outputs.frontend == 'true' ||
+        needs.changes.outputs.backend == 'true'
+      )
     outputs:
       changed: ${{ steps.compare.outputs.changed }}
     steps:
@@ -324,7 +317,8 @@ jobs:
     if: |
       !cancelled() && needs.test-image.result == 'success' &&
       (
-        github.event_name == 'workflow_dispatch' || 
+        github.event_name == 'workflow_dispatch' ||
+        needs.changes.outputs.devcontainer == 'true' ||
         needs.changes.outputs.frontend == 'true'
       )
     runs-on: ubuntu-latest
@@ -344,7 +338,8 @@ jobs:
     if: |
       !cancelled() && needs.test-image.result == 'success' &&
       (
-        github.event_name == 'workflow_dispatch' || 
+        github.event_name == 'workflow_dispatch' ||
+        needs.changes.outputs.devcontainer == 'true' ||
         needs.changes.outputs.frontend == 'true'
       )
     runs-on: ubuntu-latest
@@ -365,7 +360,8 @@ jobs:
       !cancelled() && needs.test-image.result == 'success' &&
       (
         github.event_name == 'workflow_dispatch' ||
-        needs.changes.outputs.frontend == 'true'        
+        needs.changes.outputs.devcontainer == 'true' ||
+        needs.changes.outputs.frontend == 'true'
       )
     runs-on: ubuntu-latest
     steps:
@@ -384,9 +380,10 @@ jobs:
       packages: write
     needs: changes
     if: |
-      !cancelled() && 
+      !cancelled() &&
       (
-        github.event_name == 'workflow_dispatch' || 
+        github.event_name == 'workflow_dispatch' ||
+        needs.changes.outputs.devcontainer == 'true' ||
         needs.changes.outputs.docker == 'true'
       )
     uses: ./.github/workflows/docker-build.yaml
@@ -442,7 +439,8 @@ jobs:
     if: |
       !cancelled() && needs.test-image.result == 'success' &&
       (
-        github.event_name == 'workflow_dispatch' || 
+        github.event_name == 'workflow_dispatch' ||
+        needs.changes.outputs.devcontainer == 'true' ||
         needs.changes.outputs.embeds == 'true'
       )
     runs-on: ubuntu-latest
