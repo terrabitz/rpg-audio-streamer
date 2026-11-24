@@ -143,7 +143,7 @@ specified. Never copy secrets into a worktree. The required names are:
 Server/channel IDs are fixture inputs for explicit UI selection, not server
 configuration. The application server receives only the streamer token.
 OAuth client secrets are not used. Never
-print tokens, embed them in URLs, or pass them through command arguments.
+print tokens or embed them in URLs.
 The streamer needs View Channel, Connect, and Speak; the listener needs View
 Channel and Connect and joins with deafening disabled. Neither needs privileged
 Gateway intents.
@@ -182,9 +182,9 @@ devcontainer exec --workspace-folder . npm --prefix ui run test:e2e -- \
 
 For local live Discord browser runs, make the private credential file available
 inside the container, then set `DISCORD_TEST_ENV_FILE` to its in-container path.
-Do not pass token values as CLI arguments. CI passes only the named variables
-into the live test containers, where they are available during dependency setup
-and test execution and visible through Docker container inspection.
+CI forwards the named variables through the `devcontainers/ci` action's `env`
+input, which passes their values as `devcontainer` CLI arguments. GitHub masks
+the values in logs.
 
 ## Coverage policy
 
