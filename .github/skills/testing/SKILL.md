@@ -25,6 +25,8 @@ Rebuild the container after image input changes. Run the commands below from
 an in-container terminal or through `devcontainer exec --workspace-folder .`.
 If the container cannot start, report the blocker rather than falling back
 to host tools.
+Give each CI check or build a single Make target that also works locally.
+Keep GitHub-specific orchestration in the workflow.
 The UI compiler must remain compatible with `vue-tsc`; TypeScript 7's native
 package does not expose the JavaScript compiler API required by the current
 Vue tooling.
@@ -34,13 +36,18 @@ Vue tooling.
 | `make test` | Go race detection, SQLite integration, and frontend domain coverage |
 | `make test-go` | All Go tests; enforce 80% internal statement coverage |
 | `make test-ui` | Vitest domain coverage; enforce 80% statements, branches, functions, and lines |
-| `make test-e2e` | Production UI build and real full-app Chromium journeys including live Discord |
+| `make test-e2e` | Production UI build and non-Discord full-app Chromium journeys |
+| `make test-e2e-discord` | Live Discord Chromium journey |
+| `make test-go-discord` | Live Go Discord voice connection |
 | `make test-dev` | Seeded local dev startup, isolation, media fixtures, and cleanup |
+| `make test-frontend` | Frontend domain coverage and seeded development tests |
+| `make test-readme-demo` | Record the README flow and compare screenshot baselines |
+| `make docker-build` | Build and load the packaged app image as `rpg-audio-streamer:local` |
 | `make test-examples` | The README/installation Docker flows against `EXAMPLES_IMAGE` |
 | `make verify-examples` | Fail when embedded snippets differ from `examples/` |
 | `make gen-examples` | Re-embed `examples/` files into `README.md` and `INSTALLATION.md` |
-| `cd ui && npm run build` | Vue/TypeScript checking, including tests, and production bundle |
-| `cd ui && npm run lint:check` | Read-only frontend lint |
+| `make build-ui` | Vue/TypeScript checking, including tests, and production bundle |
+| `make lint-ui` | Read-only frontend lint |
 
 For focused iteration, use `go test ./internal/websocket -run TestMessageRouting`,
 `cd ui && npm run test:unit -- run src/stores/__tests__/audio.test.ts`, or
@@ -52,7 +59,7 @@ own the render loop's context and bound waits for decoding and cancellation.
 
 ### Headless FFmpeg
 
-Build the image with `docker build -f docker/Dockerfile -t rpg-audio-streamer:test .`.
+Build the image with `make docker-build IMAGE=rpg-audio-streamer:test`.
 Both the production image and the devcontainer use `scripts/build-ffmpeg.sh`,
 which verifies the pinned upstream source and installs FFmpeg, ffprobe, shared
 libraries, and licenses. Continue checking the packaged image when changing
@@ -79,18 +86,17 @@ codecs do not imply parity with Debian's optional external integrations.
 ### Getting started examples
 
 Edit snippets in `examples/`, never inside the embedded code blocks, then run
-`make gen-examples`. The example harness needs the host Docker daemon and
-network; use its isolated devcontainer invocation on a Linux Docker host
-rather than granting the regular development container Docker access:
+`make gen-examples`. The devcontainer uses the host Docker daemon. On a
+Linux Docker host, run these from the usual devcontainer terminal:
 
 ```sh
-docker build -f docker/Dockerfile -t rpg-audio-streamer:examples .
-devcontainer build --workspace-folder . --image-name rpg-audio-streamer-test-devcontainer
-EXAMPLES_IMAGE=rpg-audio-streamer:examples bash scripts/test-examples-in-devcontainer.sh
+make docker-build
+EXAMPLES_IMAGE=rpg-audio-streamer:local make test-examples
 ```
 
 The flows need host port 8080 and the container name `rpg-audio-streamer` to be
-free. Add `--network host` to the build if build containers cannot resolve DNS.
+free. If the build containers cannot resolve DNS, use
+`make docker-build DOCKER_BUILD_FLAGS='--network host --load --tag rpg-audio-streamer:local'`.
 
 ### Live YouTube tests
 
@@ -127,7 +133,7 @@ the scan and bounded processing job and is excluded from recording mode.
 
 ### Live Discord tests
 
-Run `make test-e2e` only against an isolated, regular voice channel with
+Run `make test-e2e-discord` only against an isolated, regular voice channel with
 two distinct bot accounts already installed in that server. Configuration is
 read in increasing precedence from the worktree `.env.test`, the
 persistent `~/.config/rpg-audio-streamer/discord-test.env`, and the environment.
@@ -160,7 +166,8 @@ Installation approval is interactive in Discord and is not automated.
 Offline Go HTTP tests use a local fake Discord API for discovery, filtering,
 and failure handling. Set `DISCORD_LIVE_INTEGRATION=1` and provide the
 streamer token, server ID and voice channel ID as environment variables to
-include the Go connection integration test in `make test-go`. Missing values
+include the Go connection integration test in `make test-go`, or run just that
+test with `make test-go-discord`, which sets the flag for you. Missing values
 fail the test.
 
 The `pr-checks` workflow runs four independent jobs on pull requests and manual
@@ -176,8 +183,7 @@ are unavailable.
 Run the non-Discord browser projects locally with the same command as CI:
 
 ```sh
-devcontainer exec --workspace-folder . npm --prefix ui run test:e2e -- \
-  --project=chromium --project=chromium-timing --project=chromium-youtube
+devcontainer exec --workspace-folder . make test-e2e
 ```
 
 For local live Discord browser runs, make the private credential file available

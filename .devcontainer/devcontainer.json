@@ -4,6 +4,17 @@
 		"dockerfile": "Dockerfile",
 		"context": ".."
 	},
+	"features": {
+		"ghcr.io/devcontainers/features/docker-outside-of-docker:1.10.3": {
+			"moby": false
+		}
+	},
+	"workspaceMount": "source=${localWorkspaceFolder},target=${localWorkspaceFolder},type=bind",
+	"workspaceFolder": "${localWorkspaceFolder}",
+	"runArgs": ["--add-host=host.docker.internal:host-gateway"],
+	"containerEnv": {
+		"EXAMPLES_BASE_URL": "http://host.docker.internal:8080"
+	},
 	"remoteUser": "vscode",
 	"postCreateCommand": "go mod download && npm --prefix ui ci",
 	"waitFor": "postCreateCommand",

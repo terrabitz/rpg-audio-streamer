@@ -66,7 +66,7 @@ jobs:
               - '.github/workflows/docker-build.yaml'
               - 'examples/**'
               - '.devcontainer/**'
-              - 'scripts/test-examples-in-devcontainer.sh'
+              - 'Makefile'
             embeds:
               - 'examples/**'
               - 'README.md'
@@ -152,11 +152,10 @@ jobs:
           cacheFrom: type=gha,scope=test-devcontainer-${{ runner.arch }}
           env: |
             CI=true
-            DISCORD_LIVE_INTEGRATION=1
             INTEGRATION_TEST_DISCORD_SERVER_ID
             INTEGRATION_TEST_DISCORD_VOICE_CHANNEL_ID
             INTEGRATION_TEST_DISCORD_BOT_STREAMER_TOKEN
-          runCmd: go test -count=1 -race ./internal/discord -run '^TestLiveVoiceConnection$'
+          runCmd: make test-go-discord
 
   e2e:
     name: Full App UX
@@ -179,9 +178,7 @@ jobs:
           push: never
           cacheFrom: type=gha,scope=test-devcontainer-${{ runner.arch }}
           env: CI=true
-          runCmd: >-
-            npm --prefix ui run test:e2e --
-            --project=chromium --project=chromium-timing --project=chromium-youtube
+          runCmd: make test-e2e
       - name: Retain non-Discord UX failure diagnostics
         if: ${{ failure() }}
         uses: actions/upload-artifact@v7
@@ -226,14 +223,12 @@ jobs:
             INTEGRATION_TEST_DISCORD_BOT_STREAMER_TOKEN
             INTEGRATION_TEST_DISCORD_BOT_STREAMER_CLIENT_ID
             INTEGRATION_TEST_DISCORD_BOT_LISTENER_TOKEN
-          runCmd: npm --prefix ui run test:e2e -- --project=chromium-discord
+          runCmd: make test-e2e-discord
 
   readme-demo:
     name: Check README Demo
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    env:
-      README_DEMO_DIFF_RATIO: '0.002'
     needs: [changes, test-image]
     if: |
       !cancelled() && needs.test-image.result == 'success' &&
@@ -252,13 +247,8 @@ jobs:
         with:
           push: never
           cacheFrom: type=gha,scope=test-devcontainer-${{ runner.arch }}
-          env: |
-            CI=true
-            E2E_README_DEMO=1
-            README_DEMO_DIFF_RATIO
-          runCmd: >-
-            npm --prefix ui run test:e2e:record --
-            readme-demo.spec.ts --project=chromium --update-snapshots=changed
+          env: CI=true
+          runCmd: make test-readme-demo
       - name: Check for material visual changes
         id: compare
         run: |
@@ -346,7 +336,7 @@ jobs:
           push: never
           cacheFrom: type=gha,scope=test-devcontainer-${{ runner.arch }}
           env: CI=true
-          runCmd: npm --prefix ui run lint:check
+          runCmd: make lint-ui
 
   build:
     name: Frontend Build
@@ -366,7 +356,7 @@ jobs:
           push: never
           cacheFrom: type=gha,scope=test-devcontainer-${{ runner.arch }}
           env: CI=true
-          runCmd: npm --prefix ui run build
+          runCmd: make build-ui
 
   unit:
     name: Frontend Domain Coverage
@@ -386,11 +376,12 @@ jobs:
           push: never
           cacheFrom: type=gha,scope=test-devcontainer-${{ runner.arch }}
           env: CI=true
-          runCmd: make test-ui && make test-dev
+          runCmd: make test-frontend
 
   docker:
     name: Build Docker Image
     permissions:
+      contents: read
       packages: write
     needs: changes
     if: |
@@ -425,12 +416,6 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: docker/setup-buildx-action@v4
-      - uses: devcontainers/ci@v0.3
-        with:
-          push: never
-          imageName: rpg-audio-streamer-test-devcontainer
-          cacheFrom: type=gha,scope=test-devcontainer-${{ runner.arch }}
-          cacheTo: ${{ matrix.arch == 'arm64' && format('type=gha,scope=test-devcontainer-{0},mode=max', runner.arch) || '' }}
       - name: Login to GitHub Container Registry
         uses: docker/login-action@v4
         with:
@@ -442,9 +427,15 @@ jobs:
         env:
           EXAMPLES_IMAGE: ${{ needs.docker.outputs.image }}
       - name: Run getting started examples
-        run: bash scripts/test-examples-in-devcontainer.sh
+        uses: devcontainers/ci@v0.3
         env:
           EXAMPLES_IMAGE: ${{ needs.docker.outputs.image }}
+        with:
+          push: never
+          cacheFrom: type=gha,scope=test-devcontainer-${{ runner.arch }}
+          cacheTo: ${{ matrix.arch == 'arm64' && format('type=gha,scope=test-devcontainer-{0},mode=max', runner.arch) || '' }}
+          env: EXAMPLES_IMAGE
+          runCmd: make test-examples
 
   embeds:
     name: Embedded Examples Up To Date

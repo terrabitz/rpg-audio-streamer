@@ -24,7 +24,8 @@ the repository devcontainer using the official `devcontainers/ci` action. Its
 image supplies Go, Node, libdave, FFmpeg, yt-dlp, and Chromium with its Linux
 dependencies. The Playwright version comes from `ui/package-lock.json`, and
 workspace dependencies are installed when the devcontainer starts. The same
-definition is used for local tests.
+definition and Make targets are used for local tests. GitHub Actions handles
+job selection, cache setup, artifact handling, and publication separately.
 
 ## Default-branch caches
 
@@ -45,10 +46,11 @@ Pull requests that touch any image input or the
 multi-arch manifest to `ghcr.io/terrabitz/rpg-audio-streamer/dev`, tagged with
 the pull request head commit SHA, rather than the release repository. A separate
 `examples` job depends on the build, pulls that image on amd64 and arm64
-runners, and runs the example harness in the devcontainer image against it.
-Only this harness needs the host Docker socket and network. The checks also
-verify that the Dockerfile's Go and Node base images match
-`go.mod` and `ui/.nvmrc`, since dependency bumps do not update the Dockerfile.
+runners, and runs the example harness through the same devcontainer action as
+the other checks. The devcontainer uses the host Docker daemon; the examples
+launch the packaged app alongside it and reach it through the host's published
+port. The checkout has the same absolute path inside the devcontainer and on
+the host so the Docker daemon can resolve bind mounts from the examples.
 
 Fork and Dependabot pull requests receive a read-only `GITHUB_TOKEN`, so their
 development image push fails.
@@ -95,9 +97,8 @@ spot at the end of the loop. On
 pull requests that change browser or server inputs, it
 compares stable GM and player screenshots with the checked-in baselines.
 Pointer overlays and playback-position motion are excluded from comparison.
-The `README_DEMO_DIFF_RATIO` environment variable on the workflow job sets the
-tolerated fraction of differing pixels in each screenshot; it defaults to
-`0.002` (0.2%).
+The `README_DEMO_DIFF_RATIO` environment variable overrides the default
+tolerance of `0.002` (0.2%) differing pixels in each screenshot.
 Only missing or materially changed baselines cause the Git LFS GIF and
 checkpoints to be refreshed. The check attaches changed media as an artifact.
 A separate job pushes those assets only to the current head of a same-repository

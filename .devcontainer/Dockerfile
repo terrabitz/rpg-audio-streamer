@@ -14,8 +14,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   build-essential \
   ca-certificates \
   curl \
-  docker-cli \
-  docker-compose \
   git-lfs \
   libmp3lame0 \
   libssl3t64 \
