@@ -69,14 +69,20 @@ Right before every push, run the full local suite in the devcontainer, even if
 you already ran parts of it:
 
 ```sh
-devcontainer exec --workspace-folder . make lint-ui verify-examples build-ui test-frontend test-go test-e2e
+devcontainer exec --workspace-folder . make lint-ui verify-examples build-ui test-frontend test-go test-e2e test-readme-demo
 ```
+
+`make test-readme-demo` needs the LFS-backed `media/readme-demo/` images
+hydrated (`git lfs pull`). When it updates `media/readme-demo/gm.png` or
+`player.png`, copy
+`ui/recordings/gm-switches-music-while-a-player-listens.gif` to
+`media/audio-playing.gif` and commit all three with your change, so CI doesn't
+have to push a refresh and restart the checks. If neither image changes, leave
+the GIF alone.
 
 When you change the packaged image or `examples/`, also run `make docker-build`
 and `make test-examples`, as described below. Run the live Discord checks only
-when you change Discord behavior and have credentials. Don't run
-`make test-readme-demo` before pushing; it rewrites the committed demo images,
-and CI refreshes them on the pull request.
+when you change Discord behavior and have credentials.
 
 Mixer domain tests render known PCM buffers without sleeps; live-service tests
 own the render loop's context and bound waits for decoding and cancellation.
