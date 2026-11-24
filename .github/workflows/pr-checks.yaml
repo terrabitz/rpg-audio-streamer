@@ -6,7 +6,6 @@ on:
 
 permissions:
   contents: read
-  packages: read
 
 
 concurrency:
@@ -39,7 +38,6 @@ jobs:
               - 'ui/package-lock.json'
               - 'Makefile'
               - '.github/workflows/pr-checks.yaml'
-              - '.github/workflows/warm-caches.yaml'
             backend:
               - '**/*.go'
               - 'go.mod'
@@ -70,9 +68,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     needs: changes
-    outputs:
-      registry_cache_amd64: ${{ steps.registry_cache.outputs.ref_amd64 }}
-      registry_cache_arm64: ${{ steps.registry_cache.outputs.ref_arm64 }}
     if: |
       !cancelled() &&
       (
@@ -86,31 +81,10 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: docker/setup-buildx-action@v4
-      - name: Login to GitHub Container Registry
-        uses: docker/login-action@v4
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Check for the registry cache
-        id: registry_cache
-        env:
-          IMAGE_NAME: ghcr.io/${{ github.repository }}/test-devcontainer
-        run: |
-          for arch in X64 ARM64; do
-            image_ref="$IMAGE_NAME:latest-$arch"
-            if docker manifest inspect "$image_ref" >/dev/null 2>&1; then
-              output="ref_amd64"
-              if [[ "$arch" == "ARM64" ]]; then output="ref_arm64"; fi
-              echo "$output=$image_ref" >> "$GITHUB_OUTPUT"
-            fi
-          done
       - uses: devcontainers/ci@v0.3
         with:
           push: never
-          cacheFrom: |
-            type=gha,scope=test-devcontainer-${{ runner.arch }}
-            ${{ steps.registry_cache.outputs.ref_amd64 }}
+          cacheFrom: type=gha,scope=test-devcontainer-${{ runner.arch }}
           cacheTo: type=gha,scope=test-devcontainer-${{ runner.arch }},mode=max
 
   go:
@@ -128,19 +102,11 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: docker/setup-buildx-action@v4
-      - name: Login to GitHub Container Registry
-        uses: docker/login-action@v4
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
       - name: Run offline Go tests and coverage
         uses: devcontainers/ci@v0.3
         with:
           push: never
-          cacheFrom: |
-            type=gha,scope=test-devcontainer-${{ runner.arch }}
-            ${{ needs.test-image.outputs.registry_cache_amd64 }}
+          cacheFrom: type=gha,scope=test-devcontainer-${{ runner.arch }}
           env: CI=true
           runCmd: make test-go
 
@@ -162,12 +128,6 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: docker/setup-buildx-action@v4
-      - name: Login to GitHub Container Registry
-        uses: docker/login-action@v4
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
       - name: Run live Discord connection integration
         uses: devcontainers/ci@v0.3
         env:
@@ -176,9 +136,7 @@ jobs:
           INTEGRATION_TEST_DISCORD_BOT_STREAMER_TOKEN: ${{ secrets.INTEGRATION_TEST_DISCORD_BOT_STREAMER_TOKEN }}
         with:
           push: never
-          cacheFrom: |
-            type=gha,scope=test-devcontainer-${{ runner.arch }}
-            ${{ needs.test-image.outputs.registry_cache_amd64 }}
+          cacheFrom: type=gha,scope=test-devcontainer-${{ runner.arch }}
           env: |
             CI=true
             INTEGRATION_TEST_DISCORD_SERVER_ID
@@ -202,19 +160,11 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: docker/setup-buildx-action@v4
-      - name: Login to GitHub Container Registry
-        uses: docker/login-action@v4
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
       - name: Run non-Discord app UX suite in the devcontainer
         uses: devcontainers/ci@v0.3
         with:
           push: never
-          cacheFrom: |
-            type=gha,scope=test-devcontainer-${{ runner.arch }}
-            ${{ needs.test-image.outputs.registry_cache_amd64 }}
+          cacheFrom: type=gha,scope=test-devcontainer-${{ runner.arch }}
           env: CI=true
           runCmd: make test-e2e
       - name: Retain non-Discord UX failure diagnostics
@@ -244,12 +194,6 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: docker/setup-buildx-action@v4
-      - name: Login to GitHub Container Registry
-        uses: docker/login-action@v4
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
       - name: Run live Discord app UX suite
         uses: devcontainers/ci@v0.3
         env:
@@ -260,9 +204,7 @@ jobs:
           INTEGRATION_TEST_DISCORD_BOT_LISTENER_TOKEN: ${{ secrets.INTEGRATION_TEST_DISCORD_BOT_LISTENER_TOKEN }}
         with:
           push: never
-          cacheFrom: |
-            type=gha,scope=test-devcontainer-${{ runner.arch }}
-            ${{ needs.test-image.outputs.registry_cache_amd64 }}
+          cacheFrom: type=gha,scope=test-devcontainer-${{ runner.arch }}
           env: |
             CI=true
             INTEGRATION_TEST_DISCORD_SERVER_ID
@@ -293,19 +235,11 @@ jobs:
           lfs: true
           persist-credentials: false
       - uses: docker/setup-buildx-action@v4
-      - name: Login to GitHub Container Registry
-        uses: docker/login-action@v4
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
       - name: Record GM and player flow and refresh changed visual checkpoints
         uses: devcontainers/ci@v0.3
         with:
           push: never
-          cacheFrom: |
-            type=gha,scope=test-devcontainer-${{ runner.arch }}
-            ${{ needs.test-image.outputs.registry_cache_amd64 }}
+          cacheFrom: type=gha,scope=test-devcontainer-${{ runner.arch }}
           env: CI=true
           runCmd: make test-readme-demo
       - name: Check for material visual changes
@@ -391,18 +325,10 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: docker/setup-buildx-action@v4
-      - name: Login to GitHub Container Registry
-        uses: docker/login-action@v4
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
       - uses: devcontainers/ci@v0.3
         with:
           push: never
-          cacheFrom: |
-            type=gha,scope=test-devcontainer-${{ runner.arch }}
-            ${{ needs.test-image.outputs.registry_cache_amd64 }}
+          cacheFrom: type=gha,scope=test-devcontainer-${{ runner.arch }}
           env: CI=true
           runCmd: make lint-ui
 
@@ -420,18 +346,10 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: docker/setup-buildx-action@v4
-      - name: Login to GitHub Container Registry
-        uses: docker/login-action@v4
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
       - uses: devcontainers/ci@v0.3
         with:
           push: never
-          cacheFrom: |
-            type=gha,scope=test-devcontainer-${{ runner.arch }}
-            ${{ needs.test-image.outputs.registry_cache_amd64 }}
+          cacheFrom: type=gha,scope=test-devcontainer-${{ runner.arch }}
           env: CI=true
           runCmd: make build-ui
 
@@ -449,18 +367,10 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: docker/setup-buildx-action@v4
-      - name: Login to GitHub Container Registry
-        uses: docker/login-action@v4
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
       - uses: devcontainers/ci@v0.3
         with:
           push: never
-          cacheFrom: |
-            type=gha,scope=test-devcontainer-${{ runner.arch }}
-            ${{ needs.test-image.outputs.registry_cache_amd64 }}
+          cacheFrom: type=gha,scope=test-devcontainer-${{ runner.arch }}
           env: CI=true
           runCmd: make test-frontend
 
@@ -518,9 +428,7 @@ jobs:
           EXAMPLES_IMAGE: ${{ needs.docker.outputs.image }}
         with:
           push: never
-          cacheFrom: |
-            type=gha,scope=test-devcontainer-${{ runner.arch }}
-            ${{ matrix.arch == 'arm64' && needs.test-image.outputs.registry_cache_arm64 || needs.test-image.outputs.registry_cache_amd64 }}
+          cacheFrom: type=gha,scope=test-devcontainer-${{ runner.arch }}
           cacheTo: ${{ matrix.arch == 'arm64' && format('type=gha,scope=test-devcontainer-{0},mode=max', runner.arch) || '' }}
           env: EXAMPLES_IMAGE
           runCmd: make test-examples
@@ -539,19 +447,11 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: docker/setup-buildx-action@v4
-      - name: Login to GitHub Container Registry
-        uses: docker/login-action@v4
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
       - name: Verify embedded examples
         uses: devcontainers/ci@v0.3
         with:
           push: never
-          cacheFrom: |
-            type=gha,scope=test-devcontainer-${{ runner.arch }}
-            ${{ needs.test-image.outputs.registry_cache_amd64 }}
+          cacheFrom: type=gha,scope=test-devcontainer-${{ runner.arch }}
           env: CI=true
           runCmd: make verify-examples
 
