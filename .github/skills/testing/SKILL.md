@@ -52,18 +52,6 @@ Vue tooling.
 | `make build-ui` | Vue/TypeScript checking, including tests, and production bundle |
 | `make lint-ui` | Read-only frontend lint |
 
-Run quick checks such as `make lint-ui`, `make verify-examples`, and focused
-Go or Vitest tests frequently. Run slower checks when changing their areas:
-`make test-go` for the full race and coverage gate, `make test-e2e` for browser
-journeys, and `make test-readme-demo` for the demo. On one local run, lint and
-example verification took seconds, Go coverage took about a minute, the browser
-suite took 7.5 minutes, and the demo took about a minute; timings vary by host.
-Before pushing, run the full local CI suite:
-
-```sh
-devcontainer exec --workspace-folder . make -j ci --output-sync=target
-```
-
 For focused iteration, use `go test ./internal/websocket -run TestMessageRouting`,
 `cd ui && npm run test:unit -- run src/stores/__tests__/audio.test.ts`, or
 `cd ui && npm run test:e2e -- --grep 'invited player'`. Run the affected coverage
@@ -77,13 +65,17 @@ touches their area:
 - **Fast, after most edits:** focused Go, Vitest, or Playwright tests for the
   code you changed, plus `make lint-ui` and `make verify-examples`.
 - **Slower, at milestones in the affected area:** `make build-ui`,
-  `make test-frontend`, `make test-go`, and `make test-e2e`.
+  `make test-frontend`, `make test-go`, `make test-e2e`, and
+  `make test-readme-demo`.
 
+On one local run, lint and example verification took seconds, Go coverage took
+about a minute, the browser suite took 7.5 minutes, and the demo took about a
+minute; timings vary by host.
 Right before every push, run the full local suite in the devcontainer, even if
 you already ran parts of it:
 
 ```sh
-devcontainer exec --workspace-folder . make lint-ui verify-examples build-ui test-frontend test-go test-e2e test-readme-demo
+devcontainer exec --workspace-folder . make -j ci --output-sync=target
 ```
 
 `make test-readme-demo` needs the LFS-backed `media/readme-demo/` images
