@@ -8,11 +8,12 @@ tags: [operations, ci, testing]
 
 # Pull request checks
 
-All pull requests run the Go tests, frontend domain tests, seeded development
-tests, and full-app browser suite in `pr-checks` (see
-[test layers](./test-layers.md)). `dorny/paths-filter` selects frontend
-lint/build and Docker checks for their inputs. Changes to the workflow select
-every check; manual runs also execute every check.
+The `pr-checks` workflow selects Go, frontend, seeded development, browser,
+and packaging checks by changed paths (see [test layers](./test-layers.md)).
+The shared `devcontainer` path filter selects all devcontainer checks when the
+container inputs, `Makefile`, or PR workflow change. Other changes select only
+the relevant checks. Manual runs bypass path filtering; the README demo is
+pull-request only.
 
 Offline Go tests retain the internal coverage gate, including SQLite and media
 integration tests. Non-Discord Playwright projects run in their own job.
@@ -21,28 +22,34 @@ lock, so they can run alongside each other and the live checks.
 
 ## Shared environment
 
-The local `setup-environment` composite action owns Node setup and optional
-backend, frontend, media, and Playwright installation for the Go, browser,
-frontend lint/build/coverage, and cache-warming jobs. Backend setup installs
-Go, Go modules, and libdave; frontend setup enables npm caching and installs
-the locked dependencies. Media setup installs yt-dlp and delegates FFmpeg
-installation and caching to `setup-ffmpeg`. Browser jobs cache the Chromium
-bundle by Playwright version, runner OS release, and architecture. Exact cache
-hits skip the browser download; system dependencies are installed on every
-runner. The Playwright npm packages use the existing npm download cache.
-Jobs select components independently;
-Node is available for frontend tooling and yt-dlp's JavaScript runtime.
-Shared-action changes select frontend lint and build checks.
+Go, frontend, seeded development, browser, and documentation checks run inside
+the repository devcontainer using the official `devcontainers/ci` action. Its
+image supplies Go, Node, libdave, FFmpeg, yt-dlp, and Chromium with its Linux
+dependencies. The Playwright version comes from `ui/package-lock.json`, and
+workspace dependencies are installed when the devcontainer starts. The same
+definition and Make targets are used for local tests. Each devcontainer job
+calls the `.github/actions/devcontainer` composite action with its Make target;
+the action owns Buildx setup, layer and dependency caching, and environment
+forwarding. GitHub Actions handles job selection, artifact handling, and
+publication separately.
 
 ## Default-branch caches
 
-The `warm-caches` workflow uses `setup-environment` to install backend, frontend,
-media, and Playwright dependencies on pushes to `main`, and supports manual dispatch.
-It uses the same runner, dependency manifests, setup actions, and cache keys as
-the PR jobs, so new pull requests can restore the default branch's Go module,
-npm download, compiled FFmpeg, and Chromium caches. It runs no tests and requires no Discord secrets.
-Chromium and FFmpeg caches are saved at the end of a successful job. Caches are
-immutable per key; dependency or FFmpeg build-input changes produce new entries.
+The `warm-caches` workflow uses `devcontainers/ci` to export builds to the
+GitHub Actions BuildKit cache on pushes to `main` and on manual dispatch, with
+separate scopes for amd64 and arm64. PR checks import the matching scope. The
+PR's amd64 cache-preparation job fills new layers before the test jobs fan out;
+the arm64 example job also exports its layers for subsequent runs. The export
+includes intermediate stages, so changes to the browser install do not require
+recompiling FFmpeg. BuildKit invalidates layers when their inputs change,
+including the Playwright lockfile and shared installer scripts.
+
+Jobs that run commands in the devcontainer also restore a `.cache` directory
+in the checkout with `actions/cache`, keyed by `go.sum` and
+`ui/package-lock.json`. The composite action points `GOMODCACHE` and
+`npm_config_cache` there and forwards both through the action's `env` input,
+so the container's dependency installation reads downloaded Go modules and
+npm packages from the cache.
 
 ## Docker checks
 
@@ -52,9 +59,13 @@ Pull requests that touch any image input or the
 multi-arch manifest to `ghcr.io/terrabitz/rpg-audio-streamer/dev`, tagged with
 the pull request head commit SHA, rather than the release repository. A separate
 `examples` job depends on the build, pulls that image on amd64 and arm64
-runners, and runs the getting started examples against it. The checks also
-verify that the Dockerfile's Go and Node base images match
-`go.mod` and `ui/.nvmrc`, since dependency bumps do not update the Dockerfile.
+runners, and runs the example harness through the same devcontainer action as
+the other checks. The shared `devcontainer` filter also selects the image build
+so the examples have an image to test. The devcontainer uses the host Docker
+daemon; the examples launch the packaged app alongside it and reach it through
+the host's published port. The checkout has the same absolute path inside the
+devcontainer and on the host so the Docker daemon can resolve bind mounts from
+the examples.
 
 Fork and Dependabot pull requests receive a read-only `GITHUB_TOKEN`, so their
 development image push fails.
@@ -65,23 +76,16 @@ along with incomplete multi-arch images. Manual dispatch supports a dry run.
 
 ## Embedded examples
 
-Changes to `examples/`, `README.md`, `INSTALLATION.md`, the `Makefile`, shared
-actions, or the workflow run the `embeds` job, which fails when the documents'
+Changes to `examples/`, `README.md`, `INSTALLATION.md`, or the shared
+`devcontainer` inputs run the `embeds` job, which fails when the documents'
 embedded snippets differ from their [example](./getting-started-examples.md)
-source files. It needs no image build.
+source files. The check does not need the packaged app image.
 
 ## FFmpeg in tests
 
-The Go and browser jobs compile the headless FFmpeg tools using the same pinned
-source archive and build script as the [runtime image](./release-pipeline.md).
-The local `setup-ffmpeg` action caches the installation, including ffprobe and
-shared libraries, by operating system release, architecture, and the build script
-and action contents. Exact cache hits skip compilation; runtime dependencies
-are still installed. Both suites put this installation first on `PATH`.
-
-CI builds against Ubuntu's libraries while the image builds against Debian's.
-Sharing the source and configuration aligns media capabilities, but does not
-replace testing the packaged image for ABI and runtime dependency compatibility.
+The devcontainer builds the headless FFmpeg tools with the same pinned source
+archive and build script as the [runtime image](./release-pipeline.md).
+The example tests exercise the packaged runtime separately.
 
 ## Live Discord validation
 
@@ -91,6 +95,12 @@ repository secrets from fork and Dependabot pull requests; the live tests fail
 their configuration checks when required secrets are unavailable.
 Only these two jobs share the
 `discord-live` concurrency queue, serializing bot access across jobs and runs.
+The live jobs set only the required credentials on their composite action step
+and list their names in its `env` input, which forwards them into the
+devcontainer through the `devcontainers/ci` action's `env` input. The action
+passes them as
+`devcontainer` CLI arguments, and GitHub masks the values in logs; other test
+jobs do not receive them.
 The browser Discord job does not upload failure diagnostics.
 
 ## README demo
@@ -101,14 +111,16 @@ player listens in a separate browser context. The recording overlay uses a
 fixed seed and the movement endpoints to reproduce the same curved cursor
 paths. The GM cursor settles before each click and returns to the same resting
 spot at the end of the loop. On
-pull requests that change browser or server inputs, it
+pull requests that change browser, server, or shared devcontainer inputs, it
 compares stable GM and player screenshots with the checked-in baselines.
 Pointer overlays and playback-position motion are excluded from comparison.
-The `README_DEMO_DIFF_RATIO` environment variable on the workflow job sets the
-tolerated fraction of differing pixels in each screenshot; it defaults to
-`0.002` (0.2%).
+The `README_DEMO_DIFF_RATIO` environment variable overrides the default
+tolerance of `0.002` (0.2%) differing pixels in each screenshot.
 Only missing or materially changed baselines cause the Git LFS GIF and
-checkpoints to be refreshed. The check attaches changed media as an artifact.
+checkpoints to be refreshed: `make gen-readme-demo` rewrites the changed
+checkpoints and, when it rewrites either one, copies the new recording to
+`media/audio-playing.gif`. Agents run it before pushing and commit the
+refreshed media. In CI, the check attaches changed media as an artifact.
 A separate job pushes those assets only to the current head of a same-repository
 PR branch, excluding Dependabot and the default branch. A push with the built-in
 GitHub token requires approval for the subsequent PR workflow run.

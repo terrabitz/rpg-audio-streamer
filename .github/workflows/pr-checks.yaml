@@ -7,7 +7,6 @@ on:
 permissions:
   contents: read
 
-
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -20,6 +19,7 @@ jobs:
     permissions:
       pull-requests: read
     outputs:
+      devcontainer: ${{ steps.filter.outputs.devcontainer }}
       backend: ${{ steps.filter.outputs.backend }}
       frontend: ${{ steps.filter.outputs.frontend }}
       docker: ${{ steps.filter.outputs.docker }}
@@ -29,74 +29,90 @@ jobs:
         id: filter
         with:
           filters: |
+            devcontainer:
+              - '.devcontainer/**'
+              - '.dockerignore'
+              - 'scripts/install-libdave.sh'
+              - 'scripts/build-ffmpeg.sh'
+              - 'ui/package-lock.json'
+              - 'Makefile'
+              - '.github/workflows/pr-checks.yaml'
+              - '.github/actions/devcontainer/**'
             backend:
               - '**/*.go'
               - 'go.mod'
               - 'go.sum'
               - 'sql/**'
               - 'sqlc.yaml'
-              - 'Makefile'
-              - '.github/actions/**'
-              - '.github/workflows/pr-checks.yaml'
             frontend:
               - 'ui/**'
-              - 'scripts/**'
+              - 'scripts/**/*.mjs'
               - 'openapi.yaml'
-              - 'Makefile'
-              - '.github/actions/**'
-              - '.github/workflows/pr-checks.yaml'
             docker:
               - 'docker/**'
-              - '.dockerignore'
               - 'go.mod'
               - 'go.sum'
               - 'main.go'
               - 'internal/**'
-              - 'scripts/install-libdave.sh'
-              - 'scripts/build-ffmpeg.sh'
               - 'sql/**'
               - 'ui/**'
-              - '.github/workflows/pr-checks.yaml'
               - '.github/workflows/docker-build.yaml'
               - 'examples/**'
             embeds:
               - 'examples/**'
               - 'README.md'
               - 'INSTALLATION.md'
-              - 'Makefile'
-              - '.github/actions/**'
-              - '.github/workflows/pr-checks.yaml'
+
+  test-image:
+    name: Cache Test Devcontainer
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: changes
+    if: |
+      !cancelled() &&
+      (
+        github.event_name == 'workflow_dispatch' ||
+        needs.changes.outputs.devcontainer == 'true' ||
+        needs.changes.outputs.backend == 'true' ||
+        needs.changes.outputs.frontend == 'true' ||
+        needs.changes.outputs.docker == 'true' ||
+        needs.changes.outputs.embeds == 'true'
+      )
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/devcontainer
+        with:
+          export-cache: true
 
   go:
     name: Go Offline Tests and Coverage
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    needs: changes
+    needs: [changes, test-image]
     if: |
-      !cancelled() && 
+      !cancelled() && needs.test-image.result == 'success' &&
       (
-        github.event_name == 'workflow_dispatch' || 
+        github.event_name == 'workflow_dispatch' ||
+        needs.changes.outputs.devcontainer == 'true' ||
         needs.changes.outputs.backend == 'true'
       )
     steps:
       - uses: actions/checkout@v7
-      - uses: ./.github/actions/setup-environment
-        with:
-          frontend: 'false'
       - name: Run offline Go tests and coverage
-        run: make test-go
-        env:
-          DISCORD_LIVE_INTEGRATION: '0'
+        uses: ./.github/actions/devcontainer
+        with:
+          run: make test-go
 
   go-discord:
     name: Go Discord Integration
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    needs: changes
+    needs: [changes, test-image]
     if: |
-      !cancelled() && 
+      !cancelled() && needs.test-image.result == 'success' &&
       (
-        github.event_name == 'workflow_dispatch' || 
+        github.event_name == 'workflow_dispatch' ||
+        needs.changes.outputs.devcontainer == 'true' ||
         needs.changes.outputs.backend == 'true'
       )
     concurrency:
@@ -104,38 +120,38 @@ jobs:
       queue: max
     steps:
       - uses: actions/checkout@v7
-      - uses: ./.github/actions/setup-environment
-        with:
-          frontend: 'false'
-          media: 'false'
       - name: Run live Discord connection integration
-        run: go test -count=1 -race ./internal/discord -run '^TestLiveVoiceConnection$'
+        uses: ./.github/actions/devcontainer
         env:
-          DISCORD_LIVE_INTEGRATION: '1'
           INTEGRATION_TEST_DISCORD_SERVER_ID: ${{ secrets.INTEGRATION_TEST_DISCORD_SERVER_ID }}
           INTEGRATION_TEST_DISCORD_VOICE_CHANNEL_ID: ${{ secrets.INTEGRATION_TEST_DISCORD_VOICE_CHANNEL_ID }}
           INTEGRATION_TEST_DISCORD_BOT_STREAMER_TOKEN: ${{ secrets.INTEGRATION_TEST_DISCORD_BOT_STREAMER_TOKEN }}
+        with:
+          env: |
+            INTEGRATION_TEST_DISCORD_SERVER_ID
+            INTEGRATION_TEST_DISCORD_VOICE_CHANNEL_ID
+            INTEGRATION_TEST_DISCORD_BOT_STREAMER_TOKEN
+          run: make test-go-discord
 
   e2e:
     name: Full App UX
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    needs: changes
+    needs: [changes, test-image]
     if: |
-      !cancelled() && 
+      !cancelled() && needs.test-image.result == 'success' &&
       (
-        github.event_name == 'workflow_dispatch' || 
+        github.event_name == 'workflow_dispatch' ||
+        needs.changes.outputs.devcontainer == 'true' ||
         needs.changes.outputs.frontend == 'true' ||
         needs.changes.outputs.backend == 'true'
       )
     steps:
       - uses: actions/checkout@v7
-      - uses: ./.github/actions/setup-environment
+      - name: Run non-Discord app UX suite in the devcontainer
+        uses: ./.github/actions/devcontainer
         with:
-          playwright: 'true'
-      - name: Run non-Discord app UX suite
-        working-directory: ui
-        run: npm run test:e2e -- --project=chromium --project=chromium-timing --project=chromium-youtube
+          run: make test-e2e
       - name: Retain non-Discord UX failure diagnostics
         if: ${{ failure() }}
         uses: actions/upload-artifact@v7
@@ -148,11 +164,12 @@ jobs:
     name: Discord App UX
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    needs: changes
+    needs: [changes, test-image]
     if: |
-      !cancelled() && 
+      !cancelled() && needs.test-image.result == 'success' &&
       (
-        github.event_name == 'workflow_dispatch' || 
+        github.event_name == 'workflow_dispatch' ||
+        needs.changes.outputs.devcontainer == 'true' ||
         needs.changes.outputs.frontend == 'true' ||
         needs.changes.outputs.backend == 'true'
       )
@@ -161,29 +178,36 @@ jobs:
       queue: max
     steps:
       - uses: actions/checkout@v7
-      - uses: ./.github/actions/setup-environment
-        with:
-          playwright: 'true'
       - name: Run live Discord app UX suite
-        working-directory: ui
-        run: npm run test:e2e -- --project=chromium-discord
+        uses: ./.github/actions/devcontainer
         env:
           INTEGRATION_TEST_DISCORD_SERVER_ID: ${{ secrets.INTEGRATION_TEST_DISCORD_SERVER_ID }}
           INTEGRATION_TEST_DISCORD_VOICE_CHANNEL_ID: ${{ secrets.INTEGRATION_TEST_DISCORD_VOICE_CHANNEL_ID }}
           INTEGRATION_TEST_DISCORD_BOT_STREAMER_TOKEN: ${{ secrets.INTEGRATION_TEST_DISCORD_BOT_STREAMER_TOKEN }}
           INTEGRATION_TEST_DISCORD_BOT_STREAMER_CLIENT_ID: ${{ secrets.INTEGRATION_TEST_DISCORD_BOT_STREAMER_CLIENT_ID }}
           INTEGRATION_TEST_DISCORD_BOT_LISTENER_TOKEN: ${{ secrets.INTEGRATION_TEST_DISCORD_BOT_LISTENER_TOKEN }}
+        with:
+          env: |
+            INTEGRATION_TEST_DISCORD_SERVER_ID
+            INTEGRATION_TEST_DISCORD_VOICE_CHANNEL_ID
+            INTEGRATION_TEST_DISCORD_BOT_STREAMER_TOKEN
+            INTEGRATION_TEST_DISCORD_BOT_STREAMER_CLIENT_ID
+            INTEGRATION_TEST_DISCORD_BOT_LISTENER_TOKEN
+          run: make test-e2e-discord
 
   readme-demo:
     name: Check README Demo
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    env:
-      README_DEMO_DIFF_RATIO: '0.002'
-    needs: changes
+    needs: [changes, test-image]
     if: |
+      !cancelled() && needs.test-image.result == 'success' &&
       github.event_name == 'pull_request' &&
-      (needs.changes.outputs.frontend == 'true' || needs.changes.outputs.backend == 'true')
+      (
+        needs.changes.outputs.devcontainer == 'true' ||
+        needs.changes.outputs.frontend == 'true' ||
+        needs.changes.outputs.backend == 'true'
+      )
     outputs:
       changed: ${{ steps.compare.outputs.changed }}
     steps:
@@ -191,14 +215,10 @@ jobs:
         with:
           lfs: true
           persist-credentials: false
-      - uses: ./.github/actions/setup-environment
-        with:
-          playwright: 'true'
       - name: Record GM and player flow and refresh changed visual checkpoints
-        working-directory: ui
-        env:
-          E2E_README_DEMO: '1'
-        run: npm run test:e2e:record -- readme-demo.spec.ts --project=chromium --update-snapshots=changed
+        uses: ./.github/actions/devcontainer
+        with:
+          run: make gen-readme-demo
       - name: Check for material visual changes
         id: compare
         run: |
@@ -209,8 +229,7 @@ jobs:
           fi
           staging="$RUNNER_TEMP/readme-demo"
           mkdir -p "$staging"
-          cp media/readme-demo/{gm,player}.png "$staging/"
-          cp ui/recordings/gm-switches-music-while-a-player-listens.gif "$staging/audio-playing.gif"
+          cp media/readme-demo/{gm,player}.png media/audio-playing.gif "$staging/"
           echo 'changed=true' >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@v7
         if: steps.compare.outputs.changed == 'true'
@@ -270,67 +289,54 @@ jobs:
 
   lint:
     name: Frontend Lint
-    needs: changes
+    needs: [changes, test-image]
     if: |
-      !cancelled() && 
+      !cancelled() && needs.test-image.result == 'success' &&
       (
-        github.event_name == 'workflow_dispatch' || 
+        github.event_name == 'workflow_dispatch' ||
+        needs.changes.outputs.devcontainer == 'true' ||
         needs.changes.outputs.frontend == 'true'
       )
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: ./ui
     steps:
       - uses: actions/checkout@v7
-      - uses: ./.github/actions/setup-environment
+      - uses: ./.github/actions/devcontainer
         with:
-          backend: 'false'
-          media: 'false'
-      - run: npm run lint:check
+          run: make lint-ui
 
   build:
     name: Frontend Build
-    needs: changes
+    needs: [changes, test-image]
     if: |
-      !cancelled() && 
+      !cancelled() && needs.test-image.result == 'success' &&
       (
-        github.event_name == 'workflow_dispatch' || 
+        github.event_name == 'workflow_dispatch' ||
+        needs.changes.outputs.devcontainer == 'true' ||
         needs.changes.outputs.frontend == 'true'
       )
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: ./ui
     steps:
       - uses: actions/checkout@v7
-      - uses: ./.github/actions/setup-environment
+      - uses: ./.github/actions/devcontainer
         with:
-          backend: 'false'
-          media: 'false'
-      - run: npm run build
+          run: make build-ui
 
   unit:
     name: Frontend Domain Coverage
-    needs: changes
+    needs: [changes, test-image]
     if: |
-      !cancelled() && 
+      !cancelled() && needs.test-image.result == 'success' &&
       (
         github.event_name == 'workflow_dispatch' ||
-        needs.changes.outputs.frontend == 'true'        
+        needs.changes.outputs.devcontainer == 'true' ||
+        needs.changes.outputs.frontend == 'true'
       )
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: ./ui
     steps:
       - uses: actions/checkout@v7
-      - uses: ./.github/actions/setup-environment
+      - uses: ./.github/actions/devcontainer
         with:
-          backend: 'false'
-          media: 'false'
-      - run: node --test e2e/discord-config.test.ts e2e/discord-listener.test.ts e2e/youtube-config.test.ts
-      - run: npm run test:coverage
+          run: make test-frontend
 
   docker:
     name: Build Docker Image
@@ -338,9 +344,10 @@ jobs:
       packages: write
     needs: changes
     if: |
-      !cancelled() && 
+      !cancelled() &&
       (
-        github.event_name == 'workflow_dispatch' || 
+        github.event_name == 'workflow_dispatch' ||
+        needs.changes.outputs.devcontainer == 'true' ||
         needs.changes.outputs.docker == 'true'
       )
     uses: ./.github/workflows/docker-build.yaml
@@ -351,10 +358,10 @@ jobs:
 
   examples:
     name: Getting Started Examples (${{ matrix.arch }})
-    needs: docker
-    if: ${{ !cancelled() && needs.docker.result == 'success' }}
+    needs: [docker, test-image]
+    if: ${{ !cancelled() && needs.docker.result == 'success' && needs.test-image.result == 'success' }}
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 15
+    timeout-minutes: 25
     permissions:
       contents: read
       packages: read
@@ -368,11 +375,6 @@ jobs:
             runner: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@v7
-      - uses: ./.github/actions/setup-environment
-        with:
-          backend: 'false'
-          frontend: 'false'
-          media: 'false'
       - name: Login to GitHub Container Registry
         uses: docker/login-action@v4
         with:
@@ -384,34 +386,36 @@ jobs:
         env:
           EXAMPLES_IMAGE: ${{ needs.docker.outputs.image }}
       - name: Run getting started examples
-        run: make test-examples
+        uses: ./.github/actions/devcontainer
         env:
           EXAMPLES_IMAGE: ${{ needs.docker.outputs.image }}
+        with:
+          export-cache: ${{ matrix.arch == 'arm64' }}
+          env: EXAMPLES_IMAGE
+          run: make test-examples
 
   embeds:
     name: Embedded Examples Up To Date
-    needs: changes
+    needs: [changes, test-image]
     if: |
-      !cancelled() && 
+      !cancelled() && needs.test-image.result == 'success' &&
       (
-        github.event_name == 'workflow_dispatch' || 
+        github.event_name == 'workflow_dispatch' ||
+        needs.changes.outputs.devcontainer == 'true' ||
         needs.changes.outputs.embeds == 'true'
       )
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: ./.github/actions/setup-environment
-        with:
-          backend: 'false'
-          frontend: 'false'
-          media: 'false'
       - name: Verify embedded examples
-        run: make verify-examples
+        uses: ./.github/actions/devcontainer
+        with:
+          run: make verify-examples
 
   pr-checks:
     name: PR Checks
     if: ${{ always() }}
-    needs: [changes, go, go-discord, e2e, e2e-discord, readme-demo, publish-readme-demo, lint, build, unit, docker, examples, embeds]
+    needs: [changes, test-image, go, go-discord, e2e, e2e-discord, readme-demo, publish-readme-demo, lint, build, unit, docker, examples, embeds]
     runs-on: ubuntu-latest
     steps:
       - name: Require all selected checks to pass

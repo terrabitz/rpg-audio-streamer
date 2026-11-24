@@ -21,11 +21,12 @@ release is needed, publication and image building are skipped.
 
 ## Image publication
 
-After successful publication, the shared `docker-build` workflow builds the
-Linux amd64 and arm64 images natively on matching GitHub-hosted runners, pushes
-each by digest to GHCR, and combines them into a multi-arch manifest tagged
-`latest`, full-version, major.minor, and major. Each architecture keeps its own
-Buildx GitHub Actions cache scope. The image's runtime behavior is described in
+After successful publication, the shared `docker-build` workflow uses
+`docker/build-push-action` to build the Linux amd64 and arm64 images natively
+on matching GitHub-hosted runners, pushes each by digest to GHCR, and combines
+them into a multi-arch manifest tagged `latest`, full-version, major.minor, and
+major. Each architecture keeps its own Buildx GitHub Actions cache scope. The
+image's runtime behavior is described in
 [HTTP serving](../runtime/http-serving.md).
 
 The workflow accepts an alternative image repository and outputs the

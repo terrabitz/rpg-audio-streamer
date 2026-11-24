@@ -12,7 +12,7 @@ const examples = fileURLToPath(new URL('./', import.meta.url))
 const publishedImage = 'ghcr.io/terrabitz/rpg-audio-streamer:latest'
 const image = requiredEnv('EXAMPLES_IMAGE')
 const container = 'rpg-audio-streamer'
-const appURL = 'http://localhost:8080'
+const appURL = process.env.EXAMPLES_BASE_URL ?? 'http://localhost:8080'
 const exec = promisify(execFile)
 
 test('docker compose installation exposes a setup code that claims the instance', { timeout: 180_000 }, async (t) => {
@@ -24,6 +24,8 @@ test('docker compose installation exposes a setup code that claims the instance'
 })
 
 test('plain docker installation exposes a setup code that claims the instance', { timeout: 180_000 }, async (t) => {
+  const existing = await command(examples, 'docker', ['ps', '-aq', '--filter', `name=^/${container}$`])
+  assert.equal(existing.trim(), '', `Remove or rename the existing ${container} container before running this test`)
   const dir = await workspace(t, 'docker', removeContainerAndData)
 
   await runScript(dir, 'install.sh')

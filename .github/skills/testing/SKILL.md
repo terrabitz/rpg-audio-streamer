@@ -13,21 +13,21 @@ Keep root `AGENTS.md` short.
 
 ## Setup and commands
 
-Use the Go version in `go.mod`, Node in `ui/.nvmrc`, and FFmpeg on `PATH`.
-Building and running Go also requires a C compiler, pkg-config, and Discord
-libdave 1.1.0. On glibc Linux or macOS, install the verified official binary
-and configure the current shell:
+Run all tests in the repository devcontainer, not on the host. From the
+worktree root, start it and wait for dependency setup:
 
 ```sh
-sh scripts/install-libdave.sh "$HOME/.local/libdave"
-export PKG_CONFIG_PATH="$HOME/.local/libdave/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
-export LD_LIBRARY_PATH="$HOME/.local/libdave/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+devcontainer up --workspace-folder .
+devcontainer exec --workspace-folder . make test
 ```
 
-On macOS, set `DYLD_LIBRARY_PATH` instead of `LD_LIBRARY_PATH`. The Linux
-release requires glibc 2.38 or newer; it does not support Alpine's musl.
-Install frontend dependencies with `cd ui && npm ci`. Install Chromium once
-with `cd ui && npx playwright install chromium` (Linux CI also runs `playwright install-deps chromium`).
+Rebuild the container after image input changes. Run the commands below from
+an in-container terminal or through `devcontainer exec --workspace-folder .`.
+If the container cannot start, report the blocker rather than falling back
+to host tools.
+Give each CI test or validation check a single Make target that also works
+locally. CI image builds use `docker/build-push-action`; `make docker-build`
+builds the image locally. Keep GitHub-specific orchestration in the workflow.
 The UI compiler must remain compatible with `vue-tsc`; TypeScript 7's native
 package does not expose the JavaScript compiler API required by the current
 Vue tooling.
@@ -37,47 +37,61 @@ Vue tooling.
 | `make test` | Go race detection, SQLite integration, and frontend domain coverage |
 | `make test-go` | All Go tests; enforce 80% internal statement coverage |
 | `make test-ui` | Vitest domain coverage; enforce 80% statements, branches, functions, and lines |
-| `make test-e2e` | Production UI build and real full-app Chromium journeys including live Discord |
+| `make test-e2e` | Production UI build and non-Discord full-app Chromium journeys |
+| `make test-e2e-discord` | Live Discord Chromium journey |
+| `make test-go-discord` | Live Go Discord voice connection |
 | `make test-dev` | Seeded local dev startup, isolation, media fixtures, and cleanup |
+| `make test-frontend` | Frontend domain coverage and seeded development tests |
+| `make gen-readme-demo` | Refresh the README demo GIF when screenshot baselines change |
+| `make docker-build` | Build and load the packaged app image as `rpg-audio-streamer:local` |
 | `make test-examples` | The README/installation Docker flows against `EXAMPLES_IMAGE` |
 | `make verify-examples` | Fail when embedded snippets differ from `examples/` |
 | `make gen-examples` | Re-embed `examples/` files into `README.md` and `INSTALLATION.md` |
-| `cd ui && npm run build` | Vue/TypeScript checking, including tests, and production bundle |
-| `cd ui && npm run lint:check` | Read-only frontend lint |
+| `make build-ui` | Vue/TypeScript checking, including tests, and production bundle |
+| `make lint-ui` | Read-only frontend lint |
 
 For focused iteration, use `go test ./internal/websocket -run TestMessageRouting`,
 `cd ui && npm run test:unit -- run src/stores/__tests__/audio.test.ts`, or
 `cd ui && npm run test:e2e -- --grep 'invited player'`. Run the affected coverage
 gate after focused checks. No documentation-only validation is needed.
 
+### When to run checks
+
+While iterating, run fast checks often and slow checks only when a change
+touches their area:
+
+- **Fast, after most edits:** focused Go, Vitest, or Playwright tests for the
+  code you changed, plus `make lint-ui` and `make verify-examples`.
+- **Slower, at milestones in the affected area:** `make build-ui`,
+  `make test-frontend`, `make test-go`, and `make test-e2e`.
+
+Right before every push, run the full local suite in the devcontainer, even if
+you already ran parts of it:
+
+```sh
+devcontainer exec --workspace-folder . make lint-ui verify-examples build-ui test-frontend test-go test-e2e gen-readme-demo
+```
+
+`make gen-readme-demo` needs the LFS-backed `media/readme-demo/` images
+hydrated (`git lfs pull`). When it rewrites `media/readme-demo/gm.png` or
+`player.png`, it also refreshes `media/audio-playing.gif`. Check
+`git status -- media` afterward and commit any changed demo media with your
+change, so CI doesn't have to push a refresh and restart the checks.
+
+When you change the packaged image or `examples/`, also run `make docker-build`
+and `make test-examples`, as described below. Run the live Discord checks only
+when you change Discord behavior and have credentials.
+
 Mixer domain tests render known PCM buffers without sleeps; live-service tests
 own the render loop's context and bound waits for decoding and cancellation.
 
 ### Headless FFmpeg
 
-Build the image with `docker build -f docker/Dockerfile -t rpg-audio-streamer:test .`.
-It always uses the headless FFmpeg build. On Debian/Ubuntu, install
-`build-essential ca-certificates curl libmp3lame-dev libssl-dev nasm pkg-config xz-utils`,
-then run `sh scripts/build-ffmpeg.sh "$HOME/.local/ffmpeg"`. The script downloads
-and verifies the pinned upstream source archive and installs FFmpeg, ffprobe,
-shared libraries, and licenses. Activate the installation with:
-
-```sh
-export PATH="$HOME/.local/ffmpeg/bin:$PATH"
-export LD_LIBRARY_PATH="$HOME/.local/ffmpeg/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
-```
-
-CI jobs use `.github/actions/setup-environment` for language and dependency
-installation. Its `backend`, `frontend`, and `media` inputs default to `'true'`;
-disable unneeded components per job. Set `playwright: 'true'` in browser jobs
-to set up Chromium after frontend dependencies. Node is always installed.
-The cache warmer enables Playwright too, without running tests.
-
-Media setup delegates to `.github/actions/setup-ffmpeg` to compile with this
-script on cache misses and restore the whole installation on exact cache hits.
-Changing the source version, checksum, flags, or action invalidates the cache.
-The host build uses Ubuntu libraries; continue checking the packaged Debian image
-when changing build configuration or runtime dependencies.
+Build the image with `make docker-build IMAGE=rpg-audio-streamer:test`.
+Both the production image and the devcontainer use `scripts/build-ffmpeg.sh`,
+which verifies the pinned upstream source and installs FFmpeg, ffprobe, shared
+libraries, and licenses. Continue checking the packaged image when changing
+build configuration or runtime dependencies.
 
 Run `go test ./internal/musicprocessing -run '^TestUploadAudioFormatsIntegration$' -count=1`
 for generated WAV, MP3, AAC/M4A, ALAC/M4A, FLAC, Opus/WebM, Vorbis/Ogg, and WMA
@@ -100,17 +114,17 @@ codecs do not imply parity with Debian's optional external integrations.
 ### Getting started examples
 
 Edit snippets in `examples/`, never inside the embedded code blocks, then run
-`make gen-examples`. `make test-examples` requires `EXAMPLES_IMAGE`, which
-replaces the published image reference in the copied examples. Build the
-checkout under a local tag first:
+`make gen-examples`. The devcontainer uses the host Docker daemon. On a
+Linux Docker host, run these from the usual devcontainer terminal:
 
 ```sh
-docker build -f docker/Dockerfile -t rpg-audio-streamer:examples .
-EXAMPLES_IMAGE=rpg-audio-streamer:examples make test-examples
+make docker-build
+EXAMPLES_IMAGE=rpg-audio-streamer:local make test-examples
 ```
 
 The flows need host port 8080 and the container name `rpg-audio-streamer` to be
-free. Add `--network host` to the build if build containers cannot resolve DNS.
+free. If the build containers cannot resolve DNS, use
+`make docker-build DOCKER_BUILD_FLAGS='--network host --load --tag rpg-audio-streamer:local'`.
 
 ### Live YouTube tests
 
@@ -147,7 +161,7 @@ the scan and bounded processing job and is excluded from recording mode.
 
 ### Live Discord tests
 
-Run `make test-e2e` only against an isolated, regular voice channel with
+Run `make test-e2e-discord` only against an isolated, regular voice channel with
 two distinct bot accounts already installed in that server. Configuration is
 read in increasing precedence from the worktree `.env.test`, the
 persistent `~/.config/rpg-audio-streamer/discord-test.env`, and the environment.
@@ -163,7 +177,7 @@ specified. Never copy secrets into a worktree. The required names are:
 Server/channel IDs are fixture inputs for explicit UI selection, not server
 configuration. The application server receives only the streamer token.
 OAuth client secrets are not used. Never
-print tokens, embed them in URLs, or pass them through command arguments.
+print tokens or embed them in URLs.
 The streamer needs View Channel, Connect, and Speak; the listener needs View
 Channel and Connect and joins with deafening disabled. Neither needs privileged
 Gateway intents.
@@ -180,7 +194,8 @@ Installation approval is interactive in Discord and is not automated.
 Offline Go HTTP tests use a local fake Discord API for discovery, filtering,
 and failure handling. Set `DISCORD_LIVE_INTEGRATION=1` and provide the
 streamer token, server ID and voice channel ID as environment variables to
-include the Go connection integration test in `make test-go`. Missing values
+include the Go connection integration test in `make test-go`, or run just that
+test with `make test-go-discord`, which sets the flag for you. Missing values
 fail the test.
 
 The `pr-checks` workflow runs four independent jobs on pull requests and manual
@@ -192,6 +207,18 @@ share a concurrency group; offline Go and non-Discord browser tests run without
 that lock. GitHub withholds repository secrets from fork and Dependabot pull
 requests. The live tests fail their configuration checks when required secrets
 are unavailable.
+
+Run the non-Discord browser projects locally with the same command as CI:
+
+```sh
+devcontainer exec --workspace-folder . make test-e2e
+```
+
+For local live Discord browser runs, make the private credential file available
+inside the container, then set `DISCORD_TEST_ENV_FILE` to its in-container path.
+CI forwards the named variables through the `devcontainers/ci` action's `env`
+input, which passes their values as `devcontainer` CLI arguments. GitHub masks
+the values in logs.
 
 ## Coverage policy
 
@@ -297,5 +324,6 @@ failed app paths with mocked responses or injected Pinia/localStorage state.
    interfaces aligned, and exercise the affected typed callbacks.
 3. Keep the affected `docs/` concepts synchronized with changed app behavior
    and boundaries; keep commands and testing procedures in this skill.
-4. Run focused tests, the affected coverage gates, and relevant build/lint.
+4. Run focused tests, the affected coverage gates, and relevant build/lint,
+   then the full local suite before pushing (see "When to run checks").
 5. Run browser journeys when HTTP, auth, playback, persistence, or UX changes.
