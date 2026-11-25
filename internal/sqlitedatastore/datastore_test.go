@@ -13,8 +13,7 @@ import (
 
 	"github.com/golang-migrate/migrate/v4"
 	"github.com/google/uuid"
-	"github.com/terrabitz/rpg-audio-streamer/internal/musicprocessing"
-	"github.com/terrabitz/rpg-audio-streamer/internal/server"
+	"github.com/terrabitz/rpg-audio-streamer/internal/domain"
 )
 
 func TestTrackLifecycle(t *testing.T) {
@@ -29,7 +28,7 @@ func TestTrackLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	track := server.Track{
+	track := domain.Track{
 		ID: uuid.New(), CreatedAt: time.Now().UTC().Truncate(time.Second),
 		Name: "Forest", Path: "/uploads/forest", TypeID: types[0].ID, Volume: 100,
 	}
@@ -44,28 +43,28 @@ func TestTrackLifecycle(t *testing.T) {
 		t.Fatalf("round trip = %#v, %v; want %#v", got, err, track)
 	}
 	tracks, err = db.GetTracks(ctx)
-	if err != nil || !reflect.DeepEqual(tracks, []server.Track{track}) {
+	if err != nil || !reflect.DeepEqual(tracks, []domain.Track{track}) {
 		t.Fatalf("list = %#v, %v", tracks, err)
 	}
 
 	name := "Rain"
-	got, err = db.UpdateTrack(ctx, track.ID, server.UpdateTrackRequest{Name: &name})
+	got, err = db.UpdateTrack(ctx, track.ID, domain.TrackUpdate{Name: &name})
 	track.Name = name
 	if err != nil || !reflect.DeepEqual(got, track) {
 		t.Fatalf("name-only update = %#v, %v; want %#v", got, err, track)
 	}
 	volume := 0.0
-	got, err = db.UpdateTrack(ctx, track.ID, server.UpdateTrackRequest{Volume: &volume})
+	got, err = db.UpdateTrack(ctx, track.ID, domain.TrackUpdate{Volume: &volume})
 	track.Volume = volume
 	if err != nil || !reflect.DeepEqual(got, track) {
 		t.Fatalf("volume update = %#v, %v; want %#v", got, err, track)
 	}
-	got, err = db.UpdateTrack(ctx, track.ID, server.UpdateTrackRequest{TypeID: &types[1].ID})
+	got, err = db.UpdateTrack(ctx, track.ID, domain.TrackUpdate{TypeID: &types[1].ID})
 	track.TypeID = types[1].ID
 	if err != nil || !reflect.DeepEqual(got, track) {
 		t.Fatalf("type-only update = %#v, %v; want %#v", got, err, track)
 	}
-	got, err = db.UpdateTrack(ctx, track.ID, server.UpdateTrackRequest{})
+	got, err = db.UpdateTrack(ctx, track.ID, domain.TrackUpdate{})
 	if err != nil || !reflect.DeepEqual(got, track) {
 		t.Fatalf("empty patch changed track = %#v, %v", got, err)
 	}
@@ -88,7 +87,7 @@ func TestTrackLifecycle(t *testing.T) {
 	if _, err := reopened.GetTrackByID(ctx, track.ID); !errors.Is(err, sql.ErrNoRows) {
 		t.Fatalf("deleted track error = %v; want sql.ErrNoRows", err)
 	}
-	if _, err := reopened.UpdateTrack(ctx, track.ID, server.UpdateTrackRequest{Name: &name}); !errors.Is(err, sql.ErrNoRows) {
+	if _, err := reopened.UpdateTrack(ctx, track.ID, domain.TrackUpdate{Name: &name}); !errors.Is(err, sql.ErrNoRows) {
 		t.Fatalf("missing update error = %v; want sql.ErrNoRows", err)
 	}
 	if err := reopened.DeleteTrack(ctx, track.ID); err != nil {
@@ -107,9 +106,9 @@ func TestConcurrentTrackProcessingAndPolling(t *testing.T) {
 	var workers sync.WaitGroup
 	for range 24 {
 		workers.Go(func() {
-			track := server.Track{ID: uuid.New(), CreatedAt: time.Now().UTC().Truncate(time.Second),
+			track := domain.Track{ID: uuid.New(), CreatedAt: time.Now().UTC().Truncate(time.Second),
 				Name: "Queued", TypeID: types[0].ID, Path: "/uploads/queued", Status: "processing"}
-			if err := db.SaveTrackToTable(ctx, &track, server.DefaultTableID); err != nil {
+			if err := db.SaveTrackToTable(ctx, &track, domain.DefaultTableID); err != nil {
 				t.Error(err)
 				return
 			}
@@ -121,7 +120,7 @@ func TestConcurrentTrackProcessingAndPolling(t *testing.T) {
 			if _, err := db.GetTracks(ctx); err != nil {
 				t.Error(err)
 			}
-			if _, err := db.GetTableTracks(ctx, server.DefaultTableID); err != nil {
+			if _, err := db.GetTableTracks(ctx, domain.DefaultTableID); err != nil {
 				t.Error(err)
 			}
 		})
@@ -178,10 +177,10 @@ func TestDatastoreCancellation(t *testing.T) {
 		name string
 		run  func() error
 	}{
-		{"save", func() error { return db.SaveTrack(ctx, &server.Track{ID: id}) }},
+		{"save", func() error { return db.SaveTrack(ctx, &domain.Track{ID: id}) }},
 		{"list", func() error { _, err := db.GetTracks(ctx); return err }},
 		{"get", func() error { _, err := db.GetTrackByID(ctx, id); return err }},
-		{"update", func() error { _, err := db.UpdateTrack(ctx, id, server.UpdateTrackRequest{}); return err }},
+		{"update", func() error { _, err := db.UpdateTrack(ctx, id, domain.TrackUpdate{}); return err }},
 		{"delete", func() error { return db.DeleteTrack(ctx, id) }},
 		{"types", func() error { _, err := db.GetTrackTypes(ctx); return err }},
 		{"type", func() error { _, err := db.GetTrackTypeByID(ctx, id); return err }},
@@ -199,7 +198,7 @@ func TestConcurrentTableReadsAndSettingsWrites(t *testing.T) {
 	db, _ := migratedDatabase(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	table, err := db.GetTable(ctx, server.DefaultTableID)
+	table, err := db.GetTable(ctx, domain.DefaultTableID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -212,7 +211,7 @@ func TestConcurrentTableReadsAndSettingsWrites(t *testing.T) {
 				var err error
 				if worker%2 == 0 {
 					volume := 50.0
-					_, err = db.UpdateTableSettings(ctx, table.ID, server.TableSettingsPatch{MasterVolume: &volume})
+					_, err = db.UpdateTableSettings(ctx, table.ID, domain.TableSettingsPatch{MasterVolume: &volume})
 				} else {
 					_, err = db.GetTableByExternalID(ctx, table.ExternalID)
 				}
@@ -239,9 +238,9 @@ func TestTrackProcessingPersistence(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	track := server.Track{ID: uuid.New(), CreatedAt: time.Now().UTC().Truncate(time.Second),
+	track := domain.Track{ID: uuid.New(), CreatedAt: time.Now().UTC().Truncate(time.Second),
 		Name: "Processing", TypeID: types[0].ID, Path: "/uploads/processing", Status: "processing"}
-	if err := db.SaveTrackToTable(ctx, &track, server.DefaultTableID); err != nil {
+	if err := db.SaveTrackToTable(ctx, &track, domain.DefaultTableID); err != nil {
 		t.Fatal(err)
 	}
 	if err := db.Close(); err != nil {
@@ -252,7 +251,7 @@ func TestTrackProcessingPersistence(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer reopened.Close()
-	tracks, err := reopened.GetTableTracks(ctx, server.DefaultTableID)
+	tracks, err := reopened.GetTableTracks(ctx, domain.DefaultTableID)
 	if err != nil || len(tracks) != 1 || tracks[0].Status != "processing" {
 		t.Fatalf("persisted pending association = %+v, %v", tracks, err)
 	}
@@ -342,7 +341,7 @@ func TestTrackWaveformPersistence(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	track := server.Track{
+	track := domain.Track{
 		ID:     uuid.New(),
 		Name:   "Waveform",
 		TypeID: types[0].ID,
@@ -353,7 +352,7 @@ func TestTrackWaveformPersistence(t *testing.T) {
 	if _, err := db.GetTrackWaveform(ctx, track.ID); !errors.Is(err, sql.ErrNoRows) {
 		t.Fatalf("waveform for track without peaks: %v", err)
 	}
-	want := musicprocessing.Waveform{
+	want := domain.Waveform{
 		Peaks: []float64{0, 0.25, 1},
 	}
 	if err := db.SaveTrackWaveform(ctx, track.ID, want); err != nil {

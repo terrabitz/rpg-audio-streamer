@@ -2,14 +2,14 @@
 type: Workflow
 title: Track uploads and media files
 description: Upload validation, FFmpeg HLS conversion, waveforms, and deletion.
-resource: internal/server
+resource: internal/library
 tags: [data, media, ffmpeg, hls]
 ---
 
 # Track uploads and media files
 
 An upload is multipart audio plus a display name, type UUID, and optional table
-UUID. The server validates the type and delegates to the
+UUID. The library service validates the table and type and delegates to the
 [music processing service](./track-processing.md), which assigns a UUIDv7 and
 stages the input under `<upload-dir>/.processing/<track-id>/`. It saves a
 processing library entry and optional

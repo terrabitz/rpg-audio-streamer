@@ -11,11 +11,15 @@ tags: [backend, go]
 | Package | Responsibility |
 | --- | --- |
 | `internal/auth` | Admin setup and password changes, datastore-backed credential checks, signed JWTs, and GM/player roles ([authentication](./authentication.md)) |
-| `internal/server` | HTTP handlers, cookies/middleware, [public table access](./public-table-links.md), track/table contracts, datastore and hub interfaces |
+| `internal/server` | HTTP and WebSocket adapter: request parsing, cookies/middleware, viewer construction, and error-kind status mapping |
+| `internal/tables` | [Table use cases](./domain-services.md): tables, [public table links](./public-table-links.md), settings, associations, playback commands, and live mix snapshots |
+| `internal/library` | [Track library use cases](./domain-services.md): uploads, imports, scans, edits, deletion, waveforms, track types, and table-scoped streaming |
+| `internal/voice` | [Discord voice use cases](./domain-services.md) and the live mixer's table track loader |
+| `internal/hlsaudio` | [Windowed PCM decoding](../discord/pcm-source.md) of stored HLS for the live mixer |
 | `internal/musicprocessing` | Bounded [background jobs](../data/track-processing.md), staging, HLS conversion, waveforms, restart recovery, and completion notifications |
 | `internal/youtube` | [YouTube retrieval](./youtube.md), URL canonicalization, and yt-dlp metadata scans with import limits |
 | `internal/middlewares` | API request logging and CORS |
-| `internal/domain` | Shared track metadata, playback settings and validation, table settings, and Discord destination/status value models |
+| `internal/domain` | [Shared kernel](./domain-services.md): value models, viewers, and error kinds |
 | `internal/events` | Shared event names, typed payloads, named subscription functions, subscription metadata, and sender/bus interfaces ([protocol](../playback/websocket-protocol.md)) |
 | `internal/mixer` | [Standalone PCM mixer](../discord/pcm-mixer.md): deterministic stereo mixing, transport, loop overlap, and gain envelopes |
 | `internal/livemixer` | [Live mixer](../discord/live-mixer.md): independent event subscriptions, serialized updates, table-scoped PCM engines, rendering lifecycle, and diagnostics |
@@ -28,19 +32,19 @@ tags: [backend, go]
 
 ## Boundaries
 
-Authentication rules live in `auth`; command authorization and HTTP store
-interfaces live in `server`; socket recipient routing lives in `websocket`.
-`domain` holds track metadata and shared value models so typed event payloads do not depend on
-their producer or consumer packages. Existing HTTP and processing contracts
-alias those models. The datastore implements both packages' store interfaces, keeping
-processing and HTTP handlers independent of SQLite details.
+Authentication rules live in `auth`; business rules and authorization live in
+the [domain services](./domain-services.md); socket recipient routing lives in
+`websocket`. `domain` holds the shared value models so typed event payloads do
+not depend on their producer or consumer packages. Each domain service declares
+its own store port; the SQLite datastore implements all of them, keeping use
+cases independent of SQLite details. `server` depends on the services, never on
+the datastore directly.
 
 Processing depends on small `Downloader` and `events.Sender` interfaces, satisfied
-in `main.go` by the YouTube client and the hub. Discord and HTTP notifications
-use the same sender interface. The HTTP server depends on a
-`VideoScanner` interface for scans. These services share no package state.
+in `main.go` by the YouTube client and the hub. The domain services and Discord
+publish through the same sender interface. These services share no package state.
 
-The HTTP server composes the optional mixer and Discord lifecycle wrapper.
+`main.go` composes the optional mixer and Discord lifecycle wrapper.
 `livemixer.Subscribe` connects it through `events.Bus`; the hub implements
 subscriptions and delivers playback and lifecycle events without
 depending on the mixer implementation.

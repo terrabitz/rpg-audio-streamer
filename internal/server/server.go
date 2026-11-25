@@ -16,12 +16,10 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/terrabitz/rpg-audio-streamer/internal/auth"
-	"github.com/terrabitz/rpg-audio-streamer/internal/discord"
-	"github.com/terrabitz/rpg-audio-streamer/internal/events"
-	"github.com/terrabitz/rpg-audio-streamer/internal/livemixer"
+	"github.com/terrabitz/rpg-audio-streamer/internal/library"
 	"github.com/terrabitz/rpg-audio-streamer/internal/middlewares"
-	"github.com/terrabitz/rpg-audio-streamer/internal/musicprocessing"
-	"github.com/terrabitz/rpg-audio-streamer/internal/youtube"
+	"github.com/terrabitz/rpg-audio-streamer/internal/tables"
+	"github.com/terrabitz/rpg-audio-streamer/internal/voice"
 )
 
 const (
@@ -39,61 +37,38 @@ type Authenticator interface {
 }
 
 type WSRegisterer interface {
-	events.Bus
 	Register(conn *websocket.Conn, token *auth.Token)
-	RevokePlayerAccess(tableID string)
-}
-
-type DiscordController interface {
-	Connect(context.Context, string, discord.Destination) error
-	Setup(context.Context) (discord.Setup, error)
-	Channels(context.Context, string) ([]discord.Choice, error)
-	Resolve(context.Context, discord.Destination) (discord.Destination, error)
-	Disconnect(context.Context, string) error
-	Status(string) discord.Status
-	Close()
 }
 
 type Server struct {
-	cfg        Config
-	logger     *slog.Logger
-	frontend   fs.FS
-	hub        WSRegisterer
-	upgrader   websocket.Upgrader
-	auth       Authenticator
-	store      Store
-	playback   Playback
-	mixer      *livemixer.Service
-	discord    DiscordController
-	processing *musicprocessing.Service
-	videos     VideoScanner
-}
-
-type VideoScanner interface {
-	Scan(ctx context.Context, sourceURL string) (youtube.VideoMetadata, error)
+	cfg      Config
+	logger   *slog.Logger
+	frontend fs.FS
+	hub      WSRegisterer
+	upgrader websocket.Upgrader
+	auth     Authenticator
+	tables   *tables.Service
+	library  *library.Service
+	voice    *voice.Service
 }
 
 type Config struct {
-	Host                    string
-	Port                    int
-	UploadDir               string
-	FrontendDir             string
-	DevMode                 bool
-	CORS                    middlewares.CorsConfig
-	DiscordStreamingEnabled bool
-	Discord                 discord.Config
+	Host        string
+	Port        int
+	FrontendDir string
+	DevMode     bool
+	CORS        middlewares.CorsConfig
 }
 
-func New(cfg Config, logger *slog.Logger, auth Authenticator, store Store, hub WSRegisterer, playback Playback, processing *musicprocessing.Service, videos VideoScanner) (*Server, error) {
+func New(cfg Config, logger *slog.Logger, auth Authenticator, hub WSRegisterer, tables *tables.Service, library *library.Service, voice *voice.Service) (*Server, error) {
 	srv := &Server{
-		logger:     logger,
-		cfg:        cfg,
-		hub:        hub,
-		auth:       auth,
-		store:      store,
-		playback:   playback,
-		processing: processing,
-		videos:     videos,
+		logger:  logger,
+		cfg:     cfg,
+		hub:     hub,
+		auth:    auth,
+		tables:  tables,
+		library: library,
+		voice:   voice,
 		upgrader: websocket.Upgrader{
 			ReadBufferSize:  1024,
 			WriteBufferSize: 1024,
@@ -114,42 +89,10 @@ func New(cfg Config, logger *slog.Logger, auth Authenticator, store Store, hub W
 		}
 	}
 
-	if cfg.DiscordStreamingEnabled {
-		if cfg.Discord.Token == "" {
-			return nil, fmt.Errorf("Discord streaming requires DISCORD_STREAMING_BOT_TOKEN")
-		}
-		mix, err := livemixer.New(mixerSampleRate, srv.mixerSource)
-		if err != nil {
-			return nil, fmt.Errorf("initialize live mixer: %w", err)
-		}
-		srv.mixer = mix
-		bot, err := discord.New(cfg.Discord, srv.mixer)
-		if err != nil {
-			return nil, err
-		}
-		srv.discord = bot
-		bot.SetEventSender(hub)
-		livemixer.Subscribe(hub, newDiscordMixer(srv.mixer, srv))
-	}
-
 	return srv, nil
 }
 
-func (s *Server) sendEvent(w http.ResponseWriter, event string, payload any) bool {
-	if err := s.hub.SendEvent(event, payload); err != nil {
-		s.logger.Error("failed to send server event", "event", event, "error", err)
-		http.Error(w, "The change was saved, but live synchronization failed. Reload before retrying.", http.StatusServiceUnavailable)
-		return false
-	}
-	return true
-}
-
 func (s *Server) Start(ctx context.Context) error {
-	if s.discord != nil {
-		defer s.discord.Close()
-	}
-	go s.RunMixer(ctx)
-
 	srv := &http.Server{
 		Addr:    net.JoinHostPort(s.cfg.Host, strconv.Itoa(s.cfg.Port)),
 		Handler: s.Handler(),

@@ -18,8 +18,8 @@ import (
 )
 
 var (
-	ErrInUse    = errors.New("Discord bot is already connecting or connected to another table in this server")
-	ErrNotReady = errors.New("table mix is not ready; reconnect the table first")
+	ErrInUse    = domain.Conflict("Discord bot is already connecting or connected to another table in this server")
+	ErrNotReady = domain.ErrTableMixNotReady
 )
 
 type Config struct {

@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/terrabitz/rpg-audio-streamer/internal/domain"
 	"github.com/terrabitz/rpg-audio-streamer/internal/musicprocessing"
 	"github.com/terrabitz/rpg-audio-streamer/internal/sqlitedatastore"
 	"github.com/terrabitz/rpg-audio-streamer/internal/youtube"
@@ -98,7 +99,7 @@ func TestUploadAudioFormatsIntegration(t *testing.T) {
 	}
 }
 
-func assertProcessedAudio(t *testing.T, ctx context.Context, dir string, waveform musicprocessing.Waveform) {
+func assertProcessedAudio(t *testing.T, ctx context.Context, dir string, waveform domain.Waveform) {
 	t.Helper()
 	playlist := filepath.Join(dir, "index.m3u8")
 	manifest, err := os.ReadFile(playlist)
@@ -294,10 +295,10 @@ func runIntegrationProcessing(t *testing.T, ctx context.Context, service *musicp
 	return stop
 }
 
-type processedTracks chan musicprocessing.Track
+type processedTracks chan domain.Track
 
 func (p processedTracks) SendEvent(_ string, payload any) error {
-	p <- payload.(musicprocessing.Track)
+	p <- payload.(domain.Track)
 	return nil
 }
 

@@ -13,26 +13,20 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/terrabitz/rpg-audio-streamer/internal/domain"
 )
 
 const maxImportBytes = 200 << 20
 
 var (
-	ErrInvalidURL      = errors.New("Enter a YouTube video link, not a playlist")
-	ErrUnavailable     = errors.New("YouTube import requires yt-dlp on the server")
-	ErrInvalidMetadata = errors.New("Could not determine the video name and duration")
-	ErrLiveStream      = errors.New("Live streams are not supported")
-	ErrDurationLimit   = errors.New("Video exceeds the 3-hour limit")
-	ErrSizeLimit       = errors.New("Audio exceeds the 200 MiB limit")
+	ErrInvalidURL      = domain.Invalid("Enter a YouTube video link, not a playlist")
+	ErrUnavailable     = domain.Unavailable("YouTube import requires yt-dlp on the server")
+	ErrInvalidMetadata = domain.Upstream("Could not determine the video name and duration")
+	ErrLiveStream      = domain.Unsupported("Live streams are not supported")
+	ErrDurationLimit   = domain.Unsupported("Video exceeds the 3-hour limit")
+	ErrSizeLimit       = domain.Unsupported("Audio exceeds the 200 MiB limit")
 )
-
-type VideoMetadata struct {
-	URL           string  `json:"url"`
-	Name          string  `json:"name"`
-	Duration      float64 `json:"duration"`
-	SizeBytes     *int64  `json:"sizeBytes"`
-	SizeEstimated bool    `json:"sizeEstimated"`
-}
 
 // Client retrieves single YouTube videos through the yt-dlp executable on PATH.
 type Client struct {
@@ -43,10 +37,10 @@ func New(logger *slog.Logger) *Client {
 	return &Client{logger: logger}
 }
 
-func (c *Client) Scan(ctx context.Context, sourceURL string) (VideoMetadata, error) {
+func (c *Client) Scan(ctx context.Context, sourceURL string) (domain.VideoMetadata, error) {
 	source, err := c.Resolve(sourceURL)
 	if err != nil {
-		return VideoMetadata{}, err
+		return domain.VideoMetadata{}, err
 	}
 	ctx, cancel := context.WithTimeout(ctx, time.Minute)
 	defer cancel()
@@ -56,11 +50,11 @@ func (c *Client) Scan(ctx context.Context, sourceURL string) (VideoMetadata, err
 	cmd.Stdout, cmd.Stderr = &output, &stderr
 	err = cmd.Run()
 	if ctx.Err() != nil {
-		return VideoMetadata{}, ctx.Err()
+		return domain.VideoMetadata{}, ctx.Err()
 	}
 	if err != nil {
 		c.logger.Warn("YouTube scan failed", "error", err, "stderr", stderr.buf.String())
-		return VideoMetadata{}, fmt.Errorf("retrieve video metadata: %w", err)
+		return domain.VideoMetadata{}, fmt.Errorf("retrieve video metadata: %w", err)
 	}
 	var info struct {
 		Title          string  `json:"title"`
@@ -72,16 +66,16 @@ func (c *Client) Scan(ctx context.Context, sourceURL string) (VideoMetadata, err
 	}
 	if err := json.Unmarshal(output.buf.Bytes(), &info); err != nil {
 		c.logger.Warn("invalid YouTube metadata", "error", err)
-		return VideoMetadata{}, ErrInvalidMetadata
+		return domain.VideoMetadata{}, ErrInvalidMetadata
 	}
 	if info.IsLive || info.LiveStatus == "is_upcoming" || info.LiveStatus == "post_live" {
-		return VideoMetadata{}, ErrLiveStream
+		return domain.VideoMetadata{}, ErrLiveStream
 	}
 	if strings.TrimSpace(info.Title) == "" || info.Duration <= 0 {
-		return VideoMetadata{}, ErrInvalidMetadata
+		return domain.VideoMetadata{}, ErrInvalidMetadata
 	}
 	if info.Duration > 3*time.Hour.Seconds() {
-		return VideoMetadata{}, ErrDurationLimit
+		return domain.VideoMetadata{}, ErrDurationLimit
 	}
 	size := info.Filesize
 	estimated := false
@@ -89,13 +83,21 @@ func (c *Client) Scan(ctx context.Context, sourceURL string) (VideoMetadata, err
 		size, estimated = info.FilesizeApprox, true
 	}
 	if size != nil && *size > maxImportBytes {
-		return VideoMetadata{}, ErrSizeLimit
+		return domain.VideoMetadata{}, ErrSizeLimit
 	}
 	if size != nil && *size <= 0 {
 		size = nil
 	}
-	return VideoMetadata{URL: source, Name: info.Title, Duration: info.Duration,
+	return domain.VideoMetadata{URL: source, Name: info.Title, Duration: info.Duration,
 		SizeBytes: size, SizeEstimated: estimated}, nil
+}
+
+// ValidateURL accepts only single-video links, without requiring yt-dlp.
+func (c *Client) ValidateURL(sourceURL string) error {
+	if _, ok := CanonicalURL(sourceURL); !ok {
+		return ErrInvalidURL
+	}
+	return nil
 }
 
 // Resolve returns the canonical single-video URL once retrieval is possible.

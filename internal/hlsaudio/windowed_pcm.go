@@ -1,4 +1,4 @@
-package server
+package hlsaudio
 
 import (
 	"bufio"
@@ -16,6 +16,22 @@ import (
 
 	"github.com/terrabitz/rpg-audio-streamer/internal/mixer"
 )
+
+// SampleRate is the PCM rate produced for the live mixer.
+const SampleRate = 48000
+
+// Open decodes a processed track's HLS audio on demand, a few seconds at a time.
+func Open(trackDir string) (mixer.Source, error) {
+	segments, duration, err := readHLSPlaylist(filepath.Join(trackDir, "index.m3u8"))
+	if err != nil {
+		return nil, fmt.Errorf("inspect mixer audio: %w", err)
+	}
+	source, err := newWindowedPCMSource(SampleRate, int(math.Round(duration*SampleRate)), segments)
+	if err != nil {
+		return nil, err
+	}
+	return source, nil
+}
 
 const (
 	pcmWindowSeconds = 5

@@ -12,6 +12,21 @@ type Destination struct {
 	ChannelName string `json:"channelName,omitempty"`
 }
 
+// ErrTableMixNotReady means the live mix must be rebuilt before Discord can stream it.
+var ErrTableMixNotReady = Conflict("table mix is not ready; reconnect the table first")
+
+// DiscordChoice is a Discord server or voice channel the GM can pick.
+type DiscordChoice struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+// DiscordSetup lists the servers the bot can join and how to invite it elsewhere.
+type DiscordSetup struct {
+	InstallURL string          `json:"installURL"`
+	Guilds     []DiscordChoice `json:"guilds"`
+}
+
 type DiscordStatus struct {
 	Enabled bool   `json:"enabled"`
 	State   string `json:"state"`

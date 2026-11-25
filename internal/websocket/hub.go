@@ -11,9 +11,9 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/terrabitz/rpg-audio-streamer/internal/auth"
+	"github.com/terrabitz/rpg-audio-streamer/internal/domain"
 	"github.com/terrabitz/rpg-audio-streamer/internal/events"
 	"github.com/terrabitz/rpg-audio-streamer/internal/playback"
-	"github.com/terrabitz/rpg-audio-streamer/internal/server"
 )
 
 type Hub struct {
@@ -82,7 +82,7 @@ func (h *Hub) handleTrackUpdated(fileID string, _ *Client) {
 	}
 }
 
-func (h *Hub) handleTableSettingsChanged(event events.TableEvent[server.TableSettingsPatch], _ *Client) {
+func (h *Hub) handleTableSettingsChanged(event events.TableEvent[domain.TableSettingsPatch], _ *Client) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if err := h.playback.SettingsChanged(ctx, event.TableID); err != nil {
@@ -183,7 +183,7 @@ func (h *Hub) handleTrackRemoved(event events.TableEvent[events.TrackReference],
 	}
 }
 
-func (h *Hub) handleTrackStatusChanged(track server.Track, _ *Client) {
+func (h *Hub) handleTrackStatusChanged(track domain.Track, _ *Client) {
 	update := TrackStatusUpdate{FileID: track.ID.String(), Status: track.Status, ProcessingError: track.ProcessingError}
 	if err := h.publishEvent(events.TrackStatusChanged, update, events.Metadata{Global: true}); err != nil {
 		h.logger.Error("failed to announce track processing status", "error", err)

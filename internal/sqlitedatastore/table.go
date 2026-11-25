@@ -3,20 +3,19 @@ package sqlitedatastore
 import (
 	"context"
 	"crypto/rand"
-	"database/sql"
 	"encoding/base64"
 	"encoding/json"
 
 	"github.com/google/uuid"
 	"github.com/terrabitz/rpg-audio-streamer/internal/discord"
-	"github.com/terrabitz/rpg-audio-streamer/internal/server"
+	"github.com/terrabitz/rpg-audio-streamer/internal/domain"
 	"github.com/terrabitz/rpg-audio-streamer/internal/sqlitedatastore/sqlitedb"
 )
 
 func (db *SQLiteDatastore) GetTableDiscord(ctx context.Context, id uuid.UUID) (*discord.Destination, error) {
 	value, err := sqlitedb.New(db.DB).GetTableDiscord(ctx, id[:])
 	if err != nil || value == "" {
-		return nil, err
+		return nil, translateError(err)
 	}
 	var target discord.Destination
 	if err := json.Unmarshal([]byte(value), &target); err != nil {
@@ -34,19 +33,19 @@ func (db *SQLiteDatastore) SaveTableDiscord(ctx context.Context, id uuid.UUID, t
 		ID: id[:], DiscordDestination: string(value),
 	})
 	if err != nil {
-		return err
+		return translateError(err)
 	}
 	if count == 0 {
-		return sql.ErrNoRows
+		return errNotFound
 	}
 	return nil
 }
-func (db *SQLiteDatastore) GetTables(ctx context.Context) ([]server.Table, error) {
+func (db *SQLiteDatastore) GetTables(ctx context.Context) ([]domain.Table, error) {
 	rows, err := sqlitedb.New(db.DB).GetTables(ctx)
 	if err != nil {
-		return nil, err
+		return nil, translateError(err)
 	}
-	tables := make([]server.Table, 0, len(rows))
+	tables := make([]domain.Table, 0, len(rows))
 	for _, row := range rows {
 		table, err := convertDBTable(row)
 		if err != nil {
@@ -57,55 +56,55 @@ func (db *SQLiteDatastore) GetTables(ctx context.Context) ([]server.Table, error
 	return tables, nil
 }
 
-func (db *SQLiteDatastore) GetTable(ctx context.Context, id uuid.UUID) (server.Table, error) {
+func (db *SQLiteDatastore) GetTable(ctx context.Context, id uuid.UUID) (domain.Table, error) {
 	row, err := sqlitedb.New(db.DB).GetTable(ctx, id[:])
 	if err != nil {
-		return server.Table{}, err
+		return domain.Table{}, translateError(err)
 	}
 	return convertDBTable(row)
 }
 
-func (db *SQLiteDatastore) GetTableByExternalID(ctx context.Context, externalID string) (server.Table, error) {
+func (db *SQLiteDatastore) GetTableByExternalID(ctx context.Context, externalID string) (domain.Table, error) {
 	row, err := sqlitedb.New(db.DB).GetTableByExternalID(ctx, externalID)
 	if err != nil {
-		return server.Table{}, err
+		return domain.Table{}, translateError(err)
 	}
 	return convertDBTable(row)
 }
 
-func (db *SQLiteDatastore) CreateTable(ctx context.Context, table server.Table) (server.Table, error) {
+func (db *SQLiteDatastore) CreateTable(ctx context.Context, table domain.Table) (domain.Table, error) {
 	externalID, err := generateExternalID()
 	if err != nil {
-		return server.Table{}, err
+		return domain.Table{}, err
 	}
 	row, err := sqlitedb.New(db.DB).CreateTable(ctx, sqlitedb.CreateTableParams{
 		ID: table.ID[:], Name: table.Name, ExternalID: externalID,
 	})
 	if err != nil {
-		return server.Table{}, err
+		return domain.Table{}, translateError(err)
 	}
 	return convertDBTable(row)
 }
 
-func (db *SQLiteDatastore) RotateTableExternalID(ctx context.Context, id uuid.UUID) (server.Table, error) {
+func (db *SQLiteDatastore) RotateTableExternalID(ctx context.Context, id uuid.UUID) (domain.Table, error) {
 	externalID, err := generateExternalID()
 	if err != nil {
-		return server.Table{}, err
+		return domain.Table{}, err
 	}
 	row, err := sqlitedb.New(db.DB).RotateTableExternalID(ctx, sqlitedb.RotateTableExternalIDParams{
 		ExternalID: externalID,
 		ID:         id[:],
 	})
 	if err != nil {
-		return server.Table{}, err
+		return domain.Table{}, translateError(err)
 	}
 	return convertDBTable(row)
 }
 
-func (db *SQLiteDatastore) UpdateTable(ctx context.Context, id uuid.UUID, name string) (server.Table, error) {
+func (db *SQLiteDatastore) UpdateTable(ctx context.Context, id uuid.UUID, name string) (domain.Table, error) {
 	row, err := sqlitedb.New(db.DB).UpdateTable(ctx, sqlitedb.UpdateTableParams{ID: id[:], Name: name})
 	if err != nil {
-		return server.Table{}, err
+		return domain.Table{}, translateError(err)
 	}
 	return convertDBTable(row)
 }
@@ -113,46 +112,46 @@ func (db *SQLiteDatastore) UpdateTable(ctx context.Context, id uuid.UUID, name s
 func (db *SQLiteDatastore) DeleteTable(ctx context.Context, id uuid.UUID) error {
 	count, err := sqlitedb.New(db.DB).DeleteTable(ctx, id[:])
 	if err != nil {
-		return err
+		return translateError(err)
 	}
 	if count == 0 {
-		return sql.ErrNoRows
+		return errNotFound
 	}
 	return nil
 }
 
-func (db *SQLiteDatastore) GetTableSettings(ctx context.Context, id uuid.UUID) (server.TableSettings, error) {
+func (db *SQLiteDatastore) GetTableSettings(ctx context.Context, id uuid.UUID) (domain.TableSettings, error) {
 	value, err := sqlitedb.New(db.DB).GetTableSettings(ctx, id[:])
 	if err != nil {
-		return server.TableSettings{}, err
+		return domain.TableSettings{}, translateError(err)
 	}
-	var settings server.TableSettings
+	var settings domain.TableSettings
 	err = json.Unmarshal([]byte(value), &settings)
 	return settings, err
 }
 
-func (db *SQLiteDatastore) UpdateTableSettings(ctx context.Context, id uuid.UUID, patch server.TableSettingsPatch) (server.TableSettings, error) {
+func (db *SQLiteDatastore) UpdateTableSettings(ctx context.Context, id uuid.UUID, patch domain.TableSettingsPatch) (domain.TableSettings, error) {
 	value, err := json.Marshal(patch)
 	if err != nil {
-		return server.TableSettings{}, err
+		return domain.TableSettings{}, err
 	}
 	updated, err := sqlitedb.New(db.DB).UpdateTableSettings(ctx, sqlitedb.UpdateTableSettingsParams{
 		ID: id[:], Patch: string(value),
 	})
 	if err != nil {
-		return server.TableSettings{}, err
+		return domain.TableSettings{}, translateError(err)
 	}
-	var settings server.TableSettings
+	var settings domain.TableSettings
 	err = json.Unmarshal([]byte(updated), &settings)
 	return settings, err
 }
 
-func (db *SQLiteDatastore) GetTableTracks(ctx context.Context, id uuid.UUID) ([]server.Track, error) {
+func (db *SQLiteDatastore) GetTableTracks(ctx context.Context, id uuid.UUID) ([]domain.Track, error) {
 	rows, err := sqlitedb.New(db.DB).GetTableTracks(ctx, id[:])
 	if err != nil {
-		return nil, err
+		return nil, translateError(err)
 	}
-	tracks := make([]server.Track, 0, len(rows))
+	tracks := make([]domain.Track, 0, len(rows))
 	for _, row := range rows {
 		track, err := convertDBTrack(row)
 		if err != nil {
@@ -165,11 +164,12 @@ func (db *SQLiteDatastore) GetTableTracks(ctx context.Context, id uuid.UUID) ([]
 
 func (db *SQLiteDatastore) AddTableTrack(ctx context.Context, tableID, trackID uuid.UUID) error {
 	_, err := sqlitedb.New(db.DB).AddTableTrack(ctx, sqlitedb.AddTableTrackParams{TableID: tableID[:], TrackID: trackID[:]})
-	return err
+	return translateError(err)
 }
 
 func (db *SQLiteDatastore) RemoveTableTrack(ctx context.Context, tableID, trackID uuid.UUID) error {
-	return sqlitedb.New(db.DB).RemoveTableTrack(ctx, sqlitedb.RemoveTableTrackParams{TableID: tableID[:], TrackID: trackID[:]})
+	err := sqlitedb.New(db.DB).RemoveTableTrack(ctx, sqlitedb.RemoveTableTrackParams{TableID: tableID[:], TrackID: trackID[:]})
+	return translateError(err)
 }
 
 func (db *SQLiteDatastore) HasTableTrack(ctx context.Context, tableID, trackID uuid.UUID) (bool, error) {
@@ -178,13 +178,14 @@ func (db *SQLiteDatastore) HasTableTrack(ctx context.Context, tableID, trackID u
 }
 
 func (db *SQLiteDatastore) CountTrackTables(ctx context.Context, trackID uuid.UUID) (int64, error) {
-	return sqlitedb.New(db.DB).CountTrackTables(ctx, trackID[:])
+	count, err := sqlitedb.New(db.DB).CountTrackTables(ctx, trackID[:])
+	return count, translateError(err)
 }
 
-func (db *SQLiteDatastore) SaveTrackToTable(ctx context.Context, track *server.Track, tableID uuid.UUID) error {
+func (db *SQLiteDatastore) SaveTrackToTable(ctx context.Context, track *domain.Track, tableID uuid.UUID) error {
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
-		return err
+		return translateError(err)
 	}
 	defer tx.Rollback()
 	queries := sqlitedb.New(tx)
@@ -197,12 +198,12 @@ func (db *SQLiteDatastore) SaveTrackToTable(ctx context.Context, track *server.T
 	return tx.Commit()
 }
 
-func convertDBTable(row sqlitedb.GameTable) (server.Table, error) {
+func convertDBTable(row sqlitedb.GameTable) (domain.Table, error) {
 	id, err := uuid.FromBytes(row.ID)
 	if err != nil {
-		return server.Table{}, err
+		return domain.Table{}, err
 	}
-	return server.Table{ID: id, ExternalID: row.ExternalID, Name: row.Name}, nil
+	return domain.Table{ID: id, ExternalID: row.ExternalID, Name: row.Name}, nil
 }
 
 func generateExternalID() (string, error) {

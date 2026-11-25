@@ -2,7 +2,7 @@
 type: Security Model
 title: Public table links
 description: External IDs that grant player access to a table and how GMs rotate them.
-resource: internal/server
+resource: internal/tables
 tags: [backend, security, tables]
 ---
 

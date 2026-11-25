@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/terrabitz/rpg-audio-streamer/internal/domain"
 	"io"
 	"mime/multipart"
 	"net/http"
@@ -25,7 +26,7 @@ func TestRoutedTrackLifecycle(t *testing.T) {
 	defer ts.cleanup(t)
 	id := uuid.New()
 	typeID := uuid.MustParse("1ec000a2-a7c9-11ee-a0e5-0242ac120002")
-	track := Track{ID: id, Name: "Forest", TypeID: typeID, Path: filepath.Join(ts.tempDir, id.String())}
+	track := domain.Track{ID: id, Name: "Forest", TypeID: typeID, Path: filepath.Join(ts.tempDir, id.String())}
 	if err := os.Mkdir(track.Path, 0700); err != nil {
 		t.Fatal(err)
 	}
@@ -40,7 +41,7 @@ func TestRoutedTrackLifecycle(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("update status = %d: %s", rec.Code, rec.Body)
 	}
-	var updated Track
+	var updated domain.Track
 	if err := json.Unmarshal(rec.Body.Bytes(), &updated); err != nil {
 		t.Fatal(err)
 	}
@@ -48,7 +49,7 @@ func TestRoutedTrackLifecycle(t *testing.T) {
 		t.Fatalf("partial update = %+v", updated)
 	}
 	rec = routedRequest(handler, http.MethodGet, "/api/v1/files", "", true)
-	var listed []Track
+	var listed []domain.Track
 	if err := json.Unmarshal(rec.Body.Bytes(), &listed); err != nil || len(listed) != 1 || listed[0].Name != "Rain" {
 		t.Fatalf("list = %v, %v; status = %d", listed, err, rec.Code)
 	}
@@ -87,7 +88,7 @@ func TestRoutedValidation(t *testing.T) {
 		{"invalid update ID", "PUT", "/api/v1/files/invalid", "{}", true, 400},
 		{"negative track volume", "PUT", "/api/v1/files/" + id, `{"volume":-1}`, true, 400},
 		{"track volume over 100", "PUT", "/api/v1/files/" + id, `{"volume":101}`, true, 400},
-		{"unknown update", "PUT", "/api/v1/files/" + id, `{"name":"new"}`, true, 500},
+		{"unknown update", "PUT", "/api/v1/files/" + id, `{"name":"new"}`, true, 404},
 		{"invalid delete ID", "DELETE", "/api/v1/files/invalid", "", true, 400},
 		{"missing delete", "DELETE", "/api/v1/files/" + id, "", true, 404},
 		{"track types", "GET", "/api/v1/trackTypes", "", true, 200},
@@ -107,7 +108,7 @@ func TestRoutedValidation(t *testing.T) {
 func TestStoreFailures(t *testing.T) {
 	ts := setupTestServer(t)
 	defer ts.cleanup(t)
-	ts.store = failingStore{Store: ts.store}
+	ts.store = failingStore{testStore: ts.store}
 	for _, path := range []string{"/api/v1/files", "/api/v1/trackTypes", "/api/v1/files/" + uuid.NewString() + "/usage"} {
 		rec := routedRequest(ts.Handler(), "GET", path, "", true)
 		if rec.Code != http.StatusInternalServerError {
@@ -190,7 +191,7 @@ func TestWebSocketRoute(t *testing.T) {
 	}
 	defer conn.Close()
 	token := <-reg.tokens
-	if token.Role != auth.RoleGM || token.TableID != DefaultTableID.String() {
+	if token.Role != auth.RoleGM || token.TableID != domain.DefaultTableID.String() {
 		t.Fatalf("registered GM scope = %+v", token)
 	}
 	if ts.auth.(*mockAuth).token.TableID != "" {
@@ -204,7 +205,7 @@ func TestWebSocketRoute(t *testing.T) {
 	}
 	defer player.Close()
 	token = <-reg.tokens
-	if token.Role != auth.RolePlayer || token.TableID != DefaultTableID.String() {
+	if token.Role != auth.RolePlayer || token.TableID != domain.DefaultTableID.String() {
 		t.Fatalf("player table scope = %+v", token)
 	}
 	rec := routedRequest(ts.Handler(), "GET", "/api/v1/ws", "", true)
@@ -238,7 +239,7 @@ func TestFrontendRouting(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	ts.frontend = os.DirFS(dir)
+	ts.cfg.FrontendDir = dir
 	handler := ts.Handler()
 	for _, tc := range []struct {
 		method, path, body string
@@ -265,13 +266,13 @@ func TestFrontendRouting(t *testing.T) {
 
 func TestFrontendConfiguration(t *testing.T) {
 	dir := t.TempDir()
-	if _, err := New(Config{FrontendDir: dir}, nil, nil, nil, nil, nil, nil, nil); err == nil {
+	if _, err := New(Config{FrontendDir: dir}, nil, nil, nil, nil, nil, nil); err == nil {
 		t.Fatal("missing frontend index should fail startup")
 	}
 	if err := os.WriteFile(filepath.Join(dir, "index.html"), []byte("index"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := New(Config{FrontendDir: dir}, nil, nil, nil, nil, nil, nil, nil); err != nil {
+	if _, err := New(Config{FrontendDir: dir}, nil, nil, nil, nil, nil, nil); err != nil {
 		t.Fatalf("valid frontend directory: %v", err)
 	}
 }
@@ -286,18 +287,18 @@ func routedRequest(handler http.Handler, method, path, body string, authenticate
 	return rec
 }
 
-type failingStore struct{ Store }
+type failingStore struct{ testStore }
 
-func (f failingStore) GetTracks(context.Context) ([]Track, error) {
+func (f failingStore) GetTracks(context.Context) ([]domain.Track, error) {
 	return nil, errors.New("database unavailable")
 }
 
-func (f failingStore) GetTrackTypes(context.Context) ([]TrackType, error) {
+func (f failingStore) GetTrackTypes(context.Context) ([]domain.TrackType, error) {
 	return nil, errors.New("database unavailable")
 }
 
-func (f failingStore) GetTrackByID(context.Context, uuid.UUID) (Track, error) {
-	return Track{}, nil
+func (f failingStore) GetTrackByID(context.Context, uuid.UUID) (domain.Track, error) {
+	return domain.Track{}, nil
 }
 
 func (f failingStore) DeleteTrack(context.Context, uuid.UUID) error {

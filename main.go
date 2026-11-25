@@ -20,9 +20,15 @@ import (
 	"github.com/urfave/cli/v2"
 
 	"github.com/terrabitz/rpg-audio-streamer/internal/auth"
+	"github.com/terrabitz/rpg-audio-streamer/internal/discord"
+	"github.com/terrabitz/rpg-audio-streamer/internal/hlsaudio"
+	"github.com/terrabitz/rpg-audio-streamer/internal/library"
+	"github.com/terrabitz/rpg-audio-streamer/internal/livemixer"
 	"github.com/terrabitz/rpg-audio-streamer/internal/musicprocessing"
 	"github.com/terrabitz/rpg-audio-streamer/internal/server"
 	"github.com/terrabitz/rpg-audio-streamer/internal/sqlitedatastore"
+	"github.com/terrabitz/rpg-audio-streamer/internal/tables"
+	"github.com/terrabitz/rpg-audio-streamer/internal/voice"
 	ws "github.com/terrabitz/rpg-audio-streamer/internal/websocket"
 	"github.com/terrabitz/rpg-audio-streamer/internal/youtube"
 )
@@ -34,10 +40,17 @@ const migrationsPath = "sql/migrations"
 
 type Config struct {
 	Server    server.Config
+	UploadDir string
+	Discord   DiscordConfig
 	Log       LogConfig
 	Auth      auth.Config
 	DB        DBConfig
 	Bootstrap auth.BootstrapConfig
+}
+
+type DiscordConfig struct {
+	Enabled bool
+	discord.Config
 }
 
 type DBConfig struct {
@@ -65,13 +78,13 @@ func main() {
 					&cli.StringFlag{
 						Name: "discord-streaming-bot-token", EnvVars: []string{"DISCORD_STREAMING_BOT_TOKEN"},
 						Usage:       "Bot token for Discord voice streaming; prefer the environment variable",
-						Destination: &cfg.Server.Discord.Token,
+						Destination: &cfg.Discord.Token,
 					},
 					&cli.BoolFlag{
 						Name:        "discord-streaming-enabled",
 						EnvVars:     []string{"DISCORD_STREAMING_ENABLED"},
 						Usage:       "Enable Discord voice streaming",
-						Destination: &cfg.Server.DiscordStreamingEnabled,
+						Destination: &cfg.Discord.Enabled,
 					},
 					&cli.StringFlag{
 						Name:        "host",
@@ -111,7 +124,7 @@ func main() {
 						EnvVars:     []string{"UPLOAD_DIR"},
 						Value:       "./uploads",
 						Usage:       "Directory to store uploaded files",
-						Destination: &cfg.Server.UploadDir,
+						Destination: &cfg.UploadDir,
 					},
 					&cli.StringFlag{
 						Name:        "frontend-dir",
@@ -367,7 +380,7 @@ func startServer(ctx context.Context, cfg Config) error {
 	hub := ws.NewHub(logger, db)
 
 	videos := youtube.New(logger)
-	processing := musicprocessing.New(cfg.Server.UploadDir, logger, db, videos, hub)
+	processing := musicprocessing.New(cfg.UploadDir, logger, db, videos, hub)
 	if err := processing.Recover(ctx); err != nil {
 		return fmt.Errorf("recover interrupted processing: %w", err)
 	}
@@ -382,7 +395,21 @@ func startServer(ctx context.Context, cfg Config) error {
 		<-finished
 	}()
 
-	srv, err := server.New(cfg.Server, logger, authService, db, hub, hub.Playback(), processing, videos)
+	var bot voice.Discord
+	if cfg.Discord.Enabled {
+		discordBot, err := startDiscord(runCtx, cfg.Discord.Config, db, hub, logger)
+		if err != nil {
+			return err
+		}
+		defer discordBot.Close()
+		bot = discordBot
+	}
+
+	tablesService := tables.New(db, hub.Playback(), hub, hub)
+	libraryService := library.New(db, processing, videos, tablesService, hub, cfg.UploadDir)
+	voiceService := voice.New(bot, db, tablesService, hub.Playback(), hub, logger)
+
+	srv, err := server.New(cfg.Server, logger, authService, hub, tablesService, libraryService, voiceService)
 	if err != nil {
 		return fmt.Errorf("couldn't create server: %w", err)
 	}
@@ -401,4 +428,24 @@ func startServer(ctx context.Context, cfg Config) error {
 	}()
 
 	return srv.Start(runCtx)
+}
+
+// startDiscord streams each table's live server-side mix into its Discord voice channel.
+func startDiscord(ctx context.Context, cfg discord.Config, db *sqlitedatastore.SQLiteDatastore, hub *ws.Hub, logger *slog.Logger) (*discord.Service, error) {
+	if cfg.Token == "" {
+		return nil, fmt.Errorf("Discord streaming requires DISCORD_STREAMING_BOT_TOKEN")
+	}
+	clips := voice.NewClips(db, hlsaudio.Open)
+	mix, err := livemixer.New(hlsaudio.SampleRate, clips.Load)
+	if err != nil {
+		return nil, fmt.Errorf("initialize live mixer: %w", err)
+	}
+	bot, err := discord.New(cfg, mix)
+	if err != nil {
+		return nil, err
+	}
+	bot.SetEventSender(hub)
+	livemixer.Subscribe(hub, discord.NewMixerSessions(mix, bot, logger))
+	go mix.Run(ctx)
+	return bot, nil
 }

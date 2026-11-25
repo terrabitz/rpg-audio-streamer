@@ -2,7 +2,7 @@
 type: Data Model
 title: Table settings
 description: Per-table GM master and type mixing and track-order preferences.
-resource: internal/server
+resource: internal/tables
 tags: [data, mixing, tables]
 ---
 
