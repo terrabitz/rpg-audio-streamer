@@ -1,13 +1,18 @@
 # Stage 1: Build Vue frontend
 FROM node:24 AS frontend-builder
 
+RUN --mount=type=bind,source=.,target=/source \
+    status=0; \
+    grep -rIl '^version https://git-lfs[.]github[.]com/spec/v1$' /source || status=$?; \
+    if [ "$status" -eq 0 ]; then \
+      echo "Unhydrated Git LFS pointers found in the build context; run git lfs pull before building." >&2; \
+      exit 1; \
+    fi; \
+    [ "$status" -eq 1 ]
+
 WORKDIR /ui
 COPY ui .
-RUN if grep -q '^version https://git-lfs.github.com/spec/v1$' src/assets/discord.svg; then \
-      echo "Discord logo is an unhydrated Git LFS pointer; run git lfs pull before building." >&2; \
-      exit 1; \
-    fi \
-  && npm ci && npm run build
+RUN npm ci && npm run build
 
 # Stage 2: Build Go backend
 FROM golang:1.26-trixie AS backend-builder
