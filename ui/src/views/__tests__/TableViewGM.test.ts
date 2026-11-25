@@ -11,10 +11,13 @@ import { useFileStore } from '@/stores/files'
 import { useTrackTypeStore } from '@/stores/trackTypes'
 import type { TableSettings } from '@/client/apiClient'
 
-const api = vi.hoisted(() => ({ load: vi.fn(), save: vi.fn() }))
+const api = vi.hoisted(() => ({ load: vi.fn(), save: vi.fn(), snapshot: vi.fn(), mix: vi.fn(), volumes: vi.fn() }))
 vi.mock('@/client/apiClient', async importOriginal => ({
   ...await importOriginal<typeof import('@/client/apiClient')>(),
   getApiV1TablesByTableIdSettings: api.load,
+  getTablePlayback: api.snapshot,
+  putTableMix: api.mix,
+  patchTableMixVolumes: api.volumes,
   patchApiV1TablesByTableIdSettings: api.save,
 }))
 vi.mock('@/components/AudioPlayer.vue', () => ({ default: { template: '<div />' } }))
@@ -28,6 +31,9 @@ beforeEach(() => {
     data: { masterVolume: 45, typeVolumes: { Music: 0 }, trackOrder: ['forest'] },
   })
   api.save.mockResolvedValue({})
+  api.snapshot.mockResolvedValue({ data: { revision: 1, tracks: [], settings: { masterVolume: 45, typeVolumes: { Music: 0 }, trackOrder: ["forest"] } } })
+  api.mix.mockResolvedValue({})
+  api.volumes.mockResolvedValue({})
   useTableStore().current = { id: 'friday-internal', externalID: 'friday', name: 'Friday' }
   vi.spyOn(useFileStore(), 'fetchFiles').mockResolvedValue()
   vi.spyOn(useTrackTypeStore(), 'fetchTrackTypes').mockResolvedValue()
@@ -39,39 +45,43 @@ beforeEach(() => {
 it('restores GM playback from the server without echoing remote mix changes or stopping on departure', async () => {
   const ws = useWebSocketStore()
   const receive = routeMessages(ws)
-  const send = vi.spyOn(ws, 'sendEvent').mockImplementation(() => {})
   const wrapper = shallowMount(TableViewGM)
   try {
     await flushPromises()
+    let finishSnapshot!: (value: { data: { revision: number, tracks: [] } }) => void
+    api.snapshot.mockImplementationOnce(() => new Promise(resolve => { finishSnapshot = resolve }))
     ws.isConnected = true
     await flushPromises()
-    expect(send).toHaveBeenCalledExactlyOnceWith('playbackSyncRequested', {})
+    expect(api.snapshot).toHaveBeenCalledTimes(2)
     receive({ event: 'mixerReady', payload: {} })
-    expect(send).not.toHaveBeenCalledWith('mixChanged', expect.anything())
     receive({
       event: 'playbackStateChanged',
       payload: {
+        revision: 2,
         tracks: [snapshotTrack({ currentTime: 12, volume: 20 })],
         settings: { masterVolume: 80, typeVolumes: { Music: 30 }, trackOrder: ['forest'] },
       },
     })
     expect(useAudioStore().tracks.forest).toMatchObject({ isPlaying: true, currentTime: 12, volume: 20 })
-    expect(send).toHaveBeenCalledWith('mixChanged', {
+    await flushPromises()
+    expect(api.mix).toHaveBeenLastCalledWith({ path: { tableID: 'friday' }, body: {
       tracks: [expect.objectContaining({ fileID: 'forest', currentTime: 12, volume: 20 })],
       typeVolumes: { Music: 30 },
-    })
+    } })
     expect(useAudioStore().mixMasterVolume).toBe(80)
+    finishSnapshot({ data: { revision: 1, tracks: [] } })
+    await flushPromises()
+    expect(useAudioStore().tracks.forest?.isPlaying).toBe(true)
     await vi.advanceTimersByTimeAsync(250)
     expect(api.save).not.toHaveBeenCalled()
     ws.isConnected = false
     await flushPromises()
     ws.isConnected = true
     await flushPromises()
-    expect(send).toHaveBeenCalledTimes(3)
+    expect(api.snapshot).toHaveBeenCalledTimes(3)
   } finally {
     wrapper.unmount()
   }
-  expect(send.mock.calls.map(([method]) => method)).toEqual(['playbackSyncRequested', 'mixChanged', 'playbackSyncRequested'])
 })
 
 afterEach(() => {
@@ -138,7 +148,6 @@ it('does not connect or overwrite a mix when loading fails or navigation superse
 
 it('bootstraps the opt-in mixer, sends live type volumes, and surfaces mixer failures', async () => {
   const ws = useWebSocketStore()
-  const send = vi.spyOn(ws, 'sendEvent').mockImplementation(() => {})
   const handler = routeMessages(ws)
   ws.isConnected = true
   const audio = useAudioStore()
@@ -149,24 +158,27 @@ it('bootstraps the opt-in mixer, sends live type volumes, and surfaces mixer fai
     audio.updateTrackState('forest', { isPlaying: true, currentTime: 3, volume: 40 })
     handler({ event: 'mixerReady', payload: {} })
     await flushPromises()
-    expect(send).not.toHaveBeenCalledWith('mixChanged', expect.anything())
     handler({ event: 'playbackStateChanged', payload: {
+      revision: 2,
       tracks: [snapshotTrack({ currentTime: 3, volume: 40 })],
       settings: { masterVolume: 45, typeVolumes: { Music: 0 }, trackOrder: ['forest'] },
     } })
     await flushPromises()
-    expect(send).toHaveBeenCalledWith('mixChanged', {
+    await flushPromises()
+    expect(api.mix).toHaveBeenLastCalledWith({ path: { tableID: 'friday' }, body: {
       tracks: [expect.objectContaining({ fileID: 'forest', currentTime: 3, volume: 40 })],
       typeVolumes: { Music: 0 },
-    })
+    } })
     audio.setTypeVolume('Music', 25)
     await flushPromises()
-    expect(send).toHaveBeenCalledWith('mixVolumesChanged', { typeVolumes: { Music: 25 } })
+    await vi.advanceTimersByTimeAsync(100)
+    expect(api.volumes).toHaveBeenCalledWith({ path: { tableID: 'friday' }, body: { typeVolumes: { Music: 25 } } })
     handler({ event: 'mixerFailed', payload: { event: 'mixChanged', message: 'Unable to decode audio.' } })
     await flushPromises()
     expect(wrapper.findAllComponents({ name: 'ErrorToast' })[1]!.props('modelValue')).toContain('Unable to decode audio.')
     handler({ event: 'mixerReady', payload: {} })
     handler({ event: 'playbackStateChanged', payload: {
+      revision: 2,
       tracks: [snapshotTrack({ currentTime: 3, volume: 40 })],
       settings: { masterVolume: 45, typeVolumes: { Music: 0 }, trackOrder: ['forest'] },
     } })
@@ -181,7 +193,6 @@ it('bootstraps the opt-in mixer, sends live type volumes, and surfaces mixer fai
 
 it('keeps browser playback available without a server-mix monitoring toggle', async () => {
   const ws = useWebSocketStore()
-  vi.spyOn(ws, 'sendEvent').mockImplementation(() => {})
   const handler = routeMessages(ws)
   ws.isConnected = true
   const wrapper = shallowMount(TableViewGM)
@@ -203,7 +214,6 @@ function routeMessages(ws: ReturnType<typeof useWebSocketStore>) {
   vi.spyOn(ws, 'onMixerReady').mockImplementation(router.subscriptions.onMixerReady)
   vi.spyOn(ws, 'onMixerApplied').mockImplementation(router.subscriptions.onMixerApplied)
   vi.spyOn(ws, 'onMixerFailed').mockImplementation(router.subscriptions.onMixerFailed)
-  vi.spyOn(ws, 'onPlaybackFailed').mockImplementation(router.subscriptions.onPlaybackFailed)
   return (message: Message) => router.dispatch(message)
 }
 

@@ -17,8 +17,8 @@ polling. Initial loads and reconnect reconciliation fetch authoritative state.
 | `stores/auth.ts` | GM session role, credentials, and logout ([authentication](../backend/authentication.md)) |
 | `stores/files.ts`, `stores/trackTypes.ts`, `stores/tables.ts` | Library, track-type, table, and association metadata through the generated SDK |
 | `stores/audio.ts` | Per-file playback state, [synchronization](../playback/synchronization.md) reconciliation, fades, master/type volumes |
-| `stores/websocket.ts` | Socket connection/reconnection, typed event sending, named subscriptions such as `onTrackRemoved`, and message history ([protocol](../playback/websocket-protocol.md)) |
-| `stores/debug.ts` | Development-only debug panel state |
+| `stores/playbackCommands.ts` | Queued HTTP playback and Discord mixer commands ([synchronization](../playback/synchronization.md)) |
+| `stores/websocket.ts` | Socket connection/reconnection and named subscriptions to server events such as `onTrackRemoved` ([protocol](../playback/websocket-protocol.md)) |
 | `stores/clientPreferences.ts` | Browser-persisted [screen-awake](./screen-wake-lock.md) preference |
 | `composables/` | Shared app-bar state, browser origin, immutable partial-object patches, screen wake-lock lifecycle |
 | `FileList`, `AudioControls`, `PlayingTrackList`, `TrackPlaybackControls`, `TrackTimeline`, `AudioUploader` | [Shared-library](./shared-library.md) metadata management and [uploads](./add-track-dialog.md); table associations, responsive [now-playing](./now-playing.md) surfaces, and shared playback controls ([track editor](./track-editor.md)) |

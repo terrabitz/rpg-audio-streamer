@@ -2,6 +2,7 @@
 import { changePassword, getProfile, type Profile } from '@/client/apiClient'
 import { onMounted, ref } from 'vue'
 
+const emit = defineEmits<{ loaded: [] }>()
 const profile = ref<Profile>()
 const currentPassword = ref('')
 const password = ref('')
@@ -16,6 +17,7 @@ onMounted(async () => {
   } catch (e) {
     error.value = typeof e === 'string' ? e : 'Unable to load authentication settings.'
   }
+  emit('loaded')
 })
 
 async function submit() {

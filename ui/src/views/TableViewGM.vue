@@ -4,25 +4,31 @@ import FileList from '@/components/FileList.vue';
 import TableActions from '@/components/TableActions.vue';
 import ErrorToast from '@/components/ErrorToast.vue';
 import { useAppBar } from '@/composables/useAppBar';
+import { usePageLoading } from '@/composables/pageLoading';
+import { usePlaybackSnapshot } from '@/composables/playbackSnapshot';
 import { useAudioStore } from '@/stores/audio';
 import { useFileStore } from '@/stores/files';
 import { useTrackTypeStore } from '@/stores/trackTypes';
 import { useTableStore } from '@/stores/tables';
 import { useWebSocketStore } from '@/stores/websocket';
-import type { Snapshot } from '@/websocket/protocol';
-import type { TableSettingsPatch } from '@/client/apiClient';
+import { usePlaybackCommands } from '@/stores/playbackCommands';
+import { getApiV1TablesByTableIdDiscord, type DiscordStatus, type LivePlaybackSnapshot, type TableSettingsPatch } from '@/client/apiClient';
 import debounce from 'lodash.debounce';
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 
 const audioStore = useAudioStore()
 const wsStore = useWebSocketStore()
+const commands = usePlaybackCommands()
 const tables = useTableStore()
 const error = ref('')
 const mixerError = ref('')
 const mixerEnabled = ref(false)
 let mixerSyncPending = false
+let connectionSynchronized = false
 const ready = ref(false)
 const synchronized = ref(false)
+const discordStatus = ref<DiscordStatus>()
+const page = usePageLoading()
 const externalID = computed(() => tables.current!.externalID)
 let disposed = false
 let subscriptions: (() => void)[] = []
@@ -36,6 +42,14 @@ const saveMix = debounce(() => {
   savingMix.push(patch)
   void tables.saveSettings(externalID.value, patch).then(() => { savingMix.shift() })
 }, 200)
+const sendMixVolumes = debounce(() => {
+  if (mixerEnabled.value && wsStore.isConnected) {
+    void commands.mixVolumes(externalID.value, effectiveTypeVolumes()).catch(reportMixerError)
+  }
+}, 100)
+const snapshots = usePlaybackSnapshot(handleSyncAll, () => {
+  error.value = 'Unable to synchronize playback. Reload the table and try again.'
+})
 
 watch(snapshotMix, (mix, previous) => {
   if (!ready.value || applyingRemote || !mix || !previous) return
@@ -44,14 +58,18 @@ watch(snapshotMix, (mix, previous) => {
   if (mixerEnabled.value && wsStore.isConnected &&
       (mix.masterVolume !== previous.masterVolume ||
         JSON.stringify(mix.typeVolumes) !== JSON.stringify(previous.typeVolumes))) {
-    wsStore.sendEvent('mixVolumesChanged', { typeVolumes: effectiveTypeVolumes() })
+    sendMixVolumes()
   }
   saveMix()
 }, { flush: 'sync' })
 
+watch(() => (ready.value && synchronized.value) || !!error.value, (settled) => {
+  if (settled) page.finish()
+})
+
 const { setTitle, setActions } = useAppBar()
 
-function handleSyncAll(payload: Snapshot) {
+function handleSyncAll(payload: LivePlaybackSnapshot) {
   const settings = payload.settings
   if (!settings) {
     console.error('GM playback snapshot is missing table settings')
@@ -75,20 +93,25 @@ function handleSyncAll(payload: Snapshot) {
     applyingRemote = false
   }
   synchronized.value = true
-  if (mixerSyncPending) {
-    mixerSyncPending = false
-    wsStore.sendEvent('mixChanged', {
-      tracks: adjustedTracks(),
-      typeVolumes: effectiveTypeVolumes(),
-    })
-  }
+  connectionSynchronized = wsStore.isConnected
+  syncMixer()
   if (payload.tracks.some(track => !tables.tracks.some(file => file.id === track.fileID))) {
     void refreshTracks()
   }
 }
 
-function adjustedTracks() {
-  return audioStore.getPlayingTracks()
+function syncMixer() {
+  if (!mixerSyncPending || !connectionSynchronized) return
+  mixerSyncPending = false
+  void commands.replaceMix(externalID.value, {
+    tracks: audioStore.getPlayingTracks(),
+    typeVolumes: effectiveTypeVolumes(),
+  }).catch(reportMixerError)
+}
+
+function reportMixerError(cause: unknown) {
+  console.error('Failed to send Discord mixer command:', cause)
+  if (!disposed) mixerError.value = 'Unable to update the Discord mix.'
 }
 
 async function refreshTracks() {
@@ -105,37 +128,48 @@ async function refreshTracks() {
 }
 
 watch(() => wsStore.isConnected, (connected) => {
-  synchronized.value = false
-  if (connected) wsStore.sendEvent('playbackSyncRequested', {})
+  snapshots.reset()
+  connectionSynchronized = false
+  if (connected) void snapshots.refresh(externalID.value)
+  else {
+    mixerSyncPending = false
+    mixerEnabled.value = false
+    sendMixVolumes.cancel()
+  }
 })
 
 onMounted(async () => {
   subscriptions = [
-    wsStore.onPlaybackStateChanged(handleSyncAll),
+    wsStore.onPlaybackStateChanged(snapshots.accept),
     wsStore.onMixerReady(() => {
       mixerEnabled.value = true
       mixerSyncPending = true
+      syncMixer()
     }),
     wsStore.onMixerFailed(payload => { mixerError.value = payload.message }),
     wsStore.onMixerApplied(payload => {
       if (payload.event === 'mixChanged') mixerError.value = ''
     }),
-    wsStore.onPlaybackFailed(payload => { error.value = payload.message }),
   ]
   setTitle(tables.current?.name ?? 'Table')
   window.addEventListener('pagehide', flushMix)
   try {
     const settings = await tables.loadSettings(externalID.value)
-    await Promise.all([
+    const [discord] = await Promise.all([
+      getApiV1TablesByTableIdDiscord<true>({ path: { tableID: externalID.value } })
+        .then(({ data }) => data)
+        .catch(() => undefined),
       useFileStore().fetchFiles(),
       useTrackTypeStore().fetchTrackTypes(),
       tables.fetchTracks(externalID.value),
     ])
     if (disposed) return
+    discordStatus.value = discord
     audioStore.loadTableMix(settings)
     audioStore.enabled = true
     ready.value = true
     setActions([TableActions])
+    void snapshots.refresh(externalID.value)
     await wsStore.connect(externalID.value)
   } catch (e) {
     console.error('Failed to connect table:', e)
@@ -145,6 +179,8 @@ onMounted(async () => {
 
 onUnmounted(() => {
   disposed = true
+  snapshots.reset()
+  sendMixVolumes.cancel()
   flushMix()
   window.removeEventListener('pagehide', flushMix)
   ready.value = false
@@ -187,5 +223,5 @@ function effectiveTypeVolumes() {
   <v-btn v-if="tables.failedSettings[externalID]" variant="text"
     @click="tables.saveSettings(externalID, {})">Retry saving</v-btn>
   <AudioPlayer v-if="ready" :tableID="externalID" @error="error = $event" />
-  <FileList v-if="ready && wsStore.isConnected && synchronized" />
+  <FileList v-if="ready && synchronized" :discord-status="discordStatus" />
 </template>

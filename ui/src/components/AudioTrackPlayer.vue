@@ -12,7 +12,7 @@ import Hls from 'hls.js'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { defaultPlayback, playbackError, playbackRegion, seekLimit } from '@/composables/playback'
 import { useAudioStore, type AudioTrack } from '../stores/audio'
-import { useWebSocketStore } from '../stores/websocket'
+import { usePlaybackCommands } from '@/stores/playbackCommands'
 
 const props = defineProps<{ fileID: string, tableID?: string, instantMixerVolume?: boolean }>()
 const emit = defineEmits<{ error: [message: string] }>()
@@ -390,9 +390,11 @@ function handleMetadata(index: number) {
 function updateDuration(duration: number) {
   if (!Number.isFinite(duration) || duration <= 0 || duration === audioStore.tracks[props.fileID]?.duration) return
   updatePlaybackState({ duration })
-  const ws = useWebSocketStore()
-  if (audioStore.tableMix && audioStore.tracks[props.fileID]?.isPlaying && ws.isConnected) {
-    ws.sendEvent('trackPlaybackChanged', { fileID: props.fileID, duration })
+  if (props.tableID && audioStore.tableMix && audioStore.tracks[props.fileID]?.isPlaying) {
+    void usePlaybackCommands().patch(props.tableID, props.fileID, { duration }).catch(cause => {
+      console.error('Failed to report playback duration:', cause)
+      emit('error', 'Unable to update playback duration.')
+    })
   }
 }
 

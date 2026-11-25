@@ -85,14 +85,13 @@ func TestPlaybackSubscriptionsReceiveOnlyValidatedChanges(t *testing.T) {
 	}
 	var changes []PlaybackPatch
 	events.OnPlaybackChanged(hub, func(payload events.PlaybackChanges[events.PlaybackPatch], metadata events.Metadata) error {
-		if metadata != clients["gm"].metadata() {
+		if metadata.TableID != server.DefaultTableID.String() || metadata.ClientID != "" {
 			t.Errorf("accepted playback has incorrect scope: %+v", metadata)
 		}
 		changes = append(changes, payload.Tracks...)
 		return nil
 	})
 	play := json.RawMessage(`{"fileID":"` + testTrackID.String() + `","isPlaying":true}`)
-	routeSyncTrack(hub, play, clients["player"])
 	routeSyncTrack(hub, json.RawMessage(`{"fileID":"invalid","isPlaying":true}`), clients["gm"])
 	routeSyncTrack(hub, json.RawMessage(`{"fileID":"`+testTrackID.String()+`","volume":101}`), clients["gm"])
 	if len(changes) != 0 {
@@ -190,23 +189,7 @@ func TestSocketSubscriptionsAreRemovedWithTheirConnection(t *testing.T) {
 	}
 }
 
-func TestLibraryBroadcastDoesNotCrossIntoTableSubscriptions(t *testing.T) {
-	hub, clients := testHub()
-	clients["otherGM"].Token.TableID = "friday"
-	clients["player"].Token.TableID = "friday"
-	hub.route([]byte(`{"event":"broadcast","payload":{"hello":"library"}}`), clients["gm"])
-	for id, client := range clients {
-		want := 0
-		if id == "otherPlayer" {
-			want = 1
-		}
-		if got := len(client.send); got != want {
-			t.Errorf("%s received %d library events; want %d", id, got, want)
-		}
-	}
-}
-
-func TestMixerAnnouncesReadinessBeforeInitialSnapshot(t *testing.T) {
+func TestMixerAnnouncesReadinessOnConnection(t *testing.T) {
 	hub, _ := testHub()
 	stop := livemixer.Subscribe(hub, &testMixer{})
 	ctx, cancel := context.WithCancel(context.Background())
@@ -238,11 +221,8 @@ func TestMixerAnnouncesReadinessBeforeInitialSnapshot(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer conn.Close()
-	if err := conn.WriteJSON(Message{Event: events.PlaybackSyncRequested, Payload: json.RawMessage(`{}`)}); err != nil {
-		t.Fatal(err)
-	}
 	conn.SetReadDeadline(time.Now().Add(3 * time.Second))
-	for _, name := range []string{events.MixerReady, events.PlaybackStateChanged} {
+	for _, name := range []string{events.MixerReady} {
 		var message Message
 		if err := conn.ReadJSON(&message); err != nil || message.Event != name {
 			t.Fatalf("connection bootstrap = %+v, %v; want %s", message, err, name)

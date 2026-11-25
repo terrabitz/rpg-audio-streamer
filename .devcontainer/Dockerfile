@@ -68,3 +68,10 @@ ENV PKG_CONFIG_PATH="/opt/libdave/lib/pkgconfig" \
 
 # Some Docker DNS forwarders reject EDNS0 queries from the Go module client.
 ENV GODEBUG=netedns0=0
+
+ENV PLAYWRIGHT_BROWSERS_PATH=/opt/playwright
+RUN --mount=type=bind,source=ui/package-lock.json,target=/tmp/ui-package-lock.json \
+  version="$(node -p 'require("/tmp/ui-package-lock.json").packages["node_modules/playwright"].version')" \
+  && npm exec --yes --cache /tmp/npm-cache --package "playwright@$version" -- playwright install --with-deps chromium \
+  && rm -rf /tmp/npm-cache /var/lib/apt/lists/* \
+  && chown -R vscode:vscode "$PLAYWRIGHT_BROWSERS_PATH"

@@ -1,4 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
+import { usePageLoading } from '@/composables/pageLoading'
 import HomeView from '../views/HomeView.vue'
 
 const router = createRouter({
@@ -45,6 +46,12 @@ const router = createRouter({
       component: () => import('../views/JoinView.vue'),
     },
   ],
+})
+
+const page = usePageLoading()
+router.beforeEach(() => { page.start() })
+router.afterEach((_to, _from, failure) => {
+  if (failure) page.finish()
 })
 
 export default router

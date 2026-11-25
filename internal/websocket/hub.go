@@ -12,6 +12,7 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/terrabitz/rpg-audio-streamer/internal/auth"
 	"github.com/terrabitz/rpg-audio-streamer/internal/events"
+	"github.com/terrabitz/rpg-audio-streamer/internal/playback"
 	"github.com/terrabitz/rpg-audio-streamer/internal/server"
 )
 
@@ -24,37 +25,26 @@ type Hub struct {
 	register        chan *Client
 	unregister      chan *Client
 	logger          *slog.Logger
-	handlers        map[string]HandlerFunc
 	serverHandlers  map[string]HandlerFunc
 	subscriptionsMu sync.RWMutex
 	subscriptions   map[string][]*subscription
-	stateMu         sync.Mutex
-	playback        map[string]map[string]playingTrack
-	store           PlaybackStore
+	playback        *playback.Service
 }
 
 var ErrHubClosed = errors.New("websocket hub is closed")
 
-func NewHub(logger *slog.Logger, store PlaybackStore) *Hub {
+func NewHub(logger *slog.Logger, store playback.Store) *Hub {
 	hub := &Hub{
 		clients:        make(map[*Client]bool),
 		done:           make(chan struct{}),
 		register:       make(chan *Client),
 		unregister:     make(chan *Client),
 		logger:         logger,
-		handlers:       make(map[string]HandlerFunc),
 		serverHandlers: make(map[string]HandlerFunc),
 		subscriptions:  make(map[string][]*subscription),
-		playback:       make(map[string]map[string]playingTrack),
-		store:          store,
 	}
+	hub.playback = playback.New(logger, store, hub)
 
-	OnEvent(hub, events.Ping, hub.handlePing)
-	OnEvent(hub, events.Broadcast, hub.handleBroadcast)
-	OnEvent(hub, events.PlaybackSyncRequested, hub.handlePlaybackSyncRequested)
-	OnEvent(hub, events.TrackPlaybackChanged, hub.handleTrackPlaybackChanged)
-	OnEvent(hub, events.MixChanged, hub.handleMixChanged)
-	OnEvent(hub, events.MixVolumesChanged, hub.handleMixVolumesChanged)
 	OnServerEvent(hub, events.TableDeleted, hub.handleTableDeleted)
 	OnServerEvent(hub, events.TrackRemoved, hub.handleTrackRemoved)
 	OnServerEvent(hub, events.TableSettingsChanged, hub.handleTableSettingsChanged)
@@ -64,8 +54,40 @@ func NewHub(logger *slog.Logger, store PlaybackStore) *Hub {
 	OnServerEvent(hub, events.MixerReady, hub.handleMixerReady)
 	OnServerEvent(hub, events.MixerApplied, hub.handleMixerApplied)
 	OnServerEvent(hub, events.MixerFailed, hub.handleMixerFailed)
+	OnServerEvent(hub, events.MixChanged, func(event events.TableEvent[events.MixSnapshot], _ *Client) {
+		hub.notify(events.MixChanged, event.Data, events.Metadata{TableID: event.TableID, Role: auth.RoleGM})
+	})
+	OnServerEvent(hub, events.MixVolumesChanged, func(event events.TableEvent[events.MixVolumePatch], _ *Client) {
+		hub.notify(events.MixVolumesChanged, event.Data, events.Metadata{TableID: event.TableID, Role: auth.RoleGM})
+	})
 
 	return hub
+}
+
+func (h *Hub) Playback() *playback.Service { return h.playback }
+
+func (h *Hub) refreshPlayback() {
+	connected := make(map[string]bool)
+	h.ForEachClient(func(client *Client) { connected[client.Token.TableID] = true })
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	h.playback.Refresh(ctx, connected)
+}
+
+func (h *Hub) handleTrackUpdated(fileID string, _ *Client) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := h.playback.TrackUpdated(ctx, fileID); err != nil {
+		h.logger.Error("failed to synchronize track update", "error", err, "trackID", fileID)
+	}
+}
+
+func (h *Hub) handleTableSettingsChanged(event events.TableEvent[server.TableSettingsPatch], _ *Client) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := h.playback.SettingsChanged(ctx, event.TableID); err != nil {
+		h.logger.Error("failed to synchronize table settings", "error", err, "tableID", event.TableID)
+	}
 }
 
 func (h *Hub) Run(ctx context.Context) {
@@ -130,9 +152,7 @@ func (h *Hub) addClient(client *Client) {
 }
 
 func (h *Hub) handleTableDeleted(tableID string, _ *Client) {
-	h.stateMu.Lock()
-	delete(h.playback, tableID)
-	h.stateMu.Unlock()
+	h.playback.DeleteTable(tableID)
 	if err := h.publishEvent(events.TableDeleted, Empty{}, events.Metadata{TableID: tableID}); err != nil {
 		h.logger.Error("failed to announce table deletion", "error", err)
 	}
@@ -157,15 +177,7 @@ func (h *Hub) RevokePlayerAccess(tableID string) {
 
 func (h *Hub) handleTrackRemoved(event events.TableEvent[events.TrackReference], _ *Client) {
 	tableID, trackID := event.TableID, event.Data.FileID
-	h.stateMu.Lock()
-	if tableID == "" {
-		for _, tracks := range h.playback {
-			delete(tracks, trackID)
-		}
-	} else {
-		delete(h.playback[tableID], trackID)
-	}
-	h.stateMu.Unlock()
+	h.playback.RemoveTrack(tableID, trackID)
 	if err := h.publishEvent(events.TrackRemoved, TrackReference{FileID: trackID}, events.Metadata{TableID: tableID, Global: tableID == ""}); err != nil {
 		h.logger.Error("failed to announce track removal", "error", err)
 	}
@@ -237,55 +249,11 @@ func (h *Hub) SendEvent(event string, payload any) error {
 	if err != nil {
 		return fmt.Errorf("encode event %q: %w", event, err)
 	}
-	return h.dispatch(message, nil)
-}
-
-func (h *Hub) route(message []byte, c *Client) {
-	var msg Message
-	if err := json.Unmarshal(message, &msg); err != nil {
-		h.logger.Error("could not decode websocket event", "error", err)
-		return
-	}
-	msg.SenderID = c.ID
-	if err := h.dispatch(msg, c); err != nil {
-		h.logger.Error("could not handle websocket event", "event", msg.Event, "error", err)
-		if c.conn != nil {
-			c.conn.Close()
-		}
-	}
-}
-
-func (h *Hub) dispatch(msg Message, c *Client) error {
 	if err := h.beginDispatch(); err != nil {
 		return err
 	}
 	defer h.inFlight.Done()
-	if c == nil {
-		h.serverHandlers[msg.Event](msg.Payload, nil)
-		return nil
-	}
-	h.clientsMu.RLock()
-	closed := c.closed
-	h.clientsMu.RUnlock()
-	if closed {
-		return nil
-	}
-	fn, ok := h.handlers[msg.Event]
-	if !ok {
-		h.logger.Warn("unknown client event",
-			slog.String("event", msg.Event),
-			slog.String("senderId", msg.SenderID),
-		)
-		return nil
-	}
-
-	h.logger.Debug("executing WS handler",
-		slog.String("event", msg.Event),
-		slog.String("payload", string(msg.Payload)),
-		slog.String("senderId", msg.SenderID),
-	)
-
-	fn(msg.Payload, c)
+	h.serverHandlers[event](message.Payload, nil)
 	return nil
 }
 

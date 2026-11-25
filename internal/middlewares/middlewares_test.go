@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -43,6 +44,14 @@ func TestCORS(t *testing.T) {
 			}
 			if tc.method == "OPTIONS" && rec.Code != http.StatusOK {
 				t.Errorf("preflight status = %d", rec.Code)
+			}
+			if tc.method == "OPTIONS" && tc.permit &&
+				!strings.Contains(rec.Header().Get("Access-Control-Allow-Methods"), "PUT, PATCH") {
+				t.Error("allowed preflight did not advertise playback and mixer methods")
+			}
+			if tc.method == "OPTIONS" && tc.permit &&
+				!strings.Contains(rec.Header().Get("Access-Control-Allow-Headers"), "Authorization") {
+				t.Error("allowed preflight did not permit the Authorization header")
 			}
 		})
 	}

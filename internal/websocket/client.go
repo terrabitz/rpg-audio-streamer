@@ -85,17 +85,20 @@ func (c *Client) ReadPump() {
 	})
 
 	for {
-		_, message, err := c.conn.ReadMessage()
+		// Read control frames (in particular pong) without accepting application commands.
+		_, _, err := c.conn.NextReader()
 		if err != nil {
 			break
 		}
-
-		c.hub.route(message, c)
 	}
 }
 
 func (c *Client) WritePump() {
-	ticker := time.NewTicker(pingPeriod)
+	c.writePump(pingPeriod)
+}
+
+func (c *Client) writePump(interval time.Duration) {
+	ticker := time.NewTicker(interval)
 	defer func() {
 		ticker.Stop()
 		c.conn.Close()

@@ -4,6 +4,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import { nextTick } from 'vue'
 import TableViewPlayer from '../TableViewPlayer.vue'
 import { useAudioStore } from '@/stores/audio'
+import { usePlaybackCommands } from '@/stores/playbackCommands'
 import { useWebSocketStore } from '@/stores/websocket'
 
 vi.mock('vue-router', () => ({ useRoute: () => ({ params: { externalID: 'table' } }) }))
@@ -56,7 +57,7 @@ it('shows connection status on the disconnect button and returns to connect when
   const audio = useAudioStore()
   const ws = useWebSocketStore()
   vi.spyOn(ws, 'disconnect').mockImplementation(() => { ws.isConnected = false })
-  vi.spyOn(ws, 'sendEvent').mockImplementation(() => {})
+  vi.spyOn(usePlaybackCommands(), 'snapshot').mockResolvedValue({ revision: 1, tracks: [] })
   const wrapper = shallowMount(TableViewPlayer, { global: { renderStubDefaultSlot: true } })
   try {
     audio.enabled = true
@@ -85,7 +86,7 @@ it('keeps the connect button primary while audio is connecting', async () => {
   let resolveConnection!: () => void
   vi.spyOn(ws, 'connect').mockReturnValue(new Promise<void>(resolve => { resolveConnection = resolve }))
   vi.spyOn(ws, 'disconnect').mockImplementation(() => { ws.isConnected = false })
-  vi.spyOn(ws, 'sendEvent').mockImplementation(() => {})
+  vi.spyOn(usePlaybackCommands(), 'snapshot').mockResolvedValue({ revision: 1, tracks: [] })
   const wrapper = shallowMount(TableViewPlayer, { global: { renderStubDefaultSlot: true } })
   try {
     const button = wrapper.get('v-btn-stub')

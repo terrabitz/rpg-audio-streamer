@@ -8,6 +8,7 @@ import { useFileStore } from '@/stores/files'
 import { useTrackTypeStore } from '@/stores/trackTypes'
 import { useTableStore } from '@/stores/tables'
 import { useWebSocketStore } from '@/stores/websocket'
+import { usePlaybackCommands } from '@/stores/playbackCommands'
 import type { TrackStatusUpdate } from '@/websocket/protocol'
 
 vi.mock('vuetify', async (importOriginal) => ({
@@ -19,8 +20,8 @@ it.each([0, 25])('sends the selected volume (%s) with the first play command', a
   const { wrapper, send } = await mountTableCards()
   useAudioStore().updateTrackState('forest', { volume })
   await wrapper.get('[aria-label="Forest"]').trigger('click')
-  expect(send).toHaveBeenCalledWith('trackPlaybackChanged', {
-    fileID: 'forest', isPlaying: true, duration: 0, volume,
+  expect(send).toHaveBeenCalledWith('friday', 'forest', {
+    isPlaying: true, duration: 0, volume,
   })
   wrapper.unmount()
 })
@@ -34,8 +35,8 @@ it.each([false, true])('plays from the configured start through the context menu
   await wrapper.get('[aria-label="Forest"]').trigger('contextmenu', { clientX: 120, clientY: 80 })
   expect(send).not.toHaveBeenCalled()
   await wrapper.get('[role="menuitem"]').trigger('click')
-  expect(send).toHaveBeenCalledExactlyOnceWith('trackPlaybackChanged', {
-    fileID: 'forest', isPlaying: true, duration: 100, currentTime: 10, volume: 25,
+  expect(send).toHaveBeenCalledExactlyOnceWith('friday', 'forest', {
+    isPlaying: true, duration: 100, currentTime: 10, volume: 25,
   })
   expect(wrapper.find('[role="menu"]').exists()).toBe(false)
   wrapper.unmount()
@@ -70,14 +71,14 @@ it('long-presses without toggling playback and cancels a scrolling gesture', asy
   }
 })
 
-it('disables restart when disconnected or processing and supports a keyboard menu', async () => {
+it('allows restart while disconnected but not while processing and supports a keyboard menu', async () => {
   const { wrapper, send } = await mountTableCards()
   const tile = wrapper.get('[aria-label="Forest"]')
   await tile.trigger('keydown', { key: 'F10', shiftKey: true })
   expect(wrapper.find('[role="menu"]').exists()).toBe(true)
   useWebSocketStore().isConnected = false
   await flushPromises()
-  expect(wrapper.get('[role="menuitem"]').attributes('disabled')).toBeDefined()
+  expect(wrapper.get('[role="menuitem"]').attributes('disabled')).toBeUndefined()
   useWebSocketStore().isConnected = true
   useFileStore().tracks[0]!.status = 'processing'
   await flushPromises()
@@ -91,6 +92,7 @@ async function mountTableCards() {
   setActivePinia(pinia)
   const files = useFileStore()
   files.tracks = [{ id: 'forest', name: 'Forest', typeID: 'music', path: '/forest', createdAt: '2026-01-01T00:00:00Z', volume: 100 }]
+  useTableStore().current = { id: 'internal', externalID: 'friday', name: 'Friday' }
   useTableStore().tracks = files.tracks
   const types = useTrackTypeStore()
   types.trackTypes = [{
@@ -100,7 +102,7 @@ async function mountTableCards() {
   vi.spyOn(types, 'fetchTrackTypes').mockResolvedValue()
   const ws = useWebSocketStore()
   ws.isConnected = true
-  const send = vi.spyOn(ws, 'sendEvent').mockImplementation(() => {})
+  const send = vi.spyOn(usePlaybackCommands(), 'patch').mockResolvedValue(undefined)
   const wrapper = mount(FileList, {
     global: {
       plugins: [pinia],

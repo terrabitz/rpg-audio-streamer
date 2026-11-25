@@ -75,13 +75,7 @@ type TrackStore interface {
 	SaveTrackWaveform(ctx context.Context, trackID uuid.UUID, waveform musicprocessing.Waveform) error
 }
 
-type TrackType struct {
-	ID                    uuid.UUID `json:"id,omitempty"`
-	Name                  string    `json:"name,omitempty"`
-	Color                 string    `json:"color,omitempty"`
-	IsRepeating           bool      `json:"isRepeating"`
-	AllowSimultaneousPlay bool      `json:"allowSimultaneousPlay"`
-}
+type TrackType = domain.TrackType
 
 type TrackTypeStore interface {
 	GetTrackTypes(ctx context.Context) ([]TrackType, error)
