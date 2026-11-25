@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/terrabitz/rpg-audio-streamer/internal/domain"
 )
 
 func TestUploadSurvivesRequestCancellation(t *testing.T) {
@@ -191,7 +192,7 @@ func TestRecoverInterruptedProcessing(t *testing.T) {
 
 func testService(t *testing.T) (*Service, *memoryStore, *recordingNotifier) {
 	t.Helper()
-	store := &memoryStore{tracks: make(map[uuid.UUID]Track)}
+	store := &memoryStore{tracks: make(map[uuid.UUID]domain.Track)}
 	notifier := &recordingNotifier{}
 	downloader := &blockingDownloader{started: make(chan struct{})}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -232,11 +233,11 @@ func waitStatus(t *testing.T, store *memoryStore, id uuid.UUID, status string) {
 
 type memoryStore struct {
 	mu      sync.Mutex
-	tracks  map[uuid.UUID]Track
+	tracks  map[uuid.UUID]domain.Track
 	tableID uuid.UUID
 }
 
-func (s *memoryStore) SaveTrack(ctx context.Context, track *Track) error {
+func (s *memoryStore) SaveTrack(ctx context.Context, track *domain.Track) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -246,15 +247,15 @@ func (s *memoryStore) SaveTrack(ctx context.Context, track *Track) error {
 	return nil
 }
 
-func (s *memoryStore) SaveTrackToTable(ctx context.Context, track *Track, tableID uuid.UUID) error {
+func (s *memoryStore) SaveTrackToTable(ctx context.Context, track *domain.Track, tableID uuid.UUID) error {
 	s.tableID = tableID
 	return s.SaveTrack(ctx, track)
 }
 
-func (s *memoryStore) GetTracks(ctx context.Context) ([]Track, error) {
+func (s *memoryStore) GetTracks(ctx context.Context) ([]domain.Track, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	tracks := make([]Track, 0, len(s.tracks))
+	tracks := make([]domain.Track, 0, len(s.tracks))
 	for _, track := range s.tracks {
 		tracks = append(tracks, track)
 	}
@@ -273,11 +274,11 @@ func (s *memoryStore) SetTrackProcessing(ctx context.Context, id uuid.UUID, stat
 	return nil
 }
 
-func (s *memoryStore) SaveTrackWaveform(ctx context.Context, _ uuid.UUID, _ Waveform) error {
+func (s *memoryStore) SaveTrackWaveform(ctx context.Context, _ uuid.UUID, _ domain.Waveform) error {
 	return ctx.Err()
 }
 
-func (s *memoryStore) get(id uuid.UUID) Track {
+func (s *memoryStore) get(id uuid.UUID) domain.Track {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.tracks[id]
@@ -306,19 +307,19 @@ func (d *blockingDownloader) Download(ctx context.Context, _, _ string) error {
 
 type recordingNotifier struct {
 	mu     sync.Mutex
-	tracks []Track
+	tracks []domain.Track
 }
 
 func (n *recordingNotifier) SendEvent(_ string, payload any) error {
-	track := payload.(Track)
+	track := payload.(domain.Track)
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	n.tracks = append(n.tracks, track)
 	return nil
 }
 
-func (n *recordingNotifier) received() []Track {
+func (n *recordingNotifier) received() []domain.Track {
 	n.mu.Lock()
 	defer n.mu.Unlock()
-	return append([]Track(nil), n.tracks...)
+	return append([]domain.Track(nil), n.tracks...)
 }

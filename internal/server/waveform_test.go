@@ -11,7 +11,7 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
-	"github.com/terrabitz/rpg-audio-streamer/internal/musicprocessing"
+	"github.com/terrabitz/rpg-audio-streamer/internal/domain"
 )
 
 func TestRoutedWaveform(t *testing.T) {
@@ -30,7 +30,7 @@ func TestRoutedWaveform(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("waveform = %d: %s", rec.Code, rec.Body)
 	}
-	var waveform musicprocessing.Waveform
+	var waveform domain.Waveform
 	if err := json.Unmarshal(rec.Body.Bytes(), &waveform); err != nil {
 		t.Fatal(err)
 	}
@@ -82,10 +82,10 @@ func TestRoutedWaveformErrors(t *testing.T) {
 	}
 }
 
-func saveWaveformTrack(t *testing.T, ts *testServer) Track {
+func saveWaveformTrack(t *testing.T, ts *testServer) domain.Track {
 	t.Helper()
 	id := uuid.New()
-	track := Track{ID: id, Name: "Waves", TypeID: uuid.MustParse("1ec000a2-a7c9-11ee-a0e5-0242ac120002"),
+	track := domain.Track{ID: id, Name: "Waves", TypeID: uuid.MustParse("1ec000a2-a7c9-11ee-a0e5-0242ac120002"),
 		Path: filepath.Join(ts.tempDir, id.String())}
 	if err := os.Mkdir(track.Path, 0700); err != nil {
 		t.Fatal(err)

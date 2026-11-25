@@ -11,7 +11,6 @@ import (
 	"github.com/terrabitz/rpg-audio-streamer/internal/discord"
 	"github.com/terrabitz/rpg-audio-streamer/internal/domain"
 	"github.com/terrabitz/rpg-audio-streamer/internal/events"
-	"github.com/terrabitz/rpg-audio-streamer/internal/livemixer"
 )
 
 type testDiscord struct {
@@ -71,17 +70,6 @@ func (p *testPlaybackSnapshot) Update(context.Context, uuid.UUID, uuid.UUID, eve
 	return nil
 }
 
-type recordingDiscordHub struct {
-	*mockWSRegisterer
-	event   string
-	payload any
-}
-
-func (h *recordingDiscordHub) SendEvent(event string, payload any) error {
-	h.event, h.payload = event, payload
-	return nil
-}
-
 func TestDiscordRoutesRequireGMAndControlOnlyRequestedTable(t *testing.T) {
 	ts := setupTestServer(t)
 	defer ts.cleanup(t)
@@ -99,7 +87,7 @@ func TestDiscordRoutesRequireGMAndControlOnlyRequestedTable(t *testing.T) {
 		}
 	}
 	rec := routedRequest(ts.Handler(), "POST", path, `{"guildID":"1","channelID":"2"}`, true)
-	if rec.Code != http.StatusOK || bot.connected != DefaultTableID.String() {
+	if rec.Code != http.StatusOK || bot.connected != domain.DefaultTableID.String() {
 		t.Fatalf("connect: %d, table %q", rec.Code, bot.connected)
 	}
 	rec = routedRequest(ts.Handler(), "GET", path, "", true)
@@ -113,7 +101,7 @@ func TestDiscordRoutesRequireGMAndControlOnlyRequestedTable(t *testing.T) {
 		t.Fatalf("disconnect: %d, table %q", rec.Code, bot.connected)
 	}
 	rec = routedRequest(ts.Handler(), "POST", path, "", true)
-	if rec.Code != http.StatusOK || bot.connected != DefaultTableID.String() {
+	if rec.Code != http.StatusOK || bot.connected != domain.DefaultTableID.String() {
 		t.Fatalf("saved destination reconnect: %d %s", rec.Code, rec.Body)
 	}
 	for _, failure := range []struct {
@@ -127,55 +115,6 @@ func TestDiscordRoutesRequireGMAndControlOnlyRequestedTable(t *testing.T) {
 	}
 	if rec := routedRequest(ts.Handler(), "POST", "/api/v1/tables/not-an-id/discord", "", true); rec.Code != 404 {
 		t.Fatalf("invalid table: %d", rec.Code)
-	}
-}
-
-func TestDiscordReconnectRestoresLiveMixBeforeRetry(t *testing.T) {
-	ts := setupTestServer(t)
-	defer ts.cleanup(t)
-	ts.discord = &testDiscord{connectFailures: []error{discord.ErrNotReady}}
-	ts.mixer = &livemixer.Service{}
-	ts.playback = &testPlaybackSnapshot{snapshot: events.Snapshot{
-		Tracks: []events.PlaybackTrack{
-			{FileID: "playing", IsPlaying: true, IsRepeating: true, Volume: 40, CurrentTime: 12, Duration: 60},
-			{FileID: "paused", IsPlaying: false},
-		},
-		Settings: &domain.TableSettings{
-			MasterVolume: 50,
-			TypeVolumes:  map[string]float64{"Music": 50},
-		},
-	}}
-	hub := &recordingDiscordHub{mockWSRegisterer: &mockWSRegisterer{t: t}}
-	ts.hub = hub
-
-	path := "/api/v1/tables/" + testDefaultExternalID + "/discord"
-	rec := routedRequest(ts.Handler(), "POST", path, `{"guildID":"1","channelID":"2"}`, true)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("reconnect: %d %s", rec.Code, rec.Body)
-	}
-	bot := ts.discord.(*testDiscord)
-	if bot.connected != DefaultTableID.String() || len(bot.connectFailures) != 0 {
-		t.Fatalf("Discord was not retried successfully: connected=%q remaining failures=%d", bot.connected, len(bot.connectFailures))
-	}
-	if hub.event != events.MixChanged {
-		t.Fatalf("sent event %q, want %q", hub.event, events.MixChanged)
-	}
-	payload, ok := hub.payload.(events.TableEvent[events.MixSnapshot])
-	if !ok {
-		t.Fatalf("unexpected event payload type %T", hub.payload)
-	}
-	if payload.TableID != DefaultTableID.String() || len(payload.Data.Tracks) != 1 {
-		t.Fatalf("unexpected mix snapshot: %+v", payload)
-	}
-	track := payload.Data.Tracks[0]
-	if track.FileID != "playing" || track.IsPlaying == nil || !*track.IsPlaying ||
-		track.Volume == nil || *track.Volume != 40 ||
-		track.CurrentTime == nil || *track.CurrentTime != 12 ||
-		track.Duration == nil || *track.Duration != 60 {
-		t.Fatalf("unexpected playing track patch: %+v", track)
-	}
-	if payload.Data.TypeVolumes["Music"] != 25 || payload.Data.TypeVolumes["Ambiance"] != 50 {
-		t.Fatalf("unexpected effective type volumes: %+v", payload.Data.TypeVolumes)
 	}
 }
 

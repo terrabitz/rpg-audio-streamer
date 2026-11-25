@@ -8,6 +8,8 @@ import (
 	"math"
 	"os/exec"
 	"path/filepath"
+
+	"github.com/terrabitz/rpg-audio-streamer/internal/domain"
 )
 
 const (
@@ -15,24 +17,20 @@ const (
 	waveformSampleRate = 8000
 )
 
-type Waveform struct {
-	Peaks []float64 `json:"peaks"`
-}
-
-func GenerateWaveform(ctx context.Context, dir string) (Waveform, error) {
+func GenerateWaveform(ctx context.Context, dir string) (domain.Waveform, error) {
 	var stdout, stderr bytes.Buffer
 	cmd := exec.CommandContext(ctx, "ffmpeg", "-nostdin", "-v", "error", "-i", filepath.Join(dir, "index.m3u8"),
 		"-vn", "-ac", "1", "-ar", fmt.Sprint(waveformSampleRate), "-f", "f32le", "-")
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
-		return Waveform{}, fmt.Errorf("decode audio: %w: %s", err, stderr.String())
+		return domain.Waveform{}, fmt.Errorf("decode audio: %w: %s", err, stderr.String())
 	}
 	samples := make([]float32, stdout.Len()/4)
 	if err := binary.Read(&stdout, binary.LittleEndian, samples); err != nil {
-		return Waveform{}, fmt.Errorf("read samples: %w", err)
+		return domain.Waveform{}, fmt.Errorf("read samples: %w", err)
 	}
-	return Waveform{Peaks: waveformFromSamples(samples, waveformPeaks)}, nil
+	return domain.Waveform{Peaks: waveformFromSamples(samples, waveformPeaks)}, nil
 }
 
 // waveformFromSamples returns the peak amplitude of each of count equal time

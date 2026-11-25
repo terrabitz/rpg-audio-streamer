@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/terrabitz/rpg-audio-streamer/internal/server"
+	"github.com/terrabitz/rpg-audio-streamer/internal/domain"
 )
 
 func TestPlaybackPersistence(t *testing.T) {
@@ -18,12 +18,12 @@ func TestPlaybackPersistence(t *testing.T) {
 		t.Fatal(err)
 	}
 	end, loop := 50.5, 20.25
-	settings := server.PlaybackSettings{StartTime: 10, EndTime: &end, LoopBackTime: &loop}
-	track := server.Track{
+	settings := domain.PlaybackSettings{StartTime: 10, EndTime: &end, LoopBackTime: &loop}
+	track := domain.Track{
 		ID: uuid.New(), Name: "Boss", TypeID: types[0].ID, Path: "/uploads/boss",
 		CreatedAt: time.Now().UTC().Truncate(time.Second), Playback: settings,
 	}
-	if err := db.SaveTrackToTable(ctx, &track, server.DefaultTableID); err != nil {
+	if err := db.SaveTrackToTable(ctx, &track, domain.DefaultTableID); err != nil {
 		t.Fatal(err)
 	}
 	got, err := db.GetTrackByID(ctx, track.ID)
@@ -31,16 +31,16 @@ func TestPlaybackPersistence(t *testing.T) {
 		t.Fatalf("save = %+v, %v", got, err)
 	}
 	name := "Battle"
-	got, err = db.UpdateTrack(ctx, track.ID, server.UpdateTrackRequest{Name: &name})
+	got, err = db.UpdateTrack(ctx, track.ID, domain.TrackUpdate{Name: &name})
 	if err != nil || !reflect.DeepEqual(got.Playback, settings) {
 		t.Fatalf("omitted playback = %+v, %v", got, err)
 	}
-	tracks, err := db.GetTableTracks(ctx, server.DefaultTableID)
+	tracks, err := db.GetTableTracks(ctx, domain.DefaultTableID)
 	if err != nil || len(tracks) != 1 || !reflect.DeepEqual(tracks[0].Playback, settings) {
 		t.Fatalf("table playback = %+v, %v", tracks, err)
 	}
 	settings.StartTime = 12.5
-	got, err = db.UpdateTrack(ctx, track.ID, server.UpdateTrackRequest{Playback: &settings})
+	got, err = db.UpdateTrack(ctx, track.ID, domain.TrackUpdate{Playback: &settings})
 	if err != nil || !reflect.DeepEqual(got.Playback, settings) {
 		t.Fatalf("update = %+v, %v", got, err)
 	}
@@ -56,13 +56,13 @@ func TestPlaybackPersistence(t *testing.T) {
 	if err != nil || !reflect.DeepEqual(got.Playback, settings) {
 		t.Fatalf("reopened = %+v, %v", got, err)
 	}
-	defaults := server.PlaybackSettings{}
-	got, err = reopened.UpdateTrack(ctx, track.ID, server.UpdateTrackRequest{Playback: &defaults})
+	defaults := domain.PlaybackSettings{}
+	got, err = reopened.UpdateTrack(ctx, track.ID, domain.TrackUpdate{Playback: &defaults})
 	if err != nil || !reflect.DeepEqual(got.Playback, defaults) {
 		t.Fatalf("clear = %+v, %v", got, err)
 	}
-	invalid := server.PlaybackSettings{StartTime: -1}
-	if _, err := reopened.UpdateTrack(ctx, track.ID, server.UpdateTrackRequest{Playback: &invalid}); err == nil {
+	invalid := domain.PlaybackSettings{StartTime: -1}
+	if _, err := reopened.UpdateTrack(ctx, track.ID, domain.TrackUpdate{Playback: &invalid}); err == nil {
 		t.Fatal("invalid update accepted")
 	}
 	track.ID = uuid.New()

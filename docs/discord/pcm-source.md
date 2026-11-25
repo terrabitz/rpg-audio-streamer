@@ -2,15 +2,16 @@
 type: Component
 title: PCM source
 description: Lazy, windowed FFmpeg decoding of stored HLS for the live mixer.
-resource: internal/server
+resource: internal/hlsaudio
 tags: [discord, audio, ffmpeg, hls]
 ---
 
 # PCM source
 
-`internal/server` supplies the PCM source for the [live mixer](./live-mixer.md).
-It checks the track's association with the socket's table, loads track/type
-metadata through the datastore, and uses HLS segment durations from
+The voice service's `Clips` loader supplies tracks to the
+[live mixer](./live-mixer.md). It checks the track's association with the
+table, loads track/type metadata through the datastore, and opens the track with
+`internal/hlsaudio`, which uses HLS segment durations from
 [track uploads](../data/track-uploads.md) to determine the indexed PCM length.
 
 ## Windowed decoding

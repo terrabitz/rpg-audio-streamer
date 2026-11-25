@@ -18,11 +18,15 @@ import (
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	"github.com/terrabitz/rpg-audio-streamer/internal/auth"
+	"github.com/terrabitz/rpg-audio-streamer/internal/domain"
 	"github.com/terrabitz/rpg-audio-streamer/internal/events"
+	"github.com/terrabitz/rpg-audio-streamer/internal/library"
 	"github.com/terrabitz/rpg-audio-streamer/internal/musicprocessing"
 	"github.com/terrabitz/rpg-audio-streamer/internal/playback"
 	"github.com/terrabitz/rpg-audio-streamer/internal/server"
 	"github.com/terrabitz/rpg-audio-streamer/internal/sqlitedatastore"
+	"github.com/terrabitz/rpg-audio-streamer/internal/tables"
+	"github.com/terrabitz/rpg-audio-streamer/internal/voice"
 	"github.com/terrabitz/rpg-audio-streamer/internal/youtube"
 )
 
@@ -68,7 +72,17 @@ func TestTableHTTP(t *testing.T) {
 	videos := youtube.New(logger)
 	hub := &testWSRegisterer{}
 	processing := musicprocessing.New(dir, logger, db, videos, hub)
-	srv, err := server.New(server.Config{UploadDir: dir, DevMode: true}, logger, authenticator, db, hub, playback.New(logger, db, hub), processing, videos)
+	playbackService := playback.New(logger, db, hub)
+	tablesService := tables.New(db, playbackService, hub, hub)
+	srv, err := server.New(
+		server.Config{DevMode: true},
+		logger,
+		authenticator,
+		hub,
+		tablesService,
+		library.New(db, processing, videos, tablesService, hub, dir),
+		voice.New(nil, db, tablesService, playbackService, hub, logger),
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -85,9 +99,9 @@ func TestTableHTTP(t *testing.T) {
 		}
 		return rec
 	}
-	decodeTable := func(rec *httptest.ResponseRecorder) server.Table {
+	decodeTable := func(rec *httptest.ResponseRecorder) domain.Table {
 		t.Helper()
-		var table server.Table
+		var table domain.Table
 		if err := json.Unmarshal(rec.Body.Bytes(), &table); err != nil {
 			t.Fatal(err)
 		}
@@ -123,9 +137,9 @@ func TestTableHTTP(t *testing.T) {
 	} {
 		request("PATCH", settingsPath, body, "", true, 400)
 	}
-	readSettings := func(rec *httptest.ResponseRecorder) server.TableSettings {
+	readSettings := func(rec *httptest.ResponseRecorder) domain.TableSettings {
 		t.Helper()
-		var settings server.TableSettings
+		var settings domain.TableSettings
 		if err := json.Unmarshal(rec.Body.Bytes(), &settings); err != nil {
 			t.Fatal(err)
 		}
@@ -175,7 +189,7 @@ func TestTableHTTP(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	track := server.Track{ID: uuid.New(), Name: "Forest", TypeID: types[0].ID, CreatedAt: time.Now()}
+	track := domain.Track{ID: uuid.New(), Name: "Forest", TypeID: types[0].ID, CreatedAt: time.Now()}
 	track.Path = filepath.Join(dir, track.ID.String())
 	if err := os.Mkdir(track.Path, 0700); err != nil {
 		t.Fatal(err)
@@ -268,23 +282,23 @@ func TestTableHTTP(t *testing.T) {
 	request("PUT", firstPath+"/tracks/invalid", "", "", true, 400)
 	request("PATCH", association, "", "", true, 405)
 	list := request("GET", firstPath+"/tracks", "", "", true, 200)
-	var tracks []server.Track
+	var tracks []domain.Track
 	if err := json.Unmarshal(list.Body.Bytes(), &tracks); err != nil || len(tracks) != 1 || tracks[0].ID != track.ID {
 		t.Fatalf("associated tracks = %v, %v", tracks, err)
 	}
 	const diagnostics = "Command:\nyt-dlp -- source\n\nLogs:\nERROR: blocked\n\nError:\nexit status 1"
-	failedTrack := server.Track{ID: uuid.New(), Name: "Failed import", TypeID: types[0].ID, CreatedAt: time.Now(),
+	failedTrack := domain.Track{ID: uuid.New(), Name: "Failed import", TypeID: types[0].ID, CreatedAt: time.Now(),
 		Status: "failed", ProcessingError: diagnostics}
 	if err := db.SaveTrackToTable(ctx, &failedTrack, first.ID); err != nil {
 		t.Fatal(err)
 	}
 	for _, asGM := range []bool{false, true} {
 		rec := request("GET", firstPath+"/tracks", "", "", asGM, 200)
-		var listed []server.Track
+		var listed []domain.Track
 		if err := json.Unmarshal(rec.Body.Bytes(), &listed); err != nil || len(listed) != 2 {
 			t.Fatalf("failed track response = %s, %v", rec.Body, err)
 		}
-		var failed server.Track
+		var failed domain.Track
 		for _, item := range listed {
 			if item.ID == failedTrack.ID {
 				failed = item
@@ -327,7 +341,7 @@ func TestTableHTTP(t *testing.T) {
 	request("GET", "/api/v1/stream/"+track.ID.String()+"/index.m3u8", "", "", true, 200)
 	request("DELETE", filePath+"?expectedTableCount=0", "", "", true, 200)
 	request("GET", usagePath, "", "", true, 404)
-	defaultTable, err := db.GetTable(ctx, server.DefaultTableID)
+	defaultTable, err := db.GetTable(ctx, domain.DefaultTableID)
 	if err != nil {
 		t.Fatal(err)
 	}

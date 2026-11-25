@@ -1,6 +1,7 @@
 # Backend
 
 - [Go packages](./packages.md) - Responsibilities and boundaries of the Go packages
+- [Domain services](./domain-services.md) - Hexagonal use-case services for tables, the track library, and Discord voice, with ports for every adapter
 - [YouTube retrieval](./youtube.md) - Canonical video URLs, yt-dlp metadata scanning, download limits, and diagnostics
 - [Authentication and roles](./authentication.md) - GM login, signed cookies, and GM-only operations
 - [Public table links](./public-table-links.md) - External IDs that grant player access to a table and how GMs rotate them

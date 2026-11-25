@@ -47,9 +47,9 @@ func (s *Server) publicMiddleware(next AuthedHandlerFunc) http.HandlerFunc {
 
 func (s *Server) tableAccessMiddleware(next AuthedHandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		table, err := s.store.GetTableByExternalID(r.Context(), r.PathValue("tableID"))
+		table, err := s.tables.Find(r.Context(), r.PathValue("tableID"))
 		if err != nil {
-			s.tableError(w, err)
+			s.writeError(w, err)
 			return
 		}
 		token, err := s.getToken(r)
@@ -67,9 +67,9 @@ func (s *Server) tableWebSocketMiddleware(next AuthedHandlerFunc) http.HandlerFu
 			next(w, r, token)
 			return
 		}
-		table, err := s.store.GetTableByExternalID(r.Context(), r.URL.Query().Get("tableID"))
+		table, err := s.tables.Find(r.Context(), r.URL.Query().Get("tableID"))
 		if err != nil {
-			s.tableError(w, err)
+			s.writeError(w, err)
 			return
 		}
 		next(w, r, &auth.Token{Role: auth.RolePlayer, TableID: table.ID.String()})

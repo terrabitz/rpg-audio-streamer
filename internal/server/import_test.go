@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/terrabitz/rpg-audio-streamer/internal/domain"
 	"net/http/httptest"
 	"os"
 	"os/exec"
@@ -107,7 +108,7 @@ func TestImportHTTP(t *testing.T) {
 		{"fffffffffff"},
 	} {
 		rec := request(ctx, "POST", strings.Replace(validBody, "aaaaaaaaaaa", tc.id, 1), true, 202)
-		var queued Track
+		var queued domain.Track
 		if err := json.Unmarshal(rec.Body.Bytes(), &queued); err != nil {
 			t.Fatal(err)
 		}
@@ -130,7 +131,7 @@ func TestImportHTTP(t *testing.T) {
 	if _, err := os.Stat(filepath.Dir(output)); !os.IsNotExist(err) {
 		t.Errorf("staging directory not cleaned up: %v", err)
 	}
-	ts.store = importFailStore{Store: ts.store}
+	ts.store = importFailStore{testStore: ts.store}
 	ts.processing = musicprocessing.New(ts.tempDir, ts.logger, ts.store, youtube.New(ts.logger), ts.hub)
 	request(ctx, "POST", validBody, true, 503)
 	entries, err := os.ReadDir(ts.tempDir)
@@ -176,8 +177,8 @@ func TestVideoScan(t *testing.T) {
 	}
 }
 
-type importFailStore struct{ Store }
+type importFailStore struct{ testStore }
 
-func (importFailStore) SaveTrack(context.Context, *Track) error {
+func (importFailStore) SaveTrack(context.Context, *domain.Track) error {
 	return errors.New("injected persistence failure")
 }

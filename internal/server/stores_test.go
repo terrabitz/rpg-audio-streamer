@@ -2,21 +2,20 @@ package server
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
+	"github.com/terrabitz/rpg-audio-streamer/internal/domain"
 	"sync"
 	"testing"
 
 	"github.com/google/uuid"
 	"github.com/terrabitz/rpg-audio-streamer/internal/discord"
-	"github.com/terrabitz/rpg-audio-streamer/internal/musicprocessing"
 )
 
 type MockTrackStore struct {
-	TableStore
-	tracks       map[uuid.UUID]Track
-	waveforms    map[uuid.UUID]musicprocessing.Waveform
-	trackTypes   map[uuid.UUID]TrackType
+	testStore
+	tracks       map[uuid.UUID]domain.Track
+	waveforms    map[uuid.UUID]domain.Waveform
+	trackTypes   map[uuid.UUID]domain.TrackType
 	destinations map[uuid.UUID]discord.Destination
 	tracksMu     sync.RWMutex
 }
@@ -35,24 +34,24 @@ func (m *MockTrackStore) SaveTableDiscord(_ context.Context, id uuid.UUID, targe
 	m.destinations[id] = target
 	return nil
 }
-func (m *MockTrackStore) GetTable(ctx context.Context, id uuid.UUID) (Table, error) {
-	if id != DefaultTableID {
-		return Table{}, sql.ErrNoRows
+func (m *MockTrackStore) GetTable(ctx context.Context, id uuid.UUID) (domain.Table, error) {
+	if id != domain.DefaultTableID {
+		return domain.Table{}, domain.ErrNotFound
 	}
-	return Table{ID: id, ExternalID: testDefaultExternalID, Name: "My Table"}, nil
+	return domain.Table{ID: id, ExternalID: testDefaultExternalID, Name: "My Table"}, nil
 }
 
-func (m *MockTrackStore) GetTableByExternalID(ctx context.Context, externalID string) (Table, error) {
+func (m *MockTrackStore) GetTableByExternalID(ctx context.Context, externalID string) (domain.Table, error) {
 	if externalID != testDefaultExternalID {
-		return Table{}, sql.ErrNoRows
+		return domain.Table{}, domain.ErrNotFound
 	}
-	return m.GetTable(ctx, DefaultTableID)
+	return m.GetTable(ctx, domain.DefaultTableID)
 }
 
-func (m *MockTrackStore) RotateTableExternalID(ctx context.Context, id uuid.UUID) (Table, error) {
+func (m *MockTrackStore) RotateTableExternalID(ctx context.Context, id uuid.UUID) (domain.Table, error) {
 	table, err := m.GetTable(ctx, id)
 	if err != nil {
-		return Table{}, err
+		return domain.Table{}, err
 	}
 	table.ExternalID = "bmV3LWRlZmF1bHQtZXh0ZXJuYWwtaWQ"
 	return table, nil
@@ -64,12 +63,12 @@ func (m *MockTrackStore) CountTrackTables(ctx context.Context, id uuid.UUID) (in
 	m.tracksMu.RLock()
 	defer m.tracksMu.RUnlock()
 	if _, ok := m.tracks[id]; !ok {
-		return 0, sql.ErrNoRows
+		return 0, domain.ErrNotFound
 	}
 	return 0, nil
 }
 
-func (m *MockTrackStore) SaveTrack(ctx context.Context, track *Track) error {
+func (m *MockTrackStore) SaveTrack(ctx context.Context, track *domain.Track) error {
 	m.tracksMu.Lock()
 	defer m.tracksMu.Unlock()
 	m.tracks[track.ID] = *track
@@ -81,52 +80,52 @@ func (m *MockTrackStore) SetTrackProcessing(ctx context.Context, id uuid.UUID, s
 	defer m.tracksMu.Unlock()
 	track, ok := m.tracks[id]
 	if !ok || track.Status != "processing" {
-		return sql.ErrNoRows
+		return domain.ErrNotFound
 	}
 	track.Status, track.ProcessingError = status, message
 	m.tracks[id] = track
 	return nil
 }
 
-func (m *MockTrackStore) GetTrackWaveform(_ context.Context, id uuid.UUID) (musicprocessing.Waveform, error) {
+func (m *MockTrackStore) GetTrackWaveform(_ context.Context, id uuid.UUID) (domain.Waveform, error) {
 	m.tracksMu.RLock()
 	defer m.tracksMu.RUnlock()
 	waveform, ok := m.waveforms[id]
 	if !ok {
-		return musicprocessing.Waveform{}, sql.ErrNoRows
+		return domain.Waveform{}, domain.ErrNotFound
 	}
 	return waveform, nil
 }
 
-func (m *MockTrackStore) SaveTrackWaveform(_ context.Context, id uuid.UUID, waveform musicprocessing.Waveform) error {
+func (m *MockTrackStore) SaveTrackWaveform(_ context.Context, id uuid.UUID, waveform domain.Waveform) error {
 	m.tracksMu.Lock()
 	defer m.tracksMu.Unlock()
 	if _, ok := m.tracks[id]; !ok {
-		return sql.ErrNoRows
+		return domain.ErrNotFound
 	}
 	if m.waveforms == nil {
-		m.waveforms = make(map[uuid.UUID]musicprocessing.Waveform)
+		m.waveforms = make(map[uuid.UUID]domain.Waveform)
 	}
 	m.waveforms[id] = waveform
 	return nil
 }
 
-func (m *MockTrackStore) GetTracks(ctx context.Context) ([]Track, error) {
+func (m *MockTrackStore) GetTracks(ctx context.Context) ([]domain.Track, error) {
 	m.tracksMu.RLock()
 	defer m.tracksMu.RUnlock()
-	var result []Track
+	var result []domain.Track
 	for _, t := range m.tracks {
 		result = append(result, t)
 	}
 	return result, nil
 }
 
-func (m *MockTrackStore) GetTrackByID(ctx context.Context, trackID uuid.UUID) (Track, error) {
+func (m *MockTrackStore) GetTrackByID(ctx context.Context, trackID uuid.UUID) (domain.Track, error) {
 	m.tracksMu.RLock()
 	defer m.tracksMu.RUnlock()
 	track, ok := m.tracks[trackID]
 	if !ok {
-		return Track{}, sql.ErrNoRows
+		return domain.Track{}, domain.ErrNotFound
 	}
 	return track, nil
 }
@@ -135,7 +134,7 @@ func (m *MockTrackStore) DeleteTrack(ctx context.Context, trackID uuid.UUID) err
 	m.tracksMu.Lock()
 	defer m.tracksMu.Unlock()
 	if _, ok := m.tracks[trackID]; !ok {
-		return fmt.Errorf("track not found")
+		return fmt.Errorf("track not found: %w", domain.ErrNotFound)
 	}
 	delete(m.tracks, trackID)
 	return nil
@@ -149,12 +148,12 @@ func (m *MockTrackStore) DeleteTrackIfTableCount(ctx context.Context, trackID uu
 	return true, m.DeleteTrack(ctx, trackID)
 }
 
-func (m *MockTrackStore) UpdateTrack(ctx context.Context, trackID uuid.UUID, update UpdateTrackRequest) (Track, error) {
+func (m *MockTrackStore) UpdateTrack(ctx context.Context, trackID uuid.UUID, update domain.TrackUpdate) (domain.Track, error) {
 	m.tracksMu.Lock()
 	defer m.tracksMu.Unlock()
 	track, ok := m.tracks[trackID]
 	if !ok {
-		return Track{}, fmt.Errorf("track not found")
+		return domain.Track{}, fmt.Errorf("track not found: %w", domain.ErrNotFound)
 	}
 
 	if update.Name != nil {
@@ -172,18 +171,18 @@ func (m *MockTrackStore) UpdateTrack(ctx context.Context, trackID uuid.UUID, upd
 	return track, nil
 }
 
-func (m *MockTrackStore) GetTrackTypes(ctx context.Context) ([]TrackType, error) {
-	var result []TrackType
+func (m *MockTrackStore) GetTrackTypes(ctx context.Context) ([]domain.TrackType, error) {
+	var result []domain.TrackType
 	for _, t := range m.trackTypes {
 		result = append(result, t)
 	}
 	return result, nil
 }
 
-func (m *MockTrackStore) GetTrackTypeByID(ctx context.Context, id uuid.UUID) (TrackType, error) {
+func (m *MockTrackStore) GetTrackTypeByID(ctx context.Context, id uuid.UUID) (domain.TrackType, error) {
 	trackType, ok := m.trackTypes[id]
 	if !ok {
-		return TrackType{}, fmt.Errorf("track type not found")
+		return domain.TrackType{}, fmt.Errorf("track type not found: %w", domain.ErrNotFound)
 	}
 	return trackType, nil
 }
@@ -192,8 +191,8 @@ func NewMockTrackStore(t *testing.T) *MockTrackStore {
 	t.Helper()
 
 	store := &MockTrackStore{
-		tracks:     make(map[uuid.UUID]Track),
-		trackTypes: make(map[uuid.UUID]TrackType),
+		tracks:     make(map[uuid.UUID]domain.Track),
+		trackTypes: make(map[uuid.UUID]domain.TrackType),
 	}
 
 	// Add default track types
@@ -201,19 +200,19 @@ func NewMockTrackStore(t *testing.T) *MockTrackStore {
 	musicID := uuid.MustParse("1EC000A2-A7C9-11EE-A0E5-0242AC120003")
 	oneShotID := uuid.MustParse("1EC000A2-A7C9-11EE-A0E5-0242AC120004")
 
-	store.trackTypes[ambianceID] = TrackType{
+	store.trackTypes[ambianceID] = domain.TrackType{
 		ID:                    ambianceID,
 		Name:                  "Ambiance",
 		IsRepeating:           true,
 		AllowSimultaneousPlay: true,
 	}
-	store.trackTypes[musicID] = TrackType{
+	store.trackTypes[musicID] = domain.TrackType{
 		ID:                    musicID,
 		Name:                  "Music",
 		IsRepeating:           true,
 		AllowSimultaneousPlay: false,
 	}
-	store.trackTypes[oneShotID] = TrackType{
+	store.trackTypes[oneShotID] = domain.TrackType{
 		ID:                    oneShotID,
 		Name:                  "One-Shot",
 		IsRepeating:           false,

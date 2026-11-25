@@ -2,28 +2,27 @@ package sqlitedatastore
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"fmt"
 
 	"github.com/google/uuid"
-	"github.com/terrabitz/rpg-audio-streamer/internal/musicprocessing"
+	"github.com/terrabitz/rpg-audio-streamer/internal/domain"
 	"github.com/terrabitz/rpg-audio-streamer/internal/sqlitedatastore/sqlitedb"
 )
 
-func (db *SQLiteDatastore) GetTrackWaveform(ctx context.Context, id uuid.UUID) (musicprocessing.Waveform, error) {
+func (db *SQLiteDatastore) GetTrackWaveform(ctx context.Context, id uuid.UUID) (domain.Waveform, error) {
 	data, err := sqlitedb.New(db.DB).GetTrackWaveform(ctx, id[:])
 	if err != nil {
-		return musicprocessing.Waveform{}, err
+		return domain.Waveform{}, translateError(err)
 	}
-	var waveform musicprocessing.Waveform
+	var waveform domain.Waveform
 	if err := json.Unmarshal([]byte(data), &waveform); err != nil {
-		return musicprocessing.Waveform{}, fmt.Errorf("decode stored waveform: %w", err)
+		return domain.Waveform{}, fmt.Errorf("decode stored waveform: %w", err)
 	}
 	return waveform, nil
 }
 
-func (db *SQLiteDatastore) SaveTrackWaveform(ctx context.Context, id uuid.UUID, waveform musicprocessing.Waveform) error {
+func (db *SQLiteDatastore) SaveTrackWaveform(ctx context.Context, id uuid.UUID, waveform domain.Waveform) error {
 	data, err := json.Marshal(waveform)
 	if err != nil {
 		return fmt.Errorf("encode waveform: %w", err)
@@ -33,10 +32,10 @@ func (db *SQLiteDatastore) SaveTrackWaveform(ctx context.Context, id uuid.UUID, 
 		Data: string(data),
 	})
 	if err != nil {
-		return err
+		return translateError(err)
 	}
 	if affected != 1 {
-		return sql.ErrNoRows
+		return errNotFound
 	}
 	return nil
 }

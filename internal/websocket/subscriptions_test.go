@@ -12,9 +12,9 @@ import (
 
 	gorilla "github.com/gorilla/websocket"
 	"github.com/terrabitz/rpg-audio-streamer/internal/auth"
+	"github.com/terrabitz/rpg-audio-streamer/internal/domain"
 	"github.com/terrabitz/rpg-audio-streamer/internal/events"
 	"github.com/terrabitz/rpg-audio-streamer/internal/livemixer"
-	"github.com/terrabitz/rpg-audio-streamer/internal/server"
 )
 
 func TestSubscriptionsAreIndependentAndIsolateFailuresAndPayloads(t *testing.T) {
@@ -63,7 +63,7 @@ func TestSubscriptionsAreIndependentAndIsolateFailuresAndPayloads(t *testing.T) 
 func TestMixerSubscriptionCanBeRemovedWithoutChangingPlayback(t *testing.T) {
 	hub, clients := testHub()
 	client := clients["gm"]
-	client.Token.TableID = server.DefaultTableID.String()
+	client.Token.TableID = domain.DefaultTableID.String()
 	mix := &testMixer{}
 	stop := livemixer.Subscribe(hub, mix)
 	stop()
@@ -81,11 +81,11 @@ func TestMixerSubscriptionCanBeRemovedWithoutChangingPlayback(t *testing.T) {
 func TestPlaybackSubscriptionsReceiveOnlyValidatedChanges(t *testing.T) {
 	hub, clients := testHub()
 	for _, client := range clients {
-		client.Token.TableID = server.DefaultTableID.String()
+		client.Token.TableID = domain.DefaultTableID.String()
 	}
 	var changes []PlaybackPatch
 	events.OnPlaybackChanged(hub, func(payload events.PlaybackChanges[events.PlaybackPatch], metadata events.Metadata) error {
-		if metadata.TableID != server.DefaultTableID.String() || metadata.ClientID != "" {
+		if metadata.TableID != domain.DefaultTableID.String() || metadata.ClientID != "" {
 			t.Errorf("accepted playback has incorrect scope: %+v", metadata)
 		}
 		changes = append(changes, payload.Tracks...)
@@ -134,7 +134,7 @@ func TestSubscriptionsUseADispatchSnapshot(t *testing.T) {
 func TestSocketSubscribersProjectOneCanonicalPlaybackSnapshot(t *testing.T) {
 	hub, clients := testHub()
 	for _, client := range clients {
-		client.Token.TableID = server.DefaultTableID.String()
+		client.Token.TableID = domain.DefaultTableID.String()
 	}
 	snapshots := 0
 	events.OnPlaybackStateChanged(hub, func(payload events.Snapshot, _ events.Metadata) error {
@@ -213,7 +213,7 @@ func TestMixerAnnouncesReadinessOnConnection(t *testing.T) {
 			t.Error(err)
 			return
 		}
-		hub.Register(conn, &auth.Token{Role: auth.RoleGM, TableID: server.DefaultTableID.String()})
+		hub.Register(conn, &auth.Token{Role: auth.RoleGM, TableID: domain.DefaultTableID.String()})
 	}))
 	defer srv.Close()
 	conn, _, err := gorilla.DefaultDialer.Dial("ws"+strings.TrimPrefix(srv.URL, "http"), nil)

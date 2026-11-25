@@ -14,17 +14,18 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/terrabitz/rpg-audio-streamer/internal/domain"
 	"github.com/terrabitz/rpg-audio-streamer/internal/events"
 )
 
 var ErrClosed = errors.New("music processing service is closed")
 
 type Store interface {
-	SaveTrack(context.Context, *Track) error
-	SaveTrackToTable(context.Context, *Track, uuid.UUID) error
-	GetTracks(context.Context) ([]Track, error)
+	SaveTrack(context.Context, *domain.Track) error
+	SaveTrackToTable(context.Context, *domain.Track, uuid.UUID) error
+	GetTracks(context.Context) ([]domain.Track, error)
 	SetTrackProcessing(context.Context, uuid.UUID, string, string) error
-	SaveTrackWaveform(context.Context, uuid.UUID, Waveform) error
+	SaveTrackWaveform(context.Context, uuid.UUID, domain.Waveform) error
 }
 
 // Downloader retrieves remote audio sources into local files for processing.
@@ -46,7 +47,7 @@ type Service struct {
 }
 
 type job struct {
-	track     Track
+	track     domain.Track
 	sourceURL string
 	deadline  time.Time
 }
@@ -108,14 +109,14 @@ func (s *Service) Recover(ctx context.Context) error {
 	return os.RemoveAll(filepath.Join(s.dir, ".processing"))
 }
 
-func (s *Service) Upload(ctx context.Context, name string, typeID, tableID uuid.UUID, input io.Reader) (Track, error) {
+func (s *Service) Upload(ctx context.Context, name string, typeID, tableID uuid.UUID, input io.Reader) (domain.Track, error) {
 	track, err := s.newTrack(name, typeID)
 	if err != nil {
-		return Track{}, err
+		return domain.Track{}, err
 	}
 	path := s.inputPath(track.ID)
 	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
-		return Track{}, err
+		return domain.Track{}, err
 	}
 	queued := false
 	defer func() {
@@ -125,47 +126,57 @@ func (s *Service) Upload(ctx context.Context, name string, typeID, tableID uuid.
 	}()
 	file, err := os.Create(path)
 	if err != nil {
-		return Track{}, err
+		return domain.Track{}, err
 	}
 	defer file.Close()
 	if _, err := io.Copy(file, input); err != nil {
-		return Track{}, err
+		return domain.Track{}, err
 	}
 	if err := file.Close(); err != nil {
-		return Track{}, err
+		return domain.Track{}, err
 	}
 	if err := s.submit(ctx, track, tableID, ""); err != nil {
-		return Track{}, err
+		return domain.Track{}, err
 	}
 	queued = true
 	return track, nil
 }
 
-func (s *Service) Import(ctx context.Context, name string, typeID, tableID uuid.UUID, sourceURL string) (Track, error) {
+func (s *Service) Import(ctx context.Context, name string, typeID, tableID uuid.UUID, sourceURL string) (domain.Track, error) {
 	source, err := s.downloader.Resolve(sourceURL)
 	if err != nil {
-		return Track{}, err
+		return domain.Track{}, err
 	}
 	track, err := s.newTrack(name, typeID)
 	if err != nil {
-		return Track{}, err
+		return domain.Track{}, err
 	}
 	if err := s.submit(ctx, track, tableID, source); err != nil {
-		return Track{}, err
+		return domain.Track{}, err
 	}
 	return track, nil
 }
 
-func (s *Service) newTrack(name string, typeID uuid.UUID) (Track, error) {
+// Remove deletes the processed audio files of a track.
+func (s *Service) Remove(track domain.Track) error {
+	return os.RemoveAll(track.Path)
+}
+
+// GenerateWaveform computes the waveform of a processed track.
+func (s *Service) GenerateWaveform(ctx context.Context, track domain.Track) (domain.Waveform, error) {
+	return GenerateWaveform(ctx, track.Path)
+}
+
+func (s *Service) newTrack(name string, typeID uuid.UUID) (domain.Track, error) {
 	id, err := uuid.NewV7()
 	if err != nil {
-		return Track{}, err
+		return domain.Track{}, err
 	}
-	return Track{ID: id, CreatedAt: time.Now(), Name: name, TypeID: typeID,
+	return domain.Track{ID: id, CreatedAt: time.Now(), Name: name, TypeID: typeID,
 		Path: filepath.Join(s.dir, id.String()), Volume: 100, Status: "processing"}, nil
 }
 
-func (s *Service) submit(ctx context.Context, track Track, tableID uuid.UUID, sourceURL string) error {
+func (s *Service) submit(ctx context.Context, track domain.Track, tableID uuid.UUID, sourceURL string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.closed {
@@ -224,7 +235,7 @@ func (s *Service) process(ctx context.Context, next job) {
 	s.notify(next.track, "failed", message)
 }
 
-func (s *Service) notify(track Track, status, message string) {
+func (s *Service) notify(track domain.Track, status, message string) {
 	track.Status, track.ProcessingError = status, message
 	if err := s.notifier.SendEvent(events.TrackStatusChanged, track); err != nil {
 		s.logger.Error("failed to send track status event", "trackID", track.ID, "error", err)

@@ -2,7 +2,6 @@ package playback
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 	"math"
@@ -36,9 +35,9 @@ type Service struct {
 }
 
 var (
-	ErrTrackNotAssociated = errors.New("track is not associated with this table")
-	ErrTrackNotReady      = errors.New("track is not ready for playback")
-	ErrInvalidPatch       = errors.New("invalid playback patch")
+	ErrTrackNotAssociated = domain.NotFound("track is not associated with this table")
+	ErrTrackNotReady      = domain.Conflict("track is not ready for playback")
+	ErrInvalidPatch       = domain.Invalid("invalid playback patch")
 )
 
 func New(logger *slog.Logger, store Store, output Publisher) *Service {
@@ -219,7 +218,7 @@ func (h *Service) Update(ctx context.Context, tableID, trackID uuid.UUID, patch 
 		state.PositionVersion++
 	}
 	if err := state.validate(); err != nil {
-		return fmt.Errorf("%w: %s", ErrInvalidPatch, err)
+		return ErrInvalidPatch.Detail(err.Error())
 	}
 	end := state.end()
 	if patch.CurrentTime == nil {

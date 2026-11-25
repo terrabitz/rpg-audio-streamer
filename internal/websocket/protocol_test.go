@@ -6,8 +6,8 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/terrabitz/rpg-audio-streamer/internal/domain"
 	"github.com/terrabitz/rpg-audio-streamer/internal/events"
-	"github.com/terrabitz/rpg-audio-streamer/internal/server"
 )
 
 func TestPayloadSending(t *testing.T) {
@@ -34,7 +34,7 @@ func TestTrackProcessedNotifiesGMs(t *testing.T) {
 	hub, clients := testHub()
 	clients["otherGM"].Token.TableID = "friday"
 	id := uuid.New()
-	sendEvent(t, hub, events.TrackStatusChanged, server.Track{ID: id, Status: "failed", ProcessingError: "Conversion failed"})
+	sendEvent(t, hub, events.TrackStatusChanged, domain.Track{ID: id, Status: "failed", ProcessingError: "Conversion failed"})
 	var message Message
 	if err := json.Unmarshal(<-clients["gm"].send, &message); err != nil {
 		t.Fatal(err)

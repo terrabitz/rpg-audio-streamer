@@ -13,20 +13,20 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/terrabitz/rpg-audio-streamer/internal/discord"
-	"github.com/terrabitz/rpg-audio-streamer/internal/server"
+	"github.com/terrabitz/rpg-audio-streamer/internal/domain"
 )
 
 func TestDiscordDestinationIsIsolatedAndSurvivesDatabaseReopening(t *testing.T) {
 	db, path := migratedDatabase(t)
 	ctx := context.Background()
-	if target, err := db.GetTableDiscord(ctx, server.DefaultTableID); err != nil || target != nil {
+	if target, err := db.GetTableDiscord(ctx, domain.DefaultTableID); err != nil || target != nil {
 		t.Fatalf("new table destination = %+v, %v", target, err)
 	}
 	target := discord.Destination{GuildID: "1", ChannelID: "2", GuildName: "Friday", ChannelName: "Music"}
-	if err := db.SaveTableDiscord(ctx, server.DefaultTableID, target); err != nil {
+	if err := db.SaveTableDiscord(ctx, domain.DefaultTableID, target); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.UpdateTableSettings(ctx, server.DefaultTableID, server.TableSettingsPatch{}); err != nil {
+	if _, err := db.UpdateTableSettings(ctx, domain.DefaultTableID, domain.TableSettingsPatch{}); err != nil {
 		t.Fatal(err)
 	}
 	if err := db.Close(); err != nil {
@@ -37,11 +37,11 @@ func TestDiscordDestinationIsIsolatedAndSurvivesDatabaseReopening(t *testing.T) 
 		t.Fatal(err)
 	}
 	defer func() { _ = reopened.Close() }()
-	got, err := reopened.GetTableDiscord(ctx, server.DefaultTableID)
+	got, err := reopened.GetTableDiscord(ctx, domain.DefaultTableID)
 	if err != nil || got == nil || *got != target {
 		t.Fatalf("reopened destination = %+v, %v", got, err)
 	}
-	other := server.Table{ID: uuid.New(), Name: "Other"}
+	other := domain.Table{ID: uuid.New(), Name: "Other"}
 	if _, err := reopened.CreateTable(ctx, other); err != nil {
 		t.Fatal(err)
 	}
@@ -56,25 +56,25 @@ func TestDiscordDestinationIsIsolatedAndSurvivesDatabaseReopening(t *testing.T) 
 func TestTableSettingsPersistence(t *testing.T) {
 	db, path := migratedDatabase(t)
 	ctx := context.Background()
-	defaults := server.TableSettings{
+	defaults := domain.TableSettings{
 		MasterVolume: 100, TypeVolumes: map[string]float64{}, TrackOrder: []uuid.UUID{},
 	}
-	settings, err := db.GetTableSettings(ctx, server.DefaultTableID)
+	settings, err := db.GetTableSettings(ctx, domain.DefaultTableID)
 	if err != nil || !reflect.DeepEqual(settings, defaults) {
 		t.Fatalf("default settings = %+v, %v", settings, err)
 	}
-	other := server.Table{ID: uuid.New(), Name: "Other"}
+	other := domain.Table{ID: uuid.New(), Name: "Other"}
 	if _, err := db.CreateTable(ctx, other); err != nil {
 		t.Fatal(err)
 	}
 	trackID := uuid.New()
 	order := []uuid.UUID{trackID, uuid.New()}
 	master := 0.0
-	want := server.TableSettings{
+	want := domain.TableSettings{
 		MasterVolume: 0, TypeVolumes: map[string]float64{"Music": 0, "Ambiance": 42},
 		TrackOrder: order,
 	}
-	settings, err = db.UpdateTableSettings(ctx, server.DefaultTableID, server.TableSettingsPatch{
+	settings, err = db.UpdateTableSettings(ctx, domain.DefaultTableID, domain.TableSettingsPatch{
 		MasterVolume: &master, TypeVolumes: want.TypeVolumes,
 		TrackOrder: &order,
 	})
@@ -82,13 +82,13 @@ func TestTableSettingsPersistence(t *testing.T) {
 		t.Fatalf("save settings = %+v, %v", settings, err)
 	}
 	want.TypeVolumes["Ambiance"] = 65
-	settings, err = db.UpdateTableSettings(ctx, server.DefaultTableID, server.TableSettingsPatch{
+	settings, err = db.UpdateTableSettings(ctx, domain.DefaultTableID, domain.TableSettingsPatch{
 		TypeVolumes: map[string]float64{"Ambiance": 65},
 	})
 	if err != nil || !reflect.DeepEqual(settings, want) {
 		t.Fatalf("partial settings = %+v, %v", settings, err)
 	}
-	if _, err := db.UpdateTable(ctx, server.DefaultTableID, "Renamed"); err != nil {
+	if _, err := db.UpdateTable(ctx, domain.DefaultTableID, "Renamed"); err != nil {
 		t.Fatal(err)
 	}
 	if err := db.Close(); err != nil {
@@ -99,7 +99,7 @@ func TestTableSettingsPersistence(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { db.Close() })
-	settings, err = db.GetTableSettings(ctx, server.DefaultTableID)
+	settings, err = db.GetTableSettings(ctx, domain.DefaultTableID)
 	if err != nil || !reflect.DeepEqual(settings, want) {
 		t.Fatalf("reopened settings = %+v, %v", settings, err)
 	}
@@ -108,7 +108,7 @@ func TestTableSettingsPersistence(t *testing.T) {
 		t.Fatalf("other table settings = %+v, %v", settings, err)
 	}
 	empty := []uuid.UUID{}
-	settings, err = db.UpdateTableSettings(ctx, server.DefaultTableID, server.TableSettingsPatch{TrackOrder: &empty})
+	settings, err = db.UpdateTableSettings(ctx, domain.DefaultTableID, domain.TableSettingsPatch{TrackOrder: &empty})
 	if err != nil || len(settings.TrackOrder) != 0 || settings.TrackOrder == nil {
 		t.Fatalf("empty order = %+v, %v", settings, err)
 	}
@@ -121,16 +121,16 @@ func TestTableSettingsPersistence(t *testing.T) {
 		if _, err := db.GetTableSettings(ctx, id); !errors.Is(err, sql.ErrNoRows) {
 			t.Fatalf("missing settings = %v", err)
 		}
-		if _, err := db.UpdateTableSettings(ctx, id, server.TableSettingsPatch{}); !errors.Is(err, sql.ErrNoRows) {
+		if _, err := db.UpdateTableSettings(ctx, id, domain.TableSettingsPatch{}); !errors.Is(err, sql.ErrNoRows) {
 			t.Fatalf("missing settings update = %v", err)
 		}
 	}
 	canceled, cancel := context.WithCancel(ctx)
 	cancel()
-	if _, err := db.GetTableSettings(canceled, server.DefaultTableID); !errors.Is(err, context.Canceled) {
+	if _, err := db.GetTableSettings(canceled, domain.DefaultTableID); !errors.Is(err, context.Canceled) {
 		t.Fatalf("canceled settings lookup = %v", err)
 	}
-	if _, err := db.UpdateTableSettings(canceled, server.DefaultTableID, server.TableSettingsPatch{}); !errors.Is(err, context.Canceled) {
+	if _, err := db.UpdateTableSettings(canceled, domain.DefaultTableID, domain.TableSettingsPatch{}); !errors.Is(err, context.Canceled) {
 		t.Fatalf("canceled settings update = %v", err)
 	}
 }
@@ -139,15 +139,15 @@ func TestTableLifecycle(t *testing.T) {
 	db, path := migratedDatabase(t)
 	ctx := context.Background()
 	tables, err := db.GetTables(ctx)
-	if err != nil || len(tables) != 1 || tables[0].ID != server.DefaultTableID {
+	if err != nil || len(tables) != 1 || tables[0].ID != domain.DefaultTableID {
 		t.Fatalf("seeded tables = %v, %v", tables, err)
 	}
 	if decoded, err := base64.RawURLEncoding.DecodeString(tables[0].ExternalID); err != nil || len(decoded) != 32 {
 		t.Fatalf("seeded external ID is not a 32-byte base64url value: %q, %v", tables[0].ExternalID, err)
 	}
-	first := server.Table{ID: uuid.New(), Name: "Friday"}
-	second := server.Table{ID: uuid.New(), Name: "Sunday"}
-	for i, table := range []server.Table{first, second} {
+	first := domain.Table{ID: uuid.New(), Name: "Friday"}
+	second := domain.Table{ID: uuid.New(), Name: "Sunday"}
+	for i, table := range []domain.Table{first, second} {
 		got, err := db.CreateTable(ctx, table)
 		if err != nil || got.ID != table.ID || got.Name != table.Name || got.ExternalID == "" {
 			t.Fatalf("create = %v, %v", got, err)
@@ -187,7 +187,7 @@ func TestTableLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	track := server.Track{ID: uuid.New(), Name: "Forest", TypeID: types[0].ID,
+	track := domain.Track{ID: uuid.New(), Name: "Forest", TypeID: types[0].ID,
 		CreatedAt: time.Now().UTC().Truncate(time.Second), Path: "/uploads/forest"}
 	assertCount := func(want int64) {
 		t.Helper()
@@ -324,7 +324,7 @@ func TestExistingLibraryMigratesToDefaultTable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	track := server.Track{ID: uuid.New(), Name: "Legacy", TypeID: types[0].ID,
+	track := domain.Track{ID: uuid.New(), Name: "Legacy", TypeID: types[0].ID,
 		CreatedAt: time.Now().UTC().Truncate(time.Second), Path: "/uploads/legacy", Volume: 100}
 	if err := db.SaveTrack(ctx, &track); err != nil {
 		t.Fatal(err)
@@ -335,11 +335,11 @@ func TestExistingLibraryMigratesToDefaultTable(t *testing.T) {
 	if err := m.Up(); err != nil {
 		t.Fatal(err)
 	}
-	tracks, err := db.GetTableTracks(ctx, server.DefaultTableID)
+	tracks, err := db.GetTableTracks(ctx, domain.DefaultTableID)
 	if err != nil || len(tracks) != 1 || tracks[0] != track {
 		t.Fatalf("migrated tracks = %v, %v", tracks, err)
 	}
-	settings, err := db.GetTableSettings(ctx, server.DefaultTableID)
+	settings, err := db.GetTableSettings(ctx, domain.DefaultTableID)
 	if err != nil || settings.MasterVolume != 100 || len(settings.TrackOrder) != 0 {
 		t.Fatalf("migrated settings = %+v, %v", settings, err)
 	}
@@ -352,7 +352,7 @@ func TestExistingLibraryMigratesToDefaultTable(t *testing.T) {
 	if _, err := db.GetTrackByID(ctx, track.ID); err != nil {
 		t.Fatalf("table migration rollback lost library: %v", err)
 	}
-	if has, err := db.HasTableTrack(ctx, server.DefaultTableID, track.ID); err != nil || !has {
+	if has, err := db.HasTableTrack(ctx, domain.DefaultTableID, track.ID); err != nil || !has {
 		t.Fatalf("reapplied membership = %v, %v", has, err)
 	}
 }

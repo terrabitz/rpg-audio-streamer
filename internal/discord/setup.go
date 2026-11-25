@@ -13,17 +13,12 @@ import (
 	"strconv"
 
 	"github.com/disgoorg/disgo/rest"
+	"github.com/terrabitz/rpg-audio-streamer/internal/domain"
 )
 
-type Choice struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
-}
+type Choice = domain.DiscordChoice
 
-type Setup struct {
-	InstallURL string   `json:"installURL"`
-	Guilds     []Choice `json:"guilds"`
-}
+type Setup = domain.DiscordSetup
 
 func (s *Service) Setup(ctx context.Context) (Setup, error) {
 	var application struct {

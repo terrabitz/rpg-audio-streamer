@@ -8,10 +8,10 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/terrabitz/rpg-audio-streamer/internal/domain"
 	"github.com/terrabitz/rpg-audio-streamer/internal/events"
 	"github.com/terrabitz/rpg-audio-streamer/internal/livemixer"
 	"github.com/terrabitz/rpg-audio-streamer/internal/mixer"
-	"github.com/terrabitz/rpg-audio-streamer/internal/server"
 )
 
 var (
@@ -41,26 +41,26 @@ func (playbackTestStore) HasTableTrack(_ context.Context, _ uuid.UUID, id uuid.U
 	return id == testTrackID || id == testOtherID, nil
 }
 
-func (playbackTestStore) GetTrackByID(_ context.Context, id uuid.UUID) (server.Track, error) {
+func (playbackTestStore) GetTrackByID(_ context.Context, id uuid.UUID) (domain.Track, error) {
 	volume := 100.0
 	if id == testTrackID {
 		volume = 50
 	}
-	return server.Track{ID: id, Name: "Music", TypeID: testTypeID, Volume: volume}, nil
+	return domain.Track{ID: id, Name: "Music", TypeID: testTypeID, Volume: volume}, nil
 }
 
-func (playbackTestStore) GetTrackTypeByID(context.Context, uuid.UUID) (server.TrackType, error) {
-	return server.TrackType{ID: testTypeID, Name: "Music", IsRepeating: true}, nil
+func (playbackTestStore) GetTrackTypeByID(context.Context, uuid.UUID) (domain.TrackType, error) {
+	return domain.TrackType{ID: testTypeID, Name: "Music", IsRepeating: true}, nil
 }
 
-func (playbackTestStore) GetTableSettings(context.Context, uuid.UUID) (server.TableSettings, error) {
-	return server.TableSettings{MasterVolume: 40}, nil
+func (playbackTestStore) GetTableSettings(context.Context, uuid.UUID) (domain.TableSettings, error) {
+	return domain.TableSettings{MasterVolume: 40}, nil
 }
 
 func TestSharedPlaybackAndRecovery(t *testing.T) {
 	h, clients := testHub()
 	for _, client := range clients {
-		client.Token.TableID = server.DefaultTableID.String()
+		client.Token.TableID = domain.DefaultTableID.String()
 	}
 	event := fmt.Sprintf(`{"fileID":%q,"isPlaying":true,"duration":60}`, testTrackID.String())
 	routeSyncTrack(h, json.RawMessage(event), clients["gm"])
@@ -81,7 +81,7 @@ func TestSharedPlaybackAndRecovery(t *testing.T) {
 		}
 	}
 	// No browser supplies time updates or responds to this late join.
-	snapshot, err := h.playback.Snapshot(t.Context(), server.DefaultTableID)
+	snapshot, err := h.playback.Snapshot(t.Context(), domain.DefaultTableID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -117,7 +117,7 @@ func TestSharedPlaybackAndRecovery(t *testing.T) {
 func TestPlaybackCommandsAreAtomic(t *testing.T) {
 	h, clients := testHub()
 	for _, client := range clients {
-		client.Token.TableID = server.DefaultTableID.String()
+		client.Token.TableID = domain.DefaultTableID.String()
 	}
 	var wg sync.WaitGroup
 	for i, id := range []uuid.UUID{testTrackID, testOtherID} {
@@ -157,14 +157,14 @@ func TestPlaybackCommandsAreAtomic(t *testing.T) {
 		t.Fatalf("rejected playback events reached the mixer: %v", mix.calls)
 	}
 	sendEvent(t, h, events.TrackRemoved, events.TableEvent[events.TrackReference]{
-		TableID: server.DefaultTableID.String(), Data: events.TrackReference{FileID: testTrackID.String()},
+		TableID: domain.DefaultTableID.String(), Data: events.TrackReference{FileID: testTrackID.String()},
 	})
-	snapshot, err := h.playback.Snapshot(t.Context(), server.DefaultTableID)
+	snapshot, err := h.playback.Snapshot(t.Context(), domain.DefaultTableID)
 	if err != nil || len(snapshot.Tracks) != 1 || snapshot.Tracks[0].FileID == testTrackID.String() {
 		t.Fatalf("removed track survives recovery: %+v, %v", snapshot, err)
 	}
-	sendEvent(t, h, events.TableDeleted, server.DefaultTableID.String())
-	snapshot, err = h.playback.Snapshot(t.Context(), server.DefaultTableID)
+	sendEvent(t, h, events.TableDeleted, domain.DefaultTableID.String())
+	snapshot, err = h.playback.Snapshot(t.Context(), domain.DefaultTableID)
 	if err != nil || len(snapshot.Tracks) != 0 {
 		t.Fatalf("deleted table survives recovery: %+v, %v", snapshot, err)
 	}
@@ -174,7 +174,7 @@ func TestPlaybackExclusivityFadesMixerAudio(t *testing.T) {
 	for _, simultaneous := range []bool{false, true} {
 		t.Run(fmt.Sprintf("simultaneous=%v", simultaneous), func(t *testing.T) {
 			h, clients := testHubWithStore(playbackTypeTestStore{simultaneous: simultaneous})
-			tableID := server.DefaultTableID.String()
+			tableID := domain.DefaultTableID.String()
 			for _, client := range clients {
 				client.Token.TableID = tableID
 			}
@@ -241,8 +241,8 @@ type playbackTypeTestStore struct {
 	simultaneous bool
 }
 
-func (s playbackTypeTestStore) GetTrackTypeByID(context.Context, uuid.UUID) (server.TrackType, error) {
-	return server.TrackType{
+func (s playbackTypeTestStore) GetTrackTypeByID(context.Context, uuid.UUID) (domain.TrackType, error) {
+	return domain.TrackType{
 		ID: testTypeID, Name: "Music", IsRepeating: true, AllowSimultaneousPlay: s.simultaneous,
 	}, nil
 }
@@ -270,21 +270,21 @@ func readPlayback(t *testing.T, client *Client) events.Snapshot {
 }
 
 func TestSavedTrackUpdatesReachGMsAndAllPlayingTables(t *testing.T) {
-	tableID := server.DefaultTableID.String()
+	tableID := domain.DefaultTableID.String()
 	otherTableID := uuid.NewString()
 	fileID := testTrackID.String()
 	end, loop := 50.0, 20.0
 	store := &playbackTrackTestStore{
-		track: server.Track{
+		track: domain.Track{
 			ID:       testTrackID,
 			Name:     "Updated music",
 			TypeID:   testTypeID,
 			Volume:   25,
-			Playback: server.PlaybackSettings{StartTime: 10, EndTime: &end, LoopBackTime: &loop},
+			Playback: domain.PlaybackSettings{StartTime: 10, EndTime: &end, LoopBackTime: &loop},
 		},
 	}
 	saved := store.track
-	store.track = server.Track{ID: testTrackID, Name: "Music", TypeID: testTypeID, Volume: 50}
+	store.track = domain.Track{ID: testTrackID, Name: "Music", TypeID: testTypeID, Volume: 50}
 	h, clients := testHubWithStore(store)
 	for _, client := range clients {
 		client.Token.TableID = tableID
@@ -314,7 +314,7 @@ func TestSavedTrackUpdatesReachGMsAndAllPlayingTables(t *testing.T) {
 		if err := json.Unmarshal(<-client.send, &event); err != nil {
 			t.Fatal(err)
 		}
-		var track server.Track
+		var track domain.Track
 		if err := json.Unmarshal(event.Payload, &track); err != nil || event.Event != events.TrackUpdated ||
 			track.Name != store.track.Name || track.Playback.StartTime != 10 || track.Volume != 25 {
 			t.Fatalf("%s metadata = %+v, %v", name, track, err)
@@ -350,9 +350,9 @@ func TestSavedTrackUpdatesReachGMsAndAllPlayingTables(t *testing.T) {
 
 type playbackTrackTestStore struct {
 	playbackTestStore
-	track server.Track
+	track domain.Track
 }
 
-func (s *playbackTrackTestStore) GetTrackByID(context.Context, uuid.UUID) (server.Track, error) {
+func (s *playbackTrackTestStore) GetTrackByID(context.Context, uuid.UUID) (domain.Track, error) {
 	return s.track, nil
 }

@@ -13,8 +13,11 @@ tags: [runtime, backend]
 [authentication service](../backend/authentication.md), the
 [WebSocket hub](../playback/synchronization.md),
 [YouTube service](../backend/youtube.md),
-[music processing service](../data/track-processing.md), and the
-[HTTP server](./http-serving.md). Startup applies pending migrations before
+[music processing service](../data/track-processing.md), the
+[domain services](../backend/domain-services.md), and the
+[HTTP server](./http-serving.md). The tables, library, and voice services
+receive the datastore, hub, and media adapters as ports; the server receives
+only the services. Startup applies pending migrations before
 accepting requests. The CLI also exposes migration commands; `cmd/hashpass`
 produces Argon2id hashes for password bootstrapping.
 
@@ -35,10 +38,11 @@ both services before closing the datastore. The HTTP server receives its
 lifetime context through `Start(ctx)`; neither the server nor the processing
 service stores a context.
 
-The HTTP server owns the [live mixer](../discord/live-mixer.md) and registers
-its event adapter on the shared hub before accepting connections. The adapter
-announces mixer readiness and consumes audio commands only when
-[Discord streaming](../discord/voice-streaming.md) is enabled. The hub owns
+When [Discord streaming](../discord/voice-streaming.md) is enabled, `main.go`
+builds the [live mixer](../discord/live-mixer.md) with the voice service's track
+loader and the [HLS decoder](../discord/pcm-source.md), creates the Discord bot,
+and registers the mixer's event adapter on the shared hub before accepting
+connections. The adapter announces mixer readiness and consumes audio commands. The hub owns
 event dispatch and subscriptions, not the mixer service.
 Each accepted socket connection registers its own typed event listeners on
 that same bus and releases them when the connection ends.

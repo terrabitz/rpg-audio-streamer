@@ -24,11 +24,12 @@ flowchart LR
   UI <-->|WebSocket sync| Hub[Go WebSocket hub]
   UI -->|Table-scoped HLS requests| API
   API --> Auth[Authentication service]
-  API --> Store[SQLite datastore adapter]
+  API --> Domain[Domain services]
+  Domain --> Store[SQLite datastore adapter]
   Store --> Queries[Generated sqlc queries]
   Queries --> DB[(SQLite metadata)]
-  API --> Processing[Music processing service]
-  API -->|Scans| YouTube[YouTube service]
+  Domain --> Processing[Music processing service]
+  Domain -->|Scans| YouTube[YouTube service]
   Processing --> Store
   Processing --> FFmpeg[FFmpeg conversion]
   Processing -->|Downloader| YouTube
@@ -47,7 +48,8 @@ flowchart LR
   together, and the [HTTP server](./runtime/http-serving.md) exposes the API,
   WebSocket, and built UI.
 - The [Go packages](./backend/packages.md) separate authentication, HTTP
-  handling, persistence, synchronization, and audio mixing.
+  handling, persistence, synchronization, and audio mixing; business rules live
+  in [domain services](./backend/domain-services.md).
 - [SQLite](./data/sqlite-schema.md) stores metadata; [uploaded tracks](./data/track-uploads.md)
   live on disk as HLS.
 - [Background processing](./data/track-processing.md) handles uploads and

@@ -1,4 +1,4 @@
-package server
+package hlsaudio
 
 import (
 	"context"
@@ -15,10 +15,8 @@ import (
 )
 
 func TestMixerPCMStreamsBoundedHLSWindowsAndSeeks(t *testing.T) {
-	ts := setupTestServer(t)
-	defer ts.cleanup(t)
-	track := saveWaveformTrack(t, ts)
-	playlist := filepath.Join(track.Path, "index.m3u8")
+	trackDir := t.TempDir()
+	playlist := filepath.Join(trackDir, "index.m3u8")
 	cmd := exec.Command("ffmpeg", "-nostdin", "-v", "error",
 		"-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=5",
 		"-f", "lavfi", "-i", "sine=frequency=550:sample_rate=48000:duration=5",
@@ -26,7 +24,7 @@ func TestMixerPCMStreamsBoundedHLSWindowsAndSeeks(t *testing.T) {
 		"-f", "lavfi", "-i", "sine=frequency=770:sample_rate=48000:duration=5",
 		"-filter_complex", "[0:a][1:a][2:a][3:a]concat=n=4:v=0:a=1[a]", "-map", "[a]",
 		"-c:a", "aac", "-f", "hls", "-hls_time", "2", "-hls_list_size", "0",
-		"-hls_segment_filename", filepath.Join(track.Path, "segment%03d.ts"), playlist)
+		"-hls_segment_filename", filepath.Join(trackDir, "segment%03d.ts"), playlist)
 	if output, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("generate HLS: %v: %s", err, output)
 	}
@@ -38,7 +36,7 @@ func TestMixerPCMStreamsBoundedHLSWindowsAndSeeks(t *testing.T) {
 	if duration < 19 || duration > 21 {
 		t.Fatalf("playlist duration = %v, want about 20 seconds", duration)
 	}
-	source, err := newWindowedPCMSource(mixerSampleRate, int(math.Round(duration*mixerSampleRate)), segments)
+	source, err := newWindowedPCMSource(SampleRate, int(math.Round(duration*SampleRate)), segments)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -47,17 +45,17 @@ func TestMixerPCMStreamsBoundedHLSWindowsAndSeeks(t *testing.T) {
 	for _, sample := range []struct {
 		start, frequency int
 	}{
-		{start: mixerSampleRate / 2, frequency: 440},
-		{start: 6*mixerSampleRate + mixerSampleRate/2, frequency: 550},
-		{start: 11*mixerSampleRate + mixerSampleRate/2, frequency: 660},
-		{start: 16*mixerSampleRate + mixerSampleRate/2, frequency: 770},
+		{start: SampleRate / 2, frequency: 440},
+		{start: 6*SampleRate + SampleRate/2, frequency: 550},
+		{start: 11*SampleRate + SampleRate/2, frequency: 660},
+		{start: 16*SampleRate + SampleRate/2, frequency: 770},
 	} {
 		frequency, err := waitForPCMFrequency(source, sample.start)
 		if err != nil {
-			t.Fatalf("decode seek at %.1f seconds: %v", float64(sample.start)/mixerSampleRate, err)
+			t.Fatalf("decode seek at %.1f seconds: %v", float64(sample.start)/SampleRate, err)
 		}
 		if math.Abs(frequency-float64(sample.frequency)) > 25 {
-			t.Fatalf("decoded %.1f Hz near %.1f seconds, want %d Hz", frequency, float64(sample.start)/mixerSampleRate, sample.frequency)
+			t.Fatalf("decoded %.1f Hz near %.1f seconds, want %d Hz", frequency, float64(sample.start)/SampleRate, sample.frequency)
 		}
 	}
 	source.mu.Lock()
@@ -67,12 +65,12 @@ func TestMixerPCMStreamsBoundedHLSWindowsAndSeeks(t *testing.T) {
 		t.Fatalf("cached %d windows, limit is %d", cached, pcmCachedWindows)
 	}
 	for _, seconds := range []int{0, 5, 10, 15} {
-		if _, ready := source.FrameAt(seconds*mixerSampleRate + mixerSampleRate/2); !ready {
+		if _, ready := source.FrameAt(seconds*SampleRate + SampleRate/2); !ready {
 			t.Fatal("two crossfading cursors and their lookahead windows cannot stay decoded together")
 		}
 	}
 
-	longPlaylist := filepath.Join(track.Path, "long.m3u8")
+	longPlaylist := filepath.Join(trackDir, "long.m3u8")
 	var longManifest strings.Builder
 	longManifest.WriteString("#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:3\n")
 	for i := 0; i < 1800; i++ {
@@ -89,12 +87,12 @@ func TestMixerPCMStreamsBoundedHLSWindowsAndSeeks(t *testing.T) {
 	if longDuration < 3600 {
 		t.Fatalf("long HLS fixture duration = %v, want at least one hour", longDuration)
 	}
-	longSource, err := newWindowedPCMSource(mixerSampleRate, int(math.Round(longDuration*mixerSampleRate)), longSegments)
+	longSource, err := newWindowedPCMSource(SampleRate, int(math.Round(longDuration*SampleRate)), longSegments)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer longSource.Close()
-	longPosition := 3595*mixerSampleRate + mixerSampleRate/2
+	longPosition := 3595*SampleRate + SampleRate/2
 	if frequency, err := waitForPCMFrequency(longSource, longPosition); err != nil {
 		t.Fatalf("decode one-hour seek: %v", err)
 	} else if math.Abs(frequency-440) > 25 {
@@ -106,11 +104,11 @@ func TestMixerPCMStreamsBoundedHLSWindowsAndSeeks(t *testing.T) {
 		longCachedFrames += len(element.Value.(*pcmWindow).frames)
 	}
 	longSource.mu.Unlock()
-	if longCachedFrames > pcmWindowSeconds*mixerSampleRate {
+	if longCachedFrames > pcmWindowSeconds*SampleRate {
 		t.Fatalf("one-hour source cached %d frames, over one window", longCachedFrames)
 	}
 
-	engine, err := mixer.New(mixerSampleRate)
+	engine, err := mixer.New(SampleRate)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -123,10 +121,10 @@ func TestMixerPCMStreamsBoundedHLSWindowsAndSeeks(t *testing.T) {
 		source.lru.Remove(head)
 	}
 	source.mu.Unlock()
-	if err := engine.SetRegion("loop", mixer.Region{End: 20 * mixerSampleRate}); err != nil {
+	if err := engine.SetRegion("loop", mixer.Region{End: 20 * SampleRate}); err != nil {
 		t.Fatal(err)
 	}
-	if err := engine.Seek("loop", 18*mixerSampleRate); err != nil {
+	if err := engine.Seek("loop", 18*SampleRate); err != nil {
 		t.Fatal(err)
 	}
 	if err := engine.Play("loop"); err != nil {
@@ -135,7 +133,7 @@ func TestMixerPCMStreamsBoundedHLSWindowsAndSeeks(t *testing.T) {
 	if err := engine.SetRepeating("loop", true); err != nil {
 		t.Fatal(err)
 	}
-	coldLoop := make([]mixer.Frame, mixerSampleRate/10)
+	coldLoop := make([]mixer.Frame, SampleRate/10)
 	engine.Render(coldLoop)
 	energy := 0.0
 	for _, frame := range coldLoop {
@@ -145,21 +143,21 @@ func TestMixerPCMStreamsBoundedHLSWindowsAndSeeks(t *testing.T) {
 		t.Fatal("cold loop-back window silenced the decoded outgoing tail")
 	}
 	if err := engine.SetRegion("loop", mixer.Region{
-		Start: 0, End: 20 * mixerSampleRate, LoopBack: 10 * mixerSampleRate,
+		Start: 0, End: 20 * SampleRate, LoopBack: 10 * SampleRate,
 	}); err != nil {
 		t.Fatal(err)
 	}
 	if err := engine.SetRepeating("loop", true); err != nil {
 		t.Fatal(err)
 	}
-	if err := engine.Seek("loop", 18*mixerSampleRate); err != nil {
+	if err := engine.Seek("loop", 18*SampleRate); err != nil {
 		t.Fatal(err)
 	}
 	if err := engine.Play("loop"); err != nil {
 		t.Fatal(err)
 	}
-	fade := 2 * mixerSampleRate
-	out := make([]mixer.Frame, fade+mixerSampleRate/10)
+	fade := 2 * SampleRate
+	out := make([]mixer.Frame, fade+SampleRate/10)
 	engine.Render(out)
 	frequency := estimateFrequency(out[fade:])
 	if math.Abs(frequency-660) > 25 {
@@ -169,18 +167,16 @@ func TestMixerPCMStreamsBoundedHLSWindowsAndSeeks(t *testing.T) {
 }
 
 func TestMixerPCMStreamsUploadedHLS(t *testing.T) {
-	ts := setupTestServer(t)
-	defer ts.cleanup(t)
-	track := saveWaveformTrack(t, ts)
-	input := filepath.Join(ts.tempDir, "tone.mp3")
+	trackDir := t.TempDir()
+	input := filepath.Join(t.TempDir(), "tone.mp3")
 	if output, err := exec.Command("ffmpeg", "-nostdin", "-v", "error",
 		"-f", "lavfi", "-i", "sine=frequency=440:duration=12", "-f", "mp3", input).CombinedOutput(); err != nil {
 		t.Fatalf("generate upload audio: %v: %s", err, output)
 	}
-	playlist := filepath.Join(track.Path, "index.m3u8")
+	playlist := filepath.Join(trackDir, "index.m3u8")
 	if output, err := exec.Command("ffmpeg", "-nostdin", "-v", "error", "-i", input,
 		"-c:a", "aac", "-b:a", "128k", "-ac", "2", "-ar", "44100", "-hls_time", "6",
-		"-hls_playlist_type", "event", "-hls_segment_filename", filepath.Join(track.Path, "segment_%03d.ts"),
+		"-hls_playlist_type", "event", "-hls_segment_filename", filepath.Join(trackDir, "segment_%03d.ts"),
 		"-vn", "-f", "hls", playlist).CombinedOutput(); err != nil {
 		t.Fatalf("generate uploaded HLS: %v: %s", err, output)
 	}
@@ -188,12 +184,12 @@ func TestMixerPCMStreamsUploadedHLS(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	source, err := newWindowedPCMSource(mixerSampleRate, int(math.Round(duration*mixerSampleRate)), segments)
+	source, err := newWindowedPCMSource(SampleRate, int(math.Round(duration*SampleRate)), segments)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer source.Close()
-	frequency, err := waitForPCMFrequency(source, mixerSampleRate/2)
+	frequency, err := waitForPCMFrequency(source, SampleRate/2)
 	if err != nil {
 		t.Fatalf("decode uploaded HLS: %v", err)
 	}
@@ -212,7 +208,7 @@ func waitForPCMFrequency(source *windowedPCMSource, position int) (float64, erro
 		if ready {
 			crossings := 0
 			previous := 0.0
-			for i := 0; i < mixerSampleRate/10; i++ {
+			for i := 0; i < SampleRate/10; i++ {
 				frame, ok := source.FrameAt(position + i)
 				if !ok {
 					return 0, context.DeadlineExceeded
@@ -236,5 +232,5 @@ func estimateFrequency(frames []mixer.Frame) float64 {
 			crossings++
 		}
 	}
-	return float64(crossings) / (2 * float64(len(frames)) / mixerSampleRate)
+	return float64(crossings) / (2 * float64(len(frames)) / SampleRate)
 }

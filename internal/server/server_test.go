@@ -4,6 +4,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"github.com/terrabitz/rpg-audio-streamer/internal/domain"
+	"github.com/terrabitz/rpg-audio-streamer/internal/library"
+	"github.com/terrabitz/rpg-audio-streamer/internal/tables"
+	"github.com/terrabitz/rpg-audio-streamer/internal/voice"
 	"io"
 	"log/slog"
 	"mime/multipart"
@@ -24,11 +28,54 @@ import (
 	"github.com/terrabitz/rpg-audio-streamer/internal/youtube"
 )
 
+// testServer composes the server like main does, from dependencies a test may
+// replace before calling Handler.
 type testServer struct {
 	*Server
+	store          testStore
+	hub            testHub
+	playback       tables.Playback
+	processing     library.Audio
+	videos         library.Videos
+	discord        voice.Discord
 	tempDir        string
 	stopProcessing context.CancelFunc
 	processingDone <-chan struct{}
+}
+
+type testStore interface {
+	musicprocessing.Store
+	tables.Store
+	library.Store
+	voice.Store
+}
+
+type testHub interface {
+	WSRegisterer
+	events.Sender
+	tables.PlayerAccess
+}
+
+func (ts *testServer) Handler() http.Handler {
+	ts.Server = composeServer(ts.cfg, ts.logger, ts.auth, ts.store, ts.hub, ts.playback, ts.processing, ts.videos, ts.discord, ts.tempDir)
+	return ts.Server.Handler()
+}
+
+func composeServer(cfg Config, logger *slog.Logger, authenticator Authenticator, store testStore, hub testHub, playback tables.Playback, audio library.Audio, videos library.Videos, bot voice.Discord, uploadDir string) *Server {
+	tablesService := tables.New(store, playback, hub, hub)
+	srv, err := New(
+		cfg,
+		logger,
+		authenticator,
+		hub,
+		tablesService,
+		library.New(store, audio, videos, tablesService, hub, uploadDir),
+		voice.New(bot, store, tablesService, playback, hub, logger),
+	)
+	if err != nil {
+		panic(err)
+	}
+	return srv
 }
 
 type mockAuth struct {
@@ -112,15 +159,24 @@ func setupTestServer(t *testing.T) *testServer {
 		t.Fatal(err)
 	}
 
-	// Create test server
-	srv, err := New(Config{
-		Port:      8080,
-		UploadDir: tempDir,
-		CORS:      middlewares.CorsConfig{},
-	}, logger, mockAuth, mockTrackStore, mockWSReg, nil, processing, videos)
-	if err != nil {
-		t.Fatalf("failed to create server: %v", err)
+	ts := &testServer{
+		store: mockTrackStore,
+		hub:   mockWSReg,
+		playback: &testPlaybackSnapshot{
+			snapshot: events.Snapshot{
+				Settings: &domain.TableSettings{
+					MasterVolume: 100,
+				},
+			},
+		},
+		processing: processing,
+		videos:     videos,
+		tempDir:    tempDir,
 	}
+	ts.Server = composeServer(Config{
+		Port: 8080,
+		CORS: middlewares.CorsConfig{},
+	}, logger, mockAuth, ts.store, ts.hub, ts.playback, ts.processing, ts.videos, nil, tempDir)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	finished := make(chan struct{})
@@ -128,12 +184,9 @@ func setupTestServer(t *testing.T) *testServer {
 		defer close(finished)
 		processing.Run(ctx)
 	}()
-	return &testServer{
-		Server:         srv,
-		tempDir:        tempDir,
-		stopProcessing: cancel,
-		processingDone: finished,
-	}
+	ts.stopProcessing = cancel
+	ts.processingDone = finished
+	return ts
 }
 
 func (ts *testServer) cleanup(t *testing.T) {
@@ -251,7 +304,7 @@ func TestListFiles(t *testing.T) {
 			t.Errorf("expected status OK; got %v", rec.Code)
 		}
 
-		var files []Track
+		var files []domain.Track
 		if err := json.NewDecoder(rec.Body).Decode(&files); err != nil {
 			t.Fatalf("failed to decode response: %v", err)
 		}
@@ -281,7 +334,7 @@ func TestListFiles(t *testing.T) {
 				t.Fatalf("failed to create test file: %v", err)
 			}
 			trackID := uuid.New()
-			ts.store.(*MockTrackStore).tracks[trackID] = Track{
+			ts.store.(*MockTrackStore).tracks[trackID] = domain.Track{
 				ID:     trackID,
 				Name:   tf.name,
 				Path:   hlsDir,
@@ -298,7 +351,7 @@ func TestListFiles(t *testing.T) {
 			t.Errorf("expected status OK; got %v", rec.Code)
 		}
 
-		var files []Track
+		var files []domain.Track
 		if err := json.NewDecoder(rec.Body).Decode(&files); err != nil {
 			t.Fatalf("failed to decode response: %v", err)
 		}
@@ -336,7 +389,7 @@ func TestDeleteFile(t *testing.T) {
 		}
 
 		mockStore := ts.store.(*MockTrackStore)
-		mockStore.tracks[trackID] = Track{
+		mockStore.tracks[trackID] = domain.Track{
 			ID:     trackID,
 			Path:   trackPath,
 			Name:   "Test Track",
@@ -347,7 +400,7 @@ func TestDeleteFile(t *testing.T) {
 		rec := httptest.NewRecorder()
 		req.SetPathValue("trackID", trackID.String())
 
-		ts.handleFileDelete(rec, req, &auth.Token{Role: auth.RoleGM})
+		ts.handleFile(rec, req, &auth.Token{Role: auth.RoleGM})
 
 		if rec.Code != http.StatusOK {
 			t.Errorf("expected status OK; got %v", rec.Code)
@@ -363,7 +416,7 @@ func TestDeleteFile(t *testing.T) {
 		rec := httptest.NewRecorder()
 		req.SetPathValue("trackID", "invalid-id")
 
-		ts.handleFileDelete(rec, req, &auth.Token{Role: auth.RoleGM})
+		ts.handleFile(rec, req, &auth.Token{Role: auth.RoleGM})
 
 		if rec.Code != http.StatusBadRequest {
 			t.Errorf("expected status BadRequest; got %v", rec.Code)
@@ -376,7 +429,7 @@ func TestDeleteFile(t *testing.T) {
 		rec := httptest.NewRecorder()
 		req.SetPathValue("trackID", missingID)
 
-		ts.handleFileDelete(rec, req, &auth.Token{Role: auth.RoleGM})
+		ts.handleFile(rec, req, &auth.Token{Role: auth.RoleGM})
 
 		if rec.Code != http.StatusNotFound {
 			t.Errorf("expected status NotFound; got %v", rec.Code)
@@ -598,7 +651,7 @@ func TestTrackTypes(t *testing.T) {
 		t.Errorf("expected status OK; got %v", rec.Code)
 	}
 
-	var types []TrackType
+	var types []domain.TrackType
 	if err := json.NewDecoder(rec.Body).Decode(&types); err != nil {
 		t.Fatalf("failed to decode response: %v", err)
 	}
