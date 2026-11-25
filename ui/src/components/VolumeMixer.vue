@@ -1,15 +1,10 @@
 <script setup lang="ts">
-import { onMounted } from 'vue'
 import { useAudioStore } from '../stores/audio'
 import { useTrackTypeStore } from '../stores/trackTypes'
 import VolumeSlider from './VolumeSlider.vue'
 
 const audioStore = useAudioStore()
 const trackTypeStore = useTrackTypeStore()
-
-onMounted(async () => {
-  await trackTypeStore.fetchTrackTypes()
-})
 </script>
 
 <template>

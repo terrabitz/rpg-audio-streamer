@@ -1,14 +1,17 @@
 <script setup lang="ts">
 import { useAuthStore } from '../stores/auth';
 import { useAppBar } from '@/composables/useAppBar';
+import { usePageLoading } from '@/composables/pageLoading';
 import { onMounted } from 'vue';
 
 const auth = useAuthStore();
 const { setTitle, setActions } = useAppBar()
+const page = usePageLoading()
 
 onMounted(() => {
   setTitle('RPG Audio Streamer')
   setActions([])
+  page.finish()
 });
 
 </script>

@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { claimInstance, getSetupStatus } from '@/client/apiClient'
 import { useAppBar } from '@/composables/useAppBar'
+import { usePageLoading } from '@/composables/pageLoading'
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
 const { setTitle, setActions } = useAppBar()
+const page = usePageLoading()
 const router = useRouter()
 const username = ref('admin')
 const code = ref('')
@@ -29,6 +31,7 @@ onMounted(async () => {
   } catch (e) {
     error.value = typeof e === 'string' ? e : 'Unable to load setup. Reload to try again.'
   }
+  page.finish()
 })
 
 async function submit() {

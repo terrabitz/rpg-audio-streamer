@@ -160,3 +160,10 @@ it('reports discovery and stream failures without exposing options when disabled
   await discord.toggle()
   expect(discord.error.value).toContain('Unable to load')
 })
+
+it('starts from a preloaded status before refreshing', () => {
+  const discord = useDiscord('friday', { enabled: true, state: 'error', error: 'Voice connection failed' })
+  expect(discord.status.value).toEqual({ enabled: true, state: 'error', error: 'Voice connection failed' })
+  expect(discord.error.value).toBe('Voice connection failed')
+  expect(api.get).not.toHaveBeenCalled()
+})

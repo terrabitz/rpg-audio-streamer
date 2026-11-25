@@ -11,8 +11,8 @@ import {
   type DiscordStatus,
 } from '@/client/apiClient'
 
-export function useDiscord(tableID: string) {
-  const status = ref<DiscordStatus>({ enabled: false, state: 'disconnected' })
+export function useDiscord(tableID: string, initialStatus?: DiscordStatus) {
+  const status = ref<DiscordStatus>(initialStatus ?? { enabled: false, state: 'disconnected' })
   const setup = ref<DiscordSetup>({ installURL: '', guilds: [] })
   const channels = ref<DiscordChoice[]>([])
   const guildID = ref('')
@@ -20,7 +20,7 @@ export function useDiscord(tableID: string) {
   const dialog = ref(false)
   const loading = ref(false)
   const channelsLoading = ref(false)
-  const error = ref('')
+  const error = ref(initialStatus?.error ?? '')
   let revision = 0
   let selectionRevision = 0
   let disposed = false
