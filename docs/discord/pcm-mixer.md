@@ -8,6 +8,10 @@ tags: [discord, audio, mixing]
 
 # PCM mixer
 
+For a hands-on reconstruction, follow the
+[PCM mixer course](../tutorials/pcm-mixer-course.md), from your first audible
+frame through the core's controls, transitions, and source lifecycle.
+
 `internal/mixer` is not part of the HTTP, WebSocket, or browser playback path;
 the [live mixer](./live-mixer.md) drives it. It accepts normalized stereo PCM
 frames at one caller-selected sample rate. `Add` copies an in-memory clip and
