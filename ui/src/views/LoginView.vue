@@ -2,10 +2,12 @@
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAppBar } from '@/composables/useAppBar'
+import { usePageLoading } from '@/composables/pageLoading'
 import { useAuthStore } from '../stores/auth'
 import ErrorToast from '../components/ErrorToast.vue'
 
 const { setTitle, setActions } = useAppBar()
+const page = usePageLoading()
 const auth = useAuthStore()
 const router = useRouter()
 
@@ -16,6 +18,7 @@ const error = ref('')
 onMounted(() => {
   setTitle('Login')
   setActions([])
+  page.finish()
 })
 
 async function handleSubmit() {

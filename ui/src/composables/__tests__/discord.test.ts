@@ -160,3 +160,24 @@ it('reports discovery and stream failures without exposing options when disabled
   await discord.toggle()
   expect(discord.error.value).toContain('Unable to load')
 })
+
+it('starts from a preloaded status before refreshing', () => {
+  const discord = useDiscord('friday', { enabled: true, state: 'error', error: 'Voice connection failed' })
+  expect(discord.status.value).toEqual({ enabled: true, state: 'error', error: 'Voice connection failed' })
+  expect(discord.error.value).toBe('Voice connection failed')
+  expect(api.get).not.toHaveBeenCalled()
+})
+
+it('uses the preloaded status for the initial connection and refreshes after reconnecting', async () => {
+  const ws = useWebSocketStore()
+  const discord = useDiscord('friday', { enabled: true, state: 'disconnected' })
+  ws.isConnected = true
+  await nextTick()
+  expect(api.get).not.toHaveBeenCalled()
+  ws.isConnected = false
+  await nextTick()
+  ws.isConnected = true
+  await nextTick()
+  expect(api.get).toHaveBeenCalledTimes(1)
+  discord.dispose()
+})

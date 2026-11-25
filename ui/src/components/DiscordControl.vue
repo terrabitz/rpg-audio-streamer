@@ -1,14 +1,15 @@
 <script setup lang="ts">
 import { computed, onUnmounted } from 'vue'
+import type { DiscordStatus } from '@/client/apiClient'
 import { useDiscord } from '@/composables/discord'
 import discordLogo from '@/assets/discord.svg'
 import ErrorToast from './ErrorToast.vue'
 
-const props = defineProps<{ tableID: string }>()
+const props = defineProps<{ tableID: string, initialStatus?: DiscordStatus }>()
 const {
   status, setup, channels, guildID, channelID, dialog, loading, channelsLoading, error,
   toggle, connect, loadSetup, selectGuild, dispose,
-} = useDiscord(props.tableID)
+} = useDiscord(props.tableID, props.initialStatus)
 const addServerID = '__add-server__'
 const serverOptions = computed(() => [
   ...setup.value.guilds.map(guild => ({ ...guild, isAddServer: false })),

@@ -1,5 +1,7 @@
 <script setup lang="ts">
+import { usePageLoading } from '@/composables/pageLoading'
 import { usePlaybackSnapshot } from '@/composables/playbackSnapshot'
+import { useTrackTypeStore } from '@/stores/trackTypes'
 import { useWebSocketStore } from '@/stores/websocket'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
@@ -11,6 +13,7 @@ import { useAudioStore } from '../stores/audio'
 const route = useRoute()
 const wsStore = useWebSocketStore()
 const audioStore = useAudioStore()
+const page = usePageLoading()
 const connecting = ref(false)
 const error = ref('')
 let unsubscribe: (() => void) | undefined
@@ -36,9 +39,16 @@ const playbackStatus = computed(() => {
   return 'Nothing is playing'
 })
 
-onMounted(() => {
+onMounted(async () => {
   audioStore.enabled = false
   unsubscribe = wsStore.onPlaybackStateChanged(snapshots.accept)
+  try {
+    await useTrackTypeStore().fetchTrackTypes()
+  } catch (e) {
+    console.error('Failed to load track types:', e)
+    error.value = 'Unable to load the volume mixer. Reload to try again.'
+  }
+  page.finish()
 })
 
 onUnmounted(() => {

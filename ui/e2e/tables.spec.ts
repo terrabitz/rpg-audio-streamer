@@ -530,3 +530,32 @@ test('GM drops multiple files directly onto the table', async ({ page, recordFlo
     await rm(folder, { recursive: true, force: true })
   }
 })
+
+test('GM opens a table on a slow connection in a single step', async ({ page, recordFlow }) => {
+  await login(page)
+  await uploadTrack(page, 'Tavern', 'Music', 5)
+  await page.addInitScript(() => {
+    const states = new Set<string>()
+    ;(window as unknown as { loadStates: Set<string> }).loadStates = states
+    const shown = (selector: string) => !!document.querySelector(selector)?.checkVisibility({ visibilityProperty: true })
+    const sample = () => {
+      const title = document.querySelector('.v-app-bar-title')?.textContent?.includes('My Table') ?? false
+      states.add(JSON.stringify([title, shown('[aria-label="Table options"]'), shown('.file-tile')]))
+      requestAnimationFrame(sample)
+    }
+    requestAnimationFrame(sample)
+  })
+  const cdp = await page.context().newCDPSession(page)
+  await cdp.send('Network.emulateNetworkConditions', {
+    offline: false,
+    latency: 400,
+    downloadThroughput: 200 * 1024,
+    uploadThroughput: 100 * 1024,
+  })
+  recordFlow.start()
+  await page.reload()
+  await expect(page.getByRole('group', { name: 'Tavern', exact: true })).toBeVisible()
+  recordFlow.stop()
+  const states = await page.evaluate(() => [...(window as unknown as { loadStates: Set<string> }).loadStates])
+  expect(states.sort()).toEqual(['[false,false,false]', '[true,true,true]'])
+})

@@ -4,6 +4,7 @@ import FileList from '@/components/FileList.vue';
 import TableActions from '@/components/TableActions.vue';
 import ErrorToast from '@/components/ErrorToast.vue';
 import { useAppBar } from '@/composables/useAppBar';
+import { usePageLoading } from '@/composables/pageLoading';
 import { usePlaybackSnapshot } from '@/composables/playbackSnapshot';
 import { useAudioStore } from '@/stores/audio';
 import { useFileStore } from '@/stores/files';
@@ -11,7 +12,7 @@ import { useTrackTypeStore } from '@/stores/trackTypes';
 import { useTableStore } from '@/stores/tables';
 import { useWebSocketStore } from '@/stores/websocket';
 import { usePlaybackCommands } from '@/stores/playbackCommands';
-import type { LivePlaybackSnapshot, TableSettingsPatch } from '@/client/apiClient';
+import { getApiV1TablesByTableIdDiscord, type DiscordStatus, type LivePlaybackSnapshot, type TableSettingsPatch } from '@/client/apiClient';
 import debounce from 'lodash.debounce';
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 
@@ -26,6 +27,8 @@ let mixerSyncPending = false
 let connectionSynchronized = false
 const ready = ref(false)
 const synchronized = ref(false)
+const discordStatus = ref<DiscordStatus>()
+const page = usePageLoading()
 const externalID = computed(() => tables.current!.externalID)
 let disposed = false
 let subscriptions: (() => void)[] = []
@@ -59,6 +62,10 @@ watch(snapshotMix, (mix, previous) => {
   }
   saveMix()
 }, { flush: 'sync' })
+
+watch(() => (ready.value && synchronized.value) || !!error.value, (settled) => {
+  if (settled) page.finish()
+})
 
 const { setTitle, setActions } = useAppBar()
 
@@ -148,12 +155,16 @@ onMounted(async () => {
   window.addEventListener('pagehide', flushMix)
   try {
     const settings = await tables.loadSettings(externalID.value)
-    await Promise.all([
+    const [discord] = await Promise.all([
+      getApiV1TablesByTableIdDiscord<true>({ path: { tableID: externalID.value } })
+        .then(({ data }) => data)
+        .catch(() => undefined),
       useFileStore().fetchFiles(),
       useTrackTypeStore().fetchTrackTypes(),
       tables.fetchTracks(externalID.value),
     ])
     if (disposed) return
+    discordStatus.value = discord
     audioStore.loadTableMix(settings)
     audioStore.enabled = true
     ready.value = true
@@ -212,5 +223,5 @@ function effectiveTypeVolumes() {
   <v-btn v-if="tables.failedSettings[externalID]" variant="text"
     @click="tables.saveSettings(externalID, {})">Retry saving</v-btn>
   <AudioPlayer v-if="ready" :tableID="externalID" @error="error = $event" />
-  <FileList v-if="ready && synchronized" />
+  <FileList v-if="ready && synchronized" :discord-status="discordStatus" />
 </template>

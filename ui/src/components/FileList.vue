@@ -92,7 +92,8 @@
         <div class="playing-sidebar-tracks">
           <PlayingTrackList :tracks="playingTracks" @play="handlePlay" @volume="handleVolume" @seek="handleSeek" />
         </div>
-        <DiscordControl v-if="tables.current" :tableID="tables.current.externalID" class="playing-sidebar-discord" />
+        <DiscordControl v-if="tables.current" :tableID="tables.current.externalID"
+          :initial-status="props.discordStatus" class="playing-sidebar-discord" />
       </aside>
       <template v-else>
         <v-bottom-sheet v-model="showNowPlaying" max-height="70dvh" aria-label="Currently playing">
@@ -115,7 +116,8 @@
                 @update:model-value="audioStore.setMasterVolume($event)" />
             </div>
             <div class="now-playing-drawer-tracks">
-              <DiscordControl v-if="tables.current" :tableID="tables.current.externalID" class="mb-3" />
+              <DiscordControl v-if="tables.current" :tableID="tables.current.externalID"
+                :initial-status="props.discordStatus" class="mb-3" />
               <PlayingTrackList :tracks="playingTracks" @play="handlePlay" @volume="handleVolume" @seek="handleSeek" />
             </div>
           </v-card>
@@ -167,7 +169,7 @@
 </template>
 
 <script setup lang="ts">
-import { type Track, type PlaybackSettings } from '@/client/apiClient'
+import { type Track, type PlaybackSettings, type DiscordStatus } from '@/client/apiClient'
 import { defaultPlayback } from '@/composables/playback'
 import { defaultPreset, Feedback, PointerActivationConstraints, PointerSensor } from '@dnd-kit/dom'
 import { DragDropProvider, type DragEndEvent } from '@dnd-kit/vue'
@@ -215,7 +217,8 @@ const sensors = [
   }),
 ]
 const tables = useTableStore()
-const props = defineProps<{ library?: boolean }>()
+const props = defineProps<{ library?: boolean, discordStatus?: DiscordStatus }>()
+const emit = defineEmits<{ loaded: [] }>()
 const error = ref('')
 const loading = ref(true)
 const libraryHeaders = [
@@ -282,6 +285,7 @@ onMounted(async () => {
     error.value = 'Failed to load tracks.'
   } finally {
     loading.value = false
+    emit('loaded')
   }
 })
 
