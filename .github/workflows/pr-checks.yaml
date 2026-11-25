@@ -148,6 +148,8 @@ jobs:
       )
     steps:
       - uses: actions/checkout@v7
+        with:
+          lfs: true
       - name: Run non-Discord app UX suite in the devcontainer
         uses: ./.github/actions/devcontainer
         with:
@@ -178,6 +180,8 @@ jobs:
       queue: max
     steps:
       - uses: actions/checkout@v7
+        with:
+          lfs: true
       - name: Run live Discord app UX suite
         uses: ./.github/actions/devcontainer
         env:
@@ -317,6 +321,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          lfs: true
       - uses: ./.github/actions/devcontainer
         with:
           run: make build-ui
@@ -334,6 +340,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          lfs: true
       - uses: ./.github/actions/devcontainer
         with:
           run: make test-frontend
@@ -341,6 +349,7 @@ jobs:
   docker:
     name: Build Docker Image
     permissions:
+      contents: read
       packages: write
     needs: changes
     if: |
