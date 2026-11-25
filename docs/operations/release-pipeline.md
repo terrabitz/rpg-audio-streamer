@@ -25,7 +25,10 @@ After successful publication, the shared `docker-build` workflow uses
 `docker/build-push-action` to build the Linux amd64 and arm64 images natively
 on matching GitHub-hosted runners, pushes each by digest to GHCR, and combines
 them into a multi-arch manifest tagged `latest`, full-version, major.minor, and
-major. Each architecture keeps its own Buildx GitHub Actions cache scope. The
+major. Each build uses an LFS-enabled checkout as its Docker context so frontend
+assets are hydrated. Local image builds likewise require hydrated LFS assets
+and fail if the Discord logo is still a pointer. Each architecture keeps its
+own Buildx GitHub Actions cache scope. The
 image's runtime behavior is described in
 [HTTP serving](../runtime/http-serving.md).
 

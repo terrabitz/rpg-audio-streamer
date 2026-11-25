@@ -3,7 +3,11 @@ FROM node:24 AS frontend-builder
 
 WORKDIR /ui
 COPY ui .
-RUN npm ci && npm run build
+RUN if grep -q '^version https://git-lfs.github.com/spec/v1$' src/assets/discord.svg; then \
+      echo "Discord logo is an unhydrated Git LFS pointer; run git lfs pull before building." >&2; \
+      exit 1; \
+    fi \
+  && npm ci && npm run build
 
 # Stage 2: Build Go backend
 FROM golang:1.26-trixie AS backend-builder
