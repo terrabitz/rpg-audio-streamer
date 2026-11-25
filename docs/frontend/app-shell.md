@@ -1,7 +1,7 @@
 ---
 type: UI Surface
 title: App shell
-description: App bar, navigation sidebar, and table options menu.
+description: App bar, page loading, navigation sidebar, and table options menu.
 resource: ui/src
 tags: [frontend, navigation, layout]
 ---
@@ -9,6 +9,22 @@ tags: [frontend, navigation, layout]
 # App shell
 
 To preserve space during play, the table name appears only in the app bar.
+
+## Page loading
+
+Each page appears in a single step. While a route loads, the shell hides the
+app-bar contents, navigation, and page behind one centered spinner that fades
+in only if loading takes longer than 300 ms. The page stays mounted but
+invisible (`aria-busy`) so it can fetch its data. Once the authentication check
+finishes and the page signals that its data is ready, everything is revealed
+together with a short fade. Pages also reveal when their load fails, showing
+the error state.
+
+`usePageLoading()` in `ui/src/composables/pageLoading.ts` holds this state. The
+router marks every navigation as loading, and each view calls `finish()` after
+its initial requests settle. For example, GM tables wait for settings, tracks,
+track types, Discord status, and the first playback snapshot, and player tables
+wait for the mixer's track types.
 
 ## Navigation
 

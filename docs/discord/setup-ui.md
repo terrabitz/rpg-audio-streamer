@@ -40,8 +40,9 @@ connection. An omitted request body reconnects the saved destination. `GET`
 returns state and the saved destination; `DELETE` disconnects only this table
 without forgetting it.
 
-The composable fetches status once when the table WebSocket connects or
-reconnects. Server-side connection transitions arrive through the GM-only,
+The GM table loads the initial status with its other
+[page data](../frontend/app-shell.md#page-loading), and the composable fetches
+status again when the table WebSocket connects or reconnects. Server-side connection transitions arrive through the GM-only,
 table-scoped [`discordStatusChanged` event](../playback/websocket-protocol.md), without
 polling. Pushed status takes precedence over in-flight HTTP responses and clears
 resolved connection errors. The composable prevents duplicate commands,

@@ -3,6 +3,7 @@ import { onMounted, ref } from 'vue'
 import type { Table } from '@/client/apiClient'
 import { useBaseUrl } from '@/composables/useBaseUrl'
 import { useAppBar } from '@/composables/useAppBar'
+import { usePageLoading } from '@/composables/pageLoading'
 import { useAuthStore } from '@/stores/auth'
 import { useTableStore } from '@/stores/tables'
 import InviteLinkRotationDialog from '@/components/InviteLinkRotationDialog.vue'
@@ -12,10 +13,10 @@ const auth = useAuthStore()
 const tables = useTableStore()
 const { getBaseUrl } = useBaseUrl()
 const { setTitle, setActions } = useAppBar()
+const page = usePageLoading()
 const error = ref('')
 const notice = ref('')
 const noticeColor = ref<'success' | 'error'>('success')
-const loading = ref(true)
 const saving = ref(false)
 const showEditor = ref(false)
 const editing = ref<Table | null>(null)
@@ -35,7 +36,7 @@ onMounted(async () => {
       error.value = 'Failed to load tables.'
     }
   }
-  loading.value = false
+  page.finish()
 })
 
 function editTable(table: Table | null) {
@@ -95,8 +96,7 @@ async function deleteTable() {
 
 <template>
   <v-container>
-    <v-progress-circular v-if="loading" indeterminate aria-label="Loading tables" />
-    <template v-else-if="auth.role === 'gm'">
+    <template v-if="auth.role === 'gm'">
       <h1 class="text-h4 mb-4">Tables</h1>
       <ErrorToast v-model="error" />
       <v-btn color="primary" class="mb-4" @click="editTable(null)">Create table</v-btn>

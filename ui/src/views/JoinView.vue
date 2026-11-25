@@ -2,13 +2,16 @@
 import { onMounted } from 'vue'
 import { useAppBar } from '@/composables/useAppBar'
 import { useBaseUrl } from '@/composables/useBaseUrl'
+import { usePageLoading } from '@/composables/pageLoading'
 
 const { getBaseUrl } = useBaseUrl()
 const { setTitle, setActions } = useAppBar()
+const page = usePageLoading()
 
 onMounted(() => {
   setTitle('RPG Audio Streamer')
   setActions([])
+  page.finish()
 })
 </script>
 
