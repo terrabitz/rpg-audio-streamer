@@ -28,8 +28,14 @@ export function useDiscord(tableID: string, initialStatus?: DiscordStatus) {
   let statusRevision = 0
   const ws = useWebSocketStore()
   const stopStatus = ws.onDiscordStatusChanged(applyStatus)
+  let skipInitialConnectionRefresh = initialStatus !== undefined
   const stopConnection = watch(() => ws.isConnected, connected => {
-    if (connected) void refresh()
+    if (!connected) return
+    if (skipInitialConnectionRefresh) {
+      skipInitialConnectionRefresh = false
+      return
+    }
+    void refresh()
   }, { immediate: true })
 
   async function toggle() {

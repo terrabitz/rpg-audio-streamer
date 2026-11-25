@@ -158,7 +158,7 @@ onMounted(async () => {
     const [discord] = await Promise.all([
       getApiV1TablesByTableIdDiscord<true>({ path: { tableID: externalID.value } })
         .then(({ data }) => data)
-        .catch((): DiscordStatus => ({ enabled: false, state: 'disconnected' })),
+        .catch(() => undefined),
       useFileStore().fetchFiles(),
       useTrackTypeStore().fetchTrackTypes(),
       tables.fetchTracks(externalID.value),

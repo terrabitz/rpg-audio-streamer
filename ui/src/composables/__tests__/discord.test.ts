@@ -167,3 +167,17 @@ it('starts from a preloaded status before refreshing', () => {
   expect(discord.error.value).toBe('Voice connection failed')
   expect(api.get).not.toHaveBeenCalled()
 })
+
+it('uses the preloaded status for the initial connection and refreshes after reconnecting', async () => {
+  const ws = useWebSocketStore()
+  const discord = useDiscord('friday', { enabled: true, state: 'disconnected' })
+  ws.isConnected = true
+  await nextTick()
+  expect(api.get).not.toHaveBeenCalled()
+  ws.isConnected = false
+  await nextTick()
+  ws.isConnected = true
+  await nextTick()
+  expect(api.get).toHaveBeenCalledTimes(1)
+  discord.dispose()
+})
