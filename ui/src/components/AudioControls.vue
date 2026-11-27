@@ -372,7 +372,6 @@ const emit = defineEmits<{
 
 .track-heading {
   min-height: 40px;
-  padding-left: 36px !important;
   padding-right: 36px !important;
 }
 

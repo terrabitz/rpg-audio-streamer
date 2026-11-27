@@ -124,20 +124,21 @@ export const useTableStore = defineStore('tables', {
       this.tracks = data
       this.trackOrders[tableID] = this.orderedTracks.map(track => track.id)
     },
-    // Moves trackID to targetID's position, then gathers groupIDs around it in their existing relative order.
-    moveTrack(trackID: string, targetID: string, groupIDs: string[] = []): boolean {
+    // Moves trackID to targetID's position.
+    moveTrack(trackID: string, targetID: string): boolean {
+      const targetIndex = this.orderedTracks.findIndex(track => track.id === targetID)
+      return targetIndex >= 0 && this.moveTracks([trackID], targetIndex)
+    },
+    // Gathers the tracks in their current order and inserts them before the
+    // track at `index` among the tracks that are not moving.
+    moveTracks(trackIDs: string[], index: number): boolean {
       if (!this.current) return false
       const current = this.orderedTracks.map(track => track.id)
-      const sourceIndex = current.indexOf(trackID)
-      const targetIndex = current.indexOf(targetID)
-      if (sourceIndex < 0 || targetIndex < 0) return false
-      const group = current.filter(id => id === trackID || groupIDs.includes(id))
-      const moved = [...current]
-      moved.splice(sourceIndex, 1)
-      moved.splice(targetIndex, 0, trackID)
-      const order = moved.filter(id => id === trackID || !group.includes(id))
-      order.splice(order.indexOf(trackID), 1, ...group)
-      if (order.every((id, index) => id === current[index])) return false
+      const group = current.filter(id => trackIDs.includes(id))
+      const rest = current.filter(id => !trackIDs.includes(id))
+      if (!group.length || index < 0 || index > rest.length) return false
+      const order = [...rest.slice(0, index), ...group, ...rest.slice(index)]
+      if (order.every((id, position) => id === current[position])) return false
       this.trackOrders[this.current.externalID] = order
       void this.saveSettings(this.current.externalID, { trackOrder: order })
       return true

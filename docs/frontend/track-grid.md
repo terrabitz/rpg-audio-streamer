@@ -53,21 +53,27 @@ selection count and a **Finished** button that returns the grid to normal
 playback. The grid becomes a multi-select listbox, card clicks select instead
 of playing, and the three-dot and failure buttons are hidden.
 
-Clicking, tapping, or pressing Enter/Space toggles a track's selection.
-Shift-click, Shift + Space, or a touch long-press adds the range between the
-last selected track and the target. Selected cards show a primary outline and
-tint. Selection starts empty and clears when leaving the mode.
+Ctrl-click (Cmd-click on macOS), a touch tap, or Enter/Space toggles a track's
+selection, and a plain click clears it. Shift-click, Shift + Space, or a touch
+long-press adds the range between the last selected track and the target.
+Selected cards show a primary outline and tint. Selection starts empty and
+clears when leaving the mode.
 
 Mouse dragging starts on any card after a 4 px movement; touch dragging starts
 only on selected cards, so swiping unselected cards keeps scrolling the page.
 `SortableTrack` registers each grid cell with `@dnd-kit/vue`. The lifted card
 follows the pointer while a dashed insertion placeholder moves between the
 other cards, which animate aside. Dragging a selected card moves the whole
-selection: the lifted card shows a count badge, the other selected cards fade
-in place, and on drop the selection gathers contiguously, in its existing
-relative order, at the drop position. Focused cards move one position with
+selection: whichever card is grabbed, the lifted card renders as a stack topped
+by the group's first track with a count badge, the other selected cards fade in
+place, and on drop the group gathers contiguously, in its existing display
+order, at the drop position. Focused cards move one position with
 Alt + Left/Right. Moves are announced to screen readers, and cancelled drags
 restore the original layout without changing the saved order.
+
+The drag library moves the lifted card in the DOM while sorting, so Vue's keyed
+patch cannot rely on the rendered order after a drop. Once the store order
+updates, the grid reorders its card elements to match it.
 
 The table store loads track order from server
 [table settings](../data/table-settings.md), scoped by table ID, preserves it

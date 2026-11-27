@@ -135,7 +135,9 @@
         </div>
         <p id="track-grid-help" class="d-sr-only">
           <template v-if="tables.rearranging">
-            Press Enter or Space to select a track. Shift-click or long-press selects a range.
+            Press Enter or Space to select a track and Shift + Space to select a range.
+            With a mouse, Control-click selects a track, Shift-click selects a range, and a plain click clears the selection.
+            On touch screens, tap selects a track and long-press selects a range.
             Drag a selected track to move every selected track together, or focus a card and press Alt + Left or Right.
           </template>
           <template v-else>
@@ -158,14 +160,20 @@
                   'is-processing': file.status === 'processing',
                   'is-selected': tables.rearranging && rearrangeSelected.has(file.id),
                   'is-group-member': dragGroup.includes(file.id) && file.id !== draggedID,
+                  'is-stack': file.id === draggedID && dragGroup.length > 1,
+                  'is-deep-stack': file.id === draggedID && dragGroup.length > 2,
                 }"
                 :aria-keyshortcuts="tables.rearranging ? 'Alt+ArrowLeft Alt+ArrowRight' : 'Shift+F10'"
                 @keydown="handleKeydown($event, file.id)"
                 @contextmenu.prevent="openContextMenu($event, file.id)"
-                v-touch-hold="event => handleHold(event, file.id)" @click="handleCardClick($event, file.id)">
+                v-touch-hold="event => handleHold(event, file.id)" @pointerdown="pointerType = $event.pointerType"
+                @click="handleCardClick($event, file.id)">
                 <span v-if="file.id === draggedID && dragGroup.length > 1" class="drag-count" aria-hidden="true">
                   {{ dragGroup.length }}
                 </span>
+                <div v-if="stackTop(file)" class="stack-top pa-2 text-subtitle-1" aria-hidden="true">
+                  <span>{{ stackTop(file)?.name }}</span>
+                </div>
                 <AudioControls :fileID="file.id" :fileName="file.name"
                   :model-value="openedTrackID === file.id" @update:model-value="value => openedTrackID = value ? file.id : ''"
                   :deleteTrack="count => deleteFile(file, count)"
@@ -279,6 +287,7 @@ const rearrangeSelection = computed(() => tracks.value.flatMap(track =>
 const rearrangeSelected = computed(() => new Set(rearrangeSelection.value))
 const draggedID = ref('')
 const dragGroup = computed(() => rearrangeSelected.value.has(draggedID.value) ? rearrangeSelection.value : [])
+const pointerType = ref('')
 
 watch(() => tables.rearranging, () => {
   selectedForRearrange.value = []
@@ -360,7 +369,14 @@ function handleCardClick(event: MouseEvent, fileID: string) {
   }
   if (dragging.value) return
   if (event.shiftKey) selectRange(fileID)
-  else toggleSelected(fileID)
+  else if (event.ctrlKey || event.metaKey || pointerType.value !== 'mouse') toggleSelected(fileID)
+  else clearSelection()
+}
+
+// A lifted group shows its first track on top, so the stack previews the order it will land in.
+function stackTop(file: Track) {
+  if (file.id !== draggedID.value || dragGroup.value.length < 2) return undefined
+  return tracks.value.find(track => track.id === dragGroup.value[0])
 }
 
 function handleHold(event: { touch: boolean; clientX: number; clientY: number }, fileID: string) {
@@ -388,6 +404,11 @@ function selectRange(fileID: string) {
   selectedForRearrange.value = [...new Set([...rearrangeSelection.value, ...range])]
 }
 
+function clearSelection() {
+  lastSelectedID.value = ''
+  selectedForRearrange.value = []
+}
+
 function openContextMenu(event: { clientX: number; clientY: number }, fileID: string) {
   if (tables.rearranging) return
   contextTrackID.value = fileID
@@ -412,11 +433,13 @@ function playFromStart() {
 function finishDrag(event: DragEndEvent) {
   const { source } = event.operation
   if (!event.canceled && isSortable(source)) {
-    const track = tracks.value[source.initialIndex]
-    const target = tracks.value[source.index]
-    const group = dragGroup.value
-    if (track && target && tables.moveTrack(track.id, target.id, group)) {
-      announceMove(group.length > 1 ? `${group.length} tracks` : track.name, group[0] ?? track.id)
+    const ids = tracks.value.map(track => track.id)
+    const trackID = ids[source.initialIndex]
+    const group = dragGroup.value.length ? dragGroup.value : [trackID]
+    const row = source.element?.parentElement
+    if (trackID && tables.moveTracks(group, dropIndex(ids, trackID, source.index, group))) {
+      announceMove(group.length > 1 ? `${group.length} tracks` : fileStore.getTrackById(trackID)?.name ?? '', group[0])
+      void nextTick(() => syncRenderedOrder(row))
     }
   }
   // Keep the release click from toggling playback or selection after dragging.
@@ -424,6 +447,29 @@ function finishDrag(event: DragEndEvent) {
     dragging.value = false
     draggedID.value = ''
   })
+}
+
+// dnd-kit moves the dragged element while sorting, but Vue patches the list assuming
+// the DOM still matches what it last rendered. A group move can leave cards out of
+// place, so put every card where the store order says it belongs.
+function syncRenderedOrder(row: Element | null | undefined) {
+  if (!row) return
+  const cards = tracks.value
+    .map(track => row.querySelector(`:scope > [data-track-id="${CSS.escape(track.id)}"]:not([data-dnd-placeholder])`))
+    .filter(card => card !== null)
+  cards.slice(1).forEach((card, index) => {
+    // The drop placeholder must stay right behind the dragged card, or dnd-kit pulls the card to it.
+    const previous = cards[index]
+    const anchor = previous.nextElementSibling?.hasAttribute('data-dnd-placeholder') ? previous.nextElementSibling : previous
+    if (anchor.nextElementSibling !== card) anchor.after(card)
+  })
+}
+
+// The number of tracks outside the group that precede the dragged card's drop position.
+function dropIndex(ids: string[], trackID: string, index: number, group: string[]) {
+  const dropped = ids.filter(id => id !== trackID)
+  dropped.splice(index, 0, trackID)
+  return dropped.slice(0, index).filter(id => !group.includes(id)).length
 }
 
 async function handleKeydown(event: KeyboardEvent, fileID: string) {
@@ -847,6 +893,23 @@ onUnmounted(() => {
   text-align: center;
 }
 
+.stack-top {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  min-height: 40px;
+  padding-right: 36px !important;
+  border-radius: inherit;
+  background: rgb(var(--v-theme-surface));
+}
+
+.stack-top > span {
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .file-tile:hover {
   box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
 }
@@ -868,6 +931,7 @@ onUnmounted(() => {
 
 [data-dnd-placeholder] :deep(.audio-control-tile),
 [data-dnd-placeholder] .drag-count,
+[data-dnd-placeholder] .stack-top,
 [data-dnd-placeholder] .file-tile::after {
   visibility: hidden;
 }
@@ -880,6 +944,23 @@ onUnmounted(() => {
   cursor: grabbing;
   transform: rotate(2deg);
   box-shadow: 0 12px 24px rgba(0, 0, 0, 0.3);
+}
+
+[data-dnd-dragging] .file-tile.is-stack {
+  --stack-edge: rgba(var(--v-theme-on-surface), 0.35);
+  box-shadow:
+    5px 5px 0 -1px rgb(var(--v-theme-surface)),
+    5px 5px 0 0 var(--stack-edge),
+    0 12px 24px rgba(0, 0, 0, 0.3);
+}
+
+[data-dnd-dragging] .file-tile.is-deep-stack {
+  box-shadow:
+    5px 5px 0 -1px rgb(var(--v-theme-surface)),
+    5px 5px 0 0 var(--stack-edge),
+    10px 10px 0 -1px rgb(var(--v-theme-surface)),
+    10px 10px 0 0 var(--stack-edge),
+    0 12px 24px rgba(0, 0, 0, 0.3);
 }
 
 :deep(.library-track-row) {
