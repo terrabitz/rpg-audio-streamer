@@ -1,19 +1,15 @@
 <script setup lang="ts">
 import { useSortable } from '@dnd-kit/vue/sortable'
-import { computed, ref, type ComponentPublicInstance } from 'vue'
+import { ref, type ComponentPublicInstance } from 'vue'
 
-const props = defineProps<{ id: string; index: number }>()
+const props = defineProps<{ id: string; index: number; disabled: boolean }>()
 const element = ref<ComponentPublicInstance | null>(null)
-const handle = computed(() => {
-  const column = element.value?.$el
-  return column instanceof HTMLElement ? column.querySelector<HTMLElement>('.track-drag-handle') : null
-})
 
 useSortable({
   id: () => props.id,
   index: () => props.index,
+  disabled: () => props.disabled,
   element,
-  handle,
   transition: { duration: 180 },
 })
 </script>

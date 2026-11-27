@@ -66,6 +66,8 @@ onUnmounted(() => clearTimeout(copiedTimer))
                 </template>
               </v-list-item>
             </template>
+            <v-list-item title="Rearrange tracks" role="menuitem" :disabled="tables.tracks.length < 2"
+              @click="tables.rearranging = true" />
             <v-list-item title="Rotate invite link" role="menuitem" base-color="error"
               @click="rotating = tables.current" />
           </v-list>
