@@ -11,4 +11,5 @@ okf_version: "0.2"
 - [Frontend](./frontend/) - Vue routes, layouts, dialogs, and client state
 - [Playback](./playback/) - WebSocket protocol, authoritative synchronization, seeks, regions, and browser audio
 - [Discord](./discord/) - PCM mixing, live server-side mixing, and Discord voice streaming
+- [Tutorials](./tutorials/) - Build a PCM mixer through progressive, independently runnable listening labs
 - [Operations](./operations/) - Release pipeline, pull request checks, and test layers

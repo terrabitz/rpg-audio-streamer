@@ -1,0 +1,22 @@
+# Tutorials
+
+- [Build a PCM mixer](./pcm-mixer-course.md) - Recreate the mixer through eighteen incremental listening labs and a production coverage map.
+- [PCM lab workbench](./pcm-workbench.md) - Set up an independent Go project with synthetic fixtures and workstation audio playback.
+- [01: Samples become sound](./01-samples.md) - Turn normalized stereo frames into an audible signal.
+- [02: Pull-based rendering](./02-rendering.md) - Advance a persistent playback cursor through caller-owned buffers.
+- [03: Sum and saturate](./03-summation.md) - Mix independent tracks and clamp only the final stereo sum.
+- [04: Track transport](./04-transport.md) - Add paused tracks and control play, pause, direct seek, and removal.
+- [05: Playback regions](./05-regions.md) - Restrict playback to absolute frame bounds with an exclusive end.
+- [06: Intro and hard loop](./06-hard-loops.md) - Repeat a region from its loop-back point without replaying its intro.
+- [07: Gain ramps](./07-gain.md) - Retarget effective volume with sample-counted linear ramps.
+- [08: Playback envelopes](./08-envelopes.md) - Fade repeating play and pause independently of track gain.
+- [09: Loop crossfades](./09-loop-crossfades.md) - Blend a loop tail with an advancing incoming cursor.
+- [10: Crossfade seeks](./10-seek-crossfades.md) - Blend outgoing audio with preroll ending at a seek destination.
+- [11: Interrupted transitions](./11-interruptions.md) - Resolve overlapping commands without restarting or reviving stale transitions.
+- [12: Nonblocking sources](./12-sources.md) - Stall one track on unavailable PCM without blocking the mix.
+- [13: Source ownership and failure](./13-source-lifecycle.md) - Distinguish buffering from failure and transfer source ownership safely.
+- [14: PCM byte encoding](./14-encoding.md) - Serialize stereo frames as interleaved little-endian float32 PCM.
+- [15: Deterministic reconstruction](./15-determinism.md) - Verify the full core against a command timeline regardless of render partitioning.
+- [16: Windowed decoding](./16-windowed-decoding.md) - Feed indexed PCM from a bounded asynchronous HLS decoder cache.
+- [17: Live command adapter](./17-live-commands.md) - Apply table-scoped snapshots and patches around the PCM core.
+- [18: Clock and subscribers](./18-live-delivery.md) - Deliver timed PCM blocks without letting slow listeners stall rendering.
