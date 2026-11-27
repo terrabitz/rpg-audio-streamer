@@ -61,38 +61,54 @@ func (s *Server) updateTag(w http.ResponseWriter, r *http.Request, _ *auth.Token
 	respondJSON(w, http.StatusOK, updated)
 }
 
-func (s *Server) addTrackTag(w http.ResponseWriter, r *http.Request, _ *auth.Token) {
-	s.changeTrackTag(w, r, s.store.AddTrackTag)
-}
-
-func (s *Server) removeTrackTag(w http.ResponseWriter, r *http.Request, _ *auth.Token) {
-	s.changeTrackTag(w, r, s.store.RemoveTrackTag)
-}
-
-func (s *Server) changeTrackTag(w http.ResponseWriter, r *http.Request, change func(ctx context.Context, trackID, tagID uuid.UUID) error) {
-	trackID, err := uuid.Parse(r.PathValue("trackID"))
+func (s *Server) editTracks(w http.ResponseWriter, r *http.Request, _ *auth.Token) {
+	var body struct {
+		TrackIDs     []uuid.UUID `json:"trackIDs"`
+		TypeID       *uuid.UUID  `json:"typeID"`
+		AddTagIDs    []uuid.UUID `json:"addTagIDs"`
+		RemoveTagIDs []uuid.UUID `json:"removeTagIDs"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+	edit, err := domain.ParseTrackEdit(body.TrackIDs, body.TypeID, body.AddTagIDs, body.RemoveTagIDs)
 	if err != nil {
-		http.Error(w, "Invalid track ID", http.StatusBadRequest)
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	tagID, err := uuid.Parse(r.PathValue("tagID"))
-	if err != nil {
-		http.Error(w, "Invalid tag ID", http.StatusBadRequest)
-		return
-	}
-	if err := change(r.Context(), trackID, tagID); err != nil {
-		s.tagError(w, err)
-		return
-	}
-	track, err := s.store.GetTrackByID(r.Context(), trackID)
+	tracks, err := s.store.EditTracks(r.Context(), edit)
 	if err != nil {
 		s.tagError(w, err)
 		return
 	}
-	if !s.sendEvent(w, events.TrackUpdated, track.ID.String()) {
+	for _, track := range tracks {
+		if !s.sendEvent(w, events.TrackUpdated, track.ID.String()) {
+			return
+		}
+	}
+	if !s.deleteUnusedTags(w, r.Context(), edit.RemoveTagIDs) {
 		return
 	}
-	respondJSON(w, http.StatusOK, track)
+	respondJSON(w, http.StatusOK, tracks)
+}
+
+// deleteUnusedTags removes candidate tags that no track uses any more.
+func (s *Server) deleteUnusedTags(w http.ResponseWriter, ctx context.Context, tagIDs []uuid.UUID) bool {
+	if len(tagIDs) == 0 {
+		return true
+	}
+	deleted, err := s.store.DeleteUnusedTags(ctx, tagIDs)
+	if err != nil {
+		s.tagError(w, err)
+		return false
+	}
+	for _, tagID := range deleted {
+		if !s.sendEvent(w, events.TagDeleted, events.TagReference{TagID: tagID.String()}) {
+			return false
+		}
+	}
+	return true
 }
 
 func (s *Server) tagError(w http.ResponseWriter, err error) {

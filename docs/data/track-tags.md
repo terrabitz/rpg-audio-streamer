@@ -17,8 +17,9 @@ number of tags, and a tag can be attached to any number of tracks.
   case.
 - A color is a `#RRGGBB` hex value. The UI offers a fixed palette of named
   swatches, and new tags cycle through it.
-- Tags can be renamed and recolored but not deleted. Deleting a track removes
-  its tag associations.
+- Tags can be renamed and recolored. A tag is deleted automatically when it is
+  removed from its last track, either by a track edit or by deleting the
+  track.
 
 ## Storage and API
 
@@ -33,11 +34,15 @@ All tag endpoints are GM-only:
 | `GET /api/v1/tags` | List tags in name order |
 | `POST /api/v1/tags` | Create a tag; a duplicate name returns 409 |
 | `PUT /api/v1/tags/{tagID}` | Rename or recolor a tag; a duplicate name returns 409 |
-| `PUT /api/v1/files/{trackID}/tags/{tagID}` | Attach a tag to a track and return the track |
-| `DELETE /api/v1/files/{trackID}/tags/{tagID}` | Detach a tag from a track and return the track |
+| `PATCH /api/v1/files` | Edit several tracks at once and return them |
 
-Saving a tag pushes `tagUpdated`, and attaching or detaching pushes
-`trackUpdated`, to all GMs through the
+The bulk track edit takes `trackIDs` plus any of `typeID`, `addTagIDs`, and
+`removeTagIDs`. It applies every change in one transaction, so an unknown track
+or tag fails the whole edit. Adding a tag a track already has, or removing one
+it lacks, is a no-op, and a tag cannot be both added and removed.
+
+Saving a tag pushes `tagUpdated`, editing tracks pushes `trackUpdated` per
+track, and deleting an unused tag pushes `tagDeleted`, to all GMs through the
 [WebSocket protocol](../playback/websocket-protocol.md).
 
 ## Visibility

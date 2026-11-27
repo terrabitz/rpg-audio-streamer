@@ -16,8 +16,7 @@ const api = vi.hoisted(() => ({
   deleteApiV1FilesByTrackId: vi.fn(),
   putApiV1FilesByTrackId: vi.fn(),
   getApiV1TrackTypes: vi.fn(),
-  putApiV1FilesByTrackIdTagsByTagId: vi.fn(),
-  deleteApiV1FilesByTrackIdTagsByTagId: vi.fn(),
+  patchApiV1Files: vi.fn(),
   getApiV1Tags: vi.fn(),
   postApiV1Tags: vi.fn(),
   putApiV1TagsByTagId: vi.fn(),
@@ -234,17 +233,15 @@ describe('file library', () => {
     expect(files.tracks).toEqual([track])
   })
 
-  it('applies and removes track tags from the saved track', async () => {
+  it('applies bulk edits from the saved tracks', async () => {
     const files = useFileStore()
-    files.tracks = [track]
-    api.putApiV1FilesByTrackIdTagsByTagId.mockResolvedValue({ data: { ...track, tagIDs: ['combat'] } })
-    await files.addTrackTag('forest', 'combat')
-    expect(api.putApiV1FilesByTrackIdTagsByTagId).toHaveBeenCalledWith({ path: { trackID: 'forest', tagID: 'combat' } })
-    expect(files.getTrackById('forest')?.tagIDs).toEqual(['combat'])
-    api.deleteApiV1FilesByTrackIdTagsByTagId.mockResolvedValue({ data: track })
-    await files.removeTrackTag('forest', 'combat')
-    expect(api.deleteApiV1FilesByTrackIdTagsByTagId).toHaveBeenCalledWith({ path: { trackID: 'forest', tagID: 'combat' } })
-    expect(files.tracks).toEqual([track])
+    const rain = { ...track, id: 'rain' }
+    files.tracks = [track, rain]
+    const edited = [{ ...track, tagIDs: ['combat'] }, { ...rain, tagIDs: ['combat'] }]
+    api.patchApiV1Files.mockResolvedValue({ data: edited })
+    await expect(files.editTracks({ trackIDs: ['forest', 'rain'], addTagIDs: ['combat'] })).resolves.toEqual(edited)
+    expect(api.patchApiV1Files).toHaveBeenCalledWith({ body: { trackIDs: ['forest', 'rain'], addTagIDs: ['combat'] } })
+    expect(files.tracks).toEqual(edited)
   })
 })
 
@@ -298,6 +295,13 @@ describe('tags', () => {
     api.postApiV1Tags.mockResolvedValue({ response: new Response(null, { status: 500 }) })
     await expect(tags.createTag({ name: 'Bad', color: '#000000' })).rejects.toThrow('Failed to save tag')
     expect(tags.tags).toEqual([{ ...combat, color: '#1E88E5' }])
+  })
+
+  it('removes a deleted tag', () => {
+    const tags = useTagStore()
+    tags.tags = [calm, combat]
+    tags.removeTag('combat')
+    expect(tags.tags).toEqual([calm])
   })
 })
 

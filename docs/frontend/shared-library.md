@@ -38,7 +38,11 @@ Select tracks using the row checkboxes, or use **Select all library tracks**
 to select across pages. Tracks still processing cannot be selected. The
 floating action bar shows the selection count and uses the same **Set track
 type** menu as the [uploader](./add-track-dialog.md). In the library, choosing
-a type saves it immediately for each selected track.
+a type saves it immediately for every selected track through the bulk track
+edit (see [track tags](../data/track-tags.md)).
+
+On phone-width screens the bar shows only the count and an **Edit** button,
+which opens a bottom sheet listing the track types, tags, and deletion.
 
 ## Tags
 
@@ -48,10 +52,11 @@ off the track, and creates a new tag when no existing name matches. Hovering
 or focusing a chip reveals an edit button; its menu renames the tag and picks a
 palette color, and the change applies to every track using that tag.
 
-The floating action bar's **Tags** menu toggles a tag across the selection: it
-removes the tag when every selected track has it and otherwise adds it to the
-tracks missing it. The selection and menu stay open so several tags can be
-applied in a row.
+The floating action bar's **Tags** menu toggles a tag across the selection.
+Each tag shows a checked box when every selected track has it, a dash when only
+some do, and an empty box otherwise. Choosing a checked tag removes it from the
+selection; choosing any other tag adds it to every selected track. The
+selection and menu stay open so several tags can be applied in a row.
 
 ## Deletion
 
@@ -67,5 +72,6 @@ deletion removes.
 Bulk deletion always asks for confirmation, even when none of the tracks are
 used by tables. The confirmation shows the number of tracks to be deleted and
 the table count for each track in use. If any usage lookup fails, nothing is
-deleted. Bulk changes are saved per track; if some fail, those tracks stay
-selected for retry.
+deleted. Bulk deletions are saved per track; if some fail, those tracks stay
+selected for retry. Bulk type and tag changes are saved together and either
+all succeed or none do.

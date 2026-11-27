@@ -42,6 +42,9 @@ export const useTagStore = defineStore('tags', {
       const result = await putApiV1TagsByTagId<false>({ path: { tagID }, body, throwOnError: false })
       return this.applyTag(tagResult(result))
     },
+    removeTag(tagID: string) {
+      this.tags = this.tags.filter(tag => tag.id !== tagID)
+    },
     applyTag(tag: Tag) {
       this.tags = [...this.tags.filter(item => item.id !== tag.id), tag]
         .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))

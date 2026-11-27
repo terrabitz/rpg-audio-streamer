@@ -1,4 +1,4 @@
-import { deleteApiV1FilesByTrackId, deleteApiV1FilesByTrackIdTagsByTagId, getApiV1Files, getApiV1FilesByTrackIdUsage, getApiV1FilesByTrackIdWaveform, postApiV1Files, putApiV1FilesByTrackId, putApiV1FilesByTrackIdTagsByTagId, type Track, type UpdateTrackRequest } from '@/client/apiClient'
+import { deleteApiV1FilesByTrackId, getApiV1Files, getApiV1FilesByTrackIdUsage, getApiV1FilesByTrackIdWaveform, patchApiV1Files, postApiV1Files, putApiV1FilesByTrackId, type Track, type TrackEditRequest, type UpdateTrackRequest } from '@/client/apiClient'
 import type { TrackStatusUpdate } from '@/websocket/protocol'
 import { defineStore } from 'pinia'
 
@@ -141,13 +141,9 @@ export const useFileStore = defineStore('files', {
         throw error
       }
     },
-    async addTrackTag(trackID: string, tagID: string) {
-      const { data } = await putApiV1FilesByTrackIdTagsByTagId<true>({ path: { trackID, tagID } })
-      return this.addTrack(data)
-    },
-    async removeTrackTag(trackID: string, tagID: string) {
-      const { data } = await deleteApiV1FilesByTrackIdTagsByTagId<true>({ path: { trackID, tagID } })
-      return this.addTrack(data)
+    async editTracks(body: TrackEditRequest) {
+      const { data } = await patchApiV1Files<true>({ body })
+      return data.map(track => this.addTrack(track))
     },
   }
 })

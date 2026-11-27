@@ -80,8 +80,8 @@ type TagStore interface {
 	GetTags(context.Context) ([]domain.Tag, error)
 	CreateTag(context.Context, domain.Tag) (domain.Tag, error)
 	UpdateTag(context.Context, domain.Tag) (domain.Tag, error)
-	AddTrackTag(ctx context.Context, trackID, tagID uuid.UUID) error
-	RemoveTrackTag(ctx context.Context, trackID, tagID uuid.UUID) error
+	EditTracks(context.Context, domain.TrackEdit) ([]Track, error)
+	DeleteUnusedTags(ctx context.Context, tagIDs []uuid.UUID) ([]uuid.UUID, error)
 }
 
 type TrackType = domain.TrackType

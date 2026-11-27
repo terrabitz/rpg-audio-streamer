@@ -23,6 +23,12 @@ ON CONFLICT (track_id, tag_id) DO UPDATE SET tag_id = excluded.tag_id;
 -- name: RemoveTrackTag :exec
 DELETE FROM track_tags WHERE track_id = ? AND tag_id = ?;
 
+-- name: DeleteUnusedTags :many
+DELETE FROM tags
+WHERE id IN (sqlc.slice(tag_ids))
+AND NOT EXISTS (SELECT 1 FROM track_tags WHERE track_tags.tag_id = tags.id)
+RETURNING id;
+
 -- name: GetTrackTagPairs :many
 SELECT track_tags.track_id, track_tags.tag_id FROM track_tags
 JOIN tags ON tags.id = track_tags.tag_id

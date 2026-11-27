@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -446,16 +447,23 @@ func TestTrackTags(t *testing.T) {
 		t.Fatalf("missing update = %v; want ErrNoRows", err)
 	}
 	for range 2 {
-		for _, tagID := range []uuid.UUID{combat.ID, calm.ID} {
-			if err := db.AddTrackTag(ctx, track.ID, tagID); err != nil {
-				t.Fatal(err)
-			}
+		if _, err := db.EditTracks(ctx, domain.TrackEdit{
+			TrackIDs:  []uuid.UUID{track.ID},
+			AddTagIDs: []uuid.UUID{combat.ID, calm.ID},
+		}); err != nil {
+			t.Fatal(err)
 		}
 	}
-	if err := db.AddTrackTag(ctx, track.ID, uuid.New()); !errors.Is(err, sql.ErrNoRows) {
+	if _, err := db.EditTracks(ctx, domain.TrackEdit{
+		TrackIDs:  []uuid.UUID{track.ID},
+		AddTagIDs: []uuid.UUID{uuid.New()},
+	}); !errors.Is(err, sql.ErrNoRows) {
 		t.Fatalf("add missing tag = %v; want ErrNoRows", err)
 	}
-	if err := db.AddTrackTag(ctx, uuid.New(), combat.ID); !errors.Is(err, sql.ErrNoRows) {
+	if _, err := db.EditTracks(ctx, domain.TrackEdit{
+		TrackIDs:  []uuid.UUID{uuid.New()},
+		AddTagIDs: []uuid.UUID{combat.ID},
+	}); !errors.Is(err, sql.ErrNoRows) {
 		t.Fatalf("tag missing track = %v; want ErrNoRows", err)
 	}
 	want := []uuid.UUID{calm.ID, combat.ID}
@@ -479,7 +487,10 @@ func TestTrackTags(t *testing.T) {
 	if err != nil || renamed.Name != "Peaceful" || renamed.Color != "#1E88E5" {
 		t.Fatalf("renamed = %+v, %v", renamed, err)
 	}
-	if err := db.RemoveTrackTag(ctx, track.ID, combat.ID); err != nil {
+	if _, err := db.EditTracks(ctx, domain.TrackEdit{
+		TrackIDs:     []uuid.UUID{track.ID},
+		RemoveTagIDs: []uuid.UUID{combat.ID},
+	}); err != nil {
 		t.Fatal(err)
 	}
 	updated, err := db.UpdateTrack(ctx, track.ID, server.UpdateTrackRequest{})
@@ -498,6 +509,80 @@ func TestTrackTags(t *testing.T) {
 	}
 	tags, err := db.GetTags(ctx)
 	if err != nil || len(tags) != 2 || tags[0].ID != combat.ID || tags[1] != renamed {
+		t.Fatalf("tags = %+v, %v", tags, err)
+	}
+}
+
+func TestEditTracks(t *testing.T) {
+	db, _ := migratedDatabase(t)
+	ctx := t.Context()
+	types, err := db.GetTrackTypes(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var trackIDs []uuid.UUID
+	for _, name := range []string{"Rain", "Wind"} {
+		track := server.Track{
+			ID:     uuid.New(),
+			Name:   name,
+			TypeID: types[0].ID,
+		}
+		if err := db.SaveTrack(ctx, &track); err != nil {
+			t.Fatal(err)
+		}
+		trackIDs = append(trackIDs, track.ID)
+	}
+	weather, err := db.CreateTag(ctx, domain.Tag{
+		ID:    uuid.New(),
+		Name:  "Weather",
+		Color: "#1E88E5",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.EditTracks(ctx, domain.TrackEdit{
+		TrackIDs:  append(slices.Clone(trackIDs), uuid.New()),
+		TypeID:    &types[1].ID,
+		AddTagIDs: []uuid.UUID{weather.ID},
+	}); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("edit with missing track = %v; want ErrNoRows", err)
+	}
+	for _, trackID := range trackIDs {
+		track, err := db.GetTrackByID(ctx, trackID)
+		if err != nil || track.TypeID != types[0].ID || track.TagIDs != nil {
+			t.Fatalf("failed edit was not rolled back: %+v, %v", track, err)
+		}
+	}
+	edited, err := db.EditTracks(ctx, domain.TrackEdit{
+		TrackIDs:  trackIDs,
+		TypeID:    &types[1].ID,
+		AddTagIDs: []uuid.UUID{weather.ID},
+	})
+	if err != nil || len(edited) != 2 {
+		t.Fatalf("edited = %+v, %v", edited, err)
+	}
+	for i, track := range edited {
+		if track.ID != trackIDs[i] || track.TypeID != types[1].ID || !reflect.DeepEqual(track.TagIDs, []uuid.UUID{weather.ID}) {
+			t.Fatalf("edited track = %+v", track)
+		}
+	}
+	if deleted, err := db.DeleteUnusedTags(ctx, []uuid.UUID{weather.ID}); err != nil || deleted != nil {
+		t.Fatalf("deleted used tag = %v, %v", deleted, err)
+	}
+	if _, err := db.EditTracks(ctx, domain.TrackEdit{
+		TrackIDs:     trackIDs,
+		RemoveTagIDs: []uuid.UUID{weather.ID},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if deleted, err := db.DeleteUnusedTags(ctx, nil); err != nil || deleted != nil {
+		t.Fatalf("deleted without candidates = %v, %v", deleted, err)
+	}
+	deleted, err := db.DeleteUnusedTags(ctx, []uuid.UUID{weather.ID, uuid.New()})
+	if err != nil || !reflect.DeepEqual(deleted, []uuid.UUID{weather.ID}) {
+		t.Fatalf("deleted unused tags = %v, %v", deleted, err)
+	}
+	if tags, err := db.GetTags(ctx); err != nil || len(tags) != 0 {
 		t.Fatalf("tags = %+v, %v", tags, err)
 	}
 }

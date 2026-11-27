@@ -4,6 +4,10 @@ export interface TrackReference {
   fileID: string
 }
 
+export interface TagReference {
+  tagID: string
+}
+
 export interface TrackStatusUpdate {
   fileID: string
   status: NonNullable<Track['status']>
@@ -30,5 +34,6 @@ export interface Payloads {
   trackStatusChanged: TrackStatusUpdate
   trackUpdated: Track
   tagUpdated: Tag
+  tagDeleted: TagReference
   discordStatusChanged: DiscordStatus
 }

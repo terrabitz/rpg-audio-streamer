@@ -273,10 +273,11 @@ async function seed(apiURL) {
       await delay(200, undefined, { signal: controller.signal })
     }
     if (!ready) throw new Error(`Seed audio processing timed out: ${sample.name}`)
-    for (const tag of sample.tags ?? []) {
-      await request(`${apiURL}/api/v1/files/${queued.id}/tags/${tags[tag]}`, {
-        method: 'PUT',
-        headers: { Cookie: cookie },
+    if (sample.tags?.length) {
+      await request(`${apiURL}/api/v1/files`, {
+        method: 'PATCH',
+        headers: { Cookie: cookie, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ trackIDs: [queued.id], addTagIDs: sample.tags.map(tag => tags[tag]) }),
       })
     }
     await rm(file)

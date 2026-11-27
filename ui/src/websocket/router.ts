@@ -26,6 +26,7 @@ export class EventHub {
     onTrackStatusChanged: (handler: Handler<'trackStatusChanged'>) => this.on('trackStatusChanged', handler),
     onTrackUpdated: (handler: Handler<'trackUpdated'>) => this.on('trackUpdated', handler),
     onTagUpdated: (handler: Handler<'tagUpdated'>) => this.on('tagUpdated', handler),
+    onTagDeleted: (handler: Handler<'tagDeleted'>) => this.on('tagDeleted', handler),
     onDiscordStatusChanged: (handler: Handler<'discordStatusChanged'>) => this.on('discordStatusChanged', handler),
   }
 

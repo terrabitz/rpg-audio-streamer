@@ -98,15 +98,16 @@ function submitSearch() {
 
 async function toggle(tagID: string) {
   await save(async () => {
-    if (hasTag(tagID)) await fileStore.removeTrackTag(props.track.id, tagID)
-    else await fileStore.addTrackTag(props.track.id, tagID)
+    const trackIDs = [props.track.id]
+    if (hasTag(tagID)) await fileStore.editTracks({ trackIDs, removeTagIDs: [tagID] })
+    else await fileStore.editTracks({ trackIDs, addTagIDs: [tagID] })
   }, 'Unable to update tags.')
 }
 
 async function create() {
   await save(async () => {
     const tag = await tagStore.createTag({ name: search.value.trim(), color: tagStore.nextColor })
-    await fileStore.addTrackTag(props.track.id, tag.id)
+    await fileStore.editTracks({ trackIDs: [props.track.id], addTagIDs: [tag.id] })
     search.value = ''
   }, 'Unable to create tag.')
 }

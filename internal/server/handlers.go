@@ -231,6 +231,9 @@ func (s *Server) handleFileDelete(w http.ResponseWriter, r *http.Request, token 
 	}) {
 		return
 	}
+	if !s.deleteUnusedTags(w, r.Context(), track.TagIDs) {
+		return
+	}
 	if removeErr != nil {
 		http.Error(w, "Failed to delete folder", http.StatusInternalServerError)
 		return

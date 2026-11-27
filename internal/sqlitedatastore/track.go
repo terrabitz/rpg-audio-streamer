@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/terrabitz/rpg-audio-streamer/internal/domain"
 	"github.com/terrabitz/rpg-audio-streamer/internal/server"
 	"github.com/terrabitz/rpg-audio-streamer/internal/sqlitedatastore/sqlitedb"
 )
@@ -126,6 +127,53 @@ func (db *SQLiteDatastore) UpdateTrack(ctx context.Context, trackID uuid.UUID, u
 	}
 
 	return convertDBTrackWithTags(ctx, queries, dbTrack)
+}
+
+// EditTracks applies the edit to every track atomically; a missing track or tag fails the whole edit.
+func (db *SQLiteDatastore) EditTracks(ctx context.Context, edit domain.TrackEdit) ([]server.Track, error) {
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	queries := sqlitedb.New(tx)
+	dbTracks := make([]sqlitedb.Track, 0, len(edit.TrackIDs))
+	for _, trackID := range edit.TrackIDs {
+		dbTrack, err := editTrack(ctx, queries, trackID, edit)
+		if err != nil {
+			return nil, err
+		}
+		dbTracks = append(dbTracks, dbTrack)
+	}
+	tracks := make([]server.Track, 0, len(dbTracks))
+	for _, dbTrack := range dbTracks {
+		track, err := convertDBTrackWithTags(ctx, queries, dbTrack)
+		if err != nil {
+			return nil, err
+		}
+		tracks = append(tracks, track)
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return tracks, nil
+}
+
+func editTrack(ctx context.Context, queries *sqlitedb.Queries, trackID uuid.UUID, edit domain.TrackEdit) (sqlitedb.Track, error) {
+	var dbTrack sqlitedb.Track
+	var err error
+	if edit.TypeID != nil {
+		dbTrack, err = queries.UpdateTrack(ctx, sqlitedb.UpdateTrackParams{
+			ID:     trackID[:],
+			TypeID: edit.TypeID[:],
+		})
+	} else {
+		dbTrack, err = queries.GetTrackByID(ctx, trackID[:])
+	}
+	if err != nil {
+		return sqlitedb.Track{}, err
+	}
+	return dbTrack, editTrackTags(ctx, queries, trackID, edit)
 }
 
 func convertDBTracksWithTags(ctx context.Context, queries *sqlitedb.Queries, dbTracks []sqlitedb.Track) ([]server.Track, error) {

@@ -66,25 +66,43 @@ func (db *SQLiteDatastore) UpdateTag(ctx context.Context, tag domain.Tag) (domai
 	return convertDBTag(row)
 }
 
-func (db *SQLiteDatastore) AddTrackTag(ctx context.Context, trackID, tagID uuid.UUID) error {
-	affected, err := sqlitedb.New(db.DB).AddTrackTag(ctx, sqlitedb.AddTrackTagParams{
-		TrackID: trackID[:],
-		TagID:   tagID[:],
-	})
+func (db *SQLiteDatastore) DeleteUnusedTags(ctx context.Context, tagIDs []uuid.UUID) ([]uuid.UUID, error) {
+	if len(tagIDs) == 0 {
+		return nil, nil
+	}
+	ids := make([][]byte, 0, len(tagIDs))
+	for _, tagID := range tagIDs {
+		ids = append(ids, tagID[:])
+	}
+	rows, err := sqlitedb.New(db.DB).DeleteUnusedTags(ctx, ids)
 	if err != nil {
-		return err
+		return nil, fmt.Errorf("couldn't delete unused tags: %w", err)
 	}
-	if affected == 0 {
-		return sql.ErrNoRows
-	}
-	return nil
+	return convertDBIDs(rows)
 }
 
-func (db *SQLiteDatastore) RemoveTrackTag(ctx context.Context, trackID, tagID uuid.UUID) error {
-	return sqlitedb.New(db.DB).RemoveTrackTag(ctx, sqlitedb.RemoveTrackTagParams{
-		TrackID: trackID[:],
-		TagID:   tagID[:],
-	})
+func editTrackTags(ctx context.Context, queries *sqlitedb.Queries, trackID uuid.UUID, edit domain.TrackEdit) error {
+	for _, tagID := range edit.AddTagIDs {
+		affected, err := queries.AddTrackTag(ctx, sqlitedb.AddTrackTagParams{
+			TrackID: trackID[:],
+			TagID:   tagID[:],
+		})
+		if err != nil {
+			return err
+		}
+		if affected == 0 {
+			return sql.ErrNoRows
+		}
+	}
+	for _, tagID := range edit.RemoveTagIDs {
+		if err := queries.RemoveTrackTag(ctx, sqlitedb.RemoveTrackTagParams{
+			TrackID: trackID[:],
+			TagID:   tagID[:],
+		}); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // UPDATE OR IGNORE returns no row for both a missing tag and a name collision.
@@ -104,15 +122,7 @@ func trackTagIDs(ctx context.Context, queries *sqlitedb.Queries, trackID uuid.UU
 	if err != nil {
 		return nil, fmt.Errorf("couldn't get track tags: %w", err)
 	}
-	var tagIDs []uuid.UUID
-	for _, row := range rows {
-		tagID, err := uuid.FromBytes(row)
-		if err != nil {
-			return nil, err
-		}
-		tagIDs = append(tagIDs, tagID)
-	}
-	return tagIDs, nil
+	return convertDBIDs(rows)
 }
 
 func tagIDsByTrack(ctx context.Context, queries *sqlitedb.Queries) (map[uuid.UUID][]uuid.UUID, error) {
@@ -133,6 +143,18 @@ func tagIDsByTrack(ctx context.Context, queries *sqlitedb.Queries) (map[uuid.UUI
 		result[trackID] = append(result[trackID], tagID)
 	}
 	return result, nil
+}
+
+func convertDBIDs(rows [][]byte) ([]uuid.UUID, error) {
+	var ids []uuid.UUID
+	for _, row := range rows {
+		id, err := uuid.FromBytes(row)
+		if err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, nil
 }
 
 func convertDBTag(row sqlitedb.Tag) (domain.Tag, error) {

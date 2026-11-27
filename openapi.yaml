@@ -315,6 +315,32 @@ components:
         playback:
           $ref: "#/components/schemas/PlaybackSettings"
 
+    TrackEditRequest:
+      type: object
+      required: [trackIDs]
+      properties:
+        trackIDs:
+          type: array
+          minItems: 1
+          items:
+            type: string
+            format: uuid
+        typeID:
+          type: string
+          format: uuid
+          description: Track type to set on every listed track.
+        addTagIDs:
+          type: array
+          items:
+            type: string
+            format: uuid
+        removeTagIDs:
+          type: array
+          description: Tags to remove; must not overlap addTagIDs.
+          items:
+            type: string
+            format: uuid
+
     TrackUsage:
       type: object
       required: [tableCount]
@@ -1019,6 +1045,37 @@ paths:
         "403":
           description: Not authorized
 
+    patch:
+      summary: Edit several audio tracks at once
+      description: |
+        Applies the same track type and tag changes to every listed track in one transaction.
+        A missing track or tag fails the whole edit. Removed tags that no track uses any more are deleted.
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TrackEditRequest"
+      responses:
+        "200":
+          description: Edited tracks with their updated type and tags
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Track"
+        "400":
+          description: Invalid or empty edit
+        "401":
+          description: Not authorized
+        "404":
+          description: Track or tag not found
+        "503":
+          description: The change was saved, but live synchronization failed
+
   /api/v1/files/scan:
     post:
       summary: Scan a YouTube video and validate import limits without downloading audio
@@ -1167,61 +1224,6 @@ paths:
           description: Track not found
         "500":
           description: Internal server error
-
-  /api/v1/files/{trackID}/tags/{tagID}:
-    parameters:
-      - name: trackID
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-      - name: tagID
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-    put:
-      summary: Apply a tag to a track
-      description: Idempotent; applying a tag the track already has succeeds.
-      security:
-        - cookieAuth: []
-      responses:
-        "200":
-          description: Track with its updated tags
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Track"
-        "400":
-          description: Invalid track or tag ID
-        "401":
-          description: Not authorized
-        "404":
-          description: Track or tag not found
-        "503":
-          description: The change was saved, but live synchronization failed
-    delete:
-      summary: Remove a tag from a track
-      description: Idempotent; removing a tag the track does not have succeeds.
-      security:
-        - cookieAuth: []
-      responses:
-        "200":
-          description: Track with its updated tags
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Track"
-        "400":
-          description: Invalid track or tag ID
-        "401":
-          description: Not authorized
-        "404":
-          description: Track not found
-        "503":
-          description: The change was saved, but live synchronization failed
 
   /api/v1/files/{trackID}/usage:
     get:

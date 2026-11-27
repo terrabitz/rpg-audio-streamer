@@ -154,8 +154,8 @@ test('GM changes the type of selected library tracks', async ({ page, recordFlow
   await row('Thunder').getByRole('checkbox', { name: 'Select Thunder' }).uncheck()
   await expect(actions.getByRole('status')).toHaveText('2 selected')
   await expect(page.locator('video')).toHaveCount(0)
-  await actions.getByRole('button', { name: 'Set track type' }).click()
-  await page.getByRole('menuitem', { name: 'One-Shot', exact: true }).click()
+  await actions.getByRole('button', { name: 'Edit selected tracks' }).click()
+  await page.getByRole('dialog', { name: 'Edit selected tracks' }).getByText('One-Shot', { exact: true }).click()
   for (const name of ['Forest', 'Rain']) {
     await expect(row(name).getByText('One-Shot', { exact: true })).toBeVisible()
   }
@@ -314,21 +314,26 @@ test('GM bulk tags and untags selected library tracks', async ({ page, recordFlo
   await tagLibraryTrack(page, 'Forest', 'Combat')
   const tags = (name: string) => page.getByRole('group', { name: `Tags for ${name}`, exact: true })
   const actions = page.getByRole('group', { name: 'Bulk track actions' })
-  const combat = page.getByRole('menuitemcheckbox', { name: 'Combat', exact: true })
+  const sheet = page.getByRole('dialog', { name: 'Edit selected tracks' })
+  const combat = sheet.getByRole('menuitemcheckbox', { name: 'Combat', exact: true })
 
   recordFlow.start()
   await page.getByRole('checkbox', { name: 'Select all library tracks' }).check()
   await page.getByRole('checkbox', { name: 'Select Thunder', exact: true }).uncheck()
   await expect(actions.getByRole('status')).toHaveText('2 selected')
-  await actions.getByRole('button', { name: 'Tag selected tracks', exact: true }).click()
-  await expect(combat).toHaveAttribute('aria-checked', 'false')
+  await actions.getByRole('button', { name: 'Edit selected tracks', exact: true }).click()
+  await expect(combat).toHaveAttribute('aria-checked', 'mixed')
+  const [sheetBounds, viewport] = [await sheet.boundingBox(), page.viewportSize()]
+  if (!sheetBounds || !viewport) throw new Error('Bulk edit sheet is not visible')
+  expect(sheetBounds.x).toBeGreaterThanOrEqual(0)
+  expect(sheetBounds.x + sheetBounds.width).toBeLessThanOrEqual(viewport.width)
   await combat.click()
   await expect(combat).toHaveAttribute('aria-checked', 'true')
   for (const name of ['Forest', 'Rain']) await expect(tags(name).getByText('Combat', { exact: true })).toBeVisible()
   await expect(tags('Thunder').getByText('Combat', { exact: true })).toHaveCount(0)
   await expect(actions.getByRole('status')).toHaveText('2 selected')
   await combat.click()
-  await expect(combat).toHaveAttribute('aria-checked', 'false')
+  await expect(combat).toHaveCount(0)
   for (const name of ['Forest', 'Rain']) await expect(tags(name).getByText('Combat', { exact: true })).toHaveCount(0)
   recordFlow.stop()
 
@@ -336,4 +341,6 @@ test('GM bulk tags and untags selected library tracks', async ({ page, recordFlo
   for (const name of ['Forest', 'Rain', 'Thunder']) {
     await expect(tags(name).getByText('Combat', { exact: true })).toHaveCount(0)
   }
+  await tags('Thunder').getByRole('button', { name: 'Add tag to Thunder', exact: true }).click()
+  await expect(page.getByRole('menuitemcheckbox', { name: 'Combat', exact: true })).toHaveCount(0)
 })

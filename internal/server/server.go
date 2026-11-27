@@ -261,6 +261,7 @@ func (s *Server) registerHandlers() *http.ServeMux {
 
 	// Protected endpoints with role validation
 	mux.HandleFunc("/api/v1/files", s.gmOnlyMiddleware(s.handleFiles))
+	mux.HandleFunc("PATCH /api/v1/files", s.gmOnlyMiddleware(s.editTracks))
 	mux.HandleFunc("/api/v1/files/import", s.gmOnlyMiddleware(s.handleImport))
 	mux.HandleFunc("/api/v1/files/scan", s.gmOnlyMiddleware(s.handleScan))
 	mux.HandleFunc("/api/v1/files/{trackID}", s.gmOnlyMiddleware(s.handleFile))
@@ -270,8 +271,6 @@ func (s *Server) registerHandlers() *http.ServeMux {
 	mux.HandleFunc("GET /api/v1/tags", s.gmOnlyMiddleware(s.getTags))
 	mux.HandleFunc("POST /api/v1/tags", s.gmOnlyMiddleware(s.createTag))
 	mux.HandleFunc("PUT /api/v1/tags/{tagID}", s.gmOnlyMiddleware(s.updateTag))
-	mux.HandleFunc("PUT /api/v1/files/{trackID}/tags/{tagID}", s.gmOnlyMiddleware(s.addTrackTag))
-	mux.HandleFunc("DELETE /api/v1/files/{trackID}/tags/{tagID}", s.gmOnlyMiddleware(s.removeTrackTag))
 	mux.HandleFunc("/api/v1/trackTypes", s.publicMiddleware(s.handleTrackTypes))
 	mux.HandleFunc("/api/v1/tables", s.gmOnlyMiddleware(s.handleTables))
 	mux.HandleFunc("/api/v1/tables/{tableID}", s.tableAccessMiddleware(s.handleTable))

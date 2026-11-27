@@ -7,6 +7,7 @@ package sqlitedb
 
 import (
 	"context"
+	"strings"
 )
 
 const addTrackTag = `-- name: AddTrackTag :execrows
@@ -47,6 +48,46 @@ func (q *Queries) CreateTag(ctx context.Context, arg CreateTagParams) (Tag, erro
 	var i Tag
 	err := row.Scan(&i.ID, &i.Name, &i.Color)
 	return i, err
+}
+
+const deleteUnusedTags = `-- name: DeleteUnusedTags :many
+DELETE FROM tags
+WHERE id IN (/*SLICE:tag_ids*/?)
+AND NOT EXISTS (SELECT 1 FROM track_tags WHERE track_tags.tag_id = tags.id)
+RETURNING id
+`
+
+func (q *Queries) DeleteUnusedTags(ctx context.Context, tagIds [][]byte) ([][]byte, error) {
+	query := deleteUnusedTags
+	var queryParams []interface{}
+	if len(tagIds) > 0 {
+		for _, v := range tagIds {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:tag_ids*/?", strings.Repeat(",?", len(tagIds))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:tag_ids*/?", "NULL", 1)
+	}
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items [][]byte
+	for rows.Next() {
+		var id []byte
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const getTags = `-- name: GetTags :many

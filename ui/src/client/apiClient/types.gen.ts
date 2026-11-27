@@ -182,6 +182,19 @@ export type UpdateTrackRequest = {
     playback?: PlaybackSettings;
 };
 
+export type TrackEditRequest = {
+    trackIDs: Array<string>;
+    /**
+     * Track type to set on every listed track.
+     */
+    typeID?: string;
+    addTagIDs?: Array<string>;
+    /**
+     * Tags to remove; must not overlap addTagIDs.
+     */
+    removeTagIDs?: Array<string>;
+};
+
 export type TrackUsage = {
     tableCount: number;
 };
@@ -1076,6 +1089,41 @@ export type GetApiV1FilesResponses = {
 
 export type GetApiV1FilesResponse = GetApiV1FilesResponses[keyof GetApiV1FilesResponses];
 
+export type PatchApiV1FilesData = {
+    body: TrackEditRequest;
+    path?: never;
+    query?: never;
+    url: '/api/v1/files';
+};
+
+export type PatchApiV1FilesErrors = {
+    /**
+     * Invalid or empty edit
+     */
+    400: unknown;
+    /**
+     * Not authorized
+     */
+    401: unknown;
+    /**
+     * Track or tag not found
+     */
+    404: unknown;
+    /**
+     * The change was saved, but live synchronization failed
+     */
+    503: unknown;
+};
+
+export type PatchApiV1FilesResponses = {
+    /**
+     * Edited tracks with their updated type and tags
+     */
+    200: Array<Track>;
+};
+
+export type PatchApiV1FilesResponse = PatchApiV1FilesResponses[keyof PatchApiV1FilesResponses];
+
 export type PostApiV1FilesData = {
     body: {
         files?: Blob | File;
@@ -1282,82 +1330,6 @@ export type PutApiV1FilesByTrackIdResponses = {
 };
 
 export type PutApiV1FilesByTrackIdResponse = PutApiV1FilesByTrackIdResponses[keyof PutApiV1FilesByTrackIdResponses];
-
-export type DeleteApiV1FilesByTrackIdTagsByTagIdData = {
-    body?: never;
-    path: {
-        trackID: string;
-        tagID: string;
-    };
-    query?: never;
-    url: '/api/v1/files/{trackID}/tags/{tagID}';
-};
-
-export type DeleteApiV1FilesByTrackIdTagsByTagIdErrors = {
-    /**
-     * Invalid track or tag ID
-     */
-    400: unknown;
-    /**
-     * Not authorized
-     */
-    401: unknown;
-    /**
-     * Track not found
-     */
-    404: unknown;
-    /**
-     * The change was saved, but live synchronization failed
-     */
-    503: unknown;
-};
-
-export type DeleteApiV1FilesByTrackIdTagsByTagIdResponses = {
-    /**
-     * Track with its updated tags
-     */
-    200: Track;
-};
-
-export type DeleteApiV1FilesByTrackIdTagsByTagIdResponse = DeleteApiV1FilesByTrackIdTagsByTagIdResponses[keyof DeleteApiV1FilesByTrackIdTagsByTagIdResponses];
-
-export type PutApiV1FilesByTrackIdTagsByTagIdData = {
-    body?: never;
-    path: {
-        trackID: string;
-        tagID: string;
-    };
-    query?: never;
-    url: '/api/v1/files/{trackID}/tags/{tagID}';
-};
-
-export type PutApiV1FilesByTrackIdTagsByTagIdErrors = {
-    /**
-     * Invalid track or tag ID
-     */
-    400: unknown;
-    /**
-     * Not authorized
-     */
-    401: unknown;
-    /**
-     * Track or tag not found
-     */
-    404: unknown;
-    /**
-     * The change was saved, but live synchronization failed
-     */
-    503: unknown;
-};
-
-export type PutApiV1FilesByTrackIdTagsByTagIdResponses = {
-    /**
-     * Track with its updated tags
-     */
-    200: Track;
-};
-
-export type PutApiV1FilesByTrackIdTagsByTagIdResponse = PutApiV1FilesByTrackIdTagsByTagIdResponses[keyof PutApiV1FilesByTrackIdTagsByTagIdResponses];
 
 export type GetApiV1FilesByTrackIdUsageData = {
     body?: never;

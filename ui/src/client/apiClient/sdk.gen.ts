@@ -2,7 +2,7 @@
 
 import { type Client, type ClientMeta, formDataBodySerializer, type Options as Options2, type RequestResult, type TDataShape } from './client';
 import { client } from './client.gen';
-import type { ChangePasswordData, ChangePasswordErrors, ChangePasswordResponses, ClaimInstanceData, ClaimInstanceErrors, ClaimInstanceResponses, DeleteApiV1FilesByTrackIdData, DeleteApiV1FilesByTrackIdErrors, DeleteApiV1FilesByTrackIdResponses, DeleteApiV1FilesByTrackIdTagsByTagIdData, DeleteApiV1FilesByTrackIdTagsByTagIdErrors, DeleteApiV1FilesByTrackIdTagsByTagIdResponses, DeleteApiV1TablesByTableIdData, DeleteApiV1TablesByTableIdDiscordData, DeleteApiV1TablesByTableIdDiscordErrors, DeleteApiV1TablesByTableIdDiscordResponses, DeleteApiV1TablesByTableIdErrors, DeleteApiV1TablesByTableIdResponses, DeleteApiV1TablesByTableIdTracksByTrackIdData, DeleteApiV1TablesByTableIdTracksByTrackIdErrors, DeleteApiV1TablesByTableIdTracksByTrackIdResponses, GetApiV1AuthStatusData, GetApiV1AuthStatusResponses, GetApiV1DiscordServersByGuildIdChannelsData, GetApiV1DiscordServersByGuildIdChannelsErrors, GetApiV1DiscordServersByGuildIdChannelsResponses, GetApiV1DiscordSetupData, GetApiV1DiscordSetupErrors, GetApiV1DiscordSetupResponses, GetApiV1FilesByTrackIdUsageData, GetApiV1FilesByTrackIdUsageErrors, GetApiV1FilesByTrackIdUsageResponses, GetApiV1FilesByTrackIdWaveformData, GetApiV1FilesByTrackIdWaveformErrors, GetApiV1FilesByTrackIdWaveformResponses, GetApiV1FilesData, GetApiV1FilesErrors, GetApiV1FilesResponses, GetApiV1StreamByPathData, GetApiV1StreamByPathErrors, GetApiV1StreamByPathResponses, GetApiV1TablesByTableIdData, GetApiV1TablesByTableIdDiscordData, GetApiV1TablesByTableIdDiscordErrors, GetApiV1TablesByTableIdDiscordResponses, GetApiV1TablesByTableIdErrors, GetApiV1TablesByTableIdResponses, GetApiV1TablesByTableIdSettingsData, GetApiV1TablesByTableIdSettingsErrors, GetApiV1TablesByTableIdSettingsResponses, GetApiV1TablesByTableIdStreamByPathData, GetApiV1TablesByTableIdStreamByPathErrors, GetApiV1TablesByTableIdStreamByPathResponses, GetApiV1TablesByTableIdTracksData, GetApiV1TablesByTableIdTracksErrors, GetApiV1TablesByTableIdTracksResponses, GetApiV1TablesData, GetApiV1TablesResponses, GetApiV1TagsData, GetApiV1TagsErrors, GetApiV1TagsResponses, GetApiV1TrackTypesData, GetApiV1TrackTypesResponses, GetApiV1WsData, GetApiV1WsErrors, GetProfileData, GetProfileErrors, GetProfileResponses, GetSetupStatusData, GetSetupStatusErrors, GetSetupStatusResponses, GetTablePlaybackData, GetTablePlaybackErrors, GetTablePlaybackResponses, PatchApiV1TablesByTableIdSettingsData, PatchApiV1TablesByTableIdSettingsErrors, PatchApiV1TablesByTableIdSettingsResponses, PatchTableMixVolumesData, PatchTableMixVolumesErrors, PatchTableMixVolumesResponses, PatchTablePlaybackData, PatchTablePlaybackErrors, PatchTablePlaybackResponses, PostApiV1AuthLogoutData, PostApiV1AuthLogoutResponses, PostApiV1FilesData, PostApiV1FilesErrors, PostApiV1FilesImportData, PostApiV1FilesImportErrors, PostApiV1FilesImportResponses, PostApiV1FilesResponses, PostApiV1FilesScanData, PostApiV1FilesScanErrors, PostApiV1FilesScanResponses, PostApiV1LoginData, PostApiV1LoginErrors, PostApiV1LoginResponses, PostApiV1TablesByTableIdDiscordData, PostApiV1TablesByTableIdDiscordErrors, PostApiV1TablesByTableIdDiscordResponses, PostApiV1TablesByTableIdExternalIdData, PostApiV1TablesByTableIdExternalIdErrors, PostApiV1TablesByTableIdExternalIdResponses, PostApiV1TablesData, PostApiV1TablesErrors, PostApiV1TablesResponses, PostApiV1TagsData, PostApiV1TagsErrors, PostApiV1TagsResponses, PutApiV1FilesByTrackIdData, PutApiV1FilesByTrackIdErrors, PutApiV1FilesByTrackIdResponses, PutApiV1FilesByTrackIdTagsByTagIdData, PutApiV1FilesByTrackIdTagsByTagIdErrors, PutApiV1FilesByTrackIdTagsByTagIdResponses, PutApiV1TablesByTableIdData, PutApiV1TablesByTableIdErrors, PutApiV1TablesByTableIdResponses, PutApiV1TablesByTableIdTracksByTrackIdData, PutApiV1TablesByTableIdTracksByTrackIdErrors, PutApiV1TablesByTableIdTracksByTrackIdResponses, PutApiV1TagsByTagIdData, PutApiV1TagsByTagIdErrors, PutApiV1TagsByTagIdResponses, PutTableMixData, PutTableMixErrors, PutTableMixResponses } from './types.gen';
+import type { ChangePasswordData, ChangePasswordErrors, ChangePasswordResponses, ClaimInstanceData, ClaimInstanceErrors, ClaimInstanceResponses, DeleteApiV1FilesByTrackIdData, DeleteApiV1FilesByTrackIdErrors, DeleteApiV1FilesByTrackIdResponses, DeleteApiV1TablesByTableIdData, DeleteApiV1TablesByTableIdDiscordData, DeleteApiV1TablesByTableIdDiscordErrors, DeleteApiV1TablesByTableIdDiscordResponses, DeleteApiV1TablesByTableIdErrors, DeleteApiV1TablesByTableIdResponses, DeleteApiV1TablesByTableIdTracksByTrackIdData, DeleteApiV1TablesByTableIdTracksByTrackIdErrors, DeleteApiV1TablesByTableIdTracksByTrackIdResponses, GetApiV1AuthStatusData, GetApiV1AuthStatusResponses, GetApiV1DiscordServersByGuildIdChannelsData, GetApiV1DiscordServersByGuildIdChannelsErrors, GetApiV1DiscordServersByGuildIdChannelsResponses, GetApiV1DiscordSetupData, GetApiV1DiscordSetupErrors, GetApiV1DiscordSetupResponses, GetApiV1FilesByTrackIdUsageData, GetApiV1FilesByTrackIdUsageErrors, GetApiV1FilesByTrackIdUsageResponses, GetApiV1FilesByTrackIdWaveformData, GetApiV1FilesByTrackIdWaveformErrors, GetApiV1FilesByTrackIdWaveformResponses, GetApiV1FilesData, GetApiV1FilesErrors, GetApiV1FilesResponses, GetApiV1StreamByPathData, GetApiV1StreamByPathErrors, GetApiV1StreamByPathResponses, GetApiV1TablesByTableIdData, GetApiV1TablesByTableIdDiscordData, GetApiV1TablesByTableIdDiscordErrors, GetApiV1TablesByTableIdDiscordResponses, GetApiV1TablesByTableIdErrors, GetApiV1TablesByTableIdResponses, GetApiV1TablesByTableIdSettingsData, GetApiV1TablesByTableIdSettingsErrors, GetApiV1TablesByTableIdSettingsResponses, GetApiV1TablesByTableIdStreamByPathData, GetApiV1TablesByTableIdStreamByPathErrors, GetApiV1TablesByTableIdStreamByPathResponses, GetApiV1TablesByTableIdTracksData, GetApiV1TablesByTableIdTracksErrors, GetApiV1TablesByTableIdTracksResponses, GetApiV1TablesData, GetApiV1TablesResponses, GetApiV1TagsData, GetApiV1TagsErrors, GetApiV1TagsResponses, GetApiV1TrackTypesData, GetApiV1TrackTypesResponses, GetApiV1WsData, GetApiV1WsErrors, GetProfileData, GetProfileErrors, GetProfileResponses, GetSetupStatusData, GetSetupStatusErrors, GetSetupStatusResponses, GetTablePlaybackData, GetTablePlaybackErrors, GetTablePlaybackResponses, PatchApiV1FilesData, PatchApiV1FilesErrors, PatchApiV1FilesResponses, PatchApiV1TablesByTableIdSettingsData, PatchApiV1TablesByTableIdSettingsErrors, PatchApiV1TablesByTableIdSettingsResponses, PatchTableMixVolumesData, PatchTableMixVolumesErrors, PatchTableMixVolumesResponses, PatchTablePlaybackData, PatchTablePlaybackErrors, PatchTablePlaybackResponses, PostApiV1AuthLogoutData, PostApiV1AuthLogoutResponses, PostApiV1FilesData, PostApiV1FilesErrors, PostApiV1FilesImportData, PostApiV1FilesImportErrors, PostApiV1FilesImportResponses, PostApiV1FilesResponses, PostApiV1FilesScanData, PostApiV1FilesScanErrors, PostApiV1FilesScanResponses, PostApiV1LoginData, PostApiV1LoginErrors, PostApiV1LoginResponses, PostApiV1TablesByTableIdDiscordData, PostApiV1TablesByTableIdDiscordErrors, PostApiV1TablesByTableIdDiscordResponses, PostApiV1TablesByTableIdExternalIdData, PostApiV1TablesByTableIdExternalIdErrors, PostApiV1TablesByTableIdExternalIdResponses, PostApiV1TablesData, PostApiV1TablesErrors, PostApiV1TablesResponses, PostApiV1TagsData, PostApiV1TagsErrors, PostApiV1TagsResponses, PutApiV1FilesByTrackIdData, PutApiV1FilesByTrackIdErrors, PutApiV1FilesByTrackIdResponses, PutApiV1TablesByTableIdData, PutApiV1TablesByTableIdErrors, PutApiV1TablesByTableIdResponses, PutApiV1TablesByTableIdTracksByTrackIdData, PutApiV1TablesByTableIdTracksByTrackIdErrors, PutApiV1TablesByTableIdTracksByTrackIdResponses, PutApiV1TagsByTagIdData, PutApiV1TagsByTagIdErrors, PutApiV1TagsByTagIdResponses, PutTableMixData, PutTableMixErrors, PutTableMixResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -383,6 +383,27 @@ export const getApiV1Files = <ThrowOnError extends boolean = false>(options?: Op
 });
 
 /**
+ * Edit several audio tracks at once
+ *
+ * Applies the same track type and tag changes to every listed track in one transaction.
+ * A missing track or tag fails the whole edit. Removed tags that no track uses any more are deleted.
+ *
+ */
+export const patchApiV1Files = <ThrowOnError extends boolean = false>(options: Options<PatchApiV1FilesData, ThrowOnError>): RequestResult<PatchApiV1FilesResponses, PatchApiV1FilesErrors, ThrowOnError> => (options.client ?? client).patch<PatchApiV1FilesResponses, PatchApiV1FilesErrors, ThrowOnError>({
+    security: [{
+            in: 'cookie',
+            name: 'auth_token',
+            type: 'apiKey'
+        }],
+    url: '/api/v1/files',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
  * Upload new audio track
  */
 export const postApiV1Files = <ThrowOnError extends boolean = false>(options: Options<PostApiV1FilesData, ThrowOnError>): RequestResult<PostApiV1FilesResponses, PostApiV1FilesErrors, ThrowOnError> => (options.client ?? client).post<PostApiV1FilesResponses, PostApiV1FilesErrors, ThrowOnError>({
@@ -464,36 +485,6 @@ export const putApiV1FilesByTrackId = <ThrowOnError extends boolean = false>(opt
         'Content-Type': 'application/json',
         ...options.headers
     }
-});
-
-/**
- * Remove a tag from a track
- *
- * Idempotent; removing a tag the track does not have succeeds.
- */
-export const deleteApiV1FilesByTrackIdTagsByTagId = <ThrowOnError extends boolean = false>(options: Options<DeleteApiV1FilesByTrackIdTagsByTagIdData, ThrowOnError>): RequestResult<DeleteApiV1FilesByTrackIdTagsByTagIdResponses, DeleteApiV1FilesByTrackIdTagsByTagIdErrors, ThrowOnError> => (options.client ?? client).delete<DeleteApiV1FilesByTrackIdTagsByTagIdResponses, DeleteApiV1FilesByTrackIdTagsByTagIdErrors, ThrowOnError>({
-    security: [{
-            in: 'cookie',
-            name: 'auth_token',
-            type: 'apiKey'
-        }],
-    url: '/api/v1/files/{trackID}/tags/{tagID}',
-    ...options
-});
-
-/**
- * Apply a tag to a track
- *
- * Idempotent; applying a tag the track already has succeeds.
- */
-export const putApiV1FilesByTrackIdTagsByTagId = <ThrowOnError extends boolean = false>(options: Options<PutApiV1FilesByTrackIdTagsByTagIdData, ThrowOnError>): RequestResult<PutApiV1FilesByTrackIdTagsByTagIdResponses, PutApiV1FilesByTrackIdTagsByTagIdErrors, ThrowOnError> => (options.client ?? client).put<PutApiV1FilesByTrackIdTagsByTagIdResponses, PutApiV1FilesByTrackIdTagsByTagIdErrors, ThrowOnError>({
-    security: [{
-            in: 'cookie',
-            name: 'auth_token',
-            type: 'apiKey'
-        }],
-    url: '/api/v1/files/{trackID}/tags/{tagID}',
-    ...options
 });
 
 /**

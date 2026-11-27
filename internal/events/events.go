@@ -19,6 +19,7 @@ const (
 	TrackStatusChanged   = "trackStatusChanged"
 	TrackUpdated         = "trackUpdated"
 	TagUpdated           = "tagUpdated"
+	TagDeleted           = "tagDeleted"
 	DiscordStatusChanged = "discordStatusChanged"
 	TableSettingsChanged = "tableSettingsChanged"
 	ClientConnected      = "clientConnected"
@@ -78,4 +79,8 @@ type TableEvent[T any] struct {
 
 type TrackReference struct {
 	FileID string `json:"fileID"`
+}
+
+type TagReference struct {
+	TagID string `json:"tagID"`
 }
