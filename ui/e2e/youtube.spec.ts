@@ -88,17 +88,18 @@ test('GM reorders a processing track without changing tile height', async ({ pag
   await page.setViewportSize({ width: 1280, height: 812 })
 
   const headings = page.locator('.track-item .track-heading > span')
-  const handle = processing.getByRole('button', { name: 'Drag to reorder YouTube Forest', exact: true })
-  await expect(handle).toBeEnabled()
+  await page.getByRole('button', { name: 'Table options' }).click()
+  await page.getByRole('menuitem', { name: 'Rearrange tracks' }).click()
+  const movingTrack = page.getByRole('option', { name: 'YouTube Forest', exact: true })
   const keyboardSave = page.waitForResponse(response => response.url().endsWith('/settings')
     && response.request().method() === 'PATCH' && response.ok())
-  await handle.press('Alt+ArrowLeft')
+  await movingTrack.press('Alt+ArrowLeft')
   await expect(headings).toHaveText(['YouTube Forest', 'Ready track'])
   await keyboardSave
-  await expect(handle).toBeFocused()
+  await expect(movingTrack).toBeFocused()
 
-  const source = await handle.boundingBox()
-  const target = await ready.boundingBox()
+  const source = await movingTrack.boundingBox()
+  const target = await page.getByRole('option', { name: 'Ready track', exact: true }).boundingBox()
   if (!source || !target) throw new Error('Track cards must have visible bounds')
   await page.mouse.move(source.x + source.width / 2, source.y + source.height / 2)
   await page.mouse.down()
@@ -112,6 +113,7 @@ test('GM reorders a processing track without changing tile height', async ({ pag
   await expect(page.locator('[data-dnd-dragging], [data-dnd-placeholder]')).toHaveCount(0)
   await expect(headings).toHaveText(['Ready track', 'YouTube Forest'])
   await dragSave
+  await page.getByRole('button', { name: 'Finished', exact: true }).click()
   await page.reload()
   await expect(headings).toHaveText(['Ready track', 'YouTube Forest'])
   await expect(processing).toHaveAttribute('aria-busy', 'true')

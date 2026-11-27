@@ -2,8 +2,8 @@ import { devices } from '@playwright/test'
 import { expect, test } from './fixtures'
 import { expectCompactPlayingCard, expectAlignedTrackControls, expectTimelineLayout, expectPlaceholderAt, login, deleteLibraryTrack, uploadTrack } from './helpers'
 
-test.describe('drag-handle reordering', () => {
-  test('GM drags handles, keeps the order, and uses inline playback controls', async ({
+test.describe('rearranging tracks', () => {
+  test('GM rearranges tracks, keeps the order, and uses inline playback controls', async ({
     page,
   }, testInfo) => {
     testInfo.setTimeout(Math.max(testInfo.timeout, 60_000))
@@ -19,7 +19,7 @@ test.describe('drag-handle reordering', () => {
     const names = () => tiles.locator('.track-heading > span')
     await expect(names()).toHaveText(['Forest', 'Rain', 'Tavern'])
     await expect(page.getByRole('button', { name: /^Move .+ (earlier|later)/ })).toHaveCount(0)
-    await expect(page.getByRole('button', { name: /^Drag to reorder/ })).toHaveCount(3)
+    await expect(page.getByRole('listbox', { name: 'Tracks' })).toHaveCount(0)
     await expect(forest.locator('.audio-control-tile')).toHaveCSS(
       'border-top-color',
       'rgb(128, 222, 234)',
@@ -36,11 +36,16 @@ test.describe('drag-handle reordering', () => {
     expect((await forest.boundingBox())?.height).toBe(collapsedForest.height)
     await forest.focus()
     await page.keyboard.press('Tab')
-    await expect(forest.getByRole('button', { name: 'Drag to reorder Forest' })).toBeFocused()
-    await page.keyboard.press('Tab')
     await expect(forest.getByRole('button', { name: 'Edit Forest' })).toBeFocused()
-    await rain.getByRole('button', { name: 'Drag to reorder Rain' }).click()
+    const idle = await rain.boundingBox()
+    if (!idle) throw new Error('Track cards must have visible bounds')
+    await page.mouse.move(idle.x + idle.width / 2, idle.y + idle.height / 2)
+    await page.mouse.down()
+    await page.mouse.move(idle.x + idle.width / 2 - 40, idle.y + idle.height / 2, { steps: 4 })
     await expect(page.locator('[data-dnd-dragging]')).toHaveCount(0)
+    await page.mouse.move(1000, 600)
+    await page.mouse.up()
+    await expect(sidebar).toContainText('No tracks playing.')
     for (const video of await page.locator('video').all()) {
       await expect.poll(() => video.evaluate((el: HTMLVideoElement) => el.paused)).toBe(true)
     }
@@ -54,9 +59,17 @@ test.describe('drag-handle reordering', () => {
       .poll(() => forestAudio.evaluate((el: HTMLVideoElement) => !el.paused && el.currentTime > 0))
       .toBe(true)
     const beforeReorder = await forestAudio.evaluate((el: HTMLVideoElement) => el.currentTime)
-    const source = await tavern
-      .getByRole('button', { name: 'Drag to reorder Tavern' })
-      .boundingBox()
+    await page.getByRole('button', { name: 'Table options' }).click()
+    await page.getByRole('menuitem', { name: 'Rearrange tracks' }).click()
+    const tracks = page.getByRole('listbox', { name: 'Tracks' })
+    await expect(tracks.getByRole('option')).toHaveCount(3)
+    await expect(forest.getByRole('button', { name: 'Edit Forest' })).toBeHidden()
+    await forest.locator('.track-heading > span').click()
+    await expect(tracks.getByRole('option', { name: 'Forest' })).toHaveAttribute('aria-selected', 'true')
+    await expect(playingForest).toBeVisible()
+    await forest.locator('.track-heading > span').click()
+    await expect(tracks.getByRole('option', { name: 'Forest' })).toHaveAttribute('aria-selected', 'false')
+    const source = await tavern.boundingBox()
     const target = await forest.boundingBox()
     if (!source || !target) throw new Error('Track cards must have visible bounds')
     await page.mouse.move(source.x + source.width / 2, source.y + source.height / 2)
@@ -66,7 +79,6 @@ test.describe('drag-handle reordering', () => {
     })
     await expect(page.locator('[data-dnd-dragging]')).toBeVisible()
     await expect(page.locator('[data-dnd-placeholder] .audio-control-tile')).toBeHidden()
-    await expect(page.locator('[data-dnd-placeholder] .track-drag-handle')).toBeHidden()
     await expect(page.locator('[data-dnd-placeholder] .file-tile')).toHaveCSS(
       'outline-style',
       'dashed',
@@ -91,16 +103,19 @@ test.describe('drag-handle reordering', () => {
         ),
       )
       .toBe(true)
-    const rainHandle = rain.getByRole('button', { name: 'Drag to reorder Rain' })
-    await rainHandle.focus()
+    await expect(tracks.getByRole('option', { selected: true })).toHaveCount(0)
+    await rain.focus()
     await page.keyboard.press('Alt+ArrowLeft')
     await expect(names()).toHaveText(['Tavern', 'Rain', 'Forest'])
-    await expect(rainHandle).toBeFocused()
+    await expect(rain).toBeFocused()
     await expect(page.getByText('Moved Rain to position 2 of 3.', { exact: true })).toHaveCount(1)
     await page.keyboard.press('Alt+ArrowRight')
     await expect(names()).toHaveText(['Tavern', 'Forest', 'Rain'])
     await page.keyboard.press('Alt+ArrowRight')
     await expect(names()).toHaveText(['Tavern', 'Forest', 'Rain'])
+    await page.getByRole('button', { name: 'Finished', exact: true }).click()
+    await expect(tracks).toHaveCount(0)
+    await expect(forest.getByRole('button', { name: 'Edit Forest' })).toBeVisible()
     const slider = playingForest.locator('.v-slider-track').first()
     const volume = await slider.boundingBox()
     if (!volume) throw new Error('The inline volume slider must be visible')
@@ -239,7 +254,7 @@ test.describe('drag-handle reordering', () => {
 })
 
 for (const device of ['Pixel 7', 'iPhone 13']) {
-  test(`touch dragging reflows the grid, supports cancellation, and preserves scrolling (${device})`, async ({
+  test(`touch rearranging selects ranges, moves groups, supports cancellation, and preserves scrolling (${device})`, async ({
     browser,
   }, testInfo) => {
     test.slow()
@@ -283,76 +298,82 @@ for (const device of ['Pixel 7', 'iPhone 13']) {
       await page.getByRole('button', { name: 'Close now playing' }).tap()
       await expect(drawer).toBeHidden()
       await page.setViewportSize({ width: 390, height: 844 })
-      await tiles.filter({ hasText: 'Track 3' }).getByRole('button', { name: 'Drag to reorder Track 3' })
-        .tap({ trial: true })
-      const source = await tiles
-        .filter({ hasText: 'Track 3' })
-        .getByRole('button', { name: 'Drag to reorder Track 3' })
-        .boundingBox()
-      const target = await tiles.filter({ hasText: 'Track 2' }).boundingBox()
-      if (!source || !target) throw new Error('Touch drag cards must have visible bounds')
-      const start = { x: source.x + source.width / 2, y: source.y + source.height / 2 }
-      await touch.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [start] })
-      await touch.send('Input.dispatchTouchEvent', {
-        type: 'touchMove',
-        touchPoints: [{ x: start.x + 24, y: start.y }],
-      })
-      await expect(page.locator('[data-dnd-dragging]')).toBeVisible()
-      await touch.send('Input.dispatchTouchEvent', {
-        type: 'touchMove',
-        touchPoints: [{ x: target.x + target.width / 4, y: target.y + 20 }],
-      })
-      await expect(headings).toHaveText([
-        'Track 1',
-        'Track 3',
-        'Track 2',
-        'Track 4',
-        'Track 5',
-        'Track 6',
-      ])
-      await expectPlaceholderAt(page, target)
+      const rearrange = async () => {
+        await page.getByRole('button', { name: 'Table options' }).tap()
+        await page.getByRole('menuitem', { name: 'Rearrange tracks' }).tap()
+        await expect(page.getByRole('listbox', { name: 'Tracks' })).toBeVisible()
+      }
+      const touchDrag = async (from: string, to: { x: number; y: number }) => {
+        const source = await tiles.filter({ hasText: from }).locator('.track-heading').boundingBox()
+        if (!source) throw new Error('Touch drag cards must have visible bounds')
+        const start = { x: source.x + source.width / 2, y: source.y + source.height / 2 }
+        await touch.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [start] })
+        await touch.send('Input.dispatchTouchEvent', {
+          type: 'touchMove',
+          touchPoints: [{ x: start.x + 24, y: start.y }],
+        })
+        await expect(page.locator('[data-dnd-dragging]')).toBeVisible()
+        await touch.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [to] })
+      }
+      const selected = page.getByRole('option', { selected: true }).locator('.track-heading > span')
+      await rearrange()
+      await tiles.filter({ hasText: 'Track 3' }).locator('.track-heading > span').tap()
+      await expect(selected).toHaveText(['Track 3'])
+      const hold = await tiles.filter({ hasText: 'Track 4' }).locator('.track-heading').boundingBox()
+      if (!hold) throw new Error('Cards must be available for long-press selection')
+      const holdPoint = { x: hold.x + hold.width / 2, y: hold.y + hold.height / 2 }
+      await touch.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [holdPoint] })
+      await page.waitForTimeout(700)
+      await touch.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
+      await expect(selected).toHaveText(['Track 3', 'Track 4'])
+      await expect(page.getByRole('region', { name: 'Rearrange tracks' })).toContainText('2 selected')
+      const target = await tiles.filter({ hasText: 'Track 1' }).boundingBox()
+      if (!target) throw new Error('Touch drag cards must have visible bounds')
+      await touchDrag('Track 4', { x: target.x + target.width / 4, y: target.y + 20 })
+      await expect(page.locator('[data-dnd-dragging] .drag-count')).toHaveText('2')
+      await expect(tiles.filter({ hasText: 'Track 3' })).toHaveCSS('opacity', '0.35')
       await page.screenshot({ path: testInfo.outputPath('gm-touch-dragging.png'), fullPage: true })
       await touch.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
       await expect(page.locator('[data-dnd-dragging], [data-dnd-placeholder]')).toHaveCount(0)
+      const reordered = ['Track 3', 'Track 4', 'Track 1', 'Track 2', 'Track 5', 'Track 6']
+      await expect(headings).toHaveText(reordered)
       for (const video of await page.locator('video').all()) {
         await expect.poll(() => video.evaluate((el: HTMLVideoElement) => el.paused)).toBe(true)
       }
       await page.reload()
-      const reordered = ['Track 1', 'Track 3', 'Track 2', 'Track 4', 'Track 5', 'Track 6']
       await expect(headings).toHaveText(reordered)
-      const cancel = await tiles
-        .first()
-        .getByRole('button', { name: 'Drag to reorder Track 1' })
-        .boundingBox()
+      await rearrange()
+      await tiles.first().locator('.track-heading > span').tap()
+      await expect(selected).toHaveText(['Track 3'])
       const cancelTarget = await tiles.last().boundingBox()
-      if (!cancel || !cancelTarget) throw new Error('Cards must be available to cancel dragging')
-      const cancelPoint = { x: cancel.x + cancel.width / 2, y: cancel.y + cancel.height / 2 }
-      await touch.send('Input.dispatchTouchEvent', {
-        type: 'touchStart',
-        touchPoints: [cancelPoint],
-      })
-      await touch.send('Input.dispatchTouchEvent', {
-        type: 'touchMove',
-        touchPoints: [{ x: cancelPoint.x + 24, y: cancelPoint.y }],
-      })
-      await expect(page.locator('[data-dnd-dragging]')).toBeVisible()
-      await touch.send('Input.dispatchTouchEvent', {
-        type: 'touchMove',
-        touchPoints: [{ x: cancelTarget.x + cancelTarget.width * 0.75, y: cancelTarget.y + 20 }],
-      })
-      await expect(headings).toHaveText([
-        'Track 3',
-        'Track 2',
-        'Track 4',
-        'Track 5',
-        'Track 6',
-        'Track 1',
-      ])
+      if (!cancelTarget) throw new Error('Cards must be available to cancel dragging')
+      await touchDrag('Track 3', { x: cancelTarget.x + cancelTarget.width * 0.75, y: cancelTarget.y + 20 })
+      await expect(headings).toHaveText(['Track 4', 'Track 1', 'Track 2', 'Track 5', 'Track 6', 'Track 3'])
       await expectPlaceholderAt(page, cancelTarget)
       await touch.send('Input.dispatchTouchEvent', { type: 'touchCancel', touchPoints: [] })
       await expect(page.locator('[data-dnd-dragging], [data-dnd-placeholder]')).toHaveCount(0)
       await expect(headings).toHaveText(reordered)
-      await tiles.first().getByRole('button', { name: 'Edit Track 1' }).tap()
+      await page.setViewportSize({ width: 390, height: 180 })
+      await page.evaluate(() => window.scrollTo(0, 0))
+      const swipe = await tiles.nth(1).locator('.track-heading').boundingBox()
+      if (!swipe) throw new Error('A card must be available for touch scrolling')
+      const swipePoint = { x: swipe.x + swipe.width / 2, y: swipe.y + swipe.height / 2 }
+      await touch.send('Input.dispatchTouchEvent', {
+        type: 'touchStart',
+        touchPoints: [swipePoint],
+      })
+      await touch.send('Input.dispatchTouchEvent', {
+        type: 'touchMove',
+        touchPoints: [{ x: swipePoint.x, y: swipePoint.y - 80 }],
+      })
+      await touch.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
+      await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(0)
+      await expect(page.locator('[data-dnd-dragging]')).toHaveCount(0)
+      await expect(headings).toHaveText(reordered)
+      await page.setViewportSize({ width: 390, height: 844 })
+      await page.getByRole('button', { name: 'Finished', exact: true }).tap()
+      await expect(page.getByRole('listbox', { name: 'Tracks' })).toHaveCount(0)
+      await tiles.filter({ hasText: 'Track 1' }).getByRole('button', { name: 'Edit Track 1' }).tap()
       await expect(page.getByRole('dialog')).toBeVisible()
       await page.getByRole('dialog').locator('.timeline-axis').tap()
       await expect
@@ -374,23 +395,6 @@ for (const device of ['Pixel 7', 'iPhone 13']) {
       await expect(page.locator('[data-dnd-dragging]')).toHaveCount(0)
       await page.getByRole('button', { name: 'Close track controls' }).tap()
       await expect(page.getByRole('dialog')).toBeHidden()
-      await page.setViewportSize({ width: 390, height: 180 })
-      await page.evaluate(() => window.scrollTo(0, 0))
-      const swipe = await tiles.first().locator('.track-heading').boundingBox()
-      if (!swipe) throw new Error('A card must be available for touch scrolling')
-      const swipePoint = { x: swipe.x + swipe.width / 2, y: swipe.y + swipe.height / 2 }
-      await touch.send('Input.dispatchTouchEvent', {
-        type: 'touchStart',
-        touchPoints: [swipePoint],
-      })
-      await touch.send('Input.dispatchTouchEvent', {
-        type: 'touchMove',
-        touchPoints: [{ x: swipePoint.x, y: swipePoint.y - 80 }],
-      })
-      await touch.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
-      await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(0)
-      await expect(page.locator('[data-dnd-dragging]')).toHaveCount(0)
-      await expect(headings).toHaveText(reordered)
       for (const name of names) {
         const tile = tiles.filter({ hasText: name })
         await tile.getByRole('button', { name: `Edit ${name}` }).tap()
@@ -405,3 +409,61 @@ for (const device of ['Pixel 7', 'iPhone 13']) {
     }
   })
 }
+
+test('GM selects tracks with click and shift-click, then moves them together', async ({ page, recordFlow }, testInfo) => {
+  testInfo.setTimeout(Math.max(testInfo.timeout, 60_000))
+  await login(page)
+  for (const name of ['Track 1', 'Track 2', 'Track 3', 'Track 4', 'Track 5']) await uploadTrack(page, name)
+  await expect(page.getByText('File uploaded successfully!', { exact: true })).not.toBeVisible()
+  const tiles = page.locator('.track-item:not([data-dnd-dragging]) > .file-tile')
+  const headings = tiles.locator('.track-heading > span')
+  const tile = (name: string) => tiles.filter({ hasText: name })
+  const bar = page.getByRole('region', { name: 'Rearrange tracks' })
+  const selected = page.getByRole('option', { selected: true }).locator('.track-heading > span')
+  recordFlow.start()
+  await page.getByRole('button', { name: 'Table options' }).click()
+  await page.getByRole('menuitem', { name: 'Rearrange tracks' }).click()
+  await expect(bar).toContainText('Select tracks, then drag to rearrange')
+  await tile('Track 3').locator('.track-heading > span').click()
+  await expect(selected).toHaveText(['Track 3'])
+  await tile('Track 5').locator('.track-heading > span').click({ modifiers: ['Shift'] })
+  await expect(selected).toHaveText(['Track 3', 'Track 4', 'Track 5'])
+  await tile('Track 4').locator('.track-heading > span').click()
+  await tile('Track 2').locator('.track-heading > span').click()
+  await expect(selected).toHaveText(['Track 2', 'Track 3', 'Track 5'])
+  await expect(bar).toContainText('3 selected')
+  await expect(tile('Track 2')).toHaveCSS('outline-style', 'solid')
+  await expect(tile('Track 4')).not.toHaveCSS('outline-style', 'solid')
+  for (const video of await page.locator('video').all()) {
+    await expect.poll(() => video.evaluate((el: HTMLVideoElement) => el.paused)).toBe(true)
+  }
+
+  const source = await tile('Track 5').boundingBox()
+  const target = await tile('Track 1').boundingBox()
+  if (!source || !target) throw new Error('Track cards must have visible bounds')
+  await page.mouse.move(source.x + source.width / 2, source.y + source.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(source.x + source.width / 2 - 8, source.y + source.height / 2, { steps: 2 })
+  await expect(page.locator('[data-dnd-dragging] .drag-count')).toHaveText('3')
+  await expect(tile('Track 2')).toHaveCSS('opacity', '0.35')
+  await page.mouse.move(target.x + target.width / 4, target.y + 20, { steps: 12 })
+  await expectPlaceholderAt(page, target)
+  await page.screenshot({ path: testInfo.outputPath('gm-group-dragging.png'), fullPage: true })
+  await page.mouse.up()
+  await expect(page.locator('[data-dnd-dragging], [data-dnd-placeholder]')).toHaveCount(0)
+  const reordered = ['Track 2', 'Track 3', 'Track 5', 'Track 1', 'Track 4']
+  await expect(headings).toHaveText(reordered)
+  await expect(page.getByText('Moved 3 tracks to position 1 of 5.', { exact: true })).toHaveCount(1)
+  await expect(selected).toHaveText(['Track 2', 'Track 3', 'Track 5'])
+
+  await page.getByRole('button', { name: 'Finished', exact: true }).click()
+  await expect(bar).toHaveCount(0)
+  await expect(page.getByRole('option')).toHaveCount(0)
+  await tile('Track 1').locator('.track-heading > span').click()
+  await expect(
+    page.getByRole('complementary', { name: 'Currently playing' }).getByRole('group', { name: 'Playing Track 1', exact: true }),
+  ).toBeVisible()
+  recordFlow.stop()
+  await page.reload()
+  await expect(headings).toHaveText(reordered)
+})

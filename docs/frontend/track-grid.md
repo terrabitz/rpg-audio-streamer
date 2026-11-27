@@ -1,7 +1,7 @@
 ---
 type: UI Surface
 title: Track grid
-description: GM track tiles, layout, and drag-and-drop ordering.
+description: GM track tiles, layout, and rearrange mode for reordering tracks.
 resource: ui/src/components
 tags: [frontend, layout, ordering]
 ---
@@ -31,7 +31,8 @@ Right-clicking or long-pressing a card opens its context menu; keyboard users
 can use Shift + F10 or the context-menu key. **Play from start** starts or
 restarts the track at its configured playback-region beginning while retaining
 its volume. The action is disabled for unavailable tracks or a disconnected
-WebSocket. Touch scrolling and drag handles do not open the menu.
+WebSocket. Touch scrolling does not open the menu, and the menu is unavailable
+while rearranging.
 
 ## Layout
 
@@ -45,14 +46,28 @@ same breakpoint.
 
 ## Ordering
 
-A small top-left drag handle enables mouse or touch dragging via
-`@dnd-kit/vue` after a 4 px movement. `SortableTrack` registers each grid cell
-and its handle. The lifted card follows the pointer while a dashed insertion
-placeholder moves between the other cards, which animate aside. Only the handle
-initiates dragging; other card areas keep normal touch scrolling. Focused cards
-or handles can be reordered with Alt + Left/Right, with screen-reader
-announcements. Cancelled drags restore the original layout without changing
-the saved order.
+Tracks are reordered in rearrange mode, entered through **Rearrange tracks** in
+the table options menu when the table has at least two tracks. Outside this
+mode cards have no drag affordance. In rearrange mode a sticky bar shows the
+selection count and a **Finished** button that returns the grid to normal
+playback. The grid becomes a multi-select listbox, card clicks select instead
+of playing, and the three-dot and failure buttons are hidden.
+
+Clicking, tapping, or pressing Enter/Space toggles a track's selection.
+Shift-click, Shift + Space, or a touch long-press adds the range between the
+last selected track and the target. Selected cards show a primary outline and
+tint. Selection starts empty and clears when leaving the mode.
+
+Mouse dragging starts on any card after a 4 px movement; touch dragging starts
+only on selected cards, so swiping unselected cards keeps scrolling the page.
+`SortableTrack` registers each grid cell with `@dnd-kit/vue`. The lifted card
+follows the pointer while a dashed insertion placeholder moves between the
+other cards, which animate aside. Dragging a selected card moves the whole
+selection: the lifted card shows a count badge, the other selected cards fade
+in place, and on drop the selection gathers contiguously, in its existing
+relative order, at the drop position. Focused cards move one position with
+Alt + Left/Right. Moves are announced to screen readers, and cancelled drags
+restore the original layout without changing the saved order.
 
 The table store loads track order from server
 [table settings](../data/table-settings.md), scoped by table ID, preserves it

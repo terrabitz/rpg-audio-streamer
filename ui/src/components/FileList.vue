@@ -127,25 +127,45 @@
         <p v-if="!tracks.length" class="mb-4">
           No tracks at this table. Add a library track or upload a new one.
         </p>
-        <p id="track-reorder-help" class="d-sr-only">
-          Click a track to play or pause. Drag its handle to reorder, or focus a card or handle and press Alt + Left or Right.
-          Use the three-dot button for track settings, volume, and playback position.
-          Right-click or long-press a card for playback actions.
+        <div v-if="tables.rearranging" class="rearrange-bar" role="region" aria-label="Rearrange tracks">
+          <span class="text-body-2">
+            {{ rearrangeSelection.length ? `${rearrangeSelection.length} selected` : 'Select tracks, then drag to rearrange' }}
+          </span>
+          <v-btn color="primary" variant="flat" size="small" @click="tables.rearranging = false">Finished</v-btn>
+        </div>
+        <p id="track-grid-help" class="d-sr-only">
+          <template v-if="tables.rearranging">
+            Press Enter or Space to select a track. Shift-click or long-press selects a range.
+            Drag a selected track to move every selected track together, or focus a card and press Alt + Left or Right.
+          </template>
+          <template v-else>
+            Click a track to play or pause. Use the three-dot button for track settings, volume, and playback position.
+            Right-click or long-press a card for playback actions. Choose Rearrange tracks from the table options to reorder.
+          </template>
         </p>
         <div class="d-sr-only" role="status">{{ reorderAnnouncement }}</div>
         <DragDropProvider :sensors="sensors" :plugins="plugins" @drag-start="startDrag" @drag-end="finishDrag">
-          <v-row gap="3" class="track-list" :class="{ 'is-dragging': dragging }">
-            <SortableTrack v-for="(file, index) in tracks" :key="file.id" :id="file.id" :index="index">
-              <v-card class="file-tile" role="group" tabindex="0" :aria-label="file.name" aria-describedby="track-reorder-help"
+          <v-row gap="3" class="track-list" :class="{ 'is-dragging': dragging, 'is-rearranging': tables.rearranging }"
+            :role="tables.rearranging ? 'listbox' : undefined" :aria-multiselectable="tables.rearranging || undefined"
+            :aria-label="tables.rearranging ? 'Tracks' : undefined">
+            <SortableTrack v-for="(file, index) in tracks" :key="file.id" :id="file.id" :index="index"
+              :disabled="!tables.rearranging">
+              <v-card class="file-tile" :role="tables.rearranging ? 'option' : 'group'" tabindex="0"
+                :aria-label="file.name" aria-describedby="track-grid-help"
+                :aria-selected="tables.rearranging ? rearrangeSelected.has(file.id) : undefined"
                 :aria-busy="file.status === 'processing'"
-                :class="{ 'is-processing': file.status === 'processing' }"
-                aria-keyshortcuts="Alt+ArrowLeft Alt+ArrowRight Shift+F10" @keydown="handleKeydown($event, file.id)"
+                :class="{
+                  'is-processing': file.status === 'processing',
+                  'is-selected': tables.rearranging && rearrangeSelected.has(file.id),
+                  'is-group-member': dragGroup.includes(file.id) && file.id !== draggedID,
+                }"
+                :aria-keyshortcuts="tables.rearranging ? 'Alt+ArrowLeft Alt+ArrowRight' : 'Shift+F10'"
+                @keydown="handleKeydown($event, file.id)"
                 @contextmenu.prevent="openContextMenu($event, file.id)"
-                v-touch-hold="event => openContextMenu(event, file.id)" @click="handlePlay(file.id)">
-                <v-btn class="track-drag-handle" icon="$drag" size="x-small" variant="text"
-                  :aria-label="`Drag to reorder ${file.name}`" title="Drag to reorder"
-                  aria-describedby="track-reorder-help" aria-keyshortcuts="Alt+ArrowLeft Alt+ArrowRight"
-                  @click.stop @touchstart.stop @keydown="handleKeydown($event, file.id)" />
+                v-touch-hold="event => handleHold(event, file.id)" @click="handleCardClick($event, file.id)">
+                <span v-if="file.id === draggedID && dragGroup.length > 1" class="drag-count" aria-hidden="true">
+                  {{ dragGroup.length }}
+                </span>
                 <AudioControls :fileID="file.id" :fileName="file.name"
                   :model-value="openedTrackID === file.id" @update:model-value="value => openedTrackID = value ? file.id : ''"
                   :deleteTrack="count => deleteFile(file, count)"
@@ -171,8 +191,8 @@
 <script setup lang="ts">
 import { type Track, type PlaybackSettings, type DiscordStatus } from '@/client/apiClient'
 import { defaultPlayback } from '@/composables/playback'
-import { defaultPreset, Feedback, PointerActivationConstraints, PointerSensor } from '@dnd-kit/dom'
-import { DragDropProvider, type DragEndEvent } from '@dnd-kit/vue'
+import { Accessibility, defaultPreset, Feedback, PointerActivationConstraints, PointerSensor } from '@dnd-kit/dom'
+import { DragDropProvider, type DragEndEvent, type DragStartEvent } from '@dnd-kit/vue'
 import { isSortable } from '@dnd-kit/vue/sortable'
 import debounce from 'lodash.debounce'
 import { TrackUsageChangedError, useFileStore, withTrackStatus } from '@/stores/files'
@@ -208,12 +228,20 @@ const showContextMenu = ref(false)
 const contextTrackID = ref('')
 const contextPosition = ref<[number, number]>([0, 0])
 const contextTrack = computed(() => fileStore.getTrackById(contextTrackID.value))
-const plugins = defaultPreset.plugins.map(plugin => plugin === Feedback
-  ? Feedback.configure({ feedback: 'clone', dropAnimation: { duration: 180 } })
-  : plugin)
+// The grid supplies its own listbox semantics and move announcements, which dnd-kit's
+// Accessibility plugin would override with role="button" and aria-disabled on each column.
+const plugins = defaultPreset.plugins
+  .filter(plugin => plugin !== Accessibility)
+  .map(plugin => plugin === Feedback
+    ? Feedback.configure({ feedback: 'clone', dropAnimation: { duration: 180 } })
+    : plugin)
 const sensors = [
   PointerSensor.configure({
     activationConstraints: [new PointerActivationConstraints.Distance({ value: 4 })],
+    // Unselected cards keep touch scrolling; touch users select a card before dragging it.
+    preventActivation: (event, source) =>
+      (event.pointerType !== 'mouse' && !rearrangeSelected.value.has(String(source.id)))
+      || !!PointerSensor.defaults.preventActivation?.(event, source),
   }),
 ]
 const tables = useTableStore()
@@ -244,6 +272,18 @@ const playingTracks = computed(() => tracks.value.flatMap(track => {
   const state = audioStore.tracks[track.id]
   return state?.isPlaying ? [{ ...track, state }] : []
 }))
+const selectedForRearrange = ref<string[]>([])
+const lastSelectedID = ref('')
+const rearrangeSelection = computed(() => tracks.value.flatMap(track =>
+  selectedForRearrange.value.includes(track.id) ? [track.id] : []))
+const rearrangeSelected = computed(() => new Set(rearrangeSelection.value))
+const draggedID = ref('')
+const dragGroup = computed(() => rearrangeSelected.value.has(draggedID.value) ? rearrangeSelection.value : [])
+
+watch(() => tables.rearranging, () => {
+  selectedForRearrange.value = []
+  lastSelectedID.value = ''
+})
 
 watch(smAndDown, () => { showNowPlaying.value = false })
 
@@ -308,11 +348,48 @@ watch(tracks, (tracks) => {
   }
 }, { immediate: true })
 
-function startDrag() {
+function startDrag(event: DragStartEvent) {
   dragging.value = true
+  draggedID.value = String(event.operation.source?.id ?? '')
+}
+
+function handleCardClick(event: MouseEvent, fileID: string) {
+  if (!tables.rearranging) {
+    handlePlay(fileID)
+    return
+  }
+  if (dragging.value) return
+  if (event.shiftKey) selectRange(fileID)
+  else toggleSelected(fileID)
+}
+
+function handleHold(event: { touch: boolean; clientX: number; clientY: number }, fileID: string) {
+  if (!tables.rearranging) {
+    openContextMenu(event, fileID)
+    return
+  }
+  // Mouse holds commonly precede a drag, so only touch holds select a range.
+  if (event.touch && !dragging.value) selectRange(fileID)
+}
+
+function toggleSelected(fileID: string) {
+  lastSelectedID.value = fileID
+  selectedForRearrange.value = rearrangeSelected.value.has(fileID)
+    ? rearrangeSelection.value.filter(id => id !== fileID)
+    : [...rearrangeSelection.value, fileID]
+}
+
+function selectRange(fileID: string) {
+  const ids = tracks.value.map(track => track.id)
+  const from = ids.indexOf(lastSelectedID.value)
+  const to = ids.indexOf(fileID)
+  const range = from < 0 ? [fileID] : ids.slice(Math.min(from, to), Math.max(from, to) + 1)
+  lastSelectedID.value = fileID
+  selectedForRearrange.value = [...new Set([...rearrangeSelection.value, ...range])]
 }
 
 function openContextMenu(event: { clientX: number; clientY: number }, fileID: string) {
+  if (tables.rearranging) return
   contextTrackID.value = fileID
   contextPosition.value = [event.clientX, event.clientY]
   showContextMenu.value = true
@@ -334,49 +411,62 @@ function playFromStart() {
 
 function finishDrag(event: DragEndEvent) {
   const { source } = event.operation
-  if (!event.canceled && isSortable(source) && source.initialIndex !== source.index) {
+  if (!event.canceled && isSortable(source)) {
     const track = tracks.value[source.initialIndex]
     const target = tracks.value[source.index]
-    if (track && target) {
-      tables.moveTrack(track.id, target.id)
-      announceMove(track.name, source.index)
+    const group = dragGroup.value
+    if (track && target && tables.moveTrack(track.id, target.id, group)) {
+      announceMove(group.length > 1 ? `${group.length} tracks` : track.name, group[0] ?? track.id)
     }
   }
-  // Keep the release click from toggling playback after dragging.
-  requestAnimationFrame(() => { dragging.value = false })
+  // Keep the release click from toggling playback or selection after dragging.
+  requestAnimationFrame(() => {
+    dragging.value = false
+    draggedID.value = ''
+  })
 }
 
 async function handleKeydown(event: KeyboardEvent, fileID: string) {
-  const file = fileStore.getTrackById(fileID)
-  if (!file) return
+  const track = fileStore.getTrackById(fileID)
+  if (!track) return
   if (event.target !== event.currentTarget || !(event.currentTarget instanceof HTMLElement)) return
   const card = event.currentTarget
-  if ((event.key === 'ContextMenu' || event.shiftKey && event.key === 'F10') && card.classList.contains('file-tile')) {
+  if (tables.rearranging) {
+    await handleRearrangeKeydown(event, card, track)
+    return
+  }
+  if (event.key === 'ContextMenu' || event.shiftKey && event.key === 'F10') {
     event.preventDefault()
     const bounds = card.getBoundingClientRect()
     openContextMenu({ clientX: bounds.x, clientY: bounds.bottom }, fileID)
     return
   }
-  if ((event.key === 'Enter' || event.key === ' ') && card.classList.contains('file-tile')) {
+  if (event.key === 'Enter' || event.key === ' ') {
     event.preventDefault()
     handlePlay(fileID)
+  }
+}
+
+async function handleRearrangeKeydown(event: KeyboardEvent, card: HTMLElement, track: Track) {
+  if (event.key === 'Enter' || event.key === ' ') {
+    event.preventDefault()
+    if (event.shiftKey) selectRange(track.id)
+    else toggleSelected(track.id)
     return
   }
   if (!event.altKey || !['ArrowLeft', 'ArrowRight'].includes(event.key)) return
 
   event.preventDefault()
-  const index = tracks.value.findIndex(track => track.id === fileID)
-  const targetIndex = index + (event.key === 'ArrowLeft' ? -1 : 1)
-  const target = tracks.value[targetIndex]
-  const track = fileStore.getTrackById(fileID)
-  if (!target || !track) return
-  tables.moveTrack(fileID, target.id)
+  const index = tracks.value.findIndex(item => item.id === track.id)
+  const target = tracks.value[index + (event.key === 'ArrowLeft' ? -1 : 1)]
+  if (!target || !tables.moveTrack(track.id, target.id)) return
   await nextTick()
   card.focus()
-  announceMove(track.name, targetIndex)
+  announceMove(track.name, track.id)
 }
 
-function announceMove(name: string, index: number) {
+function announceMove(name: string, firstID: string) {
+  const index = tracks.value.findIndex(track => track.id === firstID)
   reorderAnnouncement.value = `Moved ${name} to position ${index + 1} of ${tracks.value.length}.`
 }
 
@@ -695,14 +785,66 @@ onUnmounted(() => {
   user-select: none;
 }
 
-.track-drag-handle {
-  position: absolute;
-  top: 4px;
-  left: 4px;
-  z-index: 1;
+.rearrange-bar {
+  position: sticky;
+  top: var(--v-layout-top, 64px);
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+  padding: 6px 6px 6px 12px;
+  background: rgb(var(--v-theme-surface));
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.12);
+  border-radius: 4px;
+}
+
+.is-rearranging .file-tile {
   cursor: grab;
+}
+
+.is-rearranging .file-tile.is-selected {
   touch-action: none;
-  -webkit-touch-callout: none;
+}
+
+.is-rearranging :deep(.track-menu-slot .v-btn) {
+  visibility: hidden;
+}
+
+.file-tile.is-selected {
+  outline: 2px solid rgb(var(--v-theme-primary));
+  outline-offset: 1px;
+}
+
+.file-tile.is-selected::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: rgba(var(--v-theme-primary), 0.14);
+  pointer-events: none;
+}
+
+.file-tile.is-group-member {
+  opacity: 0.35;
+}
+
+.drag-count {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  z-index: 2;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 11px;
+  background: rgb(var(--v-theme-primary));
+  color: rgb(var(--v-theme-on-primary));
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 22px;
+  text-align: center;
 }
 
 .file-tile:hover {
@@ -714,7 +856,7 @@ onUnmounted(() => {
 }
 
 [data-dnd-dragging] .file-tile,
-.is-dragging .track-drag-handle {
+.is-dragging .file-tile {
   cursor: grabbing;
 }
 
@@ -725,7 +867,8 @@ onUnmounted(() => {
 }
 
 [data-dnd-placeholder] :deep(.audio-control-tile),
-[data-dnd-placeholder] .track-drag-handle {
+[data-dnd-placeholder] .drag-count,
+[data-dnd-placeholder] .file-tile::after {
   visibility: hidden;
 }
 

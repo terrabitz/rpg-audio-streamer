@@ -23,6 +23,7 @@ export const useTableStore = defineStore('tables', {
     tracks: [] as Track[],
     revision: 0,
     trackOrders: {} as Record<string, string[]>,
+    rearranging: false,
     settingsError: '',
     failedSettings: {} as Record<string, TableSettingsPatch>,
     saveQueue: Promise.resolve(),
@@ -123,16 +124,23 @@ export const useTableStore = defineStore('tables', {
       this.tracks = data
       this.trackOrders[tableID] = this.orderedTracks.map(track => track.id)
     },
-    moveTrack(trackID: string, targetID: string) {
-      if (!this.current) return
-      const ordered = this.orderedTracks
-      const sourceIndex = ordered.findIndex(track => track.id === trackID)
-      const targetIndex = ordered.findIndex(track => track.id === targetID)
-      if (sourceIndex < 0 || targetIndex < 0 || sourceIndex === targetIndex) return
-      const [track] = ordered.splice(sourceIndex, 1)
-      if (track) ordered.splice(targetIndex, 0, track)
-      this.trackOrders[this.current.externalID] = ordered.map(track => track.id)
-      void this.saveSettings(this.current.externalID, { trackOrder: this.trackOrders[this.current.externalID] })
+    // Moves trackID to targetID's position, then gathers groupIDs around it in their existing relative order.
+    moveTrack(trackID: string, targetID: string, groupIDs: string[] = []): boolean {
+      if (!this.current) return false
+      const current = this.orderedTracks.map(track => track.id)
+      const sourceIndex = current.indexOf(trackID)
+      const targetIndex = current.indexOf(targetID)
+      if (sourceIndex < 0 || targetIndex < 0) return false
+      const group = current.filter(id => id === trackID || groupIDs.includes(id))
+      const moved = [...current]
+      moved.splice(sourceIndex, 1)
+      moved.splice(targetIndex, 0, trackID)
+      const order = moved.filter(id => id === trackID || !group.includes(id))
+      order.splice(order.indexOf(trackID), 1, ...group)
+      if (order.every((id, index) => id === current[index])) return false
+      this.trackOrders[this.current.externalID] = order
+      void this.saveSettings(this.current.externalID, { trackOrder: order })
+      return true
     },
     async addTrack(tableID: string, trackID: string) {
       await putApiV1TablesByTableIdTracksByTrackId<true>({ path: { tableID, trackID } })
@@ -149,6 +157,7 @@ export const useTableStore = defineStore('tables', {
       this.revision++
       this.current = null
       this.tracks = []
+      this.rearranging = false
       this.settingsError = ''
     },
   },

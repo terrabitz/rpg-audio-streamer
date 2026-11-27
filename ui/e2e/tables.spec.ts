@@ -142,7 +142,9 @@ test('GM keeps track ordering independent for each table', async ({ page, browse
   const headings = page.locator('.file-tile .track-heading > span')
   const savedOrder = page.waitForResponse(response => response.url().endsWith('/settings')
     && response.request().method() === 'PATCH' && response.ok())
-  await page.getByRole('button', { name: 'Drag to reorder Ordered Rain', exact: true }).press('Alt+ArrowLeft')
+  await page.getByRole('button', { name: 'Table options' }).click()
+  await page.getByRole('menuitem', { name: 'Rearrange tracks' }).click()
+  await page.getByRole('option', { name: 'Ordered Rain', exact: true }).press('Alt+ArrowLeft')
   await expect(headings).toHaveText(['Ordered Rain', 'Ordered Forest'])
   await savedOrder
   await page.reload()

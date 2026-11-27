@@ -243,4 +243,26 @@ describe('tables', () => {
     await tables.fetchTracks(friday.externalID)
     expect(tables.tracks).toEqual([])
   })
+
+  it('moves selected tracks together and leaves rearrange mode when the table closes', () => {
+    const tables = useTableStore()
+    const ids = ['a', 'b', 'c', 'd', 'e', 'f']
+    tables.current = friday
+    tables.tracks = ids.map(id => ({ ...track, id, name: id }))
+    const order = () => tables.orderedTracks.map(item => item.id)
+    expect(tables.moveTrack('b', 'f', ['b', 'd', 'e'])).toBe(true)
+    expect(order()).toEqual(['a', 'c', 'f', 'b', 'd', 'e'])
+    tables.moveTrack('e', 'a', ['b', 'd'])
+    expect(order()).toEqual(['b', 'd', 'e', 'a', 'c', 'f'])
+    tables.moveTrack('a', 'f', ['f'])
+    expect(order()).toEqual(['b', 'd', 'e', 'c', 'a', 'f'])
+    tables.moveTrack('c', 'c', ['b'])
+    expect(order()).toEqual(['d', 'e', 'b', 'c', 'a', 'f'])
+    expect(tables.moveTrack('b', 'b', ['b', 'c'])).toBe(false)
+    expect(tables.moveTrack('b', 'missing', ['c'])).toBe(false)
+    expect(order()).toEqual(['d', 'e', 'b', 'c', 'a', 'f'])
+    tables.rearranging = true
+    tables.clearCurrent()
+    expect(tables.rearranging).toBe(false)
+  })
 })
