@@ -26,6 +26,12 @@ type TableTrack struct {
 	TrackID []byte
 }
 
+type Tag struct {
+	ID    []byte
+	Name  string
+	Color string
+}
+
 type Track struct {
 	ID              []byte
 	CreatedAt       string
@@ -39,6 +45,11 @@ type Track struct {
 	ProcessingError string
 	Waveform        interface{}
 	Volume          float64
+}
+
+type TrackTag struct {
+	TrackID []byte
+	TagID   []byte
 }
 
 type TrackType struct {

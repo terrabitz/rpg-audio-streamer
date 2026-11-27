@@ -34,6 +34,9 @@
             {{ trackTypeStore.getTypeById(item.typeID)?.name ?? 'Unknown type' }}
           </v-chip>
         </template>
+        <template #[`item.tags`]="{ item }">
+          <TrackTags :track="item" :disabled="selectionLocked" @error="error = $event" />
+        </template>
         <template #[`item.createdAt`]="{ item }">
           <time :datetime="item.createdAt">{{ new Date(item.createdAt).toLocaleString() }}</time>
         </template>
@@ -51,7 +54,8 @@
       </v-data-table>
       <div v-if="selectedTracks.length" class="library-bulk-actions">
         <BulkTrackActions :count="selectedTracks.length" :types="trackTypeStore.trackTypes"
-          :disabled="selectionLocked" @set-type="setLibraryTrackType">
+          :tags="tagStore.tags" :selected-tag-ids="selectedTagIDs" :disabled="selectionLocked"
+          @set-type="setLibraryTrackType" @toggle-tag="toggleLibraryTrackTag">
           <v-btn icon="$delete" color="error" variant="tonal" density="comfortable"
             aria-label="Delete selected tracks" title="Delete selected tracks"
             :disabled="selectionLocked" :loading="checkingUsage" @click="checkBulkDeleteUsage" />
@@ -177,6 +181,7 @@ import { isSortable } from '@dnd-kit/vue/sortable'
 import debounce from 'lodash.debounce'
 import { TrackUsageChangedError, useFileStore, withTrackStatus } from '@/stores/files'
 import { useTrackTypeStore } from '@/stores/trackTypes'
+import { useTagStore } from '@/stores/tags'
 import { useTableStore } from '@/stores/tables'
 import { useWebSocketStore } from '@/stores/websocket'
 import { usePlaybackCommands } from '@/stores/playbackCommands'
@@ -193,12 +198,14 @@ import DiscordControl from './DiscordControl.vue'
 import VolumeSlider from './VolumeSlider.vue'
 import ErrorToast from './ErrorToast.vue'
 import BulkTrackActions from './BulkTrackActions.vue'
+import TrackTags from './TrackTags.vue'
 
 const fileStore = useFileStore()
 const audioStore = useAudioStore()
 const wsStore = useWebSocketStore()
 const commands = usePlaybackCommands()
 const trackTypeStore = useTrackTypeStore()
+const tagStore = useTagStore()
 const dragging = ref(false)
 const { smAndDown } = useDisplay()
 const showNowPlaying = ref(false)
@@ -225,6 +232,7 @@ const libraryHeaders = [
   { title: '', key: 'preview', sortable: false, width: 56 },
   { title: 'Name', key: 'name' },
   { title: 'Type', key: 'typeID', sortable: false },
+  { title: 'Tags', key: 'tags', sortable: false },
   { title: 'Added', key: 'createdAt' },
   { title: '', key: 'actions', sortable: false, width: 56 },
 ]
@@ -234,6 +242,9 @@ const selectedTrackIDs = ref<string[]>([])
 const selectedIDs = computed(() => new Set(selectedTrackIDs.value))
 const selectedTracks = computed(() => tracks.value.filter(track =>
   selectedIDs.value.has(track.id) && canSelectLibraryTrack(track)))
+const selectedTagIDs = computed(() => new Set(tagStore.tags
+  .filter(tag => selectedTracks.value.every(track => track.tagIDs?.includes(tag.id)))
+  .map(tag => tag.id)))
 const hasSelectableTracks = computed(() => tracks.value.some(canSelectLibraryTrack))
 const bulkBusy = ref(false)
 const checkingUsage = ref(false)
@@ -258,6 +269,7 @@ const stopTrackUpdates = wsStore.onTrackUpdated(track => {
     audioStore.updateTrackState(track.id, { volume: track.volume })
   }
 })
+const stopTagUpdates = wsStore.onTagUpdated(tag => { tagStore.applyTag(tag) })
 
 watch(() => wsStore.isConnected, async (connected) => {
   if (!connected || loading.value || !fileStore.tracks.some(track => track.status === 'processing')) return
@@ -278,6 +290,7 @@ onMounted(async () => {
   if (props.library) audioStore.clearTracks()
   try {
     await trackTypeStore.fetchTrackTypes()
+    await tagStore.fetchTags()
     await fileStore.fetchFiles()
     if (!props.library && tables.current) await tables.fetchTracks(tables.current.externalID)
   } catch (e) {
@@ -391,6 +404,16 @@ async function setLibraryTrackType(typeID: string) {
   })
 }
 
+async function toggleLibraryTrackTag(tagID: string) {
+  if (selectionLocked.value || !selectedTracks.value.length) return
+  const remove = selectedTagIDs.value.has(tagID)
+  await runBulkAction(selectedTracks.value.map(track => ({ track })), remove ? 'untag' : 'tag', async ({ track }) => {
+    const hasTag = track.tagIDs?.includes(tagID) ?? false
+    if (remove && hasTag) await fileStore.removeTrackTag(track.id, tagID)
+    if (!remove && !hasTag) await fileStore.addTrackTag(track.id, tagID)
+  }, { keepSelection: true })
+}
+
 async function checkBulkDeleteUsage() {
   if (selectionLocked.value || !selectedTracks.value.length) return
   checkingUsage.value = true
@@ -421,7 +444,7 @@ async function confirmBulkDelete() {
 }
 
 async function runBulkAction<T extends { track: Track }>(
-  items: T[], action: string, apply: (item: T) => Promise<void>,
+  items: T[], action: string, apply: (item: T) => Promise<void>, { keepSelection = false } = {},
 ) {
   bulkBusy.value = true
   error.value = ''
@@ -438,7 +461,7 @@ async function runBulkAction<T extends { track: Track }>(
         if (cause instanceof TrackUsageChangedError) usageChanged = true
       }
     }
-    selectedTrackIDs.value = failedIDs
+    if (!keepSelection) selectedTrackIDs.value = failedIDs
     if (failedIDs.length) {
       error.value = `Could not ${action} ${failedIDs.length} of ${items.length} selected tracks.`
         + (usageChanged ? ' Table usage changed. Review the current counts before deleting again.' : '')
@@ -591,6 +614,7 @@ onUnmounted(() => {
   for (const save of volumeSaves.values()) save.flush()
   stopTrackStatus()
   stopTrackUpdates()
+  stopTagUpdates()
   if (props.library) audioStore.clearTracks()
 })
 </script>

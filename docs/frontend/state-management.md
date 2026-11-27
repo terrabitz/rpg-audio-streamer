@@ -15,7 +15,7 @@ polling. Initial loads and reconnect reconciliation fetch authoritative state.
 | Surface | Responsibility |
 | --- | --- |
 | `stores/auth.ts` | GM session role, credentials, and logout ([authentication](../backend/authentication.md)) |
-| `stores/files.ts`, `stores/trackTypes.ts`, `stores/tables.ts` | Library, track-type, table, and association metadata through the generated SDK |
+| `stores/files.ts`, `stores/trackTypes.ts`, `stores/tags.ts`, `stores/tables.ts` | Library, track-type, tag, table, and association metadata through the generated SDK |
 | `stores/audio.ts` | Per-file playback state, [synchronization](../playback/synchronization.md) reconciliation, fades, master/type volumes |
 | `stores/playbackCommands.ts` | Queued HTTP playback and Discord mixer commands ([synchronization](../playback/synchronization.md)) |
 | `stores/websocket.ts` | Socket connection/reconnection and named subscriptions to server events such as `onTrackRemoved` ([protocol](../playback/websocket-protocol.md)) |

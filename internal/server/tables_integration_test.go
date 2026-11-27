@@ -18,6 +18,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	"github.com/terrabitz/rpg-audio-streamer/internal/auth"
+	"github.com/terrabitz/rpg-audio-streamer/internal/domain"
 	"github.com/terrabitz/rpg-audio-streamer/internal/events"
 	"github.com/terrabitz/rpg-audio-streamer/internal/musicprocessing"
 	"github.com/terrabitz/rpg-audio-streamer/internal/playback"
@@ -337,4 +338,182 @@ func TestTableHTTP(t *testing.T) {
 	if rec := request("GET", "/api/v1/tables", "", "", true, 200); strings.TrimSpace(rec.Body.String()) != "[]" {
 		t.Fatalf("empty tables must be an array: %s", rec.Body)
 	}
+}
+
+type sentEvent struct {
+	name    string
+	payload any
+}
+
+type recordingWSRegisterer struct {
+	testWSRegisterer
+	sent []sentEvent
+}
+
+func (h *recordingWSRegisterer) SendEvent(name string, payload any) error {
+	h.sent = append(h.sent, sentEvent{
+		name:    name,
+		payload: payload,
+	})
+	return h.err
+}
+
+func TestTagHTTP(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	db, err := sqlitedatastore.New(filepath.Join(dir, "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	migrations, err := sqlitedatastore.NewMigration(os.DirFS("../../sql/migrations"), db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := migrations.Up(); err != nil {
+		t.Fatal(err)
+	}
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	authenticator, _, err := auth.New(context.Background(), auth.Config{
+		TokenSecret:   "public-test-secret",
+		TokenDuration: time.Hour,
+		TokenIssuer:   "test",
+		TokenAudience: "test",
+	}, auth.BootstrapConfig{}, db, logger)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gm, err := authenticator.NewToken("gm", auth.RoleGM)
+	if err != nil {
+		t.Fatal(err)
+	}
+	player, err := authenticator.NewToken("player", auth.RolePlayer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	videos := youtube.New(logger)
+	hub := &recordingWSRegisterer{}
+	processing := musicprocessing.New(dir, logger, db, videos, hub)
+	srv, err := server.New(server.Config{UploadDir: dir, DevMode: true}, logger, authenticator, db, hub, playback.New(logger, db, hub), processing, videos)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := func(method, path, body string, token *auth.Token, status int) *httptest.ResponseRecorder {
+		t.Helper()
+		req := httptest.NewRequest(method, path, strings.NewReader(body))
+		if token != nil {
+			req.AddCookie(&http.Cookie{Name: "auth_token", Value: token.String()})
+		}
+		rec := httptest.NewRecorder()
+		srv.Handler().ServeHTTP(rec, req)
+		if rec.Code != status {
+			t.Fatalf("%s %s = %d: %s; want %d", method, path, rec.Code, rec.Body, status)
+		}
+		return rec
+	}
+	decodeTag := func(rec *httptest.ResponseRecorder) domain.Tag {
+		t.Helper()
+		var tag domain.Tag
+		if err := json.Unmarshal(rec.Body.Bytes(), &tag); err != nil {
+			t.Fatal(err)
+		}
+		return tag
+	}
+	decodeTrack := func(rec *httptest.ResponseRecorder) server.Track {
+		t.Helper()
+		var track server.Track
+		if err := json.Unmarshal(rec.Body.Bytes(), &track); err != nil {
+			t.Fatal(err)
+		}
+		return track
+	}
+	lastEvent := func() sentEvent {
+		t.Helper()
+		if len(hub.sent) == 0 {
+			t.Fatal("no event sent")
+		}
+		return hub.sent[len(hub.sent)-1]
+	}
+	types, err := db.GetTrackTypes(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	track := server.Track{
+		ID:        uuid.New(),
+		Name:      "Battle",
+		TypeID:    types[0].ID,
+		CreatedAt: time.Now(),
+	}
+	if err := db.SaveTrack(ctx, &track); err != nil {
+		t.Fatal(err)
+	}
+
+	request("GET", "/api/v1/tags", "", nil, 401)
+	request("GET", "/api/v1/tags", "", player, 401)
+	if rec := request("GET", "/api/v1/tags", "", gm, 200); strings.TrimSpace(rec.Body.String()) != "[]" {
+		t.Fatalf("empty tags must be an array: %s", rec.Body)
+	}
+	for _, body := range []string{
+		`{`,
+		`{"name":"   ","color":"#FFFFFF"}`,
+		`{"name":"` + strings.Repeat("x", 41) + `","color":"#FFFFFF"}`,
+		`{"name":"Combat","color":"red"}`,
+		`{"name":"Combat","color":"#FFF"}`,
+	} {
+		request("POST", "/api/v1/tags", body, gm, 400)
+	}
+	combat := decodeTag(request("POST", "/api/v1/tags", `{"name":" Combat ","color":"#e53935"}`, gm, 201))
+	if combat.Name != "Combat" || combat.Color != "#E53935" {
+		t.Fatalf("created tag = %+v", combat)
+	}
+	if event := lastEvent(); event.name != events.TagUpdated || event.payload != combat {
+		t.Fatalf("create event = %+v", event)
+	}
+	request("POST", "/api/v1/tags", `{"name":"combat","color":"#000000"}`, gm, 409)
+	calm := decodeTag(request("POST", "/api/v1/tags", `{"name":"Calm","color":"#43A047"}`, gm, 201))
+
+	tagPath := "/api/v1/tags/" + calm.ID.String()
+	request("PUT", tagPath, `{"name":"Peaceful","color":"#1E88E5"}`, player, 401)
+	request("PUT", tagPath, `{"name":"COMBAT","color":"#1E88E5"}`, gm, 409)
+	request("PUT", tagPath, `{"name":"","color":"#1E88E5"}`, gm, 400)
+	request("PUT", "/api/v1/tags/invalid", `{"name":"Peaceful","color":"#1E88E5"}`, gm, 400)
+	request("PUT", "/api/v1/tags/"+uuid.NewString(), `{"name":"Peaceful","color":"#1E88E5"}`, gm, 404)
+	peaceful := decodeTag(request("PUT", tagPath, `{"name":"Peaceful","color":"#1E88E5"}`, gm, 200))
+	if peaceful.ID != calm.ID || peaceful.Name != "Peaceful" || peaceful.Color != "#1E88E5" {
+		t.Fatalf("updated tag = %+v", peaceful)
+	}
+	if event := lastEvent(); event.name != events.TagUpdated || event.payload != peaceful {
+		t.Fatalf("update event = %+v", event)
+	}
+
+	trackTagPath := "/api/v1/files/" + track.ID.String() + "/tags/"
+	request("PUT", trackTagPath+combat.ID.String(), "", player, 401)
+	request("PUT", trackTagPath+"invalid", "", gm, 400)
+	request("PUT", "/api/v1/files/invalid/tags/"+combat.ID.String(), "", gm, 400)
+	request("PUT", trackTagPath+uuid.NewString(), "", gm, 404)
+	request("PUT", "/api/v1/files/"+uuid.NewString()+"/tags/"+combat.ID.String(), "", gm, 404)
+	for range 2 {
+		request("PUT", trackTagPath+combat.ID.String(), "", gm, 200)
+	}
+	tagged := decodeTrack(request("PUT", trackTagPath+peaceful.ID.String(), "", gm, 200))
+	if len(tagged.TagIDs) != 2 || tagged.TagIDs[0] != combat.ID || tagged.TagIDs[1] != peaceful.ID {
+		t.Fatalf("tagged track = %+v", tagged)
+	}
+	if event := lastEvent(); event.name != events.TrackUpdated || event.payload != track.ID.String() {
+		t.Fatalf("track tag event = %+v", event)
+	}
+	var library []server.Track
+	if err := json.Unmarshal(request("GET", "/api/v1/files", "", gm, 200).Body.Bytes(), &library); err != nil || len(library) != 1 || len(library[0].TagIDs) != 2 {
+		t.Fatalf("library = %+v, %v", library, err)
+	}
+	for range 2 {
+		untagged := decodeTrack(request("DELETE", trackTagPath+combat.ID.String(), "", gm, 200))
+		if len(untagged.TagIDs) != 1 || untagged.TagIDs[0] != peaceful.ID {
+			t.Fatalf("untagged track = %+v", untagged)
+		}
+	}
+
+	hub.err = errors.New("hub closed")
+	request("PUT", trackTagPath+combat.ID.String(), "", gm, 503)
+	request("POST", "/api/v1/tags", `{"name":"Stealth","color":"#8E24AA"}`, gm, 503)
 }

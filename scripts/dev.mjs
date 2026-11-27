@@ -157,28 +157,41 @@ async function seed(apiURL) {
       headers: { Cookie: cookie },
     })
   ).json()
+  const tags = {}
+  for (const [name, color] of [['Calm', '#1E88E5'], ['Combat', '#E53935'], ['Nature', '#43A047']]) {
+    const tag = await (await request(`${apiURL}/api/v1/tags`, {
+      method: 'POST',
+      headers: { Cookie: cookie, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, color }),
+    })).json()
+    tags[name] = tag.id
+  }
   const samples = [
     {
       type: 'Ambiance',
       name: 'Forest breeze',
+      tags: ['Calm', 'Nature'],
       source: "anoisesrc=color=pink:amplitude=0.08:seed=1,volume='0.65+0.35*sin(2*PI*t/9)':eval=frame",
       duration: 12,
     },
     {
       type: 'Ambiance',
       name: 'Rainfall',
+      tags: ['Calm', 'Nature'],
       source: "anoisesrc=color=white:amplitude=0.03:seed=2,volume='0.65+0.35*sin(2*PI*t/7+1)':eval=frame",
       duration: 12,
     },
     {
       type: 'Ambiance',
       name: 'Distant rumble',
+      tags: ['Combat', 'Nature'],
       source: "anoisesrc=color=brown:amplitude=0.08:seed=3,volume='0.65+0.35*sin(2*PI*t/11+2)':eval=frame",
       duration: 12,
     },
     {
       type: 'Music',
       name: 'Gentle melody',
+      tags: ['Calm'],
       source: melodySource([262, 330, 392, 440, 392, 330, 294, 220]),
       duration: 12,
     },
@@ -191,6 +204,7 @@ async function seed(apiURL) {
     {
       type: 'Music',
       name: 'Adventure theme',
+      tags: ['Combat'],
       source: melodySource([262, 294, 330, 392, 440, 392, 330, 294]),
       duration: 12,
     },
@@ -209,6 +223,7 @@ async function seed(apiURL) {
     {
       type: 'One-Shot',
       name: 'Drumbeat',
+      tags: ['Combat'],
       source: 'sine=frequency=110',
       duration: 1.5,
     },
@@ -258,6 +273,12 @@ async function seed(apiURL) {
       await delay(200, undefined, { signal: controller.signal })
     }
     if (!ready) throw new Error(`Seed audio processing timed out: ${sample.name}`)
+    for (const tag of sample.tags ?? []) {
+      await request(`${apiURL}/api/v1/files/${queued.id}/tags/${tags[tag]}`, {
+        method: 'PUT',
+        headers: { Cookie: cookie },
+      })
+    }
     await rm(file)
   }
   return table

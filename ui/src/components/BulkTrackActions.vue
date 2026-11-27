@@ -16,13 +16,40 @@
           :disabled="disabled" @click="emit('setType', type.id)" />
       </v-list>
     </v-menu>
+    <v-menu v-if="tags" location="top end" :close-on-content-click="false">
+      <template #activator="{ props: menuProps }">
+        <v-btn v-bind="menuProps" class="bulk-edit-button" variant="tonal" density="comfortable"
+          aria-label="Tag selected tracks" title="Tag selected tracks" :disabled="disabled || !tags.length">
+          <v-icon icon="$tag" />
+          <span class="bulk-edit-label ml-1">Tags</span>
+          <v-icon icon="$dropdown" />
+        </v-btn>
+      </template>
+      <v-list density="compact" role="menu" aria-label="Tags">
+        <v-list-item v-for="tag in tags" :key="tag.id" role="menuitemcheckbox"
+          :aria-checked="!!selectedTagIds?.has(tag.id)" :disabled="disabled" @click="emit('toggleTag', tag.id)">
+          <template #prepend>
+            <v-icon :icon="selectedTagIds?.has(tag.id) ? '$checkboxOn' : '$checkboxOff'" />
+          </template>
+          <v-chip :color="tag.color" size="small" variant="flat" label>{{ tag.name }}</v-chip>
+        </v-list-item>
+      </v-list>
+    </v-menu>
     <slot />
   </div>
 </template>
 
 <script setup lang="ts">
-defineProps<{ count: number, types: { id: string, name: string }[], disabled?: boolean }>()
-const emit = defineEmits<{ setType: [typeID: string] }>()
+import type { Tag } from '@/client/apiClient'
+
+defineProps<{
+  count: number
+  types: { id: string, name: string }[]
+  tags?: Tag[]
+  selectedTagIds?: Set<string>
+  disabled?: boolean
+}>()
+const emit = defineEmits<{ setType: [typeID: string], toggleTag: [tagID: string] }>()
 </script>
 
 <style scoped>

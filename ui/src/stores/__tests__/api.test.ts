@@ -3,6 +3,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import { useAuthStore } from '../auth'
 import { TrackUsageChangedError, useFileStore } from '../files'
 import { useTrackTypeStore } from '../trackTypes'
+import { TagNameTakenError, tagPalette, useTagStore } from '../tags'
 
 const api = vi.hoisted(() => ({
   getApiV1AuthStatus: vi.fn(),
@@ -15,6 +16,11 @@ const api = vi.hoisted(() => ({
   deleteApiV1FilesByTrackId: vi.fn(),
   putApiV1FilesByTrackId: vi.fn(),
   getApiV1TrackTypes: vi.fn(),
+  putApiV1FilesByTrackIdTagsByTagId: vi.fn(),
+  deleteApiV1FilesByTrackIdTagsByTagId: vi.fn(),
+  getApiV1Tags: vi.fn(),
+  postApiV1Tags: vi.fn(),
+  putApiV1TagsByTagId: vi.fn(),
 }))
 vi.mock('@/client/apiClient', () => api)
 
@@ -227,6 +233,19 @@ describe('file library', () => {
     await expect(files.uploadFile(uploadForm())).rejects.toThrow('Failed to upload file')
     expect(files.tracks).toEqual([track])
   })
+
+  it('applies and removes track tags from the saved track', async () => {
+    const files = useFileStore()
+    files.tracks = [track]
+    api.putApiV1FilesByTrackIdTagsByTagId.mockResolvedValue({ data: { ...track, tagIDs: ['combat'] } })
+    await files.addTrackTag('forest', 'combat')
+    expect(api.putApiV1FilesByTrackIdTagsByTagId).toHaveBeenCalledWith({ path: { trackID: 'forest', tagID: 'combat' } })
+    expect(files.getTrackById('forest')?.tagIDs).toEqual(['combat'])
+    api.deleteApiV1FilesByTrackIdTagsByTagId.mockResolvedValue({ data: track })
+    await files.removeTrackTag('forest', 'combat')
+    expect(api.deleteApiV1FilesByTrackIdTagsByTagId).toHaveBeenCalledWith({ path: { trackID: 'forest', tagID: 'combat' } })
+    expect(files.tracks).toEqual([track])
+  })
 })
 
 describe('track types', () => {
@@ -240,6 +259,45 @@ describe('track types', () => {
     api.getApiV1TrackTypes.mockRejectedValue(new Error('offline'))
     await expect(types.fetchTrackTypes()).rejects.toThrow('offline')
     expect(types.trackTypes).toEqual([trackType])
+  })
+})
+
+describe('tags', () => {
+  const combat = { id: 'combat', name: 'Combat', color: '#E53935' }
+  const calm = { id: 'calm', name: 'calm', color: '#43A047' }
+
+  it('loads tags and keeps created and pushed tags sorted by name', async () => {
+    const tags = useTagStore()
+    api.getApiV1Tags.mockResolvedValue({ data: [combat] })
+    await tags.fetchTags()
+    expect(tags.getTagById('combat')).toEqual(combat)
+    expect(tags.nextColor).toBe(tagPalette[1]!.color)
+    api.postApiV1Tags.mockResolvedValue({ data: calm, response: new Response(null, { status: 201 }) })
+    await expect(tags.createTag({ name: 'calm', color: '#43A047' })).resolves.toEqual(calm)
+    expect(api.postApiV1Tags).toHaveBeenCalledWith({ body: { name: 'calm', color: '#43A047' }, throwOnError: false })
+    expect(tags.tags).toEqual([calm, combat])
+    tags.applyTag({ ...combat, name: 'Alarm' })
+    expect(tags.tags.map(tag => tag.name)).toEqual(['Alarm', 'calm'])
+  })
+
+  it('renames a tag and reports duplicate names or failures', async () => {
+    const tags = useTagStore()
+    tags.tags = [combat]
+    api.putApiV1TagsByTagId.mockResolvedValue({ data: { ...combat, color: '#1E88E5' } })
+    await tags.updateTag('combat', { name: 'Combat', color: '#1E88E5' })
+    expect(api.putApiV1TagsByTagId).toHaveBeenCalledWith({
+      path: { tagID: 'combat' },
+      body: { name: 'Combat', color: '#1E88E5' },
+      throwOnError: false,
+    })
+    expect(tags.getTagById('combat')?.color).toBe('#1E88E5')
+    api.putApiV1TagsByTagId.mockResolvedValue({ error: 'taken', response: new Response(null, { status: 409 }) })
+    await expect(tags.updateTag('combat', { name: 'calm', color: '#1E88E5' })).rejects.toBeInstanceOf(TagNameTakenError)
+    api.postApiV1Tags.mockResolvedValue({ error: 'bad color', response: new Response(null, { status: 400 }) })
+    await expect(tags.createTag({ name: 'Bad', color: 'red' })).rejects.toBe('bad color')
+    api.postApiV1Tags.mockResolvedValue({ response: new Response(null, { status: 500 }) })
+    await expect(tags.createTag({ name: 'Bad', color: '#000000' })).rejects.toThrow('Failed to save tag')
+    expect(tags.tags).toEqual([{ ...combat, color: '#1E88E5' }])
   })
 })
 

@@ -179,6 +179,12 @@ components:
           default: ready
         processingError:
           type: string
+        tagIDs:
+          type: array
+          description: Tags applied to the track, ordered by tag name. Omitted when the track has no tags.
+          items:
+            type: string
+            format: uuid
 
     VideoMetadata:
       type: object
@@ -350,6 +356,34 @@ components:
           type: boolean
         allowSimultaneousPlay:
           type: boolean
+
+    Tag:
+      type: object
+      required: [id, name, color]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          minLength: 1
+          maxLength: 40
+        color:
+          type: string
+          pattern: "^#[0-9A-F]{6}$"
+
+    TagRequest:
+      type: object
+      required: [name, color]
+      properties:
+        name:
+          type: string
+          description: Trimmed before saving; names are unique without regard to case.
+          minLength: 1
+          maxLength: 40
+        color:
+          type: string
+          pattern: "^#[0-9A-Fa-f]{6}$"
 
     DiscordStatus:
       type: object
@@ -1134,6 +1168,61 @@ paths:
         "500":
           description: Internal server error
 
+  /api/v1/files/{trackID}/tags/{tagID}:
+    parameters:
+      - name: trackID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: tagID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    put:
+      summary: Apply a tag to a track
+      description: Idempotent; applying a tag the track already has succeeds.
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Track with its updated tags
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Track"
+        "400":
+          description: Invalid track or tag ID
+        "401":
+          description: Not authorized
+        "404":
+          description: Track or tag not found
+        "503":
+          description: The change was saved, but live synchronization failed
+    delete:
+      summary: Remove a tag from a track
+      description: Idempotent; removing a tag the track does not have succeeds.
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Track with its updated tags
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Track"
+        "400":
+          description: Invalid track or tag ID
+        "401":
+          description: Not authorized
+        "404":
+          description: Track not found
+        "503":
+          description: The change was saved, but live synchronization failed
+
   /api/v1/files/{trackID}/usage:
     get:
       summary: Count the tables containing a library track
@@ -1249,6 +1338,84 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/TrackType"
+
+  /api/v1/tags:
+    get:
+      summary: List track tags
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Tags ordered by name
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Tag"
+        "401":
+          description: Not authorized
+    post:
+      summary: Create a track tag
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TagRequest"
+      responses:
+        "201":
+          description: Tag created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Tag"
+        "400":
+          description: Invalid name or color
+        "401":
+          description: Not authorized
+        "409":
+          description: A tag with this name already exists
+        "503":
+          description: The change was saved, but live synchronization failed
+
+  /api/v1/tags/{tagID}:
+    put:
+      summary: Rename or recolor a track tag
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: tagID
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TagRequest"
+      responses:
+        "200":
+          description: Tag updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Tag"
+        "400":
+          description: Invalid tag ID, name or color
+        "401":
+          description: Not authorized
+        "404":
+          description: Tag not found
+        "409":
+          description: A tag with this name already exists
+        "503":
+          description: The change was saved, but live synchronization failed
 
   /api/v1/ws:
     get:

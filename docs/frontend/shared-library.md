@@ -1,7 +1,7 @@
 ---
 type: UI Surface
 title: Shared library
-description: Library metadata table, local previews, and bulk type changes and deletion.
+description: Library metadata table, local previews, tags, and bulk type, tag, and deletion changes.
 resource: ui/src/components/FileList.vue
 tags: [frontend, library]
 ---
@@ -9,7 +9,7 @@ tags: [frontend, library]
 # Shared library
 
 The `/library` [route](./routes.md) uses a sortable, paginated metadata table
-showing each track's name, type, and creation time.
+showing each track's name, type, [tags](../data/track-tags.md), and creation time.
 
 ## Previews
 
@@ -39,6 +39,19 @@ to select across pages. Tracks still processing cannot be selected. The
 floating action bar shows the selection count and uses the same **Set track
 type** menu as the [uploader](./add-track-dialog.md). In the library, choosing
 a type saves it immediately for each selected track.
+
+## Tags
+
+Each row's tag cell shows the track's tags as colored chips. The add button
+opens a menu that filters existing tags as the GM types, toggles a tag on or
+off the track, and creates a new tag when no existing name matches. Hovering
+or focusing a chip reveals an edit button; its menu renames the tag and picks a
+palette color, and the change applies to every track using that tag.
+
+The floating action bar's **Tags** menu toggles a tag across the selection: it
+removes the tag when every selected track has it and otherwise adds it to the
+tracks missing it. The selection and menu stay open so several tags can be
+applied in a row.
 
 ## Deletion
 

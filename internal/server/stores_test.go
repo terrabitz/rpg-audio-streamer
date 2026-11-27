@@ -14,6 +14,7 @@ import (
 
 type MockTrackStore struct {
 	TableStore
+	TagStore
 	tracks       map[uuid.UUID]Track
 	waveforms    map[uuid.UUID]musicprocessing.Waveform
 	trackTypes   map[uuid.UUID]TrackType

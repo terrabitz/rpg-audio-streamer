@@ -88,6 +88,10 @@ export type Track = {
     playback?: PlaybackSettings;
     status?: 'ready' | 'processing' | 'failed';
     processingError?: string;
+    /**
+     * Tags applied to the track, ordered by tag name. Omitted when the track has no tags.
+     */
+    tagIDs?: Array<string>;
 };
 
 export type VideoMetadata = {
@@ -195,6 +199,20 @@ export type TrackType = {
     color: string;
     isRepeating: boolean;
     allowSimultaneousPlay: boolean;
+};
+
+export type Tag = {
+    id: string;
+    name: string;
+    color: string;
+};
+
+export type TagRequest = {
+    /**
+     * Trimmed before saving; names are unique without regard to case.
+     */
+    name: string;
+    color: string;
 };
 
 export type DiscordStatus = {
@@ -1265,6 +1283,82 @@ export type PutApiV1FilesByTrackIdResponses = {
 
 export type PutApiV1FilesByTrackIdResponse = PutApiV1FilesByTrackIdResponses[keyof PutApiV1FilesByTrackIdResponses];
 
+export type DeleteApiV1FilesByTrackIdTagsByTagIdData = {
+    body?: never;
+    path: {
+        trackID: string;
+        tagID: string;
+    };
+    query?: never;
+    url: '/api/v1/files/{trackID}/tags/{tagID}';
+};
+
+export type DeleteApiV1FilesByTrackIdTagsByTagIdErrors = {
+    /**
+     * Invalid track or tag ID
+     */
+    400: unknown;
+    /**
+     * Not authorized
+     */
+    401: unknown;
+    /**
+     * Track not found
+     */
+    404: unknown;
+    /**
+     * The change was saved, but live synchronization failed
+     */
+    503: unknown;
+};
+
+export type DeleteApiV1FilesByTrackIdTagsByTagIdResponses = {
+    /**
+     * Track with its updated tags
+     */
+    200: Track;
+};
+
+export type DeleteApiV1FilesByTrackIdTagsByTagIdResponse = DeleteApiV1FilesByTrackIdTagsByTagIdResponses[keyof DeleteApiV1FilesByTrackIdTagsByTagIdResponses];
+
+export type PutApiV1FilesByTrackIdTagsByTagIdData = {
+    body?: never;
+    path: {
+        trackID: string;
+        tagID: string;
+    };
+    query?: never;
+    url: '/api/v1/files/{trackID}/tags/{tagID}';
+};
+
+export type PutApiV1FilesByTrackIdTagsByTagIdErrors = {
+    /**
+     * Invalid track or tag ID
+     */
+    400: unknown;
+    /**
+     * Not authorized
+     */
+    401: unknown;
+    /**
+     * Track or tag not found
+     */
+    404: unknown;
+    /**
+     * The change was saved, but live synchronization failed
+     */
+    503: unknown;
+};
+
+export type PutApiV1FilesByTrackIdTagsByTagIdResponses = {
+    /**
+     * Track with its updated tags
+     */
+    200: Track;
+};
+
+export type PutApiV1FilesByTrackIdTagsByTagIdResponse = PutApiV1FilesByTrackIdTagsByTagIdResponses[keyof PutApiV1FilesByTrackIdTagsByTagIdResponses];
+
 export type GetApiV1FilesByTrackIdUsageData = {
     body?: never;
     path: {
@@ -1408,6 +1502,105 @@ export type GetApiV1TrackTypesResponses = {
 };
 
 export type GetApiV1TrackTypesResponse = GetApiV1TrackTypesResponses[keyof GetApiV1TrackTypesResponses];
+
+export type GetApiV1TagsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/tags';
+};
+
+export type GetApiV1TagsErrors = {
+    /**
+     * Not authorized
+     */
+    401: unknown;
+};
+
+export type GetApiV1TagsResponses = {
+    /**
+     * Tags ordered by name
+     */
+    200: Array<Tag>;
+};
+
+export type GetApiV1TagsResponse = GetApiV1TagsResponses[keyof GetApiV1TagsResponses];
+
+export type PostApiV1TagsData = {
+    body: TagRequest;
+    path?: never;
+    query?: never;
+    url: '/api/v1/tags';
+};
+
+export type PostApiV1TagsErrors = {
+    /**
+     * Invalid name or color
+     */
+    400: unknown;
+    /**
+     * Not authorized
+     */
+    401: unknown;
+    /**
+     * A tag with this name already exists
+     */
+    409: unknown;
+    /**
+     * The change was saved, but live synchronization failed
+     */
+    503: unknown;
+};
+
+export type PostApiV1TagsResponses = {
+    /**
+     * Tag created
+     */
+    201: Tag;
+};
+
+export type PostApiV1TagsResponse = PostApiV1TagsResponses[keyof PostApiV1TagsResponses];
+
+export type PutApiV1TagsByTagIdData = {
+    body: TagRequest;
+    path: {
+        tagID: string;
+    };
+    query?: never;
+    url: '/api/v1/tags/{tagID}';
+};
+
+export type PutApiV1TagsByTagIdErrors = {
+    /**
+     * Invalid tag ID, name or color
+     */
+    400: unknown;
+    /**
+     * Not authorized
+     */
+    401: unknown;
+    /**
+     * Tag not found
+     */
+    404: unknown;
+    /**
+     * A tag with this name already exists
+     */
+    409: unknown;
+    /**
+     * The change was saved, but live synchronization failed
+     */
+    503: unknown;
+};
+
+export type PutApiV1TagsByTagIdResponses = {
+    /**
+     * Tag updated
+     */
+    200: Tag;
+};
+
+export type PutApiV1TagsByTagIdResponse = PutApiV1TagsByTagIdResponses[keyof PutApiV1TagsByTagIdResponses];
 
 export type GetApiV1WsData = {
     body?: never;

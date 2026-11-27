@@ -13,6 +13,7 @@ import (
 
 	"github.com/golang-migrate/migrate/v4"
 	"github.com/google/uuid"
+	"github.com/terrabitz/rpg-audio-streamer/internal/domain"
 	"github.com/terrabitz/rpg-audio-streamer/internal/musicprocessing"
 	"github.com/terrabitz/rpg-audio-streamer/internal/server"
 )
@@ -296,7 +297,7 @@ func TestMigrationLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	version, err := m.Version()
-	if err != nil || version.Version != 11 || version.Dirty {
+	if err != nil || version.Version != 12 || version.Dirty {
 		t.Fatalf("version = %#v, %v", version, err)
 	}
 	if err := m.Up(); !errors.Is(err, migrate.ErrNoChange) {
@@ -379,5 +380,124 @@ func TestTrackWaveformPersistence(t *testing.T) {
 	}
 	if err := reopened.SaveTrackWaveform(ctx, track.ID, want); !errors.Is(err, sql.ErrNoRows) {
 		t.Fatalf("save waveform for deleted track: %v", err)
+	}
+}
+
+func TestTrackTags(t *testing.T) {
+	db, _ := migratedDatabase(t)
+	ctx := t.Context()
+	types, err := db.GetTrackTypes(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	track := server.Track{
+		ID:     uuid.New(),
+		Name:   "Tavern",
+		TypeID: types[0].ID,
+	}
+	if err := db.SaveTrack(ctx, &track); err != nil {
+		t.Fatal(err)
+	}
+	table, err := db.CreateTable(ctx, server.Table{
+		ID:   uuid.New(),
+		Name: "Tagged",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.AddTableTrack(ctx, table.ID, track.ID); err != nil {
+		t.Fatal(err)
+	}
+	combat, err := db.CreateTag(ctx, domain.Tag{
+		ID:    uuid.New(),
+		Name:  "Combat",
+		Color: "#E53935",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	calm, err := db.CreateTag(ctx, domain.Tag{
+		ID:    uuid.New(),
+		Name:  "Calm",
+		Color: "#43A047",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.CreateTag(ctx, domain.Tag{
+		ID:    uuid.New(),
+		Name:  "combat",
+		Color: "#000000",
+	}); !errors.Is(err, domain.ErrTagNameTaken) {
+		t.Fatalf("duplicate create = %v; want ErrTagNameTaken", err)
+	}
+	if _, err := db.UpdateTag(ctx, domain.Tag{
+		ID:    calm.ID,
+		Name:  "COMBAT",
+		Color: "#43A047",
+	}); !errors.Is(err, domain.ErrTagNameTaken) {
+		t.Fatalf("duplicate rename = %v; want ErrTagNameTaken", err)
+	}
+	if _, err := db.UpdateTag(ctx, domain.Tag{
+		ID:    uuid.New(),
+		Name:  "Missing",
+		Color: "#43A047",
+	}); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("missing update = %v; want ErrNoRows", err)
+	}
+	for range 2 {
+		for _, tagID := range []uuid.UUID{combat.ID, calm.ID} {
+			if err := db.AddTrackTag(ctx, track.ID, tagID); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	if err := db.AddTrackTag(ctx, track.ID, uuid.New()); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("add missing tag = %v; want ErrNoRows", err)
+	}
+	if err := db.AddTrackTag(ctx, uuid.New(), combat.ID); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("tag missing track = %v; want ErrNoRows", err)
+	}
+	want := []uuid.UUID{calm.ID, combat.ID}
+	got, err := db.GetTrackByID(ctx, track.ID)
+	if err != nil || !reflect.DeepEqual(got.TagIDs, want) {
+		t.Fatalf("track tags = %v, %v; want %v", got.TagIDs, err, want)
+	}
+	tracks, err := db.GetTracks(ctx)
+	if err != nil || len(tracks) != 1 || !reflect.DeepEqual(tracks[0].TagIDs, want) {
+		t.Fatalf("library tags = %+v, %v", tracks, err)
+	}
+	tableTracks, err := db.GetTableTracks(ctx, table.ID)
+	if err != nil || len(tableTracks) != 1 || !reflect.DeepEqual(tableTracks[0].TagIDs, want) {
+		t.Fatalf("table tags = %+v, %v", tableTracks, err)
+	}
+	renamed, err := db.UpdateTag(ctx, domain.Tag{
+		ID:    calm.ID,
+		Name:  "Peaceful",
+		Color: "#1E88E5",
+	})
+	if err != nil || renamed.Name != "Peaceful" || renamed.Color != "#1E88E5" {
+		t.Fatalf("renamed = %+v, %v", renamed, err)
+	}
+	if err := db.RemoveTrackTag(ctx, track.ID, combat.ID); err != nil {
+		t.Fatal(err)
+	}
+	updated, err := db.UpdateTrack(ctx, track.ID, server.UpdateTrackRequest{})
+	if err != nil || !reflect.DeepEqual(updated.TagIDs, []uuid.UUID{calm.ID}) {
+		t.Fatalf("updated track tags = %v, %v", updated.TagIDs, err)
+	}
+	if err := db.DeleteTrack(ctx, track.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.SaveTrack(ctx, &track); err != nil {
+		t.Fatal(err)
+	}
+	recreated, err := db.GetTrackByID(ctx, track.ID)
+	if err != nil || recreated.TagIDs != nil {
+		t.Fatalf("tags survived track deletion = %v, %v", recreated.TagIDs, err)
+	}
+	tags, err := db.GetTags(ctx)
+	if err != nil || len(tags) != 2 || tags[0].ID != combat.ID || tags[1] != renamed {
+		t.Fatalf("tags = %+v, %v", tags, err)
 	}
 }

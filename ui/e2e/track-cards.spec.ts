@@ -1,6 +1,6 @@
 import type { Locator, Page } from '@playwright/test'
 import { expect, test } from './fixtures'
-import { addExistingTrack, createTable, login, navigate, uploadTrack } from './helpers'
+import { addExistingTrack, createTable, login, navigate, tagLibraryTrack, uploadTrack } from './helpers'
 
 test('GM sees playback position and volume on track cards', async ({ page, recordFlow }, testInfo) => {
   await login(page)
@@ -166,3 +166,28 @@ for (const touch of [false, true]) {
     await expect(tile.locator('.audio-control-tile')).toHaveClass(/is-active/)
   })
 }
+
+test('GM sees tag color blocks on table track cards', async ({ page, recordFlow }) => {
+  await login(page)
+  const tableURL = page.url()
+  await navigate(page, 'Library')
+  await uploadTrack(page, 'Tavern', 'Music', 2)
+  await tagLibraryTrack(page, 'Tavern', 'Combat')
+  await tagLibraryTrack(page, 'Tavern', 'Town')
+  await page.goto(tableURL)
+  await addExistingTrack(page, 'Tavern')
+  const tile = page.getByRole('group', { name: 'Tavern', exact: true })
+  const tags = tile.getByRole('list', { name: 'Tags', exact: true })
+
+  recordFlow.start()
+  await expect(tags.getByRole('listitem')).toHaveCount(2)
+  const combat = tags.getByRole('listitem', { name: 'Combat', exact: true })
+  const bounds = await combat.boundingBox()
+  expect(bounds?.width).toBeLessThanOrEqual(12)
+  await expect(tile.getByText('Combat', { exact: true })).toHaveCount(0)
+  await combat.hover()
+  await expect(page.getByRole('tooltip').filter({ hasText: 'Combat' })).toBeVisible()
+  await tags.getByRole('listitem', { name: 'Town', exact: true }).hover()
+  await expect(page.getByRole('tooltip').filter({ hasText: 'Town' })).toBeVisible()
+  recordFlow.stop()
+})

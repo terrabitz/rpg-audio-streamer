@@ -60,29 +60,22 @@ func (db *SQLiteDatastore) SetTrackProcessing(ctx context.Context, id uuid.UUID,
 }
 
 func (db *SQLiteDatastore) GetTracks(ctx context.Context) ([]server.Track, error) {
-	dbTracks, err := sqlitedb.New(db.DB).GetTracks(ctx)
+	queries := sqlitedb.New(db.DB)
+	dbTracks, err := queries.GetTracks(ctx)
 	if err != nil {
 		return nil, err
 	}
-
-	result := make([]server.Track, 0, len(dbTracks))
-	for _, dbTrack := range dbTracks {
-		track, parseErr := convertDBTrack(dbTrack)
-		if parseErr != nil {
-			return nil, parseErr
-		}
-		result = append(result, track)
-	}
-	return result, nil
+	return convertDBTracksWithTags(ctx, queries, dbTracks)
 }
 
 func (db *SQLiteDatastore) GetTrackByID(ctx context.Context, trackID uuid.UUID) (server.Track, error) {
-	dbTrack, err := sqlitedb.New(db.DB).GetTrackByID(ctx, trackID[:])
+	queries := sqlitedb.New(db.DB)
+	dbTrack, err := queries.GetTrackByID(ctx, trackID[:])
 	if err != nil {
 		return server.Track{}, fmt.Errorf("couldn't get track by ID: %w", err)
 	}
 
-	return convertDBTrack(dbTrack)
+	return convertDBTrackWithTags(ctx, queries, dbTrack)
 }
 
 func (db *SQLiteDatastore) DeleteTrack(ctx context.Context, trackID uuid.UUID) error {
@@ -126,12 +119,39 @@ func (db *SQLiteDatastore) UpdateTrack(ctx context.Context, trackID uuid.UUID, u
 		params.LoopBackTime = nullableTime(update.Playback.LoopBackTime)
 	}
 
-	dbTrack, err := sqlitedb.New(db.DB).UpdateTrack(ctx, params)
+	queries := sqlitedb.New(db.DB)
+	dbTrack, err := queries.UpdateTrack(ctx, params)
 	if err != nil {
 		return server.Track{}, fmt.Errorf("couldn't update track in SQLite: %w", err)
 	}
 
-	return convertDBTrack(dbTrack)
+	return convertDBTrackWithTags(ctx, queries, dbTrack)
+}
+
+func convertDBTracksWithTags(ctx context.Context, queries *sqlitedb.Queries, dbTracks []sqlitedb.Track) ([]server.Track, error) {
+	tagIDs, err := tagIDsByTrack(ctx, queries)
+	if err != nil {
+		return nil, err
+	}
+	tracks := make([]server.Track, 0, len(dbTracks))
+	for _, dbTrack := range dbTracks {
+		track, err := convertDBTrack(dbTrack)
+		if err != nil {
+			return nil, err
+		}
+		track.TagIDs = tagIDs[track.ID]
+		tracks = append(tracks, track)
+	}
+	return tracks, nil
+}
+
+func convertDBTrackWithTags(ctx context.Context, queries *sqlitedb.Queries, dbTrack sqlitedb.Track) (server.Track, error) {
+	track, err := convertDBTrack(dbTrack)
+	if err != nil {
+		return server.Track{}, err
+	}
+	track.TagIDs, err = trackTagIDs(ctx, queries, track.ID)
+	return track, err
 }
 
 func convertDBTrack(dbTrack sqlitedb.Track) (server.Track, error) {

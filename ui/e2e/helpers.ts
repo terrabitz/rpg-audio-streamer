@@ -226,6 +226,16 @@ export async function deleteLibraryTrack(page: Page, name: string, tableCount: n
   await expect(row).toHaveCount(0)
 }
 
+export async function tagLibraryTrack(page: Page, trackName: string, tagName: string) {
+  const tags = page.getByRole('group', { name: `Tags for ${trackName}`, exact: true })
+  await tags.getByRole('button', { name: `Add tag to ${trackName}`, exact: true }).click()
+  await page.getByLabel('Find or create a tag', { exact: true }).fill(tagName)
+  await page.getByLabel('Find or create a tag', { exact: true }).press('Enter')
+  await expect(tags.getByText(tagName, { exact: true })).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(page.getByLabel('Find or create a tag', { exact: true })).toHaveCount(0)
+}
+
 export async function uploadTrack(page: Page, name: string, typeName = 'Music', frequencyOrDuration = 30, duration?: number) {
   const frequency = duration === undefined ? 440 : frequencyOrDuration
   const trackDuration = duration ?? frequencyOrDuration
