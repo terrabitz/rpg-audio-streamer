@@ -11,6 +11,7 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/terrabitz/rpg-audio-streamer/internal/auth"
+	"github.com/terrabitz/rpg-audio-streamer/internal/domain"
 	"github.com/terrabitz/rpg-audio-streamer/internal/events"
 	"github.com/terrabitz/rpg-audio-streamer/internal/playback"
 	"github.com/terrabitz/rpg-audio-streamer/internal/server"
@@ -50,6 +51,8 @@ func NewHub(logger *slog.Logger, store playback.Store) *Hub {
 	OnServerEvent(hub, events.TableSettingsChanged, hub.handleTableSettingsChanged)
 	OnServerEvent(hub, events.TrackStatusChanged, hub.handleTrackStatusChanged)
 	OnServerEvent(hub, events.TrackUpdated, hub.handleTrackUpdated)
+	OnServerEvent(hub, events.TagUpdated, hub.handleTagUpdated)
+	OnServerEvent(hub, events.TagDeleted, hub.handleTagDeleted)
 	OnServerEvent(hub, events.DiscordStatusChanged, hub.handleDiscordStatusChanged)
 	OnServerEvent(hub, events.MixerReady, hub.handleMixerReady)
 	OnServerEvent(hub, events.MixerApplied, hub.handleMixerApplied)
@@ -79,6 +82,18 @@ func (h *Hub) handleTrackUpdated(fileID string, _ *Client) {
 	defer cancel()
 	if err := h.playback.TrackUpdated(ctx, fileID); err != nil {
 		h.logger.Error("failed to synchronize track update", "error", err, "trackID", fileID)
+	}
+}
+
+func (h *Hub) handleTagUpdated(tag domain.Tag, _ *Client) {
+	if err := h.publishEvent(events.TagUpdated, tag, events.Metadata{Global: true}); err != nil {
+		h.logger.Error("failed to announce tag update", "error", err, "tagID", tag.ID)
+	}
+}
+
+func (h *Hub) handleTagDeleted(tag events.TagReference, _ *Client) {
+	if err := h.publishEvent(events.TagDeleted, tag, events.Metadata{Global: true}); err != nil {
+		h.logger.Error("failed to announce tag deletion", "error", err, "tagID", tag.TagID)
 	}
 }
 

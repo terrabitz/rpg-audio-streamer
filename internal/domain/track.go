@@ -24,6 +24,7 @@ type Track struct {
 	Playback        PlaybackSettings `json:"playback"`
 	Status          string           `json:"status,omitempty"`
 	ProcessingError string           `json:"processingError,omitempty"`
+	TagIDs          []uuid.UUID      `json:"tagIDs,omitempty"`
 }
 
 func (t Track) Ready() bool {

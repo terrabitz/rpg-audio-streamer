@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/terrabitz/rpg-audio-streamer/internal/domain"
 	"github.com/terrabitz/rpg-audio-streamer/internal/events"
 	"github.com/terrabitz/rpg-audio-streamer/internal/server"
 )
@@ -45,5 +46,27 @@ func TestTrackProcessedNotifiesGMs(t *testing.T) {
 	}
 	if len(clients["otherGM"].send) != 1 || len(clients["player"].send) != 0 {
 		t.Fatal("processing status did not reach exactly the GM clients")
+	}
+}
+
+func TestTagUpdatesReachOnlyGMs(t *testing.T) {
+	hub, clients := testHub()
+	clients["otherGM"].Token.TableID = "friday"
+	id := uuid.New()
+	sendEvent(t, hub, events.TagUpdated, domain.Tag{
+		ID:    id,
+		Name:  "Combat",
+		Color: "#E53935",
+	})
+	var message Message
+	if err := json.Unmarshal(<-clients["gm"].send, &message); err != nil {
+		t.Fatal(err)
+	}
+	want := `{"id":"` + id.String() + `","name":"Combat","color":"#E53935"}`
+	if message.Event != events.TagUpdated || string(message.Payload) != want {
+		t.Fatalf("tag message = %s %s", message.Event, message.Payload)
+	}
+	if len(clients["otherGM"].send) != 1 || len(clients["player"].send) != 0 {
+		t.Fatal("tag update did not reach exactly the GM clients")
 	}
 }

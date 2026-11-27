@@ -18,7 +18,9 @@ progress through the playback region. Paused tiles show the same position as a
 subtle grayscale fill against the neutral surface. Non-playing tile contents,
 including processing status icons, are monochrome; the type border stays colored.
 A 2 px white bar along the bottom shows track volume from left to right,
-independently of master volume. Tile names
+independently of master volume. Each [tag](../data/track-tags.md) on the
+track appears as a small color block in the bottom-right corner, with the tag
+name in a hover tooltip and as its accessible label. Tile names
 stay on one line with ellipsis overflow and a full-name hover title.
 
 Card clicks or Enter/Space toggle playback for ready tracks, while the inline

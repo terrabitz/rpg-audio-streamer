@@ -13,6 +13,7 @@ type Store interface {
 	TrackStore
 	TrackTypeStore
 	TableStore
+	TagStore
 }
 
 var DefaultTableID = uuid.MustParse("00000000-0000-4000-8000-000000000001")
@@ -73,6 +74,14 @@ type TrackStore interface {
 	SetTrackProcessing(ctx context.Context, trackID uuid.UUID, status, message string) error
 	GetTrackWaveform(ctx context.Context, trackID uuid.UUID) (musicprocessing.Waveform, error)
 	SaveTrackWaveform(ctx context.Context, trackID uuid.UUID, waveform musicprocessing.Waveform) error
+}
+
+type TagStore interface {
+	GetTags(context.Context) ([]domain.Tag, error)
+	CreateTag(context.Context, domain.Tag) (domain.Tag, error)
+	UpdateTag(context.Context, domain.Tag) (domain.Tag, error)
+	EditTracks(context.Context, domain.TrackEdit) ([]Track, error)
+	DeleteUnusedTags(ctx context.Context, tagIDs []uuid.UUID) ([]uuid.UUID, error)
 }
 
 type TrackType = domain.TrackType

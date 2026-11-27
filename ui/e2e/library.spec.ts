@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, test } from './fixtures'
-import { login, deleteLibraryTrack, uploadTrack, openUploadDialog, navigate, audioFixture, dropAudioPaths, addExistingTrack } from './helpers'
+import { login, deleteLibraryTrack, uploadTrack, openUploadDialog, navigate, audioFixture, dropAudioPaths, addExistingTrack, tagLibraryTrack } from './helpers'
 
 test('GM selects a required track type and receives a bottom upload toast on mobile', async ({ page, recordFlow }) => {
   await page.setViewportSize({ width: 375, height: 812 })
@@ -86,7 +86,7 @@ test('GM uploads, renames, persists, and deletes an audio track', async ({ page 
   const renamed = page.getByRole('row').filter({ hasText: 'Rain' })
   await expect(renamed).toBeVisible()
   await expect(renamed.getByText('One-Shot', { exact: true })).toBeVisible()
-  await renamed.click()
+  await renamed.getByText('Rain', { exact: true }).click()
   await expect.poll(() => page.locator('video').evaluate(
     (el: HTMLVideoElement) => !el.paused && el.currentTime > 0,
   )).toBe(true)
@@ -154,8 +154,8 @@ test('GM changes the type of selected library tracks', async ({ page, recordFlow
   await row('Thunder').getByRole('checkbox', { name: 'Select Thunder' }).uncheck()
   await expect(actions.getByRole('status')).toHaveText('2 selected')
   await expect(page.locator('video')).toHaveCount(0)
-  await actions.getByRole('button', { name: 'Set track type' }).click()
-  await page.getByRole('menuitem', { name: 'One-Shot', exact: true }).click()
+  await actions.getByRole('button', { name: 'Edit selected tracks' }).click()
+  await page.getByRole('dialog', { name: 'Edit selected tracks' }).getByText('One-Shot', { exact: true }).click()
   for (const name of ['Forest', 'Rain']) {
     await expect(row(name).getByText('One-Shot', { exact: true })).toBeVisible()
   }
@@ -235,4 +235,112 @@ test('GM can retry a bulk deletion after table usage changes', async ({ page, re
   await confirmation.getByRole('button', { name: 'Delete 1 track', exact: true }).click()
   await expect(page.getByText('No tracks in the library yet.', { exact: true })).toBeVisible()
   recordFlow.stop()
+})
+
+test('GM tags library tracks with new and existing tags', async ({ page, recordFlow }) => {
+  await login(page)
+  await navigate(page, 'Library')
+  for (const name of ['Forest', 'Rain']) await uploadTrack(page, name, 'Music', 2)
+  const tags = (name: string) => page.getByRole('group', { name: `Tags for ${name}`, exact: true })
+
+  recordFlow.start()
+  await expect(page.getByRole('columnheader', { name: 'Tags', exact: true })).toBeVisible()
+  await tagLibraryTrack(page, 'Forest', 'Combat')
+  await tags('Rain').getByRole('button', { name: 'Add tag to Rain', exact: true }).click()
+  const combat = page.getByRole('menuitemcheckbox', { name: 'Combat', exact: true })
+  await expect(combat).toHaveAttribute('aria-checked', 'false')
+  await combat.click()
+  await expect(combat).toHaveAttribute('aria-checked', 'true')
+  await expect(tags('Rain').getByText('Combat', { exact: true })).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(page.locator('video')).toHaveCount(0)
+  recordFlow.stop()
+
+  await page.reload()
+  for (const name of ['Forest', 'Rain']) await expect(tags(name).getByText('Combat', { exact: true })).toBeVisible()
+  await tags('Rain').getByRole('button', { name: 'Add tag to Rain', exact: true }).click()
+  await page.getByRole('menuitemcheckbox', { name: 'Combat', exact: true }).click()
+  await expect(tags('Rain').getByText('Combat', { exact: true })).toHaveCount(0)
+  await page.reload()
+  await expect(tags('Rain').getByText('Combat', { exact: true })).toHaveCount(0)
+  await expect(tags('Forest').getByText('Combat', { exact: true })).toBeVisible()
+})
+
+test('GM edits a tag name and color for every tagged track', async ({ page, recordFlow }) => {
+  await login(page)
+  await navigate(page, 'Library')
+  for (const name of ['Forest', 'Rain']) await uploadTrack(page, name, 'Music', 2)
+  await tagLibraryTrack(page, 'Forest', 'Combat')
+  await tagLibraryTrack(page, 'Rain', 'Combat')
+  await tagLibraryTrack(page, 'Rain', 'Calm')
+  const otherTab = await page.context().newPage()
+  await otherTab.goto('/library')
+  const otherForest = otherTab.getByRole('group', { name: 'Tags for Forest', exact: true })
+  await expect(otherForest.getByText('Combat', { exact: true })).toBeVisible()
+  const forest = page.getByRole('group', { name: 'Tags for Forest', exact: true })
+  const edit = forest.getByRole('button', { name: 'Edit tag Combat', exact: true })
+
+  recordFlow.start()
+  await expect(edit).toHaveCSS('opacity', '0')
+  await forest.getByText('Combat', { exact: true }).hover()
+  await expect(edit).toHaveCSS('opacity', '1')
+  await edit.click()
+  const name = page.getByLabel('Tag name', { exact: true })
+  await expect(name).toHaveValue('Combat')
+  await name.fill('calm')
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  await expect(page.getByText('A tag with this name already exists.', { exact: true })).toBeVisible()
+  await name.fill('Battle')
+  await page.getByRole('radio', { name: 'Blue', exact: true }).click()
+  await expect(page.getByRole('radio', { name: 'Blue', exact: true })).toHaveAttribute('aria-checked', 'true')
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  await expect(name).toHaveCount(0)
+  for (const track of ['Forest', 'Rain']) {
+    const chip = page.getByRole('group', { name: `Tags for ${track}`, exact: true }).locator('.v-chip', { hasText: 'Battle' })
+    await expect(chip).toHaveCSS('background-color', 'rgb(30, 136, 229)')
+  }
+  recordFlow.stop()
+
+  await expect(otherForest.getByText('Battle', { exact: true })).toBeVisible()
+  await page.reload()
+  await expect(forest.getByText('Battle', { exact: true })).toBeVisible()
+})
+
+test('GM bulk tags and untags selected library tracks', async ({ page, recordFlow }) => {
+  await page.setViewportSize({ width: 375, height: 812 })
+  await login(page)
+  await navigate(page, 'Library')
+  for (const name of ['Forest', 'Rain', 'Thunder']) await uploadTrack(page, name, 'Music', 2)
+  await tagLibraryTrack(page, 'Forest', 'Combat')
+  const tags = (name: string) => page.getByRole('group', { name: `Tags for ${name}`, exact: true })
+  const actions = page.getByRole('group', { name: 'Bulk track actions' })
+  const sheet = page.getByRole('dialog', { name: 'Edit selected tracks' })
+  const combat = sheet.getByRole('menuitemcheckbox', { name: 'Combat', exact: true })
+
+  recordFlow.start()
+  await page.getByRole('checkbox', { name: 'Select all library tracks' }).check()
+  await page.getByRole('checkbox', { name: 'Select Thunder', exact: true }).uncheck()
+  await expect(actions.getByRole('status')).toHaveText('2 selected')
+  await actions.getByRole('button', { name: 'Edit selected tracks', exact: true }).click()
+  await expect(combat).toHaveAttribute('aria-checked', 'mixed')
+  const [sheetBounds, viewport] = [await sheet.boundingBox(), page.viewportSize()]
+  if (!sheetBounds || !viewport) throw new Error('Bulk edit sheet is not visible')
+  expect(sheetBounds.x).toBeGreaterThanOrEqual(0)
+  expect(sheetBounds.x + sheetBounds.width).toBeLessThanOrEqual(viewport.width)
+  await combat.click()
+  await expect(combat).toHaveAttribute('aria-checked', 'true')
+  for (const name of ['Forest', 'Rain']) await expect(tags(name).getByText('Combat', { exact: true })).toBeVisible()
+  await expect(tags('Thunder').getByText('Combat', { exact: true })).toHaveCount(0)
+  await expect(actions.getByRole('status')).toHaveText('2 selected')
+  await combat.click()
+  await expect(combat).toHaveCount(0)
+  for (const name of ['Forest', 'Rain']) await expect(tags(name).getByText('Combat', { exact: true })).toHaveCount(0)
+  recordFlow.stop()
+
+  await page.reload()
+  for (const name of ['Forest', 'Rain', 'Thunder']) {
+    await expect(tags(name).getByText('Combat', { exact: true })).toHaveCount(0)
+  }
+  await tags('Thunder').getByRole('button', { name: 'Add tag to Thunder', exact: true }).click()
+  await expect(page.getByRole('menuitemcheckbox', { name: 'Combat', exact: true })).toHaveCount(0)
 })

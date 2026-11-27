@@ -222,7 +222,7 @@ func TestTableLifecycle(t *testing.T) {
 	assertCount(2)
 	for _, id := range []uuid.UUID{first.ID, second.ID} {
 		tracks, err := db.GetTableTracks(ctx, id)
-		if err != nil || len(tracks) != 1 || tracks[0] != track {
+		if err != nil || len(tracks) != 1 || !reflect.DeepEqual(tracks[0], track) {
 			t.Fatalf("associated tracks = %v, %v", tracks, err)
 		}
 		if has, err := db.HasTableTrack(ctx, id, track.ID); err != nil || !has {
@@ -336,7 +336,7 @@ func TestExistingLibraryMigratesToDefaultTable(t *testing.T) {
 		t.Fatal(err)
 	}
 	tracks, err := db.GetTableTracks(ctx, server.DefaultTableID)
-	if err != nil || len(tracks) != 1 || tracks[0] != track {
+	if err != nil || len(tracks) != 1 || !reflect.DeepEqual(tracks[0], track) {
 		t.Fatalf("migrated tracks = %v, %v", tracks, err)
 	}
 	settings, err := db.GetTableSettings(ctx, server.DefaultTableID)

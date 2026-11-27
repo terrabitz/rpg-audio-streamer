@@ -18,6 +18,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	"github.com/terrabitz/rpg-audio-streamer/internal/auth"
+	"github.com/terrabitz/rpg-audio-streamer/internal/domain"
 	"github.com/terrabitz/rpg-audio-streamer/internal/events"
 	"github.com/terrabitz/rpg-audio-streamer/internal/musicprocessing"
 	"github.com/terrabitz/rpg-audio-streamer/internal/playback"
@@ -337,4 +338,206 @@ func TestTableHTTP(t *testing.T) {
 	if rec := request("GET", "/api/v1/tables", "", "", true, 200); strings.TrimSpace(rec.Body.String()) != "[]" {
 		t.Fatalf("empty tables must be an array: %s", rec.Body)
 	}
+}
+
+type sentEvent struct {
+	name    string
+	payload any
+}
+
+type recordingWSRegisterer struct {
+	testWSRegisterer
+	sent []sentEvent
+}
+
+func (h *recordingWSRegisterer) SendEvent(name string, payload any) error {
+	h.sent = append(h.sent, sentEvent{
+		name:    name,
+		payload: payload,
+	})
+	return h.err
+}
+
+func TestTagHTTP(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	db, err := sqlitedatastore.New(filepath.Join(dir, "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	migrations, err := sqlitedatastore.NewMigration(os.DirFS("../../sql/migrations"), db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := migrations.Up(); err != nil {
+		t.Fatal(err)
+	}
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	authenticator, _, err := auth.New(context.Background(), auth.Config{
+		TokenSecret:   "public-test-secret",
+		TokenDuration: time.Hour,
+		TokenIssuer:   "test",
+		TokenAudience: "test",
+	}, auth.BootstrapConfig{}, db, logger)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gm, err := authenticator.NewToken("gm", auth.RoleGM)
+	if err != nil {
+		t.Fatal(err)
+	}
+	player, err := authenticator.NewToken("player", auth.RolePlayer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	videos := youtube.New(logger)
+	hub := &recordingWSRegisterer{}
+	processing := musicprocessing.New(dir, logger, db, videos, hub)
+	srv, err := server.New(server.Config{UploadDir: dir, DevMode: true}, logger, authenticator, db, hub, playback.New(logger, db, hub), processing, videos)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := func(method, path, body string, token *auth.Token, status int) *httptest.ResponseRecorder {
+		t.Helper()
+		req := httptest.NewRequest(method, path, strings.NewReader(body))
+		if token != nil {
+			req.AddCookie(&http.Cookie{Name: "auth_token", Value: token.String()})
+		}
+		rec := httptest.NewRecorder()
+		srv.Handler().ServeHTTP(rec, req)
+		if rec.Code != status {
+			t.Fatalf("%s %s = %d: %s; want %d", method, path, rec.Code, rec.Body, status)
+		}
+		return rec
+	}
+	decodeTag := func(rec *httptest.ResponseRecorder) domain.Tag {
+		t.Helper()
+		var tag domain.Tag
+		if err := json.Unmarshal(rec.Body.Bytes(), &tag); err != nil {
+			t.Fatal(err)
+		}
+		return tag
+	}
+	decodeTracks := func(rec *httptest.ResponseRecorder) []server.Track {
+		t.Helper()
+		var tracks []server.Track
+		if err := json.Unmarshal(rec.Body.Bytes(), &tracks); err != nil {
+			t.Fatal(err)
+		}
+		return tracks
+	}
+	lastEvent := func() sentEvent {
+		t.Helper()
+		if len(hub.sent) == 0 {
+			t.Fatal("no event sent")
+		}
+		return hub.sent[len(hub.sent)-1]
+	}
+	types, err := db.GetTrackTypes(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	track := server.Track{
+		ID:        uuid.New(),
+		Name:      "Battle",
+		TypeID:    types[0].ID,
+		CreatedAt: time.Now(),
+	}
+	if err := db.SaveTrack(ctx, &track); err != nil {
+		t.Fatal(err)
+	}
+
+	request("GET", "/api/v1/tags", "", nil, 401)
+	request("GET", "/api/v1/tags", "", player, 401)
+	if rec := request("GET", "/api/v1/tags", "", gm, 200); strings.TrimSpace(rec.Body.String()) != "[]" {
+		t.Fatalf("empty tags must be an array: %s", rec.Body)
+	}
+	for _, body := range []string{
+		`{`,
+		`{"name":"   ","color":"#FFFFFF"}`,
+		`{"name":"` + strings.Repeat("x", 41) + `","color":"#FFFFFF"}`,
+		`{"name":"Combat","color":"red"}`,
+		`{"name":"Combat","color":"#FFF"}`,
+	} {
+		request("POST", "/api/v1/tags", body, gm, 400)
+	}
+	combat := decodeTag(request("POST", "/api/v1/tags", `{"name":" Combat ","color":"#e53935"}`, gm, 201))
+	if combat.Name != "Combat" || combat.Color != "#E53935" {
+		t.Fatalf("created tag = %+v", combat)
+	}
+	if event := lastEvent(); event.name != events.TagUpdated || event.payload != combat {
+		t.Fatalf("create event = %+v", event)
+	}
+	request("POST", "/api/v1/tags", `{"name":"combat","color":"#000000"}`, gm, 409)
+	calm := decodeTag(request("POST", "/api/v1/tags", `{"name":"Calm","color":"#43A047"}`, gm, 201))
+
+	tagPath := "/api/v1/tags/" + calm.ID.String()
+	request("PUT", tagPath, `{"name":"Peaceful","color":"#1E88E5"}`, player, 401)
+	request("PUT", tagPath, `{"name":"COMBAT","color":"#1E88E5"}`, gm, 409)
+	request("PUT", tagPath, `{"name":"","color":"#1E88E5"}`, gm, 400)
+	request("PUT", "/api/v1/tags/invalid", `{"name":"Peaceful","color":"#1E88E5"}`, gm, 400)
+	request("PUT", "/api/v1/tags/"+uuid.NewString(), `{"name":"Peaceful","color":"#1E88E5"}`, gm, 404)
+	peaceful := decodeTag(request("PUT", tagPath, `{"name":"Peaceful","color":"#1E88E5"}`, gm, 200))
+	if peaceful.ID != calm.ID || peaceful.Name != "Peaceful" || peaceful.Color != "#1E88E5" {
+		t.Fatalf("updated tag = %+v", peaceful)
+	}
+	if event := lastEvent(); event.name != events.TagUpdated || event.payload != peaceful {
+		t.Fatalf("update event = %+v", event)
+	}
+
+	editBody := func(fields string) string {
+		return `{"trackIDs":["` + track.ID.String() + `"],` + fields + `}`
+	}
+	addCombat := editBody(`"addTagIDs":["` + combat.ID.String() + `"]`)
+	request("PATCH", "/api/v1/files", addCombat, player, 401)
+	for _, body := range []string{
+		`{`,
+		`{"trackIDs":[],"addTagIDs":["` + combat.ID.String() + `"]}`,
+		editBody(`"addTagIDs":[]`),
+		editBody(`"addTagIDs":["invalid"]`),
+		editBody(`"addTagIDs":["` + combat.ID.String() + `"],"removeTagIDs":["` + combat.ID.String() + `"]`),
+	} {
+		request("PATCH", "/api/v1/files", body, gm, 400)
+	}
+	request("PATCH", "/api/v1/files", editBody(`"addTagIDs":["`+uuid.NewString()+`"]`), gm, 404)
+	request("PATCH", "/api/v1/files", `{"trackIDs":["`+uuid.NewString()+`"],"addTagIDs":["`+combat.ID.String()+`"]}`, gm, 404)
+	for range 2 {
+		request("PATCH", "/api/v1/files", addCombat, gm, 200)
+	}
+	tagged := decodeTracks(request("PATCH", "/api/v1/files", editBody(`"typeID":"`+types[1].ID.String()+`","addTagIDs":["`+peaceful.ID.String()+`"]`), gm, 200))
+	if len(tagged) != 1 || tagged[0].TypeID != types[1].ID || len(tagged[0].TagIDs) != 2 || tagged[0].TagIDs[0] != combat.ID || tagged[0].TagIDs[1] != peaceful.ID {
+		t.Fatalf("tagged tracks = %+v", tagged)
+	}
+	if event := lastEvent(); event.name != events.TrackUpdated || event.payload != track.ID.String() {
+		t.Fatalf("track edit event = %+v", event)
+	}
+	var library []server.Track
+	if err := json.Unmarshal(request("GET", "/api/v1/files", "", gm, 200).Body.Bytes(), &library); err != nil || len(library) != 1 || len(library[0].TagIDs) != 2 {
+		t.Fatalf("library = %+v, %v", library, err)
+	}
+	untagged := decodeTracks(request("PATCH", "/api/v1/files", editBody(`"removeTagIDs":["`+combat.ID.String()+`"]`), gm, 200))
+	if len(untagged) != 1 || len(untagged[0].TagIDs) != 1 || untagged[0].TagIDs[0] != peaceful.ID {
+		t.Fatalf("untagged tracks = %+v", untagged)
+	}
+	if event := lastEvent(); event.name != events.TagDeleted || event.payload != (events.TagReference{TagID: combat.ID.String()}) {
+		t.Fatalf("unused tag event = %+v", event)
+	}
+	if tags, err := db.GetTags(ctx); err != nil || len(tags) != 1 || tags[0].ID != peaceful.ID {
+		t.Fatalf("tags after removing last use = %+v, %v", tags, err)
+	}
+	request("DELETE", "/api/v1/files/"+track.ID.String(), "", gm, 200)
+	if event := lastEvent(); event.name != events.TagDeleted || event.payload != (events.TagReference{TagID: peaceful.ID.String()}) {
+		t.Fatalf("deleted track tag event = %+v", event)
+	}
+	if tags, err := db.GetTags(ctx); err != nil || len(tags) != 0 {
+		t.Fatalf("tags after deleting last track = %+v, %v", tags, err)
+	}
+	if err := db.SaveTrack(ctx, &track); err != nil {
+		t.Fatal(err)
+	}
+
+	hub.err = errors.New("hub closed")
+	request("PATCH", "/api/v1/files", editBody(`"typeID":"`+types[0].ID.String()+`"`), gm, 503)
+	request("POST", "/api/v1/tags", `{"name":"Stealth","color":"#8E24AA"}`, gm, 503)
 }

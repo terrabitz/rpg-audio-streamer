@@ -1,7 +1,11 @@
-import type { DiscordStatus, LivePlaybackSnapshot, Track } from '@/client/apiClient'
+import type { DiscordStatus, LivePlaybackSnapshot, Tag, Track } from '@/client/apiClient'
 
 export interface TrackReference {
   fileID: string
+}
+
+export interface TagReference {
+  tagID: string
 }
 
 export interface TrackStatusUpdate {
@@ -29,5 +33,7 @@ export interface Payloads {
   mixerFailed: MixerFailure
   trackStatusChanged: TrackStatusUpdate
   trackUpdated: Track
+  tagUpdated: Tag
+  tagDeleted: TagReference
   discordStatusChanged: DiscordStatus
 }

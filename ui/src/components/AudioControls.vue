@@ -18,6 +18,12 @@
               @click.stop="openControls" />
           </div>
         </div>
+        <div v-if="tags.length" class="track-tag-blocks" role="list" aria-label="Tags">
+          <span v-for="tag in tags" :key="tag.id" class="track-tag-block" role="listitem" :aria-label="tag.name"
+            :style="{ backgroundColor: tag.color }">
+            <v-tooltip activator="parent" location="top" :text="tag.name" />
+          </span>
+        </div>
       </div>
     </slot>
 
@@ -90,6 +96,7 @@ import { defaultPlayback, playbackError, playbackRegion } from '@/composables/pl
 import { useAudioStore } from '../stores/audio';
 import { TrackUsageChangedError, useFileStore } from '../stores/files';
 import { useTrackTypeStore } from '../stores/trackTypes';
+import { useTagStore } from '../stores/tags';
 import TrackTypeSelector from './TrackTypeSelector.vue';
 import TrackTimeline from './TrackTimeline.vue';
 import ErrorToast from './ErrorToast.vue';
@@ -104,6 +111,7 @@ const props = defineProps<{
 const audioStore = useAudioStore();
 const trackTypeStore = useTrackTypeStore();
 const fileStore = useFileStore();
+const tagStore = useTagStore();
 
 const track = computed(() => fileStore.tracks.find(t => t.id === props.fileID));
 const available = computed(() => !track.value?.status || track.value.status === 'ready');
@@ -111,6 +119,7 @@ const failed = computed(() => track.value?.status === 'failed');
 const deleteFromLibrary = computed(() => props.library || failed.value);
 const trackType = computed(() => track.value ? trackTypeStore.getTypeById(track.value.typeID) : null);
 const audioState = computed(() => audioStore.tracks[props.fileID]);
+const tags = computed(() => tagStore.tags.filter(tag => track.value?.tagIDs?.includes(tag.id)));
 
 const showControls = defineModel<boolean>({ default: false });
 const isSaving = ref(false);
@@ -381,6 +390,21 @@ const emit = defineEmits<{
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.track-tag-blocks {
+  position: absolute;
+  right: 6px;
+  bottom: 5px;
+  display: flex;
+  gap: 3px;
+}
+
+.track-tag-block {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
 }
 
 .track-menu-slot {

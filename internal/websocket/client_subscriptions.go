@@ -18,6 +18,8 @@ func (c *Client) subscribe() {
 		c.subscriptions = append(c.subscriptions,
 			events.OnTrackStatusChanged(c.hub, c.handleTrackStatusChanged),
 			events.OnTrackUpdated(c.hub, c.handleTrackUpdated),
+			events.OnTagUpdated(c.hub, c.handleTagUpdated),
+			events.OnTagDeleted(c.hub, c.handleTagDeleted),
 			events.OnDiscordStatusChanged(c.hub, c.handleDiscordStatusChanged),
 			events.OnMixerReady(c.hub, c.handleMixerReady),
 			events.OnMixerApplied(c.hub, c.handleMixerApplied),
@@ -50,6 +52,14 @@ func (c *Client) handleTrackStatusChanged(payload events.TrackStatusUpdate, meta
 
 func (c *Client) handleTrackUpdated(payload domain.Track, metadata events.Metadata) error {
 	return c.deliver(events.TrackUpdated, payload, metadata)
+}
+
+func (c *Client) handleTagUpdated(payload domain.Tag, metadata events.Metadata) error {
+	return c.deliver(events.TagUpdated, payload, metadata)
+}
+
+func (c *Client) handleTagDeleted(payload events.TagReference, metadata events.Metadata) error {
+	return c.deliver(events.TagDeleted, payload, metadata)
 }
 
 func (c *Client) handleDiscordStatusChanged(payload domain.DiscordStatus, metadata events.Metadata) error {

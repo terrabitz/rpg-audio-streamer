@@ -49,6 +49,14 @@ func OnTrackUpdated(bus Bus, handler Listener[domain.Track]) func() {
 	return subscribe(bus, TrackUpdated, handler)
 }
 
+func OnTagUpdated(bus Bus, handler Listener[domain.Tag]) func() {
+	return subscribe(bus, TagUpdated, handler)
+}
+
+func OnTagDeleted(bus Bus, handler Listener[TagReference]) func() {
+	return subscribe(bus, TagDeleted, handler)
+}
+
 func OnDiscordStatusChanged(bus Bus, handler Listener[domain.DiscordStatus]) func() {
 	return subscribe(bus, DiscordStatusChanged, handler)
 }

@@ -19,6 +19,8 @@ generated sqlc code (see [Go packages](../backend/packages.md)).
 | --- | --- |
 | `tracks` | UUID ID, creation timestamp, display name, disk path, track-type ID, shared 0–100 volume, shared [playback-region](../playback/playback-regions.md) points (beginning, optional end, optional loop-back), [processing status](./track-processing.md) (`processing`, `ready`, or `failed`), processing diagnostics, and a nullable JSON [waveform](./track-uploads.md#waveforms) |
 | `track_types` | UUID ID, name, color, repeat policy, simultaneous-play policy, and creation timestamp |
+| `tags` | UUID ID, case-insensitively unique name, and hex color for [track tags](./track-tags.md) |
+| `track_tags` | Many-to-many track/tag associations |
 | `game_tables` | UUID ID, unique random Base64URL external ID, name, JSON GM [mixing/ordering settings](./table-settings.md), and saved [Discord destination](../discord/voice-streaming.md) (`discord_destination`) |
 | `table_tracks` | Many-to-many [table/track associations](./table-track-associations.md) |
 | `users` | One admin account, with a username and Argon2id password hash |

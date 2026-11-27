@@ -179,6 +179,12 @@ components:
           default: ready
         processingError:
           type: string
+        tagIDs:
+          type: array
+          description: Tags applied to the track, ordered by tag name. Omitted when the track has no tags.
+          items:
+            type: string
+            format: uuid
 
     VideoMetadata:
       type: object
@@ -309,6 +315,32 @@ components:
         playback:
           $ref: "#/components/schemas/PlaybackSettings"
 
+    TrackEditRequest:
+      type: object
+      required: [trackIDs]
+      properties:
+        trackIDs:
+          type: array
+          minItems: 1
+          items:
+            type: string
+            format: uuid
+        typeID:
+          type: string
+          format: uuid
+          description: Track type to set on every listed track.
+        addTagIDs:
+          type: array
+          items:
+            type: string
+            format: uuid
+        removeTagIDs:
+          type: array
+          description: Tags to remove; must not overlap addTagIDs.
+          items:
+            type: string
+            format: uuid
+
     TrackUsage:
       type: object
       required: [tableCount]
@@ -350,6 +382,34 @@ components:
           type: boolean
         allowSimultaneousPlay:
           type: boolean
+
+    Tag:
+      type: object
+      required: [id, name, color]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          minLength: 1
+          maxLength: 40
+        color:
+          type: string
+          pattern: "^#[0-9A-F]{6}$"
+
+    TagRequest:
+      type: object
+      required: [name, color]
+      properties:
+        name:
+          type: string
+          description: Trimmed before saving; names are unique without regard to case.
+          minLength: 1
+          maxLength: 40
+        color:
+          type: string
+          pattern: "^#[0-9A-Fa-f]{6}$"
 
     DiscordStatus:
       type: object
@@ -985,6 +1045,37 @@ paths:
         "403":
           description: Not authorized
 
+    patch:
+      summary: Edit several audio tracks at once
+      description: |
+        Applies the same track type and tag changes to every listed track in one transaction.
+        A missing track or tag fails the whole edit. Removed tags that no track uses any more are deleted.
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TrackEditRequest"
+      responses:
+        "200":
+          description: Edited tracks with their updated type and tags
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Track"
+        "400":
+          description: Invalid or empty edit
+        "401":
+          description: Not authorized
+        "404":
+          description: Track or tag not found
+        "503":
+          description: The change was saved, but live synchronization failed
+
   /api/v1/files/scan:
     post:
       summary: Scan a YouTube video and validate import limits without downloading audio
@@ -1249,6 +1340,84 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/TrackType"
+
+  /api/v1/tags:
+    get:
+      summary: List track tags
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Tags ordered by name
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Tag"
+        "401":
+          description: Not authorized
+    post:
+      summary: Create a track tag
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TagRequest"
+      responses:
+        "201":
+          description: Tag created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Tag"
+        "400":
+          description: Invalid name or color
+        "401":
+          description: Not authorized
+        "409":
+          description: A tag with this name already exists
+        "503":
+          description: The change was saved, but live synchronization failed
+
+  /api/v1/tags/{tagID}:
+    put:
+      summary: Rename or recolor a track tag
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: tagID
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TagRequest"
+      responses:
+        "200":
+          description: Tag updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Tag"
+        "400":
+          description: Invalid tag ID, name or color
+        "401":
+          description: Not authorized
+        "404":
+          description: Tag not found
+        "409":
+          description: A tag with this name already exists
+        "503":
+          description: The change was saved, but live synchronization failed
 
   /api/v1/ws:
     get:

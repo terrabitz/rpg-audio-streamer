@@ -50,6 +50,10 @@ test(
       new Set(tracks.map((track) => track.typeID)),
       new Set(types.map((type) => type.id)),
     )
+    const tags = await json(a, '/api/v1/tags', cookie)
+    assert.deepEqual(tags.map((tag) => tag.name), ['Calm', 'Combat', 'Nature'])
+    const nature = tags.find((tag) => tag.name === 'Nature')
+    assert.equal(tracks.filter((track) => track.tagIDs?.includes(nature.id)).length, 3)
     const table = (await json(a, '/api/v1/tables', cookie))[0]
     assert.equal(Buffer.from(table.externalID, 'base64url').byteLength, 32)
     assert.equal(a.invite, new URL(`/tables/${table.externalID}`, a.url).href)

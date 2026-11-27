@@ -23,7 +23,9 @@ idle connections active behind proxies and detects dead peers.
 | `trackRemoved` | Table clients, or all clients for library deletion | Track ID |
 | `tableDeleted` | Table clients | Empty object; connection closes afterward |
 | `trackStatusChanged` | All GMs | Track ID, terminal processing status, and optional diagnostics |
-| `trackUpdated` | All GMs | Saved track metadata including playback region |
+| `trackUpdated` | All GMs | Saved track metadata including playback region and tag IDs |
+| `tagUpdated` | All GMs | Saved [tag](../data/track-tags.md) ID, name, and color |
+| `tagDeleted` | All GMs | ID of a [tag](../data/track-tags.md) deleted after its last track lost it |
 | `discordStatusChanged` | Table GMs | Connection state, optional destination and error |
 | `mixerReady` | Newly connected GM | Empty object |
 | `mixerApplied` | Table GMs | Applied command name |

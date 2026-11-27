@@ -1,4 +1,4 @@
-import { deleteApiV1FilesByTrackId, getApiV1Files, getApiV1FilesByTrackIdUsage, getApiV1FilesByTrackIdWaveform, postApiV1Files, putApiV1FilesByTrackId, type Track, type UpdateTrackRequest } from '@/client/apiClient'
+import { deleteApiV1FilesByTrackId, getApiV1Files, getApiV1FilesByTrackIdUsage, getApiV1FilesByTrackIdWaveform, patchApiV1Files, postApiV1Files, putApiV1FilesByTrackId, type Track, type TrackEditRequest, type UpdateTrackRequest } from '@/client/apiClient'
 import type { TrackStatusUpdate } from '@/websocket/protocol'
 import { defineStore } from 'pinia'
 
@@ -140,6 +140,10 @@ export const useFileStore = defineStore('files', {
         console.error('Error updating track:', error)
         throw error
       }
-    }
+    },
+    async editTracks(body: TrackEditRequest) {
+      const { data } = await patchApiV1Files<true>({ body })
+      return data.map(track => this.addTrack(track))
+    },
   }
 })

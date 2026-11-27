@@ -81,7 +81,7 @@ func TestRoutedValidation(t *testing.T) {
 		{"unauthenticated files", "GET", "/api/v1/files", "", false, 401},
 		{"unauthenticated library stream", "GET", "/api/v1/stream/missing/index.m3u8", "", false, 401},
 		{"invalid table stream", "GET", "/api/v1/tables/invalid/stream/missing/index.m3u8", "", false, 404},
-		{"unsupported files method", "PATCH", "/api/v1/files", "", true, 405},
+		{"unsupported files method", "DELETE", "/api/v1/files", "", true, 405},
 		{"unsupported file method", "GET", "/api/v1/files/" + id, "", true, 405},
 		{"invalid update JSON", "PUT", "/api/v1/files/" + id, "{", true, 400},
 		{"invalid update ID", "PUT", "/api/v1/files/invalid", "{}", true, 400},

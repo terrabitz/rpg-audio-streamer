@@ -148,19 +148,12 @@ func (db *SQLiteDatastore) UpdateTableSettings(ctx context.Context, id uuid.UUID
 }
 
 func (db *SQLiteDatastore) GetTableTracks(ctx context.Context, id uuid.UUID) ([]server.Track, error) {
-	rows, err := sqlitedb.New(db.DB).GetTableTracks(ctx, id[:])
+	queries := sqlitedb.New(db.DB)
+	rows, err := queries.GetTableTracks(ctx, id[:])
 	if err != nil {
 		return nil, err
 	}
-	tracks := make([]server.Track, 0, len(rows))
-	for _, row := range rows {
-		track, err := convertDBTrack(row)
-		if err != nil {
-			return nil, err
-		}
-		tracks = append(tracks, track)
-	}
-	return tracks, nil
+	return convertDBTracksWithTags(ctx, queries, rows)
 }
 
 func (db *SQLiteDatastore) AddTableTrack(ctx context.Context, tableID, trackID uuid.UUID) error {
